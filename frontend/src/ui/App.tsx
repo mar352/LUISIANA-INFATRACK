@@ -266,8 +266,38 @@ export default function App() {
         },
       });
 
-      // ── Radar ─────────────────────────────────────────────────────────────
-      // NASA GIBS precipitation
+      // ── Satellite imagery source (ESRI World Imagery — free, no API key) ──
+      map.addSource("satellite", {
+        type: "raster",
+        tiles: [
+          "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        ],
+        tileSize: 256,
+        maxzoom: 19,
+        attribution: "© Esri, Maxar, Earthstar Geographics",
+      });
+      map.addLayer(
+        {
+          id: "satellite-layer",
+          type: "raster",
+          source: "satellite",
+          paint: { "raster-opacity": DEFAULT_TOGGLES.satellite ? 1 : 0 },
+        } as any,
+        "gibs-imerg-layer" // just above GIBS, below buildings
+      );
+
+      // ── Terrain (Terrarium RGB DEM — free, no API key, from AWS) ──────────
+      map.addSource("terrain-dem", {
+        type: "raster-dem",
+        tiles: [
+          "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png",
+        ],
+        tileSize: 256,
+        maxzoom: 15,
+        encoding: "terrarium",
+      } as any);
+      // Terrain is applied via setTerrain — not a layer.
+      // We enable/disable it via the toggle effect below.
       map.addSource("gibs-imerg", {
         type: "raster",
         tiles: [gibsWmtsTileUrl({ layer: gibsLayer, date: gibsDate })],
@@ -553,6 +583,34 @@ export default function App() {
     } as any);
     map.setLayoutProperty("storm-line", "visibility", toggles.stormTrack ? "visible" : "none");
   }, [weather, toggles.stormTrack]);
+
+  // Satellite imagery toggle
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    if (!map.getLayer("satellite-layer")) return;
+    // Fade in/out via opacity so the transition is smooth
+    map.setPaintProperty("satellite-layer", "raster-opacity", toggles.satellite ? 1 : 0);
+    // When satellite is on, dim the 3D buildings slightly so imagery shows through
+    if (map.getLayer("3d-buildings")) {
+      map.setPaintProperty("3d-buildings", "fill-extrusion-opacity", toggles.satellite ? 0.55 : 0.92);
+    }
+  }, [toggles.satellite]);
+
+  // Terrain (3D elevation) toggle
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    if (!map.getSource("terrain-dem")) return;
+    if (toggles.terrain) {
+      (map as any).setTerrain({ source: "terrain-dem", exaggeration: 2.5 });
+      // Increase pitch for dramatic terrain view
+      map.easeTo({ pitch: 65, duration: 600 });
+    } else {
+      (map as any).setTerrain(null);
+      map.easeTo({ pitch: 50, duration: 600 });
+    }
+  }, [toggles.terrain]);
 
   // Push project footprints to the 3D highlighted buildings layer
   useEffect(() => {
@@ -907,7 +965,7 @@ export default function App() {
           <div className="toggleRow">
             <div>
               <label>Satellite</label>
-              <div className="hint">For damage validation</div>
+              <div className="hint">ESRI World Imagery — damage validation</div>
             </div>
             <div
               className={`switch ${toggles.satellite ? "on" : ""}`}
@@ -924,8 +982,8 @@ export default function App() {
           </div>
           <div className="toggleRow">
             <div>
-              <label>Terrain</label>
-              <div className="hint">Slope-focused planning</div>
+              <label>3D Terrain</label>
+              <div className="hint">Elevation exaggeration — slope analysis</div>
             </div>
             <div
               className={`switch ${toggles.terrain ? "on" : ""}`}
