@@ -225,6 +225,72 @@ const PageOverview = ({ onEnter, setActivePage }: { onEnter: () => void; setActi
         ))}
       </div>
     </div>
+
+    {/* Key Features Highlight */}
+    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "40px 32px 80px" }}>
+      <div style={{ textAlign: "center", marginBottom: 48 }}>
+        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: "0.14em", marginBottom: 10 }}>Core Capabilities</div>
+        <div style={{ fontSize: 32, fontWeight: 800, color: "rgba(255,255,255,0.92)", marginBottom: 12 }}>Built for Modern Governance</div>
+        <div style={{ fontSize: 15, color: "rgba(255,255,255,0.45)", maxWidth: 520, margin: "0 auto", lineHeight: 1.65 }}>
+          Comprehensive tools designed specifically for Luisiana's municipal operations
+        </div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 20 }}>
+        {[
+          { icon: "🗺️", title: "Real-Time GIS Mapping", desc: "Interactive maps with live data overlays, satellite imagery, and custom layers for comprehensive spatial analysis" },
+          { icon: "⚠️", title: "Disaster Risk Monitoring", desc: "24/7 weather tracking, flood alerts, and risk assessment tools to keep communities safe" },
+          { icon: "🏗️", title: "Infrastructure Tracking", desc: "Monitor all municipal projects, construction progress, and asset management in one place" },
+          { icon: "📋", title: "Business Permit System", desc: "Streamlined permit processing, application tracking, and compliance monitoring" },
+          { icon: "📊", title: "Analytics Dashboard", desc: "Data-driven insights with customizable reports and visualization tools for informed decision-making" },
+          { icon: "🔔", title: "Smart Alerts", desc: "Automated notifications for critical events, deadlines, and system updates across all departments" }
+        ].map((f, i) => (
+          <div key={i} style={{ padding: "28px 24px", background: "rgba(10,22,38,0.60)", backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 18, transition: "all 0.3s ease" }}>
+            <div style={{ fontSize: 36, marginBottom: 16 }}>{f.icon}</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: "rgba(255,255,255,0.92)", marginBottom: 10 }}>{f.title}</div>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.50)", lineHeight: 1.65 }}>{f.desc}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    {/* Trusted By Section */}
+    <div style={{ background: "rgba(10,22,38,0.40)", padding: "60px 32px", marginBottom: 60 }}>
+      <div style={{ maxWidth: 900, margin: "0 auto", textAlign: "center" }}>
+        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", textTransform: "uppercase", letterSpacing: "0.14em", marginBottom: 16 }}>Serving Luisiana</div>
+        <div style={{ fontSize: 28, fontWeight: 800, color: "rgba(255,255,255,0.92)", marginBottom: 32 }}>Trusted by Municipal Departments</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 24 }}>
+          {[
+            { name: "MDRRMO", desc: "Disaster Risk Reduction" },
+            { name: "MPDC", desc: "Planning & Development" },
+            { name: "Engineering", desc: "Infrastructure Projects" },
+            { name: "Business Permits", desc: "Licensing & Compliance" }
+          ].map((d, i) => (
+            <div key={i} style={{ padding: "24px 20px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 12 }}>
+              <div style={{ fontSize: 18, fontWeight: 700, color: "#19c37d", marginBottom: 6 }}>{d.name}</div>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.40)" }}>{d.desc}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+
+    {/* Quick Access CTA */}
+    <div style={{ maxWidth: 800, margin: "0 auto 80px", padding: "0 32px" }}>
+      <div style={{ padding: "48px 40px", background: "linear-gradient(135deg, rgba(25,195,125,0.08), rgba(74,144,217,0.06))", border: "1px solid rgba(25,195,125,0.20)", borderRadius: 20, textAlign: "center" }}>
+        <div style={{ fontSize: 28, fontWeight: 800, color: "rgba(255,255,255,0.95)", marginBottom: 12 }}>Ready to Get Started?</div>
+        <div style={{ fontSize: 15, color: "rgba(255,255,255,0.55)", marginBottom: 32, lineHeight: 1.65 }}>
+          Access the full platform and start monitoring your municipality in real-time
+        </div>
+        <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
+          <button onClick={onEnter} style={{ cursor: "pointer", padding: "14px 36px", borderRadius: 12, background: "linear-gradient(135deg, rgba(25,195,125,0.30), rgba(74,144,217,0.25))", border: "1px solid rgba(25,195,125,0.50)", color: "rgba(255,255,255,0.98)", fontSize: 15, fontWeight: 700 }}>
+            Launch Dashboard
+          </button>
+          <button onClick={() => setActivePage("about")} style={{ cursor: "pointer", padding: "14px 32px", borderRadius: 12, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.70)", fontSize: 15, fontWeight: 500 }}>
+            Learn More
+          </button>
+        </div>
+      </div>
+    </div>
   </>
 );
 
