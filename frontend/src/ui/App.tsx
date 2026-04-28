@@ -215,7 +215,7 @@ const PageOverview = ({ onEnter, setActivePage }: { onEnter: () => void; setActi
       </div>
     </section>
     {/* Stats */}
-    <div style={{ display: "flex", justifyContent: "center", padding: "0 24px", marginTop: -28, marginBottom: 60 }}>
+    <div style={{ display: "flex", justifyContent: "center", padding: "0 24px", marginTop: -28, marginBottom: 60, position: "relative", zIndex: 10 }}>
       <div style={{ display: "flex", gap: 0, flexWrap: "wrap", justifyContent: "center", border: "1px solid rgba(255,255,255,0.09)", borderRadius: 16, background: "rgba(10,22,38,0.80)", backdropFilter: "blur(12px)", overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}>
         {[{ v: "5s", l: "Update Interval" }, { v: "4", l: "Departments" }, { v: "22+", l: "Projects Tracked" }, { v: "Live", l: "Radar & Weather" }].map((s, i) => (
           <div key={i} style={{ padding: "20px 36px", textAlign: "center", borderRight: i < 3 ? "1px solid rgba(255,255,255,0.07)" : "none" }}>
