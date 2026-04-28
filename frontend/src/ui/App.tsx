@@ -395,13 +395,13 @@ function LandingPage({ onEnter }: { onEnter: () => void }) {
     { label: "About",           page: "about" },
   ];
 
-  const PAGE_MAP: Record<LandingPage, React.FC<{ onEnter: () => void; setActivePage?: (page: LandingPage) => void }>> = {
+  const PAGE_MAP = useMemo<Record<LandingPage, React.FC<{ onEnter: () => void; setActivePage?: (page: LandingPage) => void }>>>(() => ({
     overview: (props) => <PageOverview {...props} setActivePage={setActivePage} />,
     features: PageFeatures,
     departments: PageDepartments,
     risk: PageRisk,
     about: PageAbout,
-  };
+  }), [setActivePage]);
   
   const ActivePage = PAGE_MAP[activePage];
 
