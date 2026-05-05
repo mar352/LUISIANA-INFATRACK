@@ -61,4 +61,3 @@ export function formatRadarTime(unixSeconds: number): string {
   const day = d.getDate().toString().padStart(2, "0");
   return `${mo}/${day} ${h}:${m}`;
 }
-

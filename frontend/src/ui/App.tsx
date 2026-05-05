@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import maplibregl, { Map as MapLibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { DeckGLOverlay } from "./DeckOverlay";
+import { BuildingOverlay } from "./BuildingOverlay";
 import type { AlertItem, HeatPoint, Project, RiskZones, WeatherSnapshot } from "../types";
+import { MODEL_CATALOG, type ModelType } from "../types";
 import { connectRealtime } from "../lib/realtime";
 import { buildHeatmapPoints, type BBox, type HeatmapMetric } from "../lib/heatmap";
 import { fetchRadarFrames, radarTileUrl, formatRadarTime, type RadarColorScheme, type RadarFrame, RADAR_COLOR_SCHEMES } from "../lib/radar";
@@ -704,7 +706,7 @@ type LayerToggles = {
 
 const DEFAULT_TOGGLES: LayerToggles = {
   satellite: false,
-  terrain: false,
+  terrain: true,
   heatmap: false,
   weather: false,
   radar: true,
@@ -763,8 +765,6 @@ function buildRadarLayers(
     if (map.getSource(`radar-src-${i}`)) map.removeSource(`radar-src-${i}`);
   }
 
-  // Insert right above the OSM base layer — radar is the bottom-most overlay.
-  // Everything else (GIBS, risk zones, projects) renders on top.
   const beforeLayer = map.getLayer("gibs-imerg-layer") ? "gibs-imerg-layer" : (map.getLayer("risk-fill") ? "risk-fill" : undefined);
 
   for (let i = 0; i < frames.length; i++) {
@@ -794,6 +794,8 @@ function buildRadarLayers(
 export default function App() {
   const mapRef = useRef<MapLibreMap | null>(null);
   const mapDivRef = useRef<HTMLDivElement | null>(null);
+  // Separate state so React re-renders overlays when the map instance is ready
+  const [mapInstance, setMapInstance] = useState<MapLibreMap | null>(null);
 
   const [currentRole, setCurrentRole] = useState<UserRole | null>(null);
   const [screen, setScreen] = useState<"landing" | "login" | "app">("landing");
@@ -805,6 +807,10 @@ export default function App() {
   const [heatPoints, setHeatPoints] = useState<HeatPoint[]>([]);
   const [riskZones, setRiskZones] = useState<RiskZones | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [placementMode, setPlacementMode] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<ModelType>("office");
+  const [placementRotation, setPlacementRotation] = useState(0);
+  const [placingName, setPlacingName] = useState("");
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [heatMetric, setHeatMetric] = useState<HeatmapMetric>("combined");
   const [viewport, setViewport] = useState<{ bbox: BBox; zoom: number } | null>(null);
@@ -852,13 +858,15 @@ export default function App() {
       style: VECTOR_STYLE_URL,
       center: [CENTER.lon, CENTER.lat],
       zoom: CENTER.zoom,
-      pitch: 50,
-      bearing: -12,
+      pitch: 62,
+      bearing: -15,
       attributionControl: false,
       maxBounds: LUISIANA_BOUNDS,
+      canvasContextAttributes: { antialias: true }, // required for three.js custom layers
     });
 
     mapRef.current = map;
+    setMapInstance(map);
 
     const pushViewport = () => {
       const b = map.getBounds();
@@ -889,7 +897,7 @@ export default function App() {
         minzoom: 12,
         paint: {
           "fill-extrusion-color": [
-            "interpolate", ["linear"], ["get", "render_height"],
+            "interpolate", ["linear"], ["coalesce", ["get", "render_height"], 0],
             0,   "#e8dcc8",
             10,  "#ddd0b8",
             30,  "#d4c8ae",
@@ -908,36 +916,17 @@ export default function App() {
         },
       } as any);
 
-      // Project buildings — highlighted in blue/orange on top of OSM buildings
+      // Project location dots — simple markers, GLB models rendered by BuildingOverlay
       map.addSource("project-footprints", {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
       });
       map.addLayer({
-        id: "project-buildings-3d",
-        type: "fill-extrusion",
-        source: "project-footprints",
-        paint: {
-          "fill-extrusion-color": [
-            "match", ["get", "status"],
-            "Completed", "#4a90d9",
-            "Ongoing",   "#f5a623",
-            "Planning",  "#9b9b9b",
-            "#4a90d9",
-          ],
-          "fill-extrusion-height": ["get", "height"],
-          "fill-extrusion-base": 0,
-          "fill-extrusion-opacity": 0.95,
-        },
-      } as any);
-
-      // Project label dots
-      map.addLayer({
         id: "project-labels",
         type: "circle",
         source: "project-footprints",
         paint: {
-          "circle-radius": 6,
+          "circle-radius": 5,
           "circle-color": [
             "match", ["get", "status"],
             "Completed", "#4a90d9",
@@ -945,8 +934,9 @@ export default function App() {
             "Planning",  "#9b9b9b",
             "#4a90d9",
           ],
-          "circle-stroke-width": 2,
+          "circle-stroke-width": 1.5,
           "circle-stroke-color": "#ffffff",
+          "circle-opacity": 0.85,
         },
       });
 
@@ -964,22 +954,28 @@ export default function App() {
         type: "raster-dem",
         tiles: ["https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"],
         tileSize: 256,
-        maxzoom: 15,
         encoding: "terrarium",
       } as any);
+
+      // Enable 3D terrain by default — real elevation from AWS Terrarium DEM
+      (map as any).setTerrain({ source: "terrain-dem", exaggeration: 2.5 });
 
       // ── GIBS precipitation (added before satellite so satellite sits on top) ──
       map.addSource("gibs-imerg", {
         type: "raster",
         tiles: [gibsWmtsTileUrl({ layer: gibsLayer, date: gibsDate })],
         tileSize: 256,
+        minzoom: 0,
         maxzoom: 6,
       } as any);
       map.addLayer({
         id: "gibs-imerg-layer",
         type: "raster",
         source: "gibs-imerg",
-        paint: { "raster-opacity": DEFAULT_TOGGLES.gibsPrecip ? gibsOpacity : 0 },
+        paint: {
+          "raster-opacity": DEFAULT_TOGGLES.gibsPrecip ? gibsOpacity : 0,
+          "raster-resampling": "linear",
+        },
       } as any);
 
       // Satellite goes above GIBS, below 3d buildings
@@ -1043,12 +1039,69 @@ export default function App() {
 
     map.on("moveend", pushViewport);
 
+    // Suppress "Image X could not be loaded" warnings for icons referenced by
+    // the base style's sprite that aren't bundled (e.g. POI icons like "office",
+    // "gate", "swimming_pool"). Provide a 1×1 transparent fallback so MapLibre
+    // stops retrying and logging.
+    map.on("styleimagemissing", (e: { id: string }) => {
+      if (!map.hasImage(e.id)) {
+        map.addImage(e.id, { width: 1, height: 1, data: new Uint8Array(4) });
+      }
+    });
+
     return () => {
       map.off("moveend", pushViewport);
       map.remove();
       mapRef.current = null;
+      setMapInstance(null);
     };
   }, [screen]); // Re-initialize when screen changes to "app"
+
+  // ── Placement mode: click on map to place a model ──────────────────────────
+  const placementModeRef = useRef(false);
+  const selectedModelRef = useRef<ModelType>("office");
+  const placementRotationRef = useRef(0);
+  const placingNameRef = useRef("");
+
+  useEffect(() => { placementModeRef.current = placementMode; }, [placementMode]);
+  useEffect(() => { selectedModelRef.current = selectedModel; }, [selectedModel]);
+  useEffect(() => { placementRotationRef.current = placementRotation; }, [placementRotation]);
+  useEffect(() => { placingNameRef.current = placingName; }, [placingName]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const handleClick = async (e: maplibregl.MapMouseEvent) => {
+      if (!placementModeRef.current) return;
+      const { lng, lat } = e.lngLat;
+      const catalog = MODEL_CATALOG.find((m) => m.type === selectedModelRef.current);
+      const name = placingNameRef.current.trim() ||
+        `${catalog?.label ?? selectedModelRef.current} (${new Date().toLocaleTimeString()})`;
+
+      try {
+        await fetch("http://localhost:4000/api/projects", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name,
+            modelType: selectedModelRef.current,
+            type: catalog?.category === "Agriculture" ? "Agricultural Structure" :
+                  catalog?.category === "Infrastructure" ? "Municipal Project" : "Private Building",
+            department: "Engineering",
+            location: { lat, lon: lng },
+            rotation: placementRotationRef.current,
+          }),
+        });
+        // Backend will emit projects:update via socket
+      } catch (err) {
+        console.error("Failed to place project:", err);
+      }
+    };
+
+    map.on("click", handleClick);
+    return () => { map.off("click", handleClick); };
+  }, [mapRef.current]);
 
   function upsertGibsLayer(args: { layer: GibsLayerId; date: string; opacity: number; visible: boolean }) {
     const map = mapRef.current;
@@ -1067,6 +1120,7 @@ export default function App() {
       type: "raster",
       tiles: [tileUrl],
       tileSize: 256,
+      minzoom: 0,
       maxzoom: 6,
     } as any);
 
@@ -1076,7 +1130,10 @@ export default function App() {
         id: "gibs-imerg-layer",
         type: "raster",
         source: "gibs-imerg",
-        paint: { "raster-opacity": visible ? opacity : 0 },
+        paint: {
+          "raster-opacity": visible ? opacity : 0,
+          "raster-resampling": "linear",
+        },
       } as any,
       map.getLayer("risk-fill") ? "risk-fill" : undefined
     );
@@ -1283,11 +1340,10 @@ export default function App() {
     if (!map.getSource("terrain-dem")) return;
     if (toggles.terrain) {
       (map as any).setTerrain({ source: "terrain-dem", exaggeration: 2.5 });
-      // Increase pitch for dramatic terrain view
-      map.easeTo({ pitch: 65, duration: 600 });
+      map.easeTo({ pitch: 62, duration: 600 });
     } else {
       (map as any).setTerrain(null);
-      map.easeTo({ pitch: 50, duration: 600 });
+      map.easeTo({ pitch: 30, duration: 600 });
     }
   }, [toggles.terrain]);
 
@@ -1298,36 +1354,17 @@ export default function App() {
     const src = map.getSource("project-footprints") as maplibregl.GeoJSONSource | undefined;
     if (!src) return;
 
-    const features = (toggles.projects ? projects : []).map((p) => {
-      // Building footprint size by type
-      const hw = p.type === "Municipal Project" ? 0.0007 :
-                 p.type === "Agricultural Structure" ? 0.0005 : 0.0003;
-      const hd = p.type === "Municipal Project" ? 0.00015 :
-                 p.type === "Agricultural Structure" ? 0.0004 : 0.0003;
-      const { lon, lat } = p.location;
-      const height = p.type === "Municipal Project" ? 4 :
-                     p.type === "Agricultural Structure" ? 12 :
-                     p.status === "Completed" ? 40 :
-                     p.status === "Ongoing" ? Math.max(8, (p.progress / 100) * 40) : 8;
-      return {
-        type: "Feature" as const,
-        properties: { id: p.id, name: p.name, status: p.status, height },
-        geometry: {
-          type: "Polygon" as const,
-          coordinates: [[
-            [lon - hw, lat - hd],
-            [lon + hw, lat - hd],
-            [lon + hw, lat + hd],
-            [lon - hw, lat + hd],
-            [lon - hw, lat - hd],
-          ]],
-        },
-      };
-    });
+    // Just update dot positions — GLB models are rendered by BuildingOverlay
+    const features = (toggles.projects ? projects : []).map((p) => ({
+      type: "Feature" as const,
+      properties: { id: p.id, name: p.name, status: p.status },
+      geometry: {
+        type: "Point" as const,
+        coordinates: [p.location.lon, p.location.lat],
+      },
+    }));
 
-    src.setData({ type: "FeatureCollection", features });
-    if (map.getLayer("project-buildings-3d"))
-      map.setLayoutProperty("project-buildings-3d", "visibility", toggles.projects ? "visible" : "none");
+    src.setData({ type: "FeatureCollection", features } as any);
     if (map.getLayer("project-labels"))
       map.setLayoutProperty("project-labels", "visibility", toggles.projects ? "visible" : "none");
   }, [projects, toggles.projects]);
@@ -1363,14 +1400,20 @@ export default function App() {
       {/* Main app - only render when logged in */}
       {screen === "app" && <>
       <div className="mapWrap">
-        <div className="map" ref={mapDivRef} />
+        <div className="map" ref={mapDivRef} style={{ cursor: placementMode ? "crosshair" : undefined }} />
 
         <DeckGLOverlay
-          map={mapRef.current}
+          map={mapInstance}
           enabledHeatmap={toggles.heatmap && !toggles.gibsPrecip}
           heatPoints={heatPoints}
           enabledWeather={toggles.weather}
           weather={weather}
+        />
+
+        <BuildingOverlay
+          map={mapInstance}
+          projects={projects}
+          visible={toggles.projects}
         />
 
         <div className="topBar">
@@ -1762,31 +1805,18 @@ export default function App() {
               Radar Controls
             </div>
             {radarFrames.length === 0 ? (
-              <div style={{ color: "var(--muted)", fontSize: 12 }}>
-                Loading radar frames...
-              </div>
+              <div style={{ color: "var(--muted)", fontSize: 12 }}>Loading radar frames...</div>
             ) : (
               <>
                 {/* Playback row */}
                 <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
-                  <button
-                    onClick={() => setRadarPlaying(!radarPlaying)}
-                    style={{
-                      cursor: "pointer",
-                      borderRadius: 999,
-                      padding: "6px 14px",
-                      fontSize: 13,
-                      fontWeight: 600,
-                      border: "1px solid rgba(255,255,255,0.15)",
-                      background: radarPlaying ? "rgba(25,195,125,0.20)" : "rgba(88,160,255,0.16)",
-                      color: "rgba(255,255,255,0.9)",
-                      letterSpacing: "0.02em",
-                    }}
-                  >
-                    {radarPlaying
-                      ? <><IconPause /> Pause</>
-                      : <><IconPlay /> Play</>
-                    }
+                  <button onClick={() => setRadarPlaying(!radarPlaying)} style={{
+                    cursor: "pointer", borderRadius: 999, padding: "6px 14px", fontSize: 13,
+                    fontWeight: 600, border: "1px solid rgba(255,255,255,0.15)",
+                    background: radarPlaying ? "rgba(25,195,125,0.20)" : "rgba(88,160,255,0.16)",
+                    color: "rgba(255,255,255,0.9)", letterSpacing: "0.02em",
+                  }}>
+                    {radarPlaying ? <><IconPause /> Pause</> : <><IconPlay /> Play</>}
                   </button>
                   <div style={{ flex: 1, textAlign: "right" }}>
                     <span className="pill" style={{ fontSize: 12 }}>
@@ -1798,76 +1828,41 @@ export default function App() {
                     </div>
                   </div>
                 </div>
-
-                {/* Seek scrubber */}
+                {/* Seek */}
                 <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
                   <span className="pill" style={{ minWidth: 36 }}>Seek</span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={radarFrames.length - 1}
-                    value={radarFrameIdx}
+                  <input type="range" min={0} max={radarFrames.length - 1} value={radarFrameIdx}
                     onChange={(e) => { setRadarPlaying(false); setRadarFrameIdx(Number(e.target.value)); }}
-                    style={{ width: "100%" }}
-                  />
+                    style={{ width: "100%" }} />
                 </div>
-
-                {/* Opacity slider */}
+                {/* Opacity */}
                 <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
                   <span className="pill" style={{ minWidth: 52 }}>Opacity</span>
-                  <input
-                    type="range"
-                    min={0.2}
-                    max={1.0}
-                    step={0.05}
-                    value={radarOpacity}
-                    onChange={(e) => setRadarOpacity(Number(e.target.value))}
-                    style={{ width: "100%" }}
-                  />
+                  <input type="range" min={0.2} max={1.0} step={0.05} value={radarOpacity}
+                    onChange={(e) => setRadarOpacity(Number(e.target.value))} style={{ width: "100%" }} />
                   <span style={{ fontSize: 11, color: "var(--muted2)", minWidth: 28, textAlign: "right" }}>
                     {Math.round(radarOpacity * 100)}%
                   </span>
                 </div>
-
-                {/* Color scheme picker */}
-                <div style={{ marginBottom: 4 }}>
+                {/* Color scheme */}
+                <div style={{ marginBottom: 8 }}>
                   <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>Color Scheme</div>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                     {RADAR_COLOR_SCHEMES.map(({ value, label }) => (
-                      <button
-                        key={value}
-                        onClick={() => setRadarColorScheme(value)}
-                        style={{
-                          cursor: "pointer",
-                          borderRadius: 999,
-                          padding: "5px 10px",
-                          fontSize: 11,
-                          border: "1px solid rgba(255,255,255,0.10)",
-                          background: radarColorScheme === value ? "rgba(255,140,60,0.22)" : "rgba(0,0,0,0.12)",
-                          color: radarColorScheme === value ? "rgba(255,200,100,0.95)" : "rgba(255,255,255,0.7)",
-                          fontWeight: radarColorScheme === value ? 600 : 400,
-                        }}
-                      >
-                        {label}
-                      </button>
+                      <button key={value} onClick={() => setRadarColorScheme(value)} style={{
+                        cursor: "pointer", borderRadius: 999, padding: "5px 10px", fontSize: 11,
+                        border: "1px solid rgba(255,255,255,0.10)",
+                        background: radarColorScheme === value ? "rgba(255,140,60,0.22)" : "rgba(0,0,0,0.12)",
+                        color: radarColorScheme === value ? "rgba(255,200,100,0.95)" : "rgba(255,255,255,0.7)",
+                        fontWeight: radarColorScheme === value ? 600 : 400,
+                      }}>{label}</button>
                     ))}
                   </div>
                 </div>
-
-                {/* Radar legend */}
-                <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{
-                    flex: 1,
-                    height: 8,
-                    borderRadius: 4,
-                    background: "linear-gradient(to right, #00aa00, #00ff00, #ffff00, #ff8800, #ff0000, #cc00cc)",
-                  }} />
-                  <div style={{ display: "flex", justifyContent: "space-between", width: "100%", position: "absolute", fontSize: 10, color: "var(--muted2)", marginTop: 14 }} />
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--muted2)", marginTop: 4 }}>
-                  <span>Light</span>
-                  <span>Moderate</span>
-                  <span>Heavy</span>
+                {/* Legend */}
+                <div style={{ height: 8, borderRadius: 4, background: "linear-gradient(to right, #00aa00, #00ff00, #ffff00, #ff8800, #ff0000, #cc00cc)", marginBottom: 4 }} />
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--muted2)" }}>
+                  <span>Light</span><span>Moderate</span><span>Heavy</span>
                 </div>
               </>
             )}
@@ -1906,6 +1901,119 @@ export default function App() {
             Model: rainfall + slope (LGU explainable logic)
           </div>
         </div>}
+
+        {/* ── Engineer: Place Infrastructure Models ── */}
+        {currentRole === "Engineer" && (
+          <div className="card" style={{ marginBottom: 12 }}>
+            <div className="sectionTitle" style={{ marginBottom: 10 }}>
+              Place Infrastructure
+            </div>
+
+            {/* Placement toggle */}
+            <button
+              onClick={() => setPlacementMode((v) => !v)}
+              style={{
+                width: "100%", cursor: "pointer", padding: "10px 0",
+                borderRadius: 10, fontWeight: 700, fontSize: 13,
+                border: placementMode ? "1px solid rgba(25,195,125,0.6)" : "1px solid rgba(255,255,255,0.12)",
+                background: placementMode ? "rgba(25,195,125,0.20)" : "rgba(255,255,255,0.05)",
+                color: placementMode ? "#19c37d" : "rgba(255,255,255,0.7)",
+                marginBottom: 10,
+              }}
+            >
+              {placementMode ? "🟢 Placement Mode ON — Click map to place" : "📍 Enable Placement Mode"}
+            </button>
+
+            {/* Name input */}
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>Project Name (optional)</div>
+              <input
+                value={placingName}
+                onChange={(e) => setPlacingName(e.target.value)}
+                placeholder="e.g. Brgy. Hall Phase 2"
+                style={{
+                  width: "100%", boxSizing: "border-box", padding: "7px 10px",
+                  borderRadius: 8, border: "1px solid rgba(255,255,255,0.10)",
+                  background: "rgba(0,0,0,0.25)", color: "rgba(255,255,255,0.85)",
+                  fontSize: 12, outline: "none",
+                }}
+              />
+            </div>
+
+            {/* Rotation */}
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
+              <span style={{ fontSize: 11, color: "var(--muted)", minWidth: 52 }}>Rotation</span>
+              <input type="range" min={0} max={360} step={15} value={placementRotation}
+                onChange={(e) => setPlacementRotation(Number(e.target.value))}
+                style={{ flex: 1 }} />
+              <span style={{ fontSize: 11, color: "var(--muted2)", minWidth: 32, textAlign: "right" }}>
+                {placementRotation}°
+              </span>
+            </div>
+
+            {/* Model catalog */}
+            {(["Building", "Infrastructure", "Agriculture"] as const).map((cat) => (
+              <div key={cat} style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 10, color: "var(--muted2)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>{cat}</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                  {MODEL_CATALOG.filter((m) => m.category === cat).map((m) => (
+                    <button
+                      key={m.type}
+                      onClick={() => setSelectedModel(m.type)}
+                      title={m.description}
+                      style={{
+                        cursor: "pointer", padding: "8px 6px", borderRadius: 8, textAlign: "left",
+                        border: selectedModel === m.type
+                          ? "1px solid rgba(25,195,125,0.55)"
+                          : "1px solid rgba(255,255,255,0.07)",
+                        background: selectedModel === m.type
+                          ? "rgba(25,195,125,0.14)"
+                          : "rgba(255,255,255,0.03)",
+                        color: selectedModel === m.type ? "#19c37d" : "rgba(255,255,255,0.7)",
+                      }}
+                    >
+                      <div style={{ fontSize: 18, marginBottom: 2 }}>{m.icon}</div>
+                      <div style={{ fontSize: 11, fontWeight: 600 }}>{m.label}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+
+            {/* Placed projects list with delete */}
+            {projects.filter((p) => p.department === "Engineering").length > 0 && (
+              <div style={{ marginTop: 8 }}>
+                <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 6 }}>Placed by Engineer</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 160, overflowY: "auto" }}>
+                  {projects.filter((p) => p.department === "Engineering").map((p) => (
+                    <div key={p.id} style={{
+                      display: "flex", alignItems: "center", gap: 6, padding: "6px 8px",
+                      background: "rgba(255,255,255,0.03)", borderRadius: 7,
+                      border: "1px solid rgba(255,255,255,0.06)",
+                    }}>
+                      <span style={{ fontSize: 14 }}>
+                        {MODEL_CATALOG.find((m) => m.type === p.modelType)?.icon ?? "🏗️"}
+                      </span>
+                      <span style={{ flex: 1, fontSize: 11, color: "rgba(255,255,255,0.75)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {p.name}
+                      </span>
+                      <button
+                        onClick={async () => {
+                          await fetch(`http://localhost:4000/api/projects/${p.id}`, { method: "DELETE" });
+                        }}
+                        style={{
+                          cursor: "pointer", padding: "2px 7px", borderRadius: 5, fontSize: 11,
+                          border: "1px solid rgba(255,77,79,0.3)", background: "rgba(255,77,79,0.10)",
+                          color: "rgba(255,100,100,0.9)",
+                        }}
+                      >✕</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {roleConfig?.canSeeProjects && <div className="card" style={{ marginBottom: 12 }}>
           <div className="sectionTitle" style={{ marginBottom: 8 }}>

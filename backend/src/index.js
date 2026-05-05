@@ -6,8 +6,9 @@ import { Server } from "socket.io";
 
 import { buildHeatPointsForBbox, computeRiskZones } from "./services/risk.js";
 import { getWeatherSnapshot } from "./services/weather.js";
-import { projectsSeed, tickProjects } from "./services/projects.js";
+import { projectsSeed, tickProjects, addProject, removeProject } from "./services/projects.js";
 import { createAlertFromRisk } from "./services/alerts.js";
+import { buildSlopeCache } from "./services/dem.js";
 
 const PORT = Number(process.env.PORT || 4000);
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:5173";
@@ -83,6 +84,23 @@ app.get("/api/projects", (_req, res) => {
   res.json({ projects: projectsSeed() });
 });
 
+app.post("/api/projects", (req, res) => {
+  const { name, modelType, type, department, location, rotation } = req.body;
+  if (!name || !modelType || !location?.lat || !location?.lon) {
+    return res.status(400).json({ error: "Missing required fields: name, modelType, location" });
+  }
+  const project = addProject({ name, modelType, type, department, location, rotation });
+  io.emit("projects:update", { projects: projectsSeed(), generatedAt: new Date().toISOString() });
+  res.json({ project });
+});
+
+app.delete("/api/projects/:id", (req, res) => {
+  const removed = removeProject(req.params.id);
+  if (!removed) return res.status(404).json({ error: "Project not found" });
+  io.emit("projects:update", { projects: projectsSeed(), generatedAt: new Date().toISOString() });
+  res.json({ ok: true });
+});
+
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
@@ -147,9 +165,13 @@ setInterval(async () => {
 }, 5000);
 
 server.listen(PORT, () => {
-  // Intentionally minimal: this project is meant to run in LGU environments
-  // where logs should stay readable for operators.
   console.log(`[INFA-TRACK] backend listening on http://localhost:${PORT}`);
   console.log(`[INFA-TRACK] allowed client origin: ${CLIENT_ORIGIN}`);
+
+  // Build real slope cache from AWS Terrarium DEM on startup
+  // Runs in background — risk zones fall back to 0.4 until ready (~5-10s)
+  buildSlopeCache().catch((err) => {
+    console.warn("[DEM] Slope cache build failed:", err.message);
+  });
 });
 

@@ -1,3 +1,5 @@
+import { getSlopeForZone } from "./dem.js";
+
 function clamp01(n) {
   return Math.max(0, Math.min(1, n));
 }
@@ -27,7 +29,6 @@ export function buildHeatPointsForBbox(bbox, opts = {}) {
       const lon = west + ((x + 0.5) / cols) * (east - west);
       const lat = south + ((y + 0.5) / rows) * (north - south);
 
-      // Create a “moving storm core” by shifting a gaussian center over time.
       const t = (seed % 600) / 600;
       const cx = west + (0.25 + 0.55 * t) * (east - west);
       const cy = south + (0.55 - 0.25 * t) * (north - south);
@@ -35,7 +36,6 @@ export function buildHeatPointsForBbox(bbox, opts = {}) {
       const dy = (lat - cy) / (north - south);
       const storm = Math.exp(-(dx * dx * 16 + dy * dy * 10));
 
-      // “Infrastructure density” blob near center of bbox.
       const ix = (lon - (west + (east - west) * 0.55)) / (east - west);
       const iy = (lat - (south + (north - south) * 0.55)) / (north - south);
       const infra = Math.exp(-(ix * ix * 24 + iy * iy * 24));
@@ -51,10 +51,6 @@ export function buildHeatPointsForBbox(bbox, opts = {}) {
 }
 
 function zoneSeverity({ rainfallIntensity, slope }) {
-  // Core thesis logic:
-  // - High rainfall + steep slope => high risk
-  // - Moderate => moderate
-  // - Low => low
   const rain = clamp01(rainfallIntensity);
   const s = clamp01(slope);
   const score = clamp01(rain * 0.65 + s * 0.55);
@@ -66,10 +62,8 @@ function zoneSeverity({ rainfallIntensity, slope }) {
 
 export function computeRiskZones({ bbox, rainfallIntensity = 0.4, seed }) {
   const { west, south, east, north } = bbox;
-  const s = Number.isFinite(seed) ? seed : Math.floor(Date.now() / 5000);
-  const r = mulberry32(s + 1337);
+  void seed; // no longer used for slope — real DEM data is used instead
 
-  // Build 12-15 zones across the bbox (barangay-style partitions).
   const cols = 4;
   const rows = 3;
   const zones = [];
@@ -79,16 +73,16 @@ export function computeRiskZones({ bbox, rainfallIntensity = 0.4, seed }) {
     for (let x = 0; x < cols; x++) {
       const padX = (east - west) * 0.01;
       const padY = (north - south) * 0.01;
-      const zWest = west + (x / cols) * (east - west) + padX;
-      const zEast = west + ((x + 1) / cols) * (east - west) - padX;
-      const zSouth = south + (y / rows) * (north - south) + padY;
-      const zNorth = south + ((y + 1) / rows) * (north - south) - padY;
+      const zWest  = west  + (x / cols)       * (east - west) + padX;
+      const zEast  = west  + ((x + 1) / cols) * (east - west) - padX;
+      const zSouth = south + (y / rows)        * (north - south) + padY;
+      const zNorth = south + ((y + 1) / rows)  * (north - south) - padY;
 
-      // Slope simulation: some zones are naturally steeper.
-      const slope = clamp01(0.25 + r() * 0.75 + (y === 0 ? 0.15 : 0) + (x === 0 ? 0.08 : 0));
+      // ── Real slope from AWS Terrarium DEM (falls back to 0.4 until cache ready) ──
+      const slope = getSlopeForZone(`Z${id}`);
       const sev = zoneSeverity({ rainfallIntensity, slope });
 
-      const feature = {
+      zones.push({
         type: "Feature",
         properties: {
           zoneId: `Z${id}`,
@@ -100,19 +94,15 @@ export function computeRiskZones({ bbox, rainfallIntensity = 0.4, seed }) {
         },
         geometry: {
           type: "Polygon",
-          coordinates: [
-            [
-              [zWest, zSouth],
-              [zEast, zSouth],
-              [zEast, zNorth],
-              [zWest, zNorth],
-              [zWest, zSouth],
-            ],
-          ],
+          coordinates: [[
+            [zWest,  zSouth],
+            [zEast,  zSouth],
+            [zEast,  zNorth],
+            [zWest,  zNorth],
+            [zWest,  zSouth],
+          ]],
         },
-      };
-
-      zones.push(feature);
+      });
       id++;
     }
   }
@@ -121,9 +111,8 @@ export function computeRiskZones({ bbox, rainfallIntensity = 0.4, seed }) {
     type: "FeatureCollection",
     features: zones,
     properties: {
-      model: "rainfall+slope-v1",
+      model: "rainfall+real-dem-slope-v2",
       generatedAt: new Date().toISOString(),
     },
   };
 }
-

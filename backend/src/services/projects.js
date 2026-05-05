@@ -13,12 +13,15 @@ const SEED = 20260427;
 const r = mulberry32(SEED);
 
 const DEPTS = ["MPDC", "Engineering", "Agriculture", "Negosyo Center"];
-const STATUSES = ["Planning", "Ongoing", "Completed"];
 
 let state = null;
+let nextId = 100; // engineer-placed projects start from P100
 
-function pick(arr) {
-  return arr[Math.floor(r() * arr.length)];
+function modelTypeToLegacyType(modelType) {
+  if (!modelType) return "Private Building";
+  if (["road", "bridge", "water_tank", "solar_farm"].includes(modelType)) return "Municipal Project";
+  if (["barn"].includes(modelType)) return "Agricultural Structure";
+  return "Private Building";
 }
 
 function jitter(n, amp) {
@@ -28,7 +31,6 @@ function jitter(n, amp) {
 export function projectsSeed() {
   if (state) return state;
 
-  // Centered near Luisiana, Laguna (approx) for LGU demo realism.
   const baseLat = 14.19;
   const baseLon = 121.51;
 
@@ -36,31 +38,32 @@ export function projectsSeed() {
     const status = i < 5 ? "Completed" : i < 16 ? "Ongoing" : "Planning";
     const progress = status === "Completed" ? 100 : status === "Planning" ? 0 : Math.round(20 + r() * 65);
 
-    // Name and type are now consistent — road names get road type, everything else gets a building
     const nameKind = i % 3;
     const name =
-      nameKind === 0
-        ? `Road Improvement Segment ${i + 1}`
-        : nameKind === 1
-          ? `Barangay Waterline Upgrade ${i + 1}`
-          : `Agri Post-Harvest Facility ${i + 1}`;
+      nameKind === 0 ? `Road Improvement Segment ${i + 1}` :
+      nameKind === 1 ? `Barangay Waterline Upgrade ${i + 1}` :
+                       `Agri Post-Harvest Facility ${i + 1}`;
 
-    const type =
-      nameKind === 0 ? "Municipal Project" :        // roads → road shape
-      nameKind === 2 ? "Agricultural Structure" :   // agri → barn shape
-                       "Private Building";          // waterline/infra → building
+    const modelType =
+      nameKind === 0 ? "road" :
+      nameKind === 2 ? "barn" :
+                       "office";
+
+    const type = modelTypeToLegacyType(modelType);
 
     return {
       id: `P${i + 1}`,
       name,
+      modelType,
       type,
-      department: pick(DEPTS),
+      department: DEPTS[i % DEPTS.length],
       status,
       progress,
       location: {
         lat: Number(jitter(baseLat, 0.12).toFixed(6)),
         lon: Number(jitter(baseLon, 0.14).toFixed(6)),
       },
+      rotation: 0,
       updatedAt: new Date().toISOString(),
     };
   });
@@ -92,3 +95,35 @@ export function tickProjects() {
   return projects;
 }
 
+/**
+ * Add a new engineer-placed project to the state.
+ */
+export function addProject({ name, modelType, type, department, location, rotation = 0 }) {
+  const projects = projectsSeed();
+  const id = `P${nextId++}`;
+  const project = {
+    id,
+    name: name || `New ${modelType}`,
+    modelType: modelType || "office",
+    type: type || modelTypeToLegacyType(modelType),
+    department: department || "Engineering",
+    status: "Planning",
+    progress: 0,
+    location,
+    rotation,
+    updatedAt: new Date().toISOString(),
+  };
+  projects.push(project);
+  return project;
+}
+
+/**
+ * Remove a project by ID. Returns true if removed.
+ */
+export function removeProject(id) {
+  const projects = projectsSeed();
+  const idx = projects.findIndex((p) => p.id === id);
+  if (idx === -1) return false;
+  projects.splice(idx, 1);
+  return true;
+}
