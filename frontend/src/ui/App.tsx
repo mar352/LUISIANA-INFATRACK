@@ -1062,6 +1062,8 @@ export default function App() {
   const selectedModelRef = useRef<ModelType>("office");
   const placementRotationRef = useRef(0);
   const placingNameRef = useRef("");
+  // Set to true by BuildingOverlay when a building is clicked — prevents placement
+  const buildingHitRef = useRef(false);
 
   useEffect(() => { placementModeRef.current = placementMode; }, [placementMode]);
   useEffect(() => { selectedModelRef.current = selectedModel; }, [selectedModel]);
@@ -1074,6 +1076,8 @@ export default function App() {
 
     const handleClick = async (e: maplibregl.MapMouseEvent) => {
       if (!placementModeRef.current) return;
+      // If BuildingOverlay consumed this click (building was hit), skip placement
+      if (buildingHitRef.current) { buildingHitRef.current = false; return; }
       const { lng, lat } = e.lngLat;
       const catalog = MODEL_CATALOG.find((m) => m.type === selectedModelRef.current);
       const name = placingNameRef.current.trim() ||
@@ -1414,6 +1418,7 @@ export default function App() {
           map={mapInstance}
           projects={projects}
           visible={toggles.projects}
+          onBuildingClick={(hit) => { buildingHitRef.current = hit; }}
         />
 
         <div className="topBar">
