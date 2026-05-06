@@ -127,3 +127,55 @@ html, body, #root { height: 100%; margin: 0; background: var(--bg); color: var(-
 
 .mapboxgl-ctrl-bottom-right, .mapboxgl-ctrl-bottom-left { display: none; } /* keep it uncluttered for LGU users */
 
+
+/* ── Building popup ─────────────────────────────────────────────────────── */
+.building-popup .maplibregl-popup-content {
+  background: rgba(8, 18, 34, 0.92) !important;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px !important;
+  padding: 10px 13px !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  pointer-events: none;
+}
+.building-popup .maplibregl-popup-tip {
+  border-top-color: rgba(8, 18, 34, 0.92) !important;
+}
+
+/* ── Map controls ───────────────────────────────────────────────────────── */
+.map-controls {
+  position: absolute;
+  right: 14px;
+  bottom: 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 10;
+}
+.map-ctrl-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(8,18,34,0.88);
+  backdrop-filter: blur(8px);
+  color: rgba(255,255,255,0.80);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 120ms, color 120ms, border-color 120ms;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+}
+.map-ctrl-btn:hover {
+  background: rgba(25,195,125,0.18);
+  border-color: rgba(25,195,125,0.40);
+  color: #19c37d;
+}
+.map-ctrl-btn:active { transform: scale(0.94); }
+.map-ctrl-divider {
+  height: 1px;
+  background: rgba(255,255,255,0.08);
+  margin: 2px 4px;
+}

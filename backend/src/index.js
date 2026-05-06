@@ -3,6 +3,10 @@ import express from "express";
 import cors from "cors";
 import http from "http";
 import { Server } from "socket.io";
+import multer from "multer";
+import path from "path";
+import { fileURLToPath } from "url";
+import fs from "fs";
 
 import { buildHeatPointsForBbox, computeRiskZones } from "./services/risk.js";
 import { getWeatherSnapshot } from "./services/weather.js";
@@ -10,9 +14,41 @@ import { projectsSeed, tickProjects, addProject, removeProject } from "./service
 import { createAlertFromRisk } from "./services/alerts.js";
 import { buildSlopeCache } from "./services/dem.js";
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const PORT = Number(process.env.PORT || 4000);
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:5173";
 const LOCALHOST_ORIGIN_RE = /^http:\/\/localhost:\d+$/;
+
+// Setup multer for file uploads
+const uploadsDir = path.join(__dirname, "../../frontend/public/uploads");
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadsDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, "model-" + uniqueSuffix + path.extname(file.originalname));
+  },
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (ext === ".glb" || ext === ".gltf") {
+      cb(null, true);
+    } else {
+      cb(new Error("Only .glb and .gltf files are allowed"));
+    }
+  },
+});
 
 const app = express();
 app.use(express.json({ limit: "2mb" }));
@@ -85,13 +121,28 @@ app.get("/api/projects", (_req, res) => {
 });
 
 app.post("/api/projects", (req, res) => {
-  const { name, modelType, type, department, location, rotation } = req.body;
+  const { name, modelType, type, department, location, rotation, customModelUrl } = req.body;
   if (!name || !modelType || !location?.lat || !location?.lon) {
     return res.status(400).json({ error: "Missing required fields: name, modelType, location" });
   }
-  const project = addProject({ name, modelType, type, department, location, rotation });
+  const project = addProject({ name, modelType, type, department, location, rotation, customModelUrl });
   io.emit("projects:update", { projects: projectsSeed(), generatedAt: new Date().toISOString() });
   res.json({ project });
+});
+
+app.post("/api/upload-model", upload.single("model"), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: "No file uploaded" });
+  }
+  
+  // Return the URL path that the frontend can use
+  const url = `/uploads/${req.file.filename}`;
+  res.json({ 
+    url, 
+    filename: req.file.filename,
+    originalName: req.file.originalname,
+    size: req.file.size 
+  });
 });
 
 app.delete("/api/projects/:id", (req, res) => {

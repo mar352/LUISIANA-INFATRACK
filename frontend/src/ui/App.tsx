@@ -158,6 +158,65 @@ const FEATURE_ICON_MAP: Record<FeatureIcon, React.FC> = {
   building: IconBuilding, bell: IconBell, clipboard: IconClipboard,
 };
 
+// ── Model catalog SVG icons ──────────────────────────────────────────────
+const ModelIcons: Record<string, React.FC<{ size?: number; color?: string }>> = {
+  office: ({ size = 18, color = "currentColor" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 9h18"/><path d="M9 21V9"/><path d="M7 6h.01"/><path d="M12 6h.01"/><path d="M17 6h.01"/>
+    </svg>
+  ),
+  school: ({ size = 18, color = "currentColor" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/>
+    </svg>
+  ),
+  hospital: ({ size = 18, color = "currentColor" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="1"/><path d="M12 8v8"/><path d="M8 12h8"/>
+    </svg>
+  ),
+  barangay_hall: ({ size = 18, color = "currentColor" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-4h6v4"/><path d="M9 10h.01"/><path d="M15 10h.01"/>
+    </svg>
+  ),
+  evacuation_center: ({ size = 18, color = "currentColor" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+    </svg>
+  ),
+  road: ({ size = 18, color = "currentColor" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 21L9 3"/><path d="M19 21L15 3"/><path d="M9 12h6"/><path d="M10 7h4"/><path d="M10 17h4"/>
+    </svg>
+  ),
+  bridge: ({ size = 18, color = "currentColor" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 18h20"/><path d="M2 18c0-4 4-7 10-7s10 3 10 7"/><path d="M6 18v-3"/><path d="M18 18v-3"/>
+    </svg>
+  ),
+  water_tank: ({ size = 18, color = "currentColor" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <ellipse cx="12" cy="7" rx="9" ry="4"/><path d="M3 7v10c0 2.2 4 4 9 4s9-1.8 9-4V7"/><path d="M3 12c0 2.2 4 4 9 4s9-1.8 9-4"/>
+    </svg>
+  ),
+  solar_farm: ({ size = 18, color = "currentColor" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="M4.93 4.93l1.41 1.41"/><path d="M17.66 17.66l1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="M6.34 17.66l-1.41 1.41"/><path d="M19.07 4.93l-1.41 1.41"/>
+    </svg>
+  ),
+  barn: ({ size = 18, color = "currentColor" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 21h18"/><path d="M3 10l9-7 9 7"/><path d="M5 21V10"/><path d="M19 21V10"/><rect x="9" y="14" width="6" height="7"/>
+    </svg>
+  ),
+  construction: ({ size = 18, color = "currentColor" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 20h20"/><path d="M6 20V10l6-6 6 6v10"/><path d="M12 20v-6"/><path d="M9 14h6"/><path d="M3 10h18"/>
+    </svg>
+  ),
+};
+
 const FEATURES: { icon: FeatureIcon; title: string; desc: string }[] = [
   { icon: "map",       title: "Real-Time GIS Map",        desc: "Live 3D map of Luisiana with risk zones, project markers, and satellite imagery." },
   { icon: "cloud",     title: "Weather & Radar",           desc: "ECMWF IFS forecasts, animated precipitation radar, and NASA GIBS satellite layers." },
@@ -239,15 +298,15 @@ const PageOverview = ({ onEnter, setActivePage }: { onEnter: () => void; setActi
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 20 }}>
         {[
-          { icon: "🗺️", title: "Real-Time GIS Mapping", desc: "Interactive maps with live data overlays, satellite imagery, and custom layers for comprehensive spatial analysis" },
-          { icon: "⚠️", title: "Disaster Risk Monitoring", desc: "24/7 weather tracking, flood alerts, and risk assessment tools to keep communities safe" },
-          { icon: "🏗️", title: "Infrastructure Tracking", desc: "Monitor all municipal projects, construction progress, and asset management in one place" },
-          { icon: "📋", title: "Business Permit System", desc: "Streamlined permit processing, application tracking, and compliance monitoring" },
-          { icon: "📊", title: "Analytics Dashboard", desc: "Data-driven insights with customizable reports and visualization tools for informed decision-making" },
-          { icon: "🔔", title: "Smart Alerts", desc: "Automated notifications for critical events, deadlines, and system updates across all departments" }
+          { icon: <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#19c37d" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>, title: "Real-Time GIS Mapping", desc: "Interactive maps with live data overlays, satellite imagery, and custom layers for comprehensive spatial analysis" },
+          { icon: <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ff4d4f" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>, title: "Disaster Risk Monitoring", desc: "24/7 weather tracking, flood alerts, and risk assessment tools to keep communities safe" },
+          { icon: <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f5a623" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>, title: "Infrastructure Tracking", desc: "Monitor all municipal projects, construction progress, and asset management in one place" },
+          { icon: <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ffd666" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>, title: "Business Permit System", desc: "Streamlined permit processing, application tracking, and compliance monitoring" },
+          { icon: <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#4a90d9" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>, title: "Analytics Dashboard", desc: "Data-driven insights with customizable reports and visualization tools for informed decision-making" },
+          { icon: <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#5cdb95" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>, title: "Smart Alerts", desc: "Automated notifications for critical events, deadlines, and system updates across all departments" }
         ].map((f, i) => (
           <div key={i} style={{ padding: "28px 24px", background: "rgba(10,22,38,0.60)", backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 18, transition: "all 0.3s ease" }}>
-            <div style={{ fontSize: 36, marginBottom: 16 }}>{f.icon}</div>
+            <div style={{ marginBottom: 16 }}>{f.icon}</div>
             <div style={{ fontSize: 16, fontWeight: 700, color: "rgba(255,255,255,0.92)", marginBottom: 10 }}>{f.title}</div>
             <div style={{ fontSize: 13, color: "rgba(255,255,255,0.50)", lineHeight: 1.65 }}>{f.desc}</div>
           </div>
@@ -811,6 +870,8 @@ export default function App() {
   const [selectedModel, setSelectedModel] = useState<ModelType>("office");
   const [placementRotation, setPlacementRotation] = useState(0);
   const [placingName, setPlacingName] = useState("");
+  const [customModelFile, setCustomModelFile] = useState<File | null>(null);
+  const [customModelPreview, setCustomModelPreview] = useState<string | null>(null);
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [heatMetric, setHeatMetric] = useState<HeatmapMetric>("combined");
   const [viewport, setViewport] = useState<{ bbox: BBox; zoom: number } | null>(null);
@@ -829,6 +890,25 @@ export default function App() {
   });
   const [gibsOpacity, setGibsOpacity] = useState(0.62);
   const [gibsStatus, setGibsStatus] = useState<"loading" | "ok" | "unavailable">("loading");
+
+  // Map bearing for compass display
+  const [mapBearing, setMapBearing] = useState(-15);
+
+  // Keyboard shortcuts: +/- zoom, N = reset north, H = fly home
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const m = mapRef.current;
+      if (!m) return;
+      // Don't fire when typing in an input
+      if ((e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "TEXTAREA") return;
+      if (e.key === "=" || e.key === "+") m.zoomIn({ duration: 300 });
+      if (e.key === "-" || e.key === "_") m.zoomOut({ duration: 300 });
+      if (e.key === "n" || e.key === "N") m.easeTo({ bearing: 0, pitch: 62, duration: 500 });
+      if (e.key === "h" || e.key === "H") m.flyTo({ center: [CENTER.lon, CENTER.lat], zoom: CENTER.zoom, pitch: 62, bearing: -15, duration: 1200, essential: true });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const topRisk = useMemo(() => {
     const feats = riskZones?.features || [];
@@ -874,6 +954,7 @@ export default function App() {
         bbox: { west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth() },
         zoom: map.getZoom(),
       });
+      setMapBearing(map.getBearing());
     };
 
     map.on("load", () => {
@@ -955,10 +1036,11 @@ export default function App() {
         tiles: ["https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"],
         tileSize: 256,
         encoding: "terrarium",
+        maxzoom: 14, // terrarium only has data up to z14; capping avoids 404s and wasted requests
       } as any);
 
       // Enable 3D terrain by default — real elevation from AWS Terrarium DEM
-      (map as any).setTerrain({ source: "terrain-dem", exaggeration: 2.5 });
+      (map as any).setTerrain({ source: "terrain-dem", exaggeration: 1.5 });
 
       // ── GIBS precipitation (added before satellite so satellite sits on top) ──
       map.addSource("gibs-imerg", {
@@ -1035,6 +1117,87 @@ export default function App() {
       if (radarStateRef.current) {
         buildRadarLayers(map, radarStateRef.current.host, radarStateRef.current.frames, radarStateRef.current.colorScheme, 0, DEFAULT_TOGGLES.radar, 0.9);
       }
+
+      // ── OSM Building hover highlight ──────────────────────────────────────
+      // Add a separate highlight layer that lights up on hover
+      map.addLayer({
+        id: "3d-buildings-hover",
+        type: "fill-extrusion",
+        source: "openmaptiles",
+        "source-layer": "building",
+        minzoom: 12,
+        paint: {
+          "fill-extrusion-color": "rgba(255, 220, 80, 0.0)",
+          "fill-extrusion-height": [
+            "interpolate", ["linear"], ["zoom"],
+            12, 0,
+            13, ["coalesce", ["get", "render_height"], 6],
+          ],
+          "fill-extrusion-base": ["coalesce", ["get", "render_min_height"], 0],
+          "fill-extrusion-opacity": 0.0,
+        },
+        filter: ["==", ["id"], ""],
+      } as any);
+
+      let hoveredBuildingId: string | number | null = null;
+      const buildingPopup = new maplibregl.Popup({
+        closeButton: false,
+        closeOnClick: false,
+        className: "building-popup",
+        maxWidth: "220px",
+      });
+
+      map.on("mousemove", "3d-buildings", (e) => {
+        if (!e.features || e.features.length === 0) return;
+        map.getCanvas().style.cursor = "pointer";
+        const feat = e.features[0];
+        const fid = feat.id;
+
+        if (hoveredBuildingId !== null && hoveredBuildingId !== fid) {
+          map.setFilter("3d-buildings-hover", ["==", ["id"], ""]);
+        }
+        hoveredBuildingId = fid ?? null;
+        if (fid !== undefined) {
+          map.setFilter("3d-buildings-hover", ["==", ["id"], fid]);
+          map.setPaintProperty("3d-buildings-hover", "fill-extrusion-color", "rgba(255,220,80,0.55)");
+          map.setPaintProperty("3d-buildings-hover", "fill-extrusion-opacity", 0.85);
+        }
+
+        const props = feat.properties as Record<string, any>;
+        const name = props?.name || props?.["name:en"] || "Building";
+        const height = props?.render_height ? `${Math.round(props.render_height)}m` : "—";
+        const type = props?.building || props?.amenity || props?.shop || "—";
+
+        buildingPopup
+          .setLngLat(e.lngLat)
+          .setHTML(`
+            <div style="font-family:system-ui;font-size:12px;color:#e8f0fe;line-height:1.5">
+              <div style="font-weight:700;font-size:13px;margin-bottom:4px;color:#fff">${name}</div>
+              <div style="color:rgba(255,255,255,0.6)">Type: <span style="color:#ffd666">${type}</span></div>
+              <div style="color:rgba(255,255,255,0.6)">Height: <span style="color:#19c37d">${height}</span></div>
+            </div>
+          `)
+          .addTo(map);
+      });
+
+      map.on("mouseleave", "3d-buildings", () => {
+        map.getCanvas().style.cursor = "";
+        hoveredBuildingId = null;
+        map.setFilter("3d-buildings-hover", ["==", ["id"], ""]);
+        map.setPaintProperty("3d-buildings-hover", "fill-extrusion-opacity", 0.0);
+        buildingPopup.remove();
+      });
+
+      // ── Double-click to smooth zoom in ───────────────────────────────────
+      map.on("dblclick", (e) => {
+        e.preventDefault();
+        map.flyTo({
+          center: e.lngLat,
+          zoom: Math.min(map.getZoom() + 1.5, 19),
+          duration: 600,
+          essential: true,
+        });
+      });
     });
 
     map.on("moveend", pushViewport);
@@ -1062,6 +1225,7 @@ export default function App() {
   const selectedModelRef = useRef<ModelType>("office");
   const placementRotationRef = useRef(0);
   const placingNameRef = useRef("");
+  const customModelFileRef = useRef<File | null>(null);
   // Set to true by BuildingOverlay when a building is clicked — prevents placement
   const buildingHitRef = useRef(false);
 
@@ -1069,6 +1233,7 @@ export default function App() {
   useEffect(() => { selectedModelRef.current = selectedModel; }, [selectedModel]);
   useEffect(() => { placementRotationRef.current = placementRotation; }, [placementRotation]);
   useEffect(() => { placingNameRef.current = placingName; }, [placingName]);
+  useEffect(() => { customModelFileRef.current = customModelFile; }, [customModelFile]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -1084,6 +1249,27 @@ export default function App() {
         `${catalog?.label ?? selectedModelRef.current} (${new Date().toLocaleTimeString()})`;
 
       try {
+        // If custom model is selected and a file is provided, upload it first
+        let customModelUrl: string | undefined;
+        if (selectedModelRef.current === "custom" && customModelFileRef.current) {
+          const formData = new FormData();
+          formData.append("model", customModelFileRef.current);
+          
+          const uploadRes = await fetch("http://localhost:4000/api/upload-model", {
+            method: "POST",
+            body: formData,
+          });
+          
+          if (uploadRes.ok) {
+            const data = await uploadRes.json();
+            customModelUrl = data.url;
+          } else {
+            console.error("Failed to upload custom model");
+            alert("Failed to upload custom model. Please try again.");
+            return;
+          }
+        }
+
         await fetch("http://localhost:4000/api/projects", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1091,10 +1277,12 @@ export default function App() {
             name,
             modelType: selectedModelRef.current,
             type: catalog?.category === "Agriculture" ? "Agricultural Structure" :
-                  catalog?.category === "Infrastructure" ? "Municipal Project" : "Private Building",
+                  catalog?.category === "Infrastructure" ? "Municipal Project" :
+                  catalog?.category === "Construction" ? "Municipal Project" : "Private Building",
             department: "Engineering",
             location: { lat, lon: lng },
             rotation: placementRotationRef.current,
+            customModelUrl,
           }),
         });
         // Backend will emit projects:update via socket
@@ -1343,7 +1531,7 @@ export default function App() {
     if (!map || !map.isStyleLoaded()) return;
     if (!map.getSource("terrain-dem")) return;
     if (toggles.terrain) {
-      (map as any).setTerrain({ source: "terrain-dem", exaggeration: 2.5 });
+      (map as any).setTerrain({ source: "terrain-dem", exaggeration: 1.5 });
       map.easeTo({ pitch: 62, duration: 600 });
     } else {
       (map as any).setTerrain(null);
@@ -1419,6 +1607,13 @@ export default function App() {
           projects={projects}
           visible={toggles.projects}
           onBuildingClick={(hit) => { buildingHitRef.current = hit; }}
+          onDeleteBuilding={async (projectId) => {
+            try {
+              await fetch(`${BACKEND_URL}/api/projects/${projectId}`, { method: "DELETE" });
+            } catch (err) {
+              console.error("Failed to delete project:", err);
+            }
+          }}
         />
 
         <div className="topBar">
@@ -1457,15 +1652,70 @@ export default function App() {
           )}
         </div>
 
-        {!MAPBOX_TOKEN ? (
-          <div style={{ position: "absolute", left: 14, bottom: 14, maxWidth: 520 }} className="card">
-            <div className="sectionTitle">OpenFreeMap — Vector Tiles</div>
-            <div style={{ color: "var(--muted)", fontSize: 13, lineHeight: 1.35 }}>
-              3D buildings from OpenStreetMap via OpenFreeMap (free, no API key).
-              Add <span className="pill">VITE_MAPBOX_TOKEN</span> in <span className="pill">frontend/.env</span> for Mapbox basemaps.
-            </div>
-          </div>
-        ) : null}
+        {/* ── Map Controls ── */}
+        <div className="map-controls">
+          {/* Zoom in */}
+          <button className="map-ctrl-btn" title="Zoom In (=)" onClick={() => mapRef.current?.zoomIn({ duration: 300 })}>+</button>
+          {/* Zoom out */}
+          <button className="map-ctrl-btn" title="Zoom Out (-)" onClick={() => mapRef.current?.zoomOut({ duration: 300 })}>−</button>
+          <div className="map-ctrl-divider" />
+          {/* Compass — rotates to show current bearing, click to reset north */}
+          <button
+            className="map-ctrl-btn"
+            title="Reset North"
+            onClick={() => mapRef.current?.easeTo({ bearing: 0, pitch: 62, duration: 500 })}
+            style={{ fontSize: 18 }}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M12 2 L14.5 9 L12 8 L9.5 9 Z"
+                fill="#ff4d4f"
+                transform={`rotate(${mapBearing}, 12, 12)`}
+              />
+              <path
+                d="M12 22 L9.5 15 L12 16 L14.5 15 Z"
+                fill="rgba(255,255,255,0.4)"
+                transform={`rotate(${mapBearing}, 12, 12)`}
+              />
+            </svg>
+          </button>
+          <div className="map-ctrl-divider" />
+          {/* Fly home */}
+          <button
+            className="map-ctrl-btn"
+            title="Fly to Luisiana"
+            onClick={() => mapRef.current?.flyTo({
+              center: [CENTER.lon, CENTER.lat],
+              zoom: CENTER.zoom,
+              pitch: 62,
+              bearing: -15,
+              duration: 1200,
+              essential: true,
+            })}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+              <polyline points="9 22 9 12 15 12 15 22"/>
+            </svg>
+          </button>
+          {/* Tilt toggle */}
+          <button
+            className="map-ctrl-btn"
+            title="Toggle Tilt"
+            onClick={() => {
+              const m = mapRef.current;
+              if (!m) return;
+              const p = m.getPitch();
+              m.easeTo({ pitch: p > 10 ? 0 : 62, duration: 500 });
+            }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M2 20 L12 4 L22 20"/>
+              <line x1="2" y1="20" x2="22" y2="20"/>
+            </svg>
+          </button>
+        </div>
+
       </div>
 
       <aside className="sidePanel">
@@ -1926,7 +2176,17 @@ export default function App() {
                 marginBottom: 10,
               }}
             >
-              {placementMode ? "🟢 Placement Mode ON — Click map to place" : "📍 Enable Placement Mode"}
+              {placementMode ? (
+                <span style={{ display: "flex", alignItems: "center", gap: 7, justifyContent: "center" }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+                  Placement Mode ON — Click map to place
+                </span>
+              ) : (
+                <span style={{ display: "flex", alignItems: "center", gap: 7, justifyContent: "center" }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                  Enable Placement Mode
+                </span>
+              )}
             </button>
 
             {/* Name input */}
@@ -1957,14 +2217,20 @@ export default function App() {
             </div>
 
             {/* Model catalog */}
-            {(["Building", "Infrastructure", "Agriculture"] as const).map((cat) => (
+            {(["Building", "Infrastructure", "Agriculture", "Construction"] as const).map((cat) => (
               <div key={cat} style={{ marginBottom: 10 }}>
                 <div style={{ fontSize: 10, color: "var(--muted2)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>{cat}</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
                   {MODEL_CATALOG.filter((m) => m.category === cat).map((m) => (
                     <button
                       key={m.type}
-                      onClick={() => setSelectedModel(m.type)}
+                      onClick={() => {
+                        setSelectedModel(m.type);
+                        if (m.type !== "custom") {
+                          setCustomModelFile(null);
+                          setCustomModelPreview(null);
+                        }
+                      }}
                       title={m.description}
                       style={{
                         cursor: "pointer", padding: "8px 6px", borderRadius: 8, textAlign: "left",
@@ -1977,13 +2243,74 @@ export default function App() {
                         color: selectedModel === m.type ? "#19c37d" : "rgba(255,255,255,0.7)",
                       }}
                     >
-                      <div style={{ fontSize: 18, marginBottom: 2 }}>{m.icon}</div>
+                      <div style={{ marginBottom: 4, display: "flex", alignItems: "center", color: selectedModel === m.type ? "#19c37d" : "rgba(255,255,255,0.55)" }}>
+                        {(() => { const Ic = ModelIcons[m.icon] ?? ModelIcons.construction; return <Ic size={18} />; })()}
+                      </div>
                       <div style={{ fontSize: 11, fontWeight: 600 }}>{m.label}</div>
                     </button>
                   ))}
                 </div>
               </div>
             ))}
+
+            {/* Custom Model Upload */}
+            {selectedModel === "custom" && (
+              <div style={{ 
+                marginTop: 12, 
+                padding: "12px", 
+                background: "rgba(25,195,125,0.08)", 
+                border: "1px solid rgba(25,195,125,0.25)", 
+                borderRadius: 10 
+              }}>
+                <div style={{ fontSize: 11, color: "#19c37d", fontWeight: 600, marginBottom: 8 }}>
+                  Upload Custom GLB Model
+                </div>
+                <input
+                  type="file"
+                  accept=".glb,.gltf"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setCustomModelFile(file);
+                      setCustomModelPreview(file.name);
+                    }
+                  }}
+                  style={{
+                    width: "100%",
+                    padding: "8px",
+                    borderRadius: 6,
+                    border: "1px solid rgba(255,255,255,0.15)",
+                    background: "rgba(0,0,0,0.3)",
+                    color: "rgba(255,255,255,0.85)",
+                    fontSize: 11,
+                    cursor: "pointer",
+                  }}
+                />
+                {customModelPreview && (
+                  <div style={{ 
+                    marginTop: 8, 
+                    fontSize: 10, 
+                    color: "rgba(255,255,255,0.65)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6
+                  }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#19c37d" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                    {customModelPreview}
+                  </div>
+                )}
+                <div style={{ 
+                  marginTop: 8, 
+                  fontSize: 10, 
+                  color: "rgba(255,255,255,0.45)", 
+                  lineHeight: 1.4 
+                }}>
+                  Upload your own 3D model in GLB or GLTF format. The model will be placed on the map at the clicked location.
+                </div>
+              </div>
+            )}
 
             {/* Placed projects list with delete */}
             {projects.filter((p) => p.department === "Engineering").length > 0 && (
@@ -1996,8 +2323,8 @@ export default function App() {
                       background: "rgba(255,255,255,0.03)", borderRadius: 7,
                       border: "1px solid rgba(255,255,255,0.06)",
                     }}>
-                      <span style={{ fontSize: 14 }}>
-                        {MODEL_CATALOG.find((m) => m.type === p.modelType)?.icon ?? "🏗️"}
+                      <span style={{ display: "flex", alignItems: "center", color: "rgba(255,255,255,0.55)" }}>
+                        {(() => { const ic = MODEL_CATALOG.find((m) => m.type === p.modelType)?.icon ?? "construction"; const Ic = ModelIcons[ic] ?? ModelIcons.construction; return <Ic size={15} />; })()}
                       </span>
                       <span style={{ flex: 1, fontSize: 11, color: "rgba(255,255,255,0.75)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {p.name}
@@ -2053,8 +2380,31 @@ export default function App() {
             {projects
               .filter(p => currentRole === "Engineer" ? p.department === "Engineering" : true)
               .slice(0, 4).map((p) => (
-              <div key={p.id} className="proj">
-                <div className="n">{p.name}</div>
+              <div
+                key={p.id}
+                className="proj"
+                onClick={() => {
+                  mapRef.current?.flyTo({
+                    center: [p.location.lon, p.location.lat],
+                    zoom: 16,
+                    pitch: 62,
+                    bearing: -15,
+                    duration: 1400,
+                    essential: true,
+                  });
+                }}
+                style={{ cursor: "pointer" }}
+                title="Click to fly to this project"
+              >
+                <div className="n" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ display: "flex", alignItems: "center", color: "rgba(255,255,255,0.55)" }}>
+                    {(() => { const ic = MODEL_CATALOG.find(m => m.type === p.modelType)?.icon ?? "construction"; const Ic = ModelIcons[ic] ?? ModelIcons.construction; return <Ic size={14} />; })()}
+                  </span>
+                  {p.name}
+                  <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", color: "rgba(255,255,255,0.3)" }}>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                  </span>
+                </div>
                 <div className="s">
                   <span>{p.department}</span>
                   <span>{p.status}</span>

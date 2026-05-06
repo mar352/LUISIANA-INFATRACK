@@ -55,7 +55,8 @@ export type ModelType =
   | "solar_farm"
   | "barn"
   | "evacuation_center"
-  | "construction";
+  | "construction"
+  | "custom";
 
 export const MODEL_CATALOG: {
   type: ModelType;
@@ -77,6 +78,7 @@ export const MODEL_CATALOG: {
   { type: "solar_farm",        label: "Solar Farm",          icon: "solar_farm",        category: "Infrastructure",  description: "Solar panel installation",                    glb: "building.glb",      scale: 130 },
   { type: "barn",              label: "Barn / Post-Harvest", icon: "barn",              category: "Agriculture",     description: "Agricultural barn or post-harvest facility",  glb: "building.glb",      scale: 95  },
   { type: "construction",      label: "Under Construction",  icon: "construction",      category: "Construction",    description: "Site under active construction",              glb: "construction.glb",  scale: 80  },
+  { type: "custom",            label: "Custom Model",        icon: "construction",      category: "Construction",    description: "Upload your own 3D model",                    glb: "building.glb",      scale: 80  },
 ];
 
 export type Project = {
@@ -89,6 +91,7 @@ export type Project = {
   progress: number;
   location: { lat: number; lon: number };
   rotation?: number; // degrees 0-360
+  customModelUrl?: string; // URL or path to custom GLB file
   updatedAt: string;
 };
 

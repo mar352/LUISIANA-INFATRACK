@@ -98,7 +98,7 @@ export function tickProjects() {
 /**
  * Add a new engineer-placed project to the state.
  */
-export function addProject({ name, modelType, type, department, location, rotation = 0 }) {
+export function addProject({ name, modelType, type, department, location, rotation = 0, customModelUrl }) {
   const projects = projectsSeed();
   const id = `P${nextId++}`;
   const project = {
@@ -111,6 +111,7 @@ export function addProject({ name, modelType, type, department, location, rotati
     progress: 0,
     location,
     rotation,
+    customModelUrl,
     updatedAt: new Date().toISOString(),
   };
   projects.push(project);

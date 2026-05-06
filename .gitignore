@@ -24,3 +24,7 @@ Thumbs.db
 # Editor
 .vscode/
 .idea/
+
+# Uploaded custom models (keep directory structure)
+frontend/public/uploads/*
+!frontend/public/uploads/.gitkeep
