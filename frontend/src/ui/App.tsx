@@ -872,7 +872,18 @@ export default function App() {
   const [placingName, setPlacingName] = useState("");
   const [customModelFile, setCustomModelFile] = useState<File | null>(null);
   const [customModelPreview, setCustomModelPreview] = useState<string | null>(null);
+  const [sidebarTab, setSidebarTab] = useState<"weather" | "layers" | "radar" | "risk" | "projects">("weather");
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
+
+  // Set default tab based on role permissions
+  useEffect(() => {
+    if (roleConfig) {
+      if (roleConfig.canSeeWeather) setSidebarTab("weather");
+      else if (roleConfig.canSeeLayers) setSidebarTab("layers");
+      else if (roleConfig.canSeeRisk) setSidebarTab("risk");
+      else if (roleConfig.canSeeProjects) setSidebarTab("projects");
+    }
+  }, [currentRole]);
   const [heatMetric, setHeatMetric] = useState<HeatmapMetric>("combined");
   const [viewport, setViewport] = useState<{ bbox: BBox; zoom: number } | null>(null);
   const [radarHost, setRadarHost] = useState<string | null>(null);
@@ -1721,6 +1732,146 @@ export default function App() {
       <aside className="sidePanel">
         <div className="sectionTitle">Live Situation Panel</div>
 
+        {/* Tab Navigation */}
+        <div style={{ 
+          display: "flex", 
+          gap: 4, 
+          marginBottom: 12, 
+          borderBottom: "1px solid rgba(255,255,255,0.08)",
+          paddingBottom: 8,
+          overflowX: "auto",
+          overflowY: "hidden",
+          flexWrap: "nowrap",
+          scrollBehavior: "smooth",
+          WebkitOverflowScrolling: "touch",
+          cursor: "grab",
+        }}
+        className="hide-scrollbar"
+        onMouseDown={(e) => {
+          const ele = e.currentTarget;
+          const startX = e.pageX - ele.offsetLeft;
+          const scrollLeft = ele.scrollLeft;
+          ele.style.cursor = "grabbing";
+          
+          const handleMouseMove = (e: MouseEvent) => {
+            const x = e.pageX - ele.offsetLeft;
+            const walk = (x - startX) * 1.5;
+            ele.scrollLeft = scrollLeft - walk;
+          };
+          
+          const handleMouseUp = () => {
+            ele.style.cursor = "grab";
+            document.removeEventListener("mousemove", handleMouseMove);
+            document.removeEventListener("mouseup", handleMouseUp);
+          };
+          
+          document.addEventListener("mousemove", handleMouseMove);
+          document.addEventListener("mouseup", handleMouseUp);
+        }}
+        >
+          {roleConfig?.canSeeWeather && (
+            <button
+              onClick={() => setSidebarTab("weather")}
+              style={{
+                flex: "0 0 auto",
+                cursor: "pointer",
+                padding: "8px 14px",
+                borderRadius: "8px 8px 0 0",
+                fontSize: 12,
+                fontWeight: 600,
+                border: "none",
+                background: sidebarTab === "weather" ? "rgba(25,195,125,0.15)" : "rgba(255,255,255,0.03)",
+                color: sidebarTab === "weather" ? "#19c37d" : "rgba(255,255,255,0.6)",
+                borderBottom: sidebarTab === "weather" ? "2px solid #19c37d" : "none",
+              }}
+            >
+              Weather
+            </button>
+          )}
+          {roleConfig?.canSeeLayers && (
+            <button
+              onClick={() => setSidebarTab("layers")}
+              style={{
+                flex: "0 0 auto",
+                cursor: "pointer",
+                padding: "8px 14px",
+                borderRadius: "8px 8px 0 0",
+                fontSize: 12,
+                fontWeight: 600,
+                border: "none",
+                background: sidebarTab === "layers" ? "rgba(25,195,125,0.15)" : "rgba(255,255,255,0.03)",
+                color: sidebarTab === "layers" ? "#19c37d" : "rgba(255,255,255,0.6)",
+                borderBottom: sidebarTab === "layers" ? "2px solid #19c37d" : "none",
+              }}
+            >
+              Layers
+            </button>
+          )}
+          {roleConfig?.canSeeRadar && toggles.radar && (
+            <button
+              onClick={() => setSidebarTab("radar")}
+              style={{
+                flex: "0 0 auto",
+                cursor: "pointer",
+                padding: "8px 14px",
+                borderRadius: "8px 8px 0 0",
+                fontSize: 12,
+                fontWeight: 600,
+                border: "none",
+                background: sidebarTab === "radar" ? "rgba(25,195,125,0.15)" : "rgba(255,255,255,0.03)",
+                color: sidebarTab === "radar" ? "#19c37d" : "rgba(255,255,255,0.6)",
+                borderBottom: sidebarTab === "radar" ? "2px solid #19c37d" : "none",
+              }}
+            >
+              Radar
+            </button>
+          )}
+          {roleConfig?.canSeeRisk && (
+            <button
+              onClick={() => setSidebarTab("risk")}
+              style={{
+                flex: "0 0 auto",
+                cursor: "pointer",
+                padding: "8px 14px",
+                borderRadius: "8px 8px 0 0",
+                fontSize: 12,
+                fontWeight: 600,
+                border: "none",
+                background: sidebarTab === "risk" ? "rgba(25,195,125,0.15)" : "rgba(255,255,255,0.03)",
+                color: sidebarTab === "risk" ? "#19c37d" : "rgba(255,255,255,0.6)",
+                borderBottom: sidebarTab === "risk" ? "2px solid #19c37d" : "none",
+              }}
+            >
+              Risk
+            </button>
+          )}
+          {roleConfig?.canSeeProjects && (
+            <button
+              onClick={() => setSidebarTab("projects")}
+              style={{
+                flex: "0 0 auto",
+                cursor: "pointer",
+                padding: "8px 14px",
+                borderRadius: "8px 8px 0 0",
+                fontSize: 12,
+                fontWeight: 600,
+                border: "none",
+                background: sidebarTab === "projects" ? "rgba(25,195,125,0.15)" : "rgba(255,255,255,0.03)",
+                color: sidebarTab === "projects" ? "#19c37d" : "rgba(255,255,255,0.6)",
+                borderBottom: sidebarTab === "projects" ? "2px solid #19c37d" : "none",
+              }}
+            >
+              Projects
+            </button>
+          )}
+        </div>
+
+        {/* Tab Content */}
+        <div style={{ overflowY: "auto", maxHeight: "calc(100vh - 180px)" }}>
+
+        {/* ── Weather Tab ── */}
+        {sidebarTab === "weather" && roleConfig?.canSeeWeather && (
+          <>
         {/* ── Negosyo Center: Business Permit Panel ── */}
         {roleConfig?.canSeeBusinessPermits && (
           <div className="card" style={{ marginBottom: 12 }}>
@@ -1768,7 +1919,7 @@ export default function App() {
           </div>
         )}
 
-        {roleConfig?.canSeeWeather && <div className="card" style={{ marginBottom: 12 }}>
+        <div className="card" style={{ marginBottom: 12 }}>
           <div className="sectionTitle" style={{ marginBottom: 8 }}>
             Weather — ECMWF IFS
           </div>
@@ -1840,9 +1991,13 @@ export default function App() {
               </div>
             </div>
           ) : null}
-        </div>}
+        </div>
+          </>
+        )}
 
-        {roleConfig?.canSeeLayers && <div className="card" style={{ marginBottom: 12 }}>
+        {/* ── Layers Tab ── */}
+        {sidebarTab === "layers" && roleConfig?.canSeeLayers && (
+        <div className="card" style={{ marginBottom: 12 }}>
           <div className="sectionTitle" style={{ marginBottom: 8 }}>
             Layers (LGU-Friendly Toggles)
           </div>
@@ -2052,9 +2207,11 @@ export default function App() {
               }
             />
           </div>
-        </div>}
+        </div>
+        )}
 
-        {roleConfig?.canSeeRadar && toggles.radar && (
+        {/* ── Radar Tab ── */}
+        {sidebarTab === "radar" && roleConfig?.canSeeRadar && toggles.radar && (
           <div className="card" style={{ marginBottom: 12 }}>
             <div className="sectionTitle" style={{ marginBottom: 8 }}>
               Radar Controls
@@ -2124,7 +2281,10 @@ export default function App() {
           </div>
         )}
 
-        {roleConfig?.canSeeRisk && <div className="card" style={{ marginBottom: 12 }}>
+        {/* ── Risk Tab ── */}
+        {sidebarTab === "risk" && roleConfig?.canSeeRisk && (
+          <>
+        <div className="card" style={{ marginBottom: 12 }}>
           <div className="sectionTitle" style={{ marginBottom: 8 }}>
             Risk Summary
           </div>
@@ -2155,8 +2315,38 @@ export default function App() {
           <div style={{ marginTop: 10, fontSize: 12, color: "var(--muted)" }}>
             Model: rainfall + slope (LGU explainable logic)
           </div>
-        </div>}
+        </div>
 
+        {roleConfig?.canSeeAlerts && <>
+        <div style={{ marginBottom: 8 }} className="sectionTitle">
+          Real-Time Alerts
+        </div>
+        {alerts.length ? (
+          <div className="miniList">
+            {alerts.map((a) => (
+              <div key={a.id} className="alert">
+                <div className="t">{a.title}</div>
+                <div className="m">{a.message}</div>
+                <div className="meta">
+                  Recommended: {a.recommendedAction}
+                  <br />
+                  Triggered: {formatAgo(a.triggeredAt)}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="card" style={{ color: "var(--muted)", fontSize: 13 }}>
+            No high-risk alerts yet. The system will notify automatically when a zone transitions to HIGH risk.
+          </div>
+        )}
+        </>}
+          </>
+        )}
+
+        {/* ── Projects Tab ── */}
+        {sidebarTab === "projects" && (
+          <>
         {/* ── Engineer: Place Infrastructure Models ── */}
         {currentRole === "Engineer" && (
           <div className="card" style={{ marginBottom: 12 }}>
@@ -2347,7 +2537,8 @@ export default function App() {
           </div>
         )}
 
-        {roleConfig?.canSeeProjects && <div className="card" style={{ marginBottom: 12 }}>
+        {roleConfig?.canSeeProjects && (
+          <div className="card" style={{ marginBottom: 12 }}>
           <div className="sectionTitle" style={{ marginBottom: 8 }}>
             Infrastructure Snapshot
           </div>
@@ -2418,32 +2609,13 @@ export default function App() {
               </div>
             ))}
           </div>
-        </div>}
-
-        {roleConfig?.canSeeAlerts && <>
-        <div style={{ marginBottom: 8 }} className="sectionTitle">
-          Real-Time Alerts
         </div>
-        {alerts.length ? (
-          <div className="miniList">
-            {alerts.map((a) => (
-              <div key={a.id} className="alert">
-                <div className="t">{a.title}</div>
-                <div className="m">{a.message}</div>
-                <div className="meta">
-                  Recommended: {a.recommendedAction}
-                  <br />
-                  Triggered: {formatAgo(a.triggeredAt)}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="card" style={{ color: "var(--muted)", fontSize: 13 }}>
-            No high-risk alerts yet. The system will notify automatically when a zone transitions to HIGH risk.
-          </div>
         )}
-        </>}
+        </>
+        )}
+
+        </div>
+        {/* End Tab Content */}
 
         {currentRole === "Negosyo Center" && (
           <div className="card" style={{ marginTop: 12, borderColor: "rgba(255,214,102,0.2)" }}>
