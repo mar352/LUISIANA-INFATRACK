@@ -54,27 +54,29 @@ export type ModelType =
   | "water_tank"
   | "solar_farm"
   | "barn"
-  | "evacuation_center";
+  | "evacuation_center"
+  | "construction";
 
 export const MODEL_CATALOG: {
   type: ModelType;
   label: string;
   icon: string;
-  category: "Building" | "Infrastructure" | "Agriculture";
+  category: "Building" | "Infrastructure" | "Agriculture" | "Construction";
   description: string;
   glb: string;        // path under /models/
   scale: number;      // world-space scale multiplier
 }[] = [
-  { type: "office",            label: "Office / Admin",      icon: "🏢", category: "Building",        description: "Multi-floor office or admin building",        glb: "building.glb", scale: 80  },
-  { type: "school",            label: "School",              icon: "🏫", category: "Building",        description: "Elementary or high school building",          glb: "building.glb", scale: 100 },
-  { type: "hospital",          label: "Health Center",       icon: "🏥", category: "Building",        description: "Barangay health center or hospital",          glb: "building.glb", scale: 90  },
-  { type: "barangay_hall",     label: "Barangay Hall",       icon: "🏛️", category: "Building",        description: "Barangay hall or municipal building",         glb: "building.glb", scale: 85  },
-  { type: "evacuation_center", label: "Evacuation Center",   icon: "⛺", category: "Building",        description: "Emergency evacuation facility",               glb: "building.glb", scale: 110 },
-  { type: "road",              label: "Road Segment",        icon: "🛣️", category: "Infrastructure",  description: "Road improvement or new road segment",        glb: "building.glb", scale: 120 },
-  { type: "bridge",            label: "Bridge",              icon: "🌉", category: "Infrastructure",  description: "Bridge or overpass structure",                glb: "building.glb", scale: 100 },
-  { type: "water_tank",        label: "Water Tank",          icon: "💧", category: "Infrastructure",  description: "Water reservoir or tank",                     glb: "building.glb", scale: 60  },
-  { type: "solar_farm",        label: "Solar Farm",          icon: "☀️", category: "Infrastructure",  description: "Solar panel installation",                    glb: "building.glb", scale: 130 },
-  { type: "barn",              label: "Barn / Post-Harvest", icon: "🏚️", category: "Agriculture",     description: "Agricultural barn or post-harvest facility",  glb: "building.glb", scale: 95  },
+  { type: "office",            label: "Office / Admin",      icon: "office",            category: "Building",        description: "Multi-floor office or admin building",        glb: "building.glb",      scale: 80  },
+  { type: "school",            label: "School",              icon: "school",            category: "Building",        description: "Elementary or high school building",          glb: "building.glb",      scale: 100 },
+  { type: "hospital",          label: "Health Center",       icon: "hospital",          category: "Building",        description: "Barangay health center or hospital",          glb: "Hospital.glb",      scale: 90  },
+  { type: "barangay_hall",     label: "Barangay Hall",       icon: "barangay_hall",     category: "Building",        description: "Barangay hall or municipal building",         glb: "building.glb",      scale: 85  },
+  { type: "evacuation_center", label: "Evacuation Center",   icon: "evacuation_center", category: "Building",        description: "Emergency evacuation facility",               glb: "building.glb",      scale: 110 },
+  { type: "road",              label: "Road Segment",        icon: "road",              category: "Infrastructure",  description: "Road improvement or new road segment",        glb: "building.glb",      scale: 120 },
+  { type: "bridge",            label: "Bridge",              icon: "bridge",            category: "Infrastructure",  description: "Bridge or overpass structure",                glb: "building.glb",      scale: 100 },
+  { type: "water_tank",        label: "Water Tank",          icon: "water_tank",        category: "Infrastructure",  description: "Water reservoir or tank",                     glb: "building.glb",      scale: 60  },
+  { type: "solar_farm",        label: "Solar Farm",          icon: "solar_farm",        category: "Infrastructure",  description: "Solar panel installation",                    glb: "building.glb",      scale: 130 },
+  { type: "barn",              label: "Barn / Post-Harvest", icon: "barn",              category: "Agriculture",     description: "Agricultural barn or post-harvest facility",  glb: "building.glb",      scale: 95  },
+  { type: "construction",      label: "Under Construction",  icon: "construction",      category: "Construction",    description: "Site under active construction",              glb: "construction.glb",  scale: 80  },
 ];
 
 export type Project = {
