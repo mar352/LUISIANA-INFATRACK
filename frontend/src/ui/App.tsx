@@ -9,6 +9,18 @@ import { connectRealtime } from "../lib/realtime";
 import { buildHeatmapPoints, type BBox, type HeatmapMetric } from "../lib/heatmap";
 import { fetchRadarFrames, radarTileUrl, formatRadarTime, type RadarColorScheme, type RadarFrame, RADAR_COLOR_SCHEMES } from "../lib/radar";
 import { formatGibsDate, gibsWmtsTileUrl, type GibsLayerId } from "../lib/gibs";
+import { getCurrentSolarHour } from "../lib/solar";
+import { 
+  getTerrainSource, 
+  getSatelliteSource, 
+  createHillshadeLayer, 
+  createSkyLayer,
+  applyWebGLOptimizations,
+  calculateTerrainExaggeration,
+  type TerrainSource,
+  type SatelliteSource 
+} from "../lib/terrain";
+import SunCalc from "suncalc";
 
 // ── RBAC ─────────────────────────────────────────────────────────────────────
 type UserRole = "MPDC" | "Engineer" | "Agriculture" | "Negosyo Center";
@@ -866,7 +878,7 @@ export default function App() {
   const [placingName, setPlacingName] = useState("");
   const [customModelFile, setCustomModelFile] = useState<File | null>(null);
   const [customModelPreview, setCustomModelPreview] = useState<string | null>(null);
-  const [sidebarTab, setSidebarTab] = useState<"weather" | "layers" | "radar" | "risk" | "projects">("weather");
+  const [sidebarTab, setSidebarTab] = useState<"weather" | "layers" | "radar" | "risk" | "projects" | "climate">("weather");
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
 
   // Set default tab based on role permissions
@@ -1025,23 +1037,44 @@ export default function App() {
         },
       });
 
-      // ── Satellite imagery source (ESRI World Imagery — free, no API key) ──
+      // ── Satellite imagery source (Enhanced WebGL with multiple providers) ──
+      const satelliteSource = getSatelliteSource("esri");
       map.addSource("satellite", {
         type: "raster",
-        tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
-        tileSize: 256,
-        maxzoom: 19,
-        attribution: "© Esri, Maxar, Earthstar Geographics",
+        tiles: satelliteSource.tiles,
+        tileSize: satelliteSource.tileSize,
+        maxzoom: satelliteSource.maxzoom,
+        attribution: satelliteSource.attribution,
       });
 
-      // ── Terrain DEM ───────────────────────────────────────────────────────
+      // ── Terrain DEM (WebGL-optimized with Terrarium encoding) ──
+      const terrainSource = getTerrainSource("terrarium");
       map.addSource("terrain-dem", {
         type: "raster-dem",
-        tiles: ["https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"],
-        tileSize: 256,
-        encoding: "terrarium",
-        maxzoom: 14, // terrarium only has data up to z14; capping avoids 404s and wasted requests
+        tiles: terrainSource.tiles,
+        tileSize: terrainSource.tileSize,
+        encoding: terrainSource.encoding as any,
+        maxzoom: terrainSource.maxzoom,
       } as any);
+
+      // ── Apply WebGL optimizations for better performance ──
+      applyWebGLOptimizations(map, "balanced");
+
+      // ── Add Sky layer for atmospheric effect ──
+      try {
+        const skyLayer = createSkyLayer();
+        map.addLayer(skyLayer as any);
+      } catch (e) {
+        console.warn("Sky layer not supported:", e);
+      }
+
+      // ── Add Hillshade layer for terrain depth ──
+      try {
+        const hillshadeLayer = createHillshadeLayer(0.35);
+        map.addLayer(hillshadeLayer as any, "3d-buildings");
+      } catch (e) {
+        console.warn("Hillshade layer not supported:", e);
+      }
 
       // ── GIBS precipitation (added before satellite so satellite sits on top) ──
       map.addSource("gibs-imerg", {
@@ -1515,18 +1548,59 @@ export default function App() {
 
   // Satellite imagery toggle
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
-    if (!map.getLayer("satellite-layer")) return;
-    // Fade in/out via opacity so the transition is smooth
-    map.setPaintProperty("satellite-layer", "raster-opacity", toggles.satellite ? 1 : 0);
-    // When satellite is on, dim the 3D buildings slightly so imagery shows through
-    if (map.getLayer("3d-buildings")) {
-      map.setPaintProperty("3d-buildings", "fill-extrusion-opacity", toggles.satellite ? 0.55 : 0.92);
-    }
+    const map = mapInstance ?? mapRef.current;
+    if (!map) return;
+
+    const applySatellite = () => {
+      // Terrain toggles can reload the style; after reload, custom sources/layers
+      // (like satellite) may be missing. Recreate them if needed.
+      if (!map.getSource("satellite")) {
+        try {
+          map.addSource("satellite", {
+            type: "raster",
+            tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+            tileSize: 256,
+            maxzoom: 19,
+            attribution: "© Esri, Maxar, Earthstar Geographics",
+          } as any);
+        } catch {
+          // ignore: source may be in-flight during style load
+        }
+      }
+
+      if (!map.getLayer("satellite-layer") && map.getSource("satellite")) {
+        try {
+          map.addLayer(
+            {
+              id: "satellite-layer",
+              type: "raster",
+              source: "satellite",
+              paint: { "raster-opacity": 0 },
+            } as any,
+            // keep satellite below 3D buildings when possible
+            map.getLayer("3d-buildings") ? "3d-buildings" : undefined
+          );
+        } catch {
+          // ignore: layer may already exist or style is mid-reload
+        }
+      }
+
+      if (map.getLayer("satellite-layer")) {
+        // Fade in/out via opacity so the transition is smooth
+        map.setPaintProperty("satellite-layer", "raster-opacity", toggles.satellite ? 1 : 0);
+      }
+
+      // When satellite is on, dim the 3D buildings slightly so imagery shows through
+      if (map.getLayer("3d-buildings")) {
+        map.setPaintProperty("3d-buildings", "fill-extrusion-opacity", toggles.satellite ? 0.55 : 0.92);
+      }
+    };
+
+    if (map.isStyleLoaded()) applySatellite();
+    else map.once("style.load", applySatellite);
   }, [toggles.satellite]);
 
-  // Terrain (3D elevation) toggle
+  // Terrain (3D elevation) toggle with WebGL enhancements
   useEffect(() => {
     const map = mapInstance ?? mapRef.current;
     if (!map) return;
@@ -1536,12 +1610,13 @@ export default function App() {
       // DEM source may not exist yet, so we defensively recreate it.
       if (!map.getSource("terrain-dem")) {
         try {
+          const terrainSource = getTerrainSource("terrarium");
           map.addSource("terrain-dem", {
             type: "raster-dem",
-            tiles: ["https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"],
-            tileSize: 256,
-            encoding: "terrarium",
-            maxzoom: 14,
+            tiles: terrainSource.tiles,
+            tileSize: terrainSource.tileSize,
+            encoding: terrainSource.encoding as any,
+            maxzoom: terrainSource.maxzoom,
           } as any);
         } catch {
           // ignore: source may be in-flight during style load
@@ -1550,11 +1625,28 @@ export default function App() {
 
       try {
         if (toggles.terrain) {
-          (map as any).setTerrain({ source: "terrain-dem", exaggeration: 1.5 });
+          // Dynamic exaggeration based on zoom level for optimal visualization
+          const currentZoom = map.getZoom();
+          const exaggeration = calculateTerrainExaggeration(currentZoom);
+          
+          (map as any).setTerrain({ 
+            source: "terrain-dem", 
+            exaggeration: exaggeration 
+          });
           map.easeTo({ pitch: 62, duration: 600 });
+          
+          // Show hillshade when terrain is enabled
+          if (map.getLayer("hillshade")) {
+            map.setLayoutProperty("hillshade", "visibility", "visible");
+          }
         } else {
           (map as any).setTerrain(null);
           map.easeTo({ pitch: 30, duration: 600 });
+          
+          // Hide hillshade when terrain is disabled
+          if (map.getLayer("hillshade")) {
+            map.setLayoutProperty("hillshade", "visibility", "none");
+          }
         }
       } catch {
         // ignore transient errors while style is reloading
@@ -1563,6 +1655,26 @@ export default function App() {
 
     if (map.isStyleLoaded()) applyTerrain();
     else map.once("style.load", applyTerrain);
+
+    // Update exaggeration on zoom change
+    const handleZoom = () => {
+      if (!toggles.terrain) return;
+      const currentZoom = map.getZoom();
+      const exaggeration = calculateTerrainExaggeration(currentZoom);
+      try {
+        (map as any).setTerrain({ 
+          source: "terrain-dem", 
+          exaggeration: exaggeration 
+        });
+      } catch {
+        // ignore
+      }
+    };
+
+    map.on("zoomend", handleZoom);
+    return () => {
+      map.off("zoomend", handleZoom);
+    };
   }, [toggles.terrain, mapInstance]);
 
   // Push project footprints to the 3D highlighted buildings layer
@@ -1626,6 +1738,8 @@ export default function App() {
           heatPoints={heatPoints}
           enabledWeather={toggles.weather}
           weather={weather}
+          shadowsEnabled={toggles.terrain}
+          sunLightPosition={[0, -70, 100]}
         />
 
         <BuildingOverlay
@@ -1879,6 +1993,25 @@ export default function App() {
               Projects
             </button>
           )}
+          {roleConfig?.canSeeLayers && (
+            <button
+              onClick={() => setSidebarTab("climate")}
+              style={{
+                flex: "0 0 auto",
+                cursor: "pointer",
+                padding: "8px 14px",
+                borderRadius: "8px 8px 0 0",
+                fontSize: 12,
+                fontWeight: 600,
+                border: "none",
+                background: sidebarTab === "climate" ? "rgba(88,160,255,0.15)" : "rgba(255,255,255,0.03)",
+                color: sidebarTab === "climate" ? "#58a0ff" : "rgba(255,255,255,0.6)",
+                borderBottom: sidebarTab === "climate" ? "2px solid #58a0ff" : "none",
+              }}
+            >
+              🛰️ Climate
+            </button>
+          )}
         </div>
 
         {/* Tab Content */}
@@ -2112,77 +2245,6 @@ export default function App() {
                       ? "Density"
                       : "All signals"}
               </div>
-            </div>
-          </div>
-
-          <div className="toggleRow" style={{ alignItems: "flex-start" }}>
-            <div>
-              <label>NASA GIBS Layer</label>
-              <div className="hint">Worldview / GIBS precipitation tiles</div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-                {(
-                  [
-                    ["IMERG_Precipitation_Rate", "IMERG Rate"],
-                    ["IMERG_Precipitation_Rate_30min", "IMERG 30-min"],
-                  ] as const
-                ).map(([k, label]) => (
-                  <button
-                    key={k}
-                    onClick={() => setGibsLayer(k)}
-                    style={{
-                      cursor: "pointer",
-                      borderRadius: 999,
-                      padding: "6px 10px",
-                      fontSize: 12,
-                      border: "1px solid rgba(255,255,255,0.10)",
-                      background: gibsLayer === k ? "rgba(88,160,255,0.16)" : "rgba(0,0,0,0.12)",
-                      color: "rgba(255,255,255,0.85)",
-                    }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 10 }}>
-                <span className="pill">Opacity</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={0.9}
-                  step={0.02}
-                  value={gibsOpacity}
-                  onChange={(e) => setGibsOpacity(Number(e.target.value))}
-                  style={{ width: "100%" }}
-                />
-              </div>
-              <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 10 }}>
-                <span className="pill">Date</span>
-                <input
-                  type="date"
-                  value={gibsDate}
-                  onChange={(e) => setGibsDate(e.target.value)}
-                  style={{
-                    width: "100%",
-                    background: "rgba(0,0,0,0.12)",
-                    color: "rgba(255,255,255,0.85)",
-                    border: "1px solid rgba(255,255,255,0.10)",
-                    borderRadius: 10,
-                    padding: "6px 10px",
-                  }}
-                />
-              </div>
-              <div style={{ marginTop: 8, fontSize: 12, color: "var(--muted)" }}>
-                Status:{" "}
-                {gibsStatus === "ok"
-                  ? "available"
-                  : gibsStatus === "loading"
-                    ? "checking availability…"
-                    : "not available for this date (auto-fallback applied)"}
-              </div>
-            </div>
-            <div style={{ minWidth: 86, textAlign: "right" }}>
-              <span className="pill">GIBS</span>
-              <div style={{ marginTop: 6, fontSize: 12, color: "var(--muted2)" }}>WMTS tiles</div>
             </div>
           </div>
 
@@ -2627,6 +2689,226 @@ export default function App() {
         </div>
         )}
         </>
+        )}
+
+        {/* ── Climate Tab ── */}
+        {sidebarTab === "climate" && roleConfig?.canSeeLayers && (
+          <div className="card" style={{ marginBottom: 12 }}>
+            <div className="sectionTitle" style={{ marginBottom: 8 }}>
+              🛰️ NASA GIBS Climate Data
+            </div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)", marginBottom: 12, lineHeight: 1.5 }}>
+              Real satellite data from NASA - Precipitation, Temperature, Imagery, Atmosphere
+            </div>
+
+            {/* Enable/Disable Toggle */}
+            <div className="toggleRow" style={{ marginBottom: 16 }}>
+              <div>
+                <label>Enable Climate Layer</label>
+                <div className="hint">Show NASA GIBS data on map</div>
+              </div>
+              <div
+                className={`switch ${toggles.gibsPrecip ? "on" : ""}`}
+                role="switch"
+                aria-checked={toggles.gibsPrecip}
+                onClick={() => setToggles((t) => ({ ...t, gibsPrecip: !t.gibsPrecip }))}
+              />
+            </div>
+
+            {/* Precipitation Layers */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: "rgba(88,160,255,0.85)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
+                ☔ Precipitation (Ulan)
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {(
+                  [
+                    ["IMERG_Precipitation_Rate", "IMERG Rate"],
+                    ["IMERG_Precipitation_Rate_30min", "IMERG 30min"],
+                  ] as const
+                ).map(([k, label]) => (
+                  <button
+                    key={k}
+                    onClick={() => setGibsLayer(k)}
+                    style={{
+                      cursor: "pointer",
+                      borderRadius: 999,
+                      padding: "7px 12px",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      border: "1px solid rgba(88,160,255,0.20)",
+                      background: gibsLayer === k ? "rgba(88,160,255,0.25)" : "rgba(0,0,0,0.15)",
+                      color: gibsLayer === k ? "rgba(88,160,255,1)" : "rgba(255,255,255,0.75)",
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Temperature Layers */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: "rgba(255,140,60,0.85)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
+                🌡️ Temperature (Temperatura)
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {(
+                  [
+                    ["MODIS_Terra_Land_Surface_Temp_Day", "Surface (Day)"],
+                    ["MODIS_Terra_Land_Surface_Temp_Night", "Surface (Night)"],
+                    ["AIRS_L2_Surface_Air_Temperature_Day", "Air Temp"],
+                  ] as const
+                ).map(([k, label]) => (
+                  <button
+                    key={k}
+                    onClick={() => setGibsLayer(k)}
+                    style={{
+                      cursor: "pointer",
+                      borderRadius: 999,
+                      padding: "7px 12px",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      border: "1px solid rgba(255,140,60,0.20)",
+                      background: gibsLayer === k ? "rgba(255,140,60,0.25)" : "rgba(0,0,0,0.15)",
+                      color: gibsLayer === k ? "rgba(255,140,60,1)" : "rgba(255,255,255,0.75)",
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Satellite Imagery */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: "rgba(92,219,149,0.85)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
+                🛰️ Satellite Imagery
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {(
+                  [
+                    ["MODIS_Terra_CorrectedReflectance_TrueColor", "MODIS (250m)"],
+                    ["VIIRS_NOAA20_CorrectedReflectance_TrueColor", "VIIRS (750m)"],
+                  ] as const
+                ).map(([k, label]) => (
+                  <button
+                    key={k}
+                    onClick={() => setGibsLayer(k)}
+                    style={{
+                      cursor: "pointer",
+                      borderRadius: 999,
+                      padding: "7px 12px",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      border: "1px solid rgba(92,219,149,0.20)",
+                      background: gibsLayer === k ? "rgba(92,219,149,0.25)" : "rgba(0,0,0,0.15)",
+                      color: gibsLayer === k ? "rgba(92,219,149,1)" : "rgba(255,255,255,0.75)",
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Atmosphere Layers */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: "rgba(255,215,0,0.85)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
+                🌫️ Atmosphere (Hangin)
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {(
+                  [
+                    ["MODIS_Terra_Aerosol", "Air Quality"],
+                    ["MODIS_Aqua_Cloud_Top_Temp_Day", "Cloud Temp"],
+                    ["AIRS_L2_Surface_Relative_Humidity_Day", "Humidity"],
+                  ] as const
+                ).map(([k, label]) => (
+                  <button
+                    key={k}
+                    onClick={() => setGibsLayer(k)}
+                    style={{
+                      cursor: "pointer",
+                      borderRadius: 999,
+                      padding: "7px 12px",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      border: "1px solid rgba(255,215,0,0.20)",
+                      background: gibsLayer === k ? "rgba(255,215,0,0.25)" : "rgba(0,0,0,0.15)",
+                      color: gibsLayer === k ? "rgba(255,215,0,1)" : "rgba(255,255,255,0.75)",
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Opacity Control */}
+            <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+              <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
+                <span className="pill">Opacity</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={0.9}
+                  step={0.05}
+                  value={gibsOpacity}
+                  onChange={(e) => setGibsOpacity(Number(e.target.value))}
+                  style={{ flex: 1 }}
+                />
+                <span style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", minWidth: 35 }}>
+                  {Math.round(gibsOpacity * 100)}%
+                </span>
+              </div>
+
+              {/* Date Control */}
+              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                <span className="pill">Date</span>
+                <input
+                  type="date"
+                  value={gibsDate}
+                  onChange={(e) => setGibsDate(e.target.value)}
+                  style={{
+                    flex: 1,
+                    background: "rgba(0,0,0,0.15)",
+                    border: "1px solid rgba(255,255,255,0.10)",
+                    borderRadius: 6,
+                    padding: "6px 8px",
+                    color: "rgba(255,255,255,0.85)",
+                    fontSize: 11,
+                  }}
+                />
+              </div>
+
+              {/* Status Indicator */}
+              {gibsStatus === "loading" && (
+                <div style={{ marginTop: 10, fontSize: 11, color: "rgba(255,215,0,0.85)", display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: "rgba(255,215,0,0.85)", animation: "pulse 1.5s infinite" }} />
+                  Loading climate data...
+                </div>
+              )}
+              {gibsStatus === "unavailable" && (
+                <div style={{ marginTop: 10, fontSize: 11, color: "rgba(255,77,79,0.85)" }}>
+                  ⚠️ Data unavailable for this date
+                </div>
+              )}
+              {gibsStatus === "ok" && toggles.gibsPrecip && (
+                <div style={{ marginTop: 10, fontSize: 11, color: "rgba(92,219,149,0.85)", display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: "rgba(92,219,149,0.85)" }} />
+                  Climate data active
+                </div>
+              )}
+            </div>
+
+            {/* Info Box */}
+            <div style={{ marginTop: 16, padding: 12, background: "rgba(88,160,255,0.08)", border: "1px solid rgba(88,160,255,0.15)", borderRadius: 8 }}>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.65)", lineHeight: 1.6 }}>
+                💡 <strong>Tip:</strong> Use yesterday's date for most reliable data. Some layers have 1-2 day processing lag.
+              </div>
+            </div>
+          </div>
         )}
 
         </div>

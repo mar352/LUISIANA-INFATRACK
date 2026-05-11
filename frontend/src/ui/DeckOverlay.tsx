@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MapboxOverlay } from "@deck.gl/mapbox";
 import { HeatmapLayer } from "@deck.gl/aggregation-layers";
+import { PolygonLayer, ColumnLayer, ScatterplotLayer } from "@deck.gl/layers";
+import { AmbientLight, DirectionalLight, LightingEffect } from "@deck.gl/core";
 import type { HeatPoint, WeatherSnapshot } from "../types";
+import { generateSolarGrid, getSolarColor, type SolarDataPoint } from "../lib/solar";
+import { generateSlopeGrid, type SlopePoint } from "../lib/slope";
 
 type Props = {
   map: any;
@@ -9,7 +13,54 @@ type Props = {
   heatPoints: HeatPoint[];
   enabledWeather: boolean;
   weather: WeatherSnapshot | null;
+  sunLightPosition?: [number, number, number];
+  shadowsEnabled?: boolean;
+  enabledSolar?: boolean;
+  solarHour?: number;
+  enabledSlope?: boolean;
 };
+
+type DeckBuilding = {
+  polygon: [number, number][];
+  height: number;
+  base: number;
+};
+
+const LUISIANA_BOUNDS = {
+  west: 121.44,
+  south: 14.12,
+  east: 121.58,
+  north: 14.27,
+};
+const LUISIANA_FLOOR_RING: [number, number][] = [
+  [LUISIANA_BOUNDS.west, LUISIANA_BOUNDS.south],
+  [LUISIANA_BOUNDS.east, LUISIANA_BOUNDS.south],
+  [LUISIANA_BOUNDS.east, LUISIANA_BOUNDS.north],
+  [LUISIANA_BOUNDS.west, LUISIANA_BOUNDS.north],
+  [LUISIANA_BOUNDS.west, LUISIANA_BOUNDS.south],
+];
+
+const MAX_BUILDINGS = 900;
+
+function insideLuisianaBounds(lon: number, lat: number) {
+  return (
+    lon >= LUISIANA_BOUNDS.west &&
+    lon <= LUISIANA_BOUNDS.east &&
+    lat >= LUISIANA_BOUNDS.south &&
+    lat <= LUISIANA_BOUNDS.north
+  );
+}
+
+function firstRingFromGeometry(geometry: any): [number, number][] | null {
+  if (!geometry?.type) return null;
+  if (geometry.type === "Polygon") {
+    return Array.isArray(geometry.coordinates?.[0]) ? (geometry.coordinates[0] as [number, number][]) : null;
+  }
+  if (geometry.type === "MultiPolygon") {
+    return Array.isArray(geometry.coordinates?.[0]?.[0]) ? (geometry.coordinates[0][0] as [number, number][]) : null;
+  }
+  return null;
+}
 
 function colorRange() {
   // Blue -> Yellow -> Red (Zoom Earth style)
@@ -28,7 +79,7 @@ function clamp01(n: number) {
 }
 
 /**
- * A lightweight “cloud feel” overlay rendered as moving dots on a canvas.
+ * A lightweight "cloud feel" overlay rendered as moving dots on a canvas.
  * This keeps the map-first UX (weather appears on the map) without requiring
  * heavy raster tile providers for the demo.
  */
@@ -129,8 +180,14 @@ export function DeckGLOverlay({
   heatPoints,
   enabledWeather,
   weather,
+  sunLightPosition,
+  shadowsEnabled = true,
+  enabledSolar = false,
+  solarHour = 12,
+  enabledSlope = false,
 }: Props) {
   const overlayRef = useRef<MapboxOverlay | null>(null);
+  const [deckBuildings, setDeckBuildings] = useState<DeckBuilding[]>([]);
 
   // Animate heatmap slightly by modulating intensity based on time.
   const [pulse, setPulse] = useState(0);
@@ -144,11 +201,152 @@ export function DeckGLOverlay({
     return () => cancelAnimationFrame(raf);
   }, []);
 
+  // Generate solar data grid
+  const solarData = useMemo(() => {
+    if (!enabledSolar) return [];
+    return generateSolarGrid(20, solarHour);
+  }, [enabledSolar, solarHour]);
+
+  // Generate slope analysis grid
+  const slopeData = useMemo(() => {
+    if (!enabledSlope) return [];
+    return generateSlopeGrid(30); // 30x30 grid for detailed slope analysis
+  }, [enabledSlope]);
+
+  useEffect(() => {
+    if (!map) return;
+
+    const syncDeckBuildings = () => {
+      if (!map.isStyleLoaded?.()) return;
+
+      let srcFeatures: any[] = [];
+      try {
+        srcFeatures = map.querySourceFeatures("openmaptiles", { sourceLayer: "building" }) || [];
+      } catch {
+        setDeckBuildings([]);
+        return;
+      }
+
+      const next: DeckBuilding[] = [];
+      for (const feat of srcFeatures) {
+        if (next.length >= MAX_BUILDINGS) break;
+        const ring = firstRingFromGeometry(feat?.geometry);
+        if (!ring || ring.length < 4) continue;
+        const [lon, lat] = ring[0] ?? [];
+        if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
+        if (!insideLuisianaBounds(lon, lat)) continue;
+
+        const rawHeight = Number(feat?.properties?.render_height ?? feat?.properties?.height ?? 8);
+        const rawBase = Number(feat?.properties?.render_min_height ?? feat?.properties?.min_height ?? 0);
+        next.push({
+          polygon: ring,
+          height: Number.isFinite(rawHeight) ? Math.max(2, Math.min(260, rawHeight)) : 8,
+          base: Number.isFinite(rawBase) ? Math.max(0, Math.min(120, rawBase)) : 0,
+        });
+      }
+
+      setDeckBuildings(next);
+    };
+
+    if (map.isStyleLoaded?.()) syncDeckBuildings();
+    else map.once("style.load", syncDeckBuildings);
+
+    map.on("moveend", syncDeckBuildings);
+    map.on("zoomend", syncDeckBuildings);
+    map.on("style.load", syncDeckBuildings);
+
+    return () => {
+      map.off("moveend", syncDeckBuildings);
+      map.off("zoomend", syncDeckBuildings);
+      map.off("style.load", syncDeckBuildings);
+    };
+  }, [map]);
+
+  const lightingEffect = useMemo(() => {
+    if (!shadowsEnabled) return undefined;
+    const [sx, sy, sz] = sunLightPosition ?? [0, -70, 100];
+    const ambient = new AmbientLight({ color: [255, 255, 255], intensity: 0.45 });
+    const sun = new DirectionalLight({
+      color: [255, 244, 224],
+      intensity: 1.8,
+      direction: [-sx, -sy, -Math.max(15, sz)],
+      // deck.gl shadow-map pass for non-raytraced dynamic shadows
+      _shadow: true,
+    } as any);
+    return new LightingEffect({ ambientLight: ambient, sunlight: sun });
+  }, [sunLightPosition, shadowsEnabled]);
+
+  const buildingMaterial = useMemo(
+    () => ({
+      ambient: 0.22,
+      diffuse: 0.68,
+      shininess: 12,
+      specularColor: [30, 30, 30],
+    }),
+    []
+  );
+
   const layers = useMemo(() => {
     const out: any[] = [];
 
+    // Slope Visualization Layer - Shows actual slope angles with color coding
+    if (enabledSlope && slopeData.length > 0) {
+      out.push(
+        new ScatterplotLayer<SlopePoint>({
+          id: "slope-visualization",
+          data: slopeData,
+          pickable: true,
+          opacity: 0.7,
+          stroked: true,
+          filled: true,
+          radiusScale: 1,
+          radiusMinPixels: 3,
+          radiusMaxPixels: 15,
+          lineWidthMinPixels: 1,
+          getPosition: (d) => [...d.position, d.elevation],
+          getRadius: (d) => 600 + d.slope * 20, // Larger circles for steeper slopes
+          getFillColor: (d) => d.color,
+          getLineColor: [255, 255, 255, 100],
+          updateTriggers: {
+            getPosition: [slopeData.length],
+            getRadius: [slopeData.length],
+            getFillColor: [slopeData.length],
+          },
+        })
+      );
+    }
+
+    // 3D Solar Radiation Layer
+    if (enabledSolar && solarData.length > 0) {
+      out.push(
+        new ColumnLayer<SolarDataPoint>({
+          id: "solar-radiation-3d",
+          data: solarData,
+          diskResolution: 12,
+          radius: 800, // column radius in meters
+          extruded: true,
+          pickable: true,
+          elevationScale: 1,
+          getPosition: (d) => [...d.position, 0],
+          getElevation: (d) => d.elevation,
+          getFillColor: (d) => getSolarColor(d.intensity),
+          material: {
+            ambient: 0.5,
+            diffuse: 0.8,
+            shininess: 32,
+            specularColor: [255, 200, 100],
+          },
+          opacity: 0.75,
+          updateTriggers: {
+            getElevation: [solarHour],
+            getFillColor: [solarHour],
+          },
+        })
+      );
+    }
+
     if (enabledHeatmap) {
-      // Smoother, less “dotty” heat rendering:
+      // Smoother, less "dotty" heat rendering:
       // - larger radius blends neighboring samples
       // - slightly lower intensity avoids exaggerated hotspots
       const baseIntensity = 0.42 + pulse * 0.12;
@@ -167,8 +365,65 @@ export function DeckGLOverlay({
       );
     }
 
+    if (shadowsEnabled) {
+      out.push(
+        new PolygonLayer<{ polygon: [number, number][] }>({
+          id: "luisiana-shadow-receiver",
+          data: [{ polygon: LUISIANA_FLOOR_RING }],
+          pickable: false,
+          stroked: false,
+          filled: true,
+          extruded: false,
+          wireframe: false,
+          getPolygon: (d) => d.polygon,
+          // Extremely subtle receiver so basemap stays visible.
+          getFillColor: [255, 255, 255, 16],
+          material: {
+            ambient: 0.65,
+            diffuse: 0.35,
+            shininess: 2,
+            specularColor: [0, 0, 0],
+          },
+          shadowEnabled: true as any,
+          parameters: {
+            depthTest: true,
+            cull: false,
+          },
+        } as any)
+      );
+    }
+
+    if (shadowsEnabled && deckBuildings.length > 0) {
+      out.push(
+        new PolygonLayer<DeckBuilding>({
+          id: "luisiana-deck-buildings-light",
+          data: deckBuildings,
+          pickable: false,
+          stroked: false,
+          filled: true,
+          extruded: true,
+          wireframe: false,
+          getPolygon: (d) => d.polygon,
+          getElevation: (d) => d.height,
+          getFillColor: [229, 219, 198, 232],
+          getLineColor: [208, 197, 174, 150],
+          getLineWidth: 0.5,
+          material: buildingMaterial,
+          shadowEnabled: true as any,
+          elevationScale: 1,
+          parameters: {
+            depthTest: true,
+            cull: true,
+          },
+          updateTriggers: {
+            getElevation: [deckBuildings.length],
+          },
+        })
+      );
+    }
+
     return out;
-  }, [enabledHeatmap, heatPoints, pulse]);
+  }, [enabledHeatmap, heatPoints, pulse, shadowsEnabled, deckBuildings, buildingMaterial, enabledSolar, solarData, solarHour, enabledSlope, slopeData]);
 
   useEffect(() => {
     if (!map) return;
@@ -178,8 +433,8 @@ export function DeckGLOverlay({
       map.addControl(overlayRef.current as any);
     }
 
-    overlayRef.current.setProps({ layers });
-  }, [map, layers]);
+    overlayRef.current.setProps({ layers, effects: lightingEffect ? [lightingEffect] : [] });
+  }, [map, layers, lightingEffect]);
 
   useEffect(() => {
     return () => {
@@ -192,4 +447,3 @@ export function DeckGLOverlay({
 
   return <WeatherCanvasOverlay enabled={enabledWeather} weather={weather} />;
 }
-
