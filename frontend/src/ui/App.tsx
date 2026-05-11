@@ -20,6 +20,15 @@ import {
   type TerrainSource,
   type SatelliteSource 
 } from "../lib/terrain";
+import { 
+  fetchEONETEvents, 
+  filterEventsByRegion, 
+  getEventStats, 
+  getLatestGeometry,
+  calculateDistance,
+  EONET_CATEGORIES,
+  type EONETEvent 
+} from "../lib/eonet";
 import SunCalc from "suncalc";
 
 // ── RBAC ─────────────────────────────────────────────────────────────────────
@@ -878,7 +887,7 @@ export default function App() {
   const [placingName, setPlacingName] = useState("");
   const [customModelFile, setCustomModelFile] = useState<File | null>(null);
   const [customModelPreview, setCustomModelPreview] = useState<string | null>(null);
-  const [sidebarTab, setSidebarTab] = useState<"weather" | "layers" | "radar" | "risk" | "projects" | "climate">("weather");
+  const [sidebarTab, setSidebarTab] = useState<"weather" | "layers" | "radar" | "risk" | "projects" | "climate" | "events">("weather");
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
 
   // Set default tab based on role permissions
@@ -908,6 +917,13 @@ export default function App() {
   const [gibsOpacity, setGibsOpacity] = useState(0.62);
   const [gibsStatus, setGibsStatus] = useState<"loading" | "ok" | "unavailable">("loading");
 
+  // NASA EONET Natural Events
+  const [eonetEvents, setEonetEvents] = useState<EONETEvent[]>([]);
+  const [eonetEnabled, setEonetEnabled] = useState(false);
+  const [eonetLoading, setEonetLoading] = useState(false);
+  const [eonetCategories, setEonetCategories] = useState<string[]>(["wildfires", "severeStorms", "volcanoes", "earthquakes", "floods"]);
+  const [eonetRadius, setEonetRadius] = useState(1000); // km radius from Luisiana
+
   // Map bearing for compass display
   const [mapBearing, setMapBearing] = useState(-15);
 
@@ -926,6 +942,43 @@ export default function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [toggles.terrain]);
+
+  // Fetch NASA EONET natural events
+  useEffect(() => {
+    if (!eonetEnabled) return;
+
+    const fetchEvents = async () => {
+      setEonetLoading(true);
+      try {
+        const response = await fetchEONETEvents({
+          status: "open",
+          limit: 500,
+          days: 30,
+        });
+
+        // Filter events by region (within radius of Luisiana)
+        const filtered = filterEventsByRegion(response.events, [121.5167, 14.1856], eonetRadius);
+        
+        // Further filter by selected categories
+        const categoryFiltered = filtered.filter(event =>
+          event.categories.some(cat => eonetCategories.includes(cat.id))
+        );
+
+        setEonetEvents(categoryFiltered);
+      } catch (error) {
+        console.error("Failed to fetch EONET events:", error);
+        setEonetEvents([]);
+      } finally {
+        setEonetLoading(false);
+      }
+    };
+
+    fetchEvents();
+    
+    // Refresh every 30 minutes
+    const interval = setInterval(fetchEvents, 30 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [eonetEnabled, eonetCategories, eonetRadius]);
 
   const topRisk = useMemo(() => {
     const feats = riskZones?.features || [];
@@ -1740,6 +1793,8 @@ export default function App() {
           weather={weather}
           shadowsEnabled={toggles.terrain}
           sunLightPosition={[0, -70, 100]}
+          enabledEONET={eonetEnabled}
+          eonetEvents={eonetEvents}
         />
 
         <BuildingOverlay
@@ -2010,6 +2065,25 @@ export default function App() {
               }}
             >
               🛰️ Climate
+            </button>
+          )}
+          {roleConfig?.canSeeLayers && (
+            <button
+              onClick={() => setSidebarTab("events")}
+              style={{
+                flex: "0 0 auto",
+                cursor: "pointer",
+                padding: "8px 14px",
+                borderRadius: "8px 8px 0 0",
+                fontSize: 12,
+                fontWeight: 600,
+                border: "none",
+                background: sidebarTab === "events" ? "rgba(255,100,100,0.15)" : "rgba(255,255,255,0.03)",
+                color: sidebarTab === "events" ? "#ff6464" : "rgba(255,255,255,0.6)",
+                borderBottom: sidebarTab === "events" ? "2px solid #ff6464" : "none",
+              }}
+            >
+              🌍 Events
             </button>
           )}
         </div>
@@ -2906,6 +2980,226 @@ export default function App() {
             <div style={{ marginTop: 16, padding: 12, background: "rgba(88,160,255,0.08)", border: "1px solid rgba(88,160,255,0.15)", borderRadius: 8 }}>
               <div style={{ fontSize: 11, color: "rgba(255,255,255,0.65)", lineHeight: 1.6 }}>
                 💡 <strong>Tip:</strong> Use yesterday's date for most reliable data. Some layers have 1-2 day processing lag.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Events Tab (NASA EONET Natural Events) ── */}
+        {sidebarTab === "events" && roleConfig?.canSeeLayers && (
+          <div className="card" style={{ marginBottom: 12 }}>
+            <div className="sectionTitle" style={{ marginBottom: 8 }}>
+              🌍 NASA Natural Event Tracker
+            </div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)", marginBottom: 12, lineHeight: 1.5 }}>
+              Real-time natural events from NASA EONET - Wildfires, Storms, Volcanoes, Earthquakes, and more
+            </div>
+
+            {/* Enable/Disable Toggle */}
+            <div className="toggleRow" style={{ marginBottom: 16 }}>
+              <div>
+                <label>Enable Event Tracking</label>
+                <div className="hint">Show natural events on map</div>
+              </div>
+              <div
+                className={`switch ${eonetEnabled ? "on" : ""}`}
+                role="switch"
+                aria-checked={eonetEnabled}
+                onClick={() => setEonetEnabled(!eonetEnabled)}
+              />
+            </div>
+
+            {/* Event Statistics */}
+            {eonetEnabled && eonetEvents.length > 0 && (
+              <div style={{ marginBottom: 16, padding: 12, background: "rgba(255,100,100,0.08)", border: "1px solid rgba(255,100,100,0.15)", borderRadius: 8 }}>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.75)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
+                  Active Events Nearby
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
+                  {Object.entries(getEventStats(eonetEvents)).map(([catId, count]) => {
+                    const cat = EONET_CATEGORIES[catId];
+                    if (!cat) return null;
+                    return (
+                      <div key={catId} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+                        <span style={{ fontSize: 14 }}>{cat.icon}</span>
+                        <span style={{ color: "rgba(255,255,255,0.85)" }}>{count}</span>
+                        <span style={{ color: "rgba(255,255,255,0.55)" }}>{cat.title}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Category Filters */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.75)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
+                Event Categories
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {Object.entries(EONET_CATEGORIES).map(([id, cat]) => {
+                  const isSelected = eonetCategories.includes(id);
+                  return (
+                    <button
+                      key={id}
+                      onClick={() => {
+                        if (isSelected) {
+                          setEonetCategories(eonetCategories.filter(c => c !== id));
+                        } else {
+                          setEonetCategories([...eonetCategories, id]);
+                        }
+                      }}
+                      style={{
+                        cursor: "pointer",
+                        borderRadius: 999,
+                        padding: "7px 12px",
+                        fontSize: 11,
+                        fontWeight: 600,
+                        border: `1px solid ${cat.color}40`,
+                        background: isSelected ? `${cat.color}30` : "rgba(0,0,0,0.15)",
+                        color: isSelected ? cat.color : "rgba(255,255,255,0.65)",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 4,
+                      }}
+                    >
+                      <span>{cat.icon}</span>
+                      <span>{cat.title}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Radius Control */}
+            <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+              <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
+                <span className="pill">Search Radius</span>
+                <input
+                  type="range"
+                  min={100}
+                  max={5000}
+                  step={100}
+                  value={eonetRadius}
+                  onChange={(e) => setEonetRadius(Number(e.target.value))}
+                  style={{ flex: 1 }}
+                />
+                <span style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", minWidth: 60 }}>
+                  {eonetRadius} km
+                </span>
+              </div>
+            </div>
+
+            {/* Status Indicator */}
+            {eonetLoading && (
+              <div style={{ marginTop: 12, fontSize: 11, color: "rgba(255,215,0,0.85)", display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "rgba(255,215,0,0.85)", animation: "pulse 1.5s infinite" }} />
+                Loading events...
+              </div>
+            )}
+            {!eonetLoading && eonetEnabled && eonetEvents.length === 0 && (
+              <div style={{ marginTop: 12, fontSize: 11, color: "rgba(92,219,149,0.85)" }}>
+                ✓ No active events in your area
+              </div>
+            )}
+            {!eonetLoading && eonetEnabled && eonetEvents.length > 0 && (
+              <div style={{ marginTop: 12, fontSize: 11, color: "rgba(255,100,100,0.85)", display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "rgba(255,100,100,0.85)" }} />
+                {eonetEvents.length} active event{eonetEvents.length !== 1 ? 's' : ''} tracked
+              </div>
+            )}
+
+            {/* Event List */}
+            {eonetEnabled && eonetEvents.length > 0 && (
+              <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.75)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
+                  📍 Event Locations
+                </div>
+                <div style={{ maxHeight: 300, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+                  {eonetEvents.slice(0, 20).map((event) => {
+                    const geometry = getLatestGeometry(event);
+                    const category = event.categories[0];
+                    const catInfo = EONET_CATEGORIES[category?.id];
+                    const distance = geometry ? Math.round(
+                      calculateDistance(14.1856, 121.5167, geometry.coordinates[1], geometry.coordinates[0])
+                    ) : 0;
+
+                    return (
+                      <div
+                        key={event.id}
+                        onClick={() => {
+                          if (geometry && mapRef.current) {
+                            mapRef.current.flyTo({
+                              center: [geometry.coordinates[0], geometry.coordinates[1]],
+                              zoom: 8,
+                              duration: 2000,
+                            });
+                          }
+                        }}
+                        style={{
+                          padding: 10,
+                          background: "rgba(0,0,0,0.20)",
+                          border: `1px solid ${catInfo?.color || '#888'}30`,
+                          borderRadius: 8,
+                          cursor: "pointer",
+                          transition: "all 0.2s ease",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = "rgba(0,0,0,0.35)";
+                          e.currentTarget.style.borderColor = `${catInfo?.color || '#888'}60`;
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = "rgba(0,0,0,0.20)";
+                          e.currentTarget.style.borderColor = `${catInfo?.color || '#888'}30`;
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                          <span style={{ fontSize: 18, flexShrink: 0 }}>{catInfo?.icon || '📍'}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.90)", marginBottom: 4, lineHeight: 1.3 }}>
+                              {event.title}
+                            </div>
+                            {event.description && (
+                              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.55)", marginBottom: 4, lineHeight: 1.3 }}>
+                                {event.description}
+                              </div>
+                            )}
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", fontSize: 10, color: "rgba(255,255,255,0.65)" }}>
+                              <span style={{ color: catInfo?.color || '#888' }}>
+                                {category?.title || 'Unknown'}
+                              </span>
+                              <span>•</span>
+                              <span>{distance.toLocaleString()} km away</span>
+                              {geometry?.magnitudeValue && (
+                                <>
+                                  <span>•</span>
+                                  <span>{geometry.magnitudeValue.toLocaleString()} {geometry.magnitudeUnit}</span>
+                                </>
+                              )}
+                            </div>
+                            {geometry?.date && (
+                              <div style={{ fontSize: 9, color: "rgba(255,255,255,0.45)", marginTop: 4 }}>
+                                Updated: {new Date(geometry.date).toLocaleDateString()} {new Date(geometry.date).toLocaleTimeString()}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {eonetEvents.length > 20 && (
+                  <div style={{ marginTop: 8, fontSize: 10, color: "rgba(255,255,255,0.45)", textAlign: "center" }}>
+                    Showing 20 of {eonetEvents.length} events
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Info Box */}
+            <div style={{ marginTop: 16, padding: 12, background: "rgba(255,100,100,0.08)", border: "1px solid rgba(255,100,100,0.15)", borderRadius: 8 }}>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.65)", lineHeight: 1.6 }}>
+                💡 <strong>About:</strong> NASA EONET provides near real-time natural event data. Events are updated every 30 minutes. Click on map markers for details.
               </div>
             </div>
           </div>

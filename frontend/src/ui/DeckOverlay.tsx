@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MapboxOverlay } from "@deck.gl/mapbox";
 import { HeatmapLayer } from "@deck.gl/aggregation-layers";
-import { PolygonLayer, ColumnLayer, ScatterplotLayer } from "@deck.gl/layers";
+import { PolygonLayer, ColumnLayer, ScatterplotLayer, IconLayer } from "@deck.gl/layers";
 import { AmbientLight, DirectionalLight, LightingEffect } from "@deck.gl/core";
 import type { HeatPoint, WeatherSnapshot } from "../types";
 import { generateSolarGrid, getSolarColor, type SolarDataPoint } from "../lib/solar";
 import { generateSlopeGrid, type SlopePoint } from "../lib/slope";
+import { type EONETEvent, getLatestGeometry, getEventColor, getEventIcon, formatEventInfo } from "../lib/eonet";
 
 type Props = {
   map: any;
@@ -18,6 +19,8 @@ type Props = {
   enabledSolar?: boolean;
   solarHour?: number;
   enabledSlope?: boolean;
+  enabledEONET?: boolean;
+  eonetEvents?: EONETEvent[];
 };
 
 type DeckBuilding = {
@@ -185,6 +188,8 @@ export function DeckGLOverlay({
   enabledSolar = false,
   solarHour = 12,
   enabledSlope = false,
+  enabledEONET = false,
+  eonetEvents = [],
 }: Props) {
   const overlayRef = useRef<MapboxOverlay | null>(null);
   const [deckBuildings, setDeckBuildings] = useState<DeckBuilding[]>([]);
@@ -288,6 +293,55 @@ export function DeckGLOverlay({
 
   const layers = useMemo(() => {
     const out: any[] = [];
+
+    // NASA EONET Natural Events Layer
+    if (enabledEONET && eonetEvents.length > 0) {
+      const validEvents = eonetEvents
+        .map(event => {
+          const geometry = getLatestGeometry(event);
+          if (!geometry || geometry.type !== 'Point') return null;
+          return { event, geometry };
+        })
+        .filter(Boolean);
+
+      out.push(
+        new ScatterplotLayer({
+          id: "eonet-events",
+          data: validEvents,
+          pickable: true,
+          opacity: 0.9,
+          stroked: true,
+          filled: true,
+          radiusScale: 1,
+          radiusMinPixels: 8,
+          radiusMaxPixels: 40,
+          lineWidthMinPixels: 2,
+          getPosition: (d: any) => [...d.geometry.coordinates, 0],
+          getRadius: (d: any) => {
+            // Size based on magnitude if available
+            const mag = d.geometry.magnitudeValue || 1000;
+            return Math.min(50000, Math.max(5000, mag * 5));
+          },
+          getFillColor: (d: any) => {
+            const color = getEventColor(d.event);
+            const rgb = parseInt(color.slice(1), 16);
+            return [(rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255, 200];
+          },
+          getLineColor: [255, 255, 255, 255],
+          onHover: (info: any) => {
+            if (info.object) {
+              const tooltip = formatEventInfo(info.object.event);
+              console.log(tooltip);
+            }
+          },
+          updateTriggers: {
+            getPosition: [eonetEvents.length],
+            getRadius: [eonetEvents.length],
+            getFillColor: [eonetEvents.length],
+          },
+        })
+      );
+    }
 
     // Slope Visualization Layer - Shows actual slope angles with color coding
     if (enabledSlope && slopeData.length > 0) {
@@ -423,7 +477,7 @@ export function DeckGLOverlay({
     }
 
     return out;
-  }, [enabledHeatmap, heatPoints, pulse, shadowsEnabled, deckBuildings, buildingMaterial, enabledSolar, solarData, solarHour, enabledSlope, slopeData]);
+  }, [enabledHeatmap, heatPoints, pulse, shadowsEnabled, deckBuildings, buildingMaterial, enabledSolar, solarData, solarHour, enabledSlope, slopeData, enabledEONET, eonetEvents]);
 
   useEffect(() => {
     if (!map) return;
