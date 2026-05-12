@@ -7,6 +7,7 @@ import type { HeatPoint, WeatherSnapshot } from "../types";
 import { generateSolarGrid, getSolarColor, type SolarDataPoint } from "../lib/solar";
 import { generateSlopeGrid, type SlopePoint } from "../lib/slope";
 import { type EONETEvent, getLatestGeometry, getEventColor, getEventIcon, formatEventInfo } from "../lib/eonet";
+import { getRiskColor, type RiskPrediction } from "../lib/ml-risk";
 
 type Props = {
   map: any;
@@ -21,6 +22,8 @@ type Props = {
   enabledSlope?: boolean;
   enabledEONET?: boolean;
   eonetEvents?: EONETEvent[];
+  enabledAIRisk?: boolean;
+  aiRiskPredictions?: Array<{ position: [number, number]; prediction: RiskPrediction }>;
 };
 
 type DeckBuilding = {
@@ -190,9 +193,16 @@ export function DeckGLOverlay({
   enabledSlope = false,
   enabledEONET = false,
   eonetEvents = [],
+  enabledAIRisk = false,
+  aiRiskPredictions = [],
 }: Props) {
   const overlayRef = useRef<MapboxOverlay | null>(null);
   const [deckBuildings, setDeckBuildings] = useState<DeckBuilding[]>([]);
+  const [hoveredEvent, setHoveredEvent] = useState<{ event: EONETEvent; x: number; y: number } | null>(null);
+  const [hoveredRisk, setHoveredRisk] = useState<{ prediction: RiskPrediction; x: number; y: number } | null>(null);
+  
+  // Cache for AI risk heatmap data to prevent recomputation
+  const cachedRiskHeatPoints = useRef<{ predictions: any[]; heatPoints: any[] } | null>(null);
 
   // Animate heatmap slightly by modulating intensity based on time.
   const [pulse, setPulse] = useState(0);
@@ -217,6 +227,44 @@ export function DeckGLOverlay({
     if (!enabledSlope) return [];
     return generateSlopeGrid(30); // 30x30 grid for detailed slope analysis
   }, [enabledSlope]);
+
+  // Memoized AI risk heatmap data with caching
+  const riskHeatmapData = useMemo(() => {
+    if (!enabledAIRisk || aiRiskPredictions.length === 0) {
+      cachedRiskHeatPoints.current = null;
+      return [];
+    }
+
+    // Check if we can reuse cached data
+    if (cachedRiskHeatPoints.current && 
+        cachedRiskHeatPoints.current.predictions === aiRiskPredictions) {
+      return cachedRiskHeatPoints.current.heatPoints;
+    }
+
+    // Generate new heatmap points
+    const heatPoints = aiRiskPredictions.map((pred: any) => ({
+      position: pred.position,
+      weight: pred.prediction.overallRisk / 100,
+    }));
+
+    // Cache the result
+    cachedRiskHeatPoints.current = {
+      predictions: aiRiskPredictions,
+      heatPoints,
+    };
+
+    return heatPoints;
+  }, [enabledAIRisk, aiRiskPredictions]);
+
+  // Memoized color range for AI risk (reuse same array)
+  const riskColorRange = useMemo(() => [
+    [92, 219, 149, 0],      // Low risk - transparent green
+    [92, 219, 149, 80],     // Low risk - light green
+    [255, 214, 102, 120],   // Moderate risk - yellow
+    [255, 165, 0, 160],     // High risk - orange
+    [255, 77, 79, 200],     // Critical risk - red
+    [200, 30, 30, 230],     // Extreme risk - dark red
+  ] as any, []);
 
   useEffect(() => {
     if (!map) return;
@@ -294,6 +342,57 @@ export function DeckGLOverlay({
   const layers = useMemo(() => {
     const out: any[] = [];
 
+    // AI Risk Prediction Layer - Smooth heatmap style that blends with terrain
+    if (enabledAIRisk && riskHeatmapData.length > 0) {
+      out.push(
+        new HeatmapLayer({
+          id: "ai-risk-heatmap",
+          data: riskHeatmapData,
+          pickable: false,
+          getPosition: (d: any) => [...d.position, 0],
+          getWeight: (d: any) => d.weight,
+          radiusPixels: 80, // Larger radius for smooth blending
+          intensity: 1.2,
+          threshold: 0.03,
+          colorRange: riskColorRange,
+          aggregation: "SUM",
+          opacity: 0.65,
+        })
+      );
+
+      // Add small marker dots for hover interaction
+      out.push(
+        new ScatterplotLayer({
+          id: "ai-risk-markers",
+          data: aiRiskPredictions,
+          pickable: true,
+          opacity: 0.0, // Invisible but still pickable for hover
+          stroked: false,
+          filled: true,
+          radiusScale: 1,
+          radiusMinPixels: 15,
+          radiusMaxPixels: 30,
+          getPosition: (d: any) => [...d.position, 0],
+          getRadius: 300,
+          getFillColor: [0, 0, 0, 0], // Transparent
+          onHover: (info: any) => {
+            if (info.object && info.x !== undefined && info.y !== undefined) {
+              setHoveredRisk({
+                prediction: info.object.prediction,
+                x: info.x,
+                y: info.y,
+              });
+            } else {
+              setHoveredRisk(null);
+            }
+          },
+          updateTriggers: {
+            getPosition: [aiRiskPredictions.length],
+          },
+        })
+      );
+    }
+
     // NASA EONET Natural Events Layer
     if (enabledEONET && eonetEvents.length > 0) {
       const validEvents = eonetEvents
@@ -329,9 +428,14 @@ export function DeckGLOverlay({
           },
           getLineColor: [255, 255, 255, 255],
           onHover: (info: any) => {
-            if (info.object) {
-              const tooltip = formatEventInfo(info.object.event);
-              console.log(tooltip);
+            if (info.object && info.x !== undefined && info.y !== undefined) {
+              setHoveredEvent({
+                event: info.object.event,
+                x: info.x,
+                y: info.y,
+              });
+            } else {
+              setHoveredEvent(null);
             }
           },
           updateTriggers: {
@@ -477,7 +581,7 @@ export function DeckGLOverlay({
     }
 
     return out;
-  }, [enabledHeatmap, heatPoints, pulse, shadowsEnabled, deckBuildings, buildingMaterial, enabledSolar, solarData, solarHour, enabledSlope, slopeData, enabledEONET, eonetEvents]);
+  }, [enabledHeatmap, heatPoints, pulse, shadowsEnabled, deckBuildings, buildingMaterial, enabledSolar, solarData, solarHour, enabledSlope, slopeData, enabledEONET, eonetEvents, enabledAIRisk, aiRiskPredictions]);
 
   useEffect(() => {
     if (!map) return;
@@ -499,5 +603,174 @@ export function DeckGLOverlay({
     };
   }, [map]);
 
-  return <WeatherCanvasOverlay enabled={enabledWeather} weather={weather} />;
+  return (
+    <>
+      <WeatherCanvasOverlay enabled={enabledWeather} weather={weather} />
+      
+      {/* EONET Event Tooltip */}
+      {hoveredEvent && (
+        <div
+          style={{
+            position: "absolute",
+            left: hoveredEvent.x + 10,
+            top: hoveredEvent.y + 10,
+            pointerEvents: "none",
+            zIndex: 1000,
+            background: "rgba(10, 20, 35, 0.95)",
+            backdropFilter: "blur(8px)",
+            border: `2px solid ${getEventColor(hoveredEvent.event)}`,
+            borderRadius: 12,
+            padding: "12px 16px",
+            maxWidth: 320,
+            boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 8 }}>
+            <span style={{ fontSize: 24 }}>{getEventIcon(hoveredEvent.event)}</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.95)", marginBottom: 4, lineHeight: 1.3 }}>
+                {hoveredEvent.event.title}
+              </div>
+              {hoveredEvent.event.description && (
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.65)", marginBottom: 6, lineHeight: 1.4 }}>
+                  {hoveredEvent.event.description}
+                </div>
+              )}
+            </div>
+          </div>
+          
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgba(255,255,255,0.55)" }}>Category:</span>
+              <span style={{ color: getEventColor(hoveredEvent.event), fontWeight: 600 }}>
+                {hoveredEvent.event.categories[0]?.title || "Unknown"}
+              </span>
+            </div>
+            
+            {(() => {
+              const geometry = getLatestGeometry(hoveredEvent.event);
+              if (geometry?.magnitudeValue && geometry?.magnitudeUnit) {
+                return (
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span style={{ color: "rgba(255,255,255,0.55)" }}>Magnitude:</span>
+                    <span style={{ color: "rgba(255,255,255,0.85)", fontWeight: 600 }}>
+                      {geometry.magnitudeValue.toLocaleString()} {geometry.magnitudeUnit}
+                    </span>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+            
+            {(() => {
+              const geometry = getLatestGeometry(hoveredEvent.event);
+              if (geometry?.date) {
+                return (
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span style={{ color: "rgba(255,255,255,0.55)" }}>Updated:</span>
+                    <span style={{ color: "rgba(255,255,255,0.75)", fontSize: 10 }}>
+                      {new Date(geometry.date).toLocaleDateString()} {new Date(geometry.date).toLocaleTimeString()}
+                    </span>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+            
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgba(255,255,255,0.55)" }}>Status:</span>
+              <span style={{ color: hoveredEvent.event.closed ? "rgba(150,150,150,0.85)" : "rgba(255,100,100,0.95)", fontWeight: 600 }}>
+                {hoveredEvent.event.closed ? "Closed" : "Active"}
+              </span>
+            </div>
+          </div>
+          
+          <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,0.1)", fontSize: 9, color: "rgba(255,255,255,0.45)", textAlign: "center" }}>
+            Click event in sidebar to fly to location
+          </div>
+        </div>
+      )}
+
+      {/* AI Risk Prediction Tooltip */}
+      {hoveredRisk && (
+        <div
+          style={{
+            position: "absolute",
+            left: hoveredRisk.x + 10,
+            top: hoveredRisk.y + 10,
+            pointerEvents: "none",
+            zIndex: 1000,
+            background: "rgba(10, 20, 35, 0.95)",
+            backdropFilter: "blur(8px)",
+            border: `2px solid ${hoveredRisk.prediction.riskLevel === 'CRITICAL' ? '#ff4d4f' : hoveredRisk.prediction.riskLevel === 'HIGH' ? '#ffa500' : hoveredRisk.prediction.riskLevel === 'MODERATE' ? '#ffd666' : '#5cdb95'}`,
+            borderRadius: 12,
+            padding: "12px 16px",
+            maxWidth: 320,
+            boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+            <span style={{ fontSize: 24 }}>🤖</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.95)", marginBottom: 4 }}>
+                AI Risk Prediction
+              </div>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.65)" }}>
+                {hoveredRisk.prediction.riskLevel} RISK
+              </div>
+            </div>
+          </div>
+          
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgba(255,255,255,0.55)" }}>Overall Risk:</span>
+              <span style={{ color: "rgba(255,255,255,0.95)", fontWeight: 600 }}>
+                {hoveredRisk.prediction.overallRisk.toFixed(1)}%
+              </span>
+            </div>
+            
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgba(255,255,255,0.55)" }}>Landslide:</span>
+              <span style={{ color: "#ff6b6b", fontWeight: 600 }}>
+                {hoveredRisk.prediction.landslideRisk.toFixed(1)}%
+              </span>
+            </div>
+            
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgba(255,255,255,0.55)" }}>Flood:</span>
+              <span style={{ color: "#4dabf7", fontWeight: 600 }}>
+                {hoveredRisk.prediction.floodRisk.toFixed(1)}%
+              </span>
+            </div>
+            
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "rgba(255,255,255,0.55)" }}>Confidence:</span>
+              <span style={{ color: "rgba(255,255,255,0.85)" }}>
+                {hoveredRisk.prediction.confidence.toFixed(0)}%
+              </span>
+            </div>
+          </div>
+          
+          {hoveredRisk.prediction.factors.length > 0 && (
+            <>
+              <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,0.1)" }}>
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.65)", marginBottom: 4, fontWeight: 600 }}>
+                  Top Risk Factors:
+                </div>
+                {hoveredRisk.prediction.factors.slice(0, 3).map((factor, i) => (
+                  <div key={i} style={{ fontSize: 10, color: "rgba(255,255,255,0.75)", marginBottom: 2 }}>
+                    • {factor.name} ({factor.contribution.toFixed(0)}%)
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+          
+          <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,0.1)", fontSize: 9, color: "rgba(255,255,255,0.45)", textAlign: "center" }}>
+            AI-powered terrain risk analysis
+          </div>
+        </div>
+      )}
+    </>
+  );
 }

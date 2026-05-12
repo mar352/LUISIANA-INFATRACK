@@ -29,6 +29,13 @@ import {
   EONET_CATEGORIES,
   type EONETEvent 
 } from "../lib/eonet";
+import { 
+  TerrainRiskModel, 
+  generateSyntheticTrainingData,
+  getRiskColor,
+  getRiskDescription,
+  type RiskPrediction 
+} from "../lib/ml-risk";
 import SunCalc from "suncalc";
 
 // ── RBAC ─────────────────────────────────────────────────────────────────────
@@ -887,7 +894,7 @@ export default function App() {
   const [placingName, setPlacingName] = useState("");
   const [customModelFile, setCustomModelFile] = useState<File | null>(null);
   const [customModelPreview, setCustomModelPreview] = useState<string | null>(null);
-  const [sidebarTab, setSidebarTab] = useState<"weather" | "layers" | "radar" | "risk" | "projects" | "climate" | "events">("weather");
+  const [sidebarTab, setSidebarTab] = useState<"weather" | "layers" | "radar" | "risk" | "projects" | "climate" | "events" | "ai-risk">("weather");
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
 
   // Set default tab based on role permissions
@@ -923,6 +930,60 @@ export default function App() {
   const [eonetLoading, setEonetLoading] = useState(false);
   const [eonetCategories, setEonetCategories] = useState<string[]>(["wildfires", "severeStorms", "volcanoes", "earthquakes", "floods"]);
   const [eonetRadius, setEonetRadius] = useState(1000); // km radius from Luisiana
+
+  // AI Risk Analysis
+  const [aiRiskEnabled, setAiRiskEnabled] = useState(false);
+  const [aiRiskLoading, setAiRiskLoading] = useState(false);
+  const [aiRiskTrained, setAiRiskTrained] = useState(false);
+  const [aiRiskPredictions, setAiRiskPredictions] = useState<any[]>([]);
+  const [aiRiskModel, setAiRiskModel] = useState<any>(null);
+  const [aiRiskAutoTraining, setAiRiskAutoTraining] = useState(false);
+
+  // Auto-train AI model on app load
+  useEffect(() => {
+    if (screen !== 'app' || aiRiskAutoTraining || aiRiskTrained) return;
+
+    const autoTrainModel = async () => {
+      setAiRiskAutoTraining(true);
+      setAiRiskLoading(true);
+      
+      try {
+        console.log('🤖 Auto-training AI Risk Model...');
+        
+        // Try to load existing model first
+        const { TerrainRiskModel } = await import('../lib/ml-risk');
+        const model = new TerrainRiskModel();
+        
+        try {
+          await model.loadModel('luisiana-risk-model');
+          console.log('✅ Loaded existing trained model');
+          setAiRiskModel(model);
+          setAiRiskTrained(true);
+        } catch (loadError) {
+          // No existing model, train new one
+          console.log('📚 Training new model with 2000 samples...');
+          const { generateSyntheticTrainingData } = await import('../lib/ml-risk');
+          const trainingData = generateSyntheticTrainingData(2000);
+          
+          await model.train(trainingData, 50); // 50 epochs for better accuracy
+          await model.saveModel('luisiana-risk-model');
+          
+          console.log('✅ Model trained and saved successfully!');
+          setAiRiskModel(model);
+          setAiRiskTrained(true);
+        }
+      } catch (error) {
+        console.error('❌ Auto-training failed:', error);
+      } finally {
+        setAiRiskLoading(false);
+        setAiRiskAutoTraining(false);
+      }
+    };
+
+    // Start auto-training after 2 seconds (let app load first)
+    const timer = setTimeout(autoTrainModel, 2000);
+    return () => clearTimeout(timer);
+  }, [screen, aiRiskAutoTraining, aiRiskTrained]);
 
   // Map bearing for compass display
   const [mapBearing, setMapBearing] = useState(-15);
@@ -979,6 +1040,48 @@ export default function App() {
     const interval = setInterval(fetchEvents, 30 * 60 * 1000);
     return () => clearInterval(interval);
   }, [eonetEnabled, eonetCategories, eonetRadius]);
+
+  // Generate AI Risk Predictions
+  useEffect(() => {
+    if (!aiRiskEnabled || !aiRiskModel) return;
+
+    const generatePredictions = async () => {
+      setAiRiskLoading(true);
+      try {
+        const { generateRiskGrid, updateGridWithWeather } = await import('../lib/risk-grid');
+        
+        // Generate smaller grid (20x20 = 441 points) - lighter and faster
+        let grid = generateRiskGrid(20);
+        
+        // Update with current weather if available
+        if (weather) {
+          grid = updateGridWithWeather(grid, {
+            rainfallMm: weather.rainfallMm,
+            humidityPct: weather.humidityPct || 70,
+          });
+        }
+        
+        // Generate predictions for all grid points
+        const predictions = await aiRiskModel.predictBatch(grid.map((p: any) => p.features));
+        
+        // Combine with positions
+        const predictionData = grid.map((point: any, i: number) => ({
+          position: point.position,
+          prediction: predictions[i],
+        }));
+        
+        setAiRiskPredictions(predictionData);
+        console.log(`✅ Generated ${predictionData.length} risk predictions`);
+      } catch (error) {
+        console.error("Failed to generate predictions:", error);
+        setAiRiskPredictions([]);
+      } finally {
+        setAiRiskLoading(false);
+      }
+    };
+
+    generatePredictions();
+  }, [aiRiskEnabled, aiRiskModel, weather]);
 
   const topRisk = useMemo(() => {
     const feats = riskZones?.features || [];
@@ -1795,6 +1898,8 @@ export default function App() {
           sunLightPosition={[0, -70, 100]}
           enabledEONET={eonetEnabled}
           eonetEvents={eonetEvents}
+          enabledAIRisk={aiRiskEnabled}
+          aiRiskPredictions={aiRiskPredictions}
         />
 
         <BuildingOverlay
@@ -2084,6 +2189,25 @@ export default function App() {
               }}
             >
               🌍 Events
+            </button>
+          )}
+          {roleConfig?.canSeeLayers && (
+            <button
+              onClick={() => setSidebarTab("ai-risk")}
+              style={{
+                flex: "0 0 auto",
+                cursor: "pointer",
+                padding: "8px 14px",
+                borderRadius: "8px 8px 0 0",
+                fontSize: 12,
+                fontWeight: 600,
+                border: "none",
+                background: sidebarTab === "ai-risk" ? "rgba(138,43,226,0.15)" : "rgba(255,255,255,0.03)",
+                color: sidebarTab === "ai-risk" ? "#8a2be2" : "rgba(255,255,255,0.6)",
+                borderBottom: sidebarTab === "ai-risk" ? "2px solid #8a2be2" : "none",
+              }}
+            >
+              🤖 AI Risk
             </button>
           )}
         </div>
@@ -3200,6 +3324,174 @@ export default function App() {
             <div style={{ marginTop: 16, padding: 12, background: "rgba(255,100,100,0.08)", border: "1px solid rgba(255,100,100,0.15)", borderRadius: 8 }}>
               <div style={{ fontSize: 11, color: "rgba(255,255,255,0.65)", lineHeight: 1.6 }}>
                 💡 <strong>About:</strong> NASA EONET provides near real-time natural event data. Events are updated every 30 minutes. Click on map markers for details.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── AI Risk Analysis Tab ── */}
+        {sidebarTab === "ai-risk" && roleConfig?.canSeeLayers && (
+          <div className="card" style={{ marginBottom: 12 }}>
+            <div className="sectionTitle" style={{ marginBottom: 8 }}>
+              🤖 AI-Powered Risk Analysis
+            </div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.55)", marginBottom: 12, lineHeight: 1.5 }}>
+              Machine learning model predicts landslide and flood risks based on terrain, weather, and historical data
+            </div>
+
+            {/* Model Status */}
+            <div style={{ marginBottom: 16, padding: 12, background: aiRiskTrained ? "rgba(92,219,149,0.08)" : aiRiskLoading ? "rgba(255,215,0,0.08)" : "rgba(255,215,0,0.08)", border: `1px solid ${aiRiskTrained ? "rgba(92,219,149,0.15)" : aiRiskLoading ? "rgba(255,215,0,0.15)" : "rgba(255,215,0,0.15)"}`, borderRadius: 8 }}>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.75)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
+                Model Status
+              </div>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.85)" }}>
+                {aiRiskLoading ? (
+                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#ffd666", animation: "pulse 1.5s infinite" }} />
+                    Auto-training model... (50 epochs)
+                  </span>
+                ) : aiRiskTrained ? (
+                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#5cdb95" }} />
+                    Model trained and ready (2000 samples)
+                  </span>
+                ) : (
+                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#ffd666" }} />
+                    Initializing...
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Manual Train Button (only if auto-train failed) */}
+            {!aiRiskTrained && !aiRiskLoading && (
+              <div style={{ marginBottom: 16 }}>
+                <button
+                  onClick={async () => {
+                    setAiRiskLoading(true);
+                    try {
+                      const { TerrainRiskModel, generateSyntheticTrainingData } = await import('../lib/ml-risk');
+                      const model = new TerrainRiskModel();
+                      const trainingData = generateSyntheticTrainingData(2000);
+                      await model.train(trainingData, 50);
+                      await model.saveModel('luisiana-risk-model');
+                      setAiRiskModel(model);
+                      setAiRiskTrained(true);
+                      alert('✅ Model trained successfully!');
+                    } catch (error) {
+                      console.error('Training failed:', error);
+                      alert('❌ Training failed. Check console for details.');
+                    } finally {
+                      setAiRiskLoading(false);
+                    }
+                  }}
+                  style={{
+                    width: "100%",
+                    cursor: "pointer",
+                    padding: "12px",
+                    borderRadius: 8,
+                    background: "rgba(138,43,226,0.20)",
+                    border: "1px solid rgba(138,43,226,0.40)",
+                    color: "rgba(255,255,255,0.90)",
+                    fontSize: 13,
+                    fontWeight: 600,
+                  }}
+                >
+                  🚀 Retry Training
+                </button>
+              </div>
+            )}
+
+            {/* Enable/Disable Toggle */}
+            {aiRiskTrained && (
+              <div className="toggleRow" style={{ marginBottom: 16 }}>
+                <div>
+                  <label>Enable Risk Visualization</label>
+                  <div className="hint">Show AI predictions on map</div>
+                </div>
+                <div
+                  className={`switch ${aiRiskEnabled ? "on" : ""}`}
+                  role="switch"
+                  aria-checked={aiRiskEnabled}
+                  onClick={() => setAiRiskEnabled(!aiRiskEnabled)}
+                />
+              </div>
+            )}
+
+            {/* Risk Statistics */}
+            {aiRiskEnabled && aiRiskPredictions.length > 0 && (
+              <div style={{ marginBottom: 16, padding: 12, background: "rgba(138,43,226,0.08)", border: "1px solid rgba(138,43,226,0.15)", borderRadius: 8 }}>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.75)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
+                  Risk Analysis Summary
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
+                  {(() => {
+                    const safe = aiRiskPredictions.filter(p => p.riskLevel === 'SAFE').length;
+                    const low = aiRiskPredictions.filter(p => p.riskLevel === 'LOW').length;
+                    const moderate = aiRiskPredictions.filter(p => p.riskLevel === 'MODERATE').length;
+                    const high = aiRiskPredictions.filter(p => p.riskLevel === 'HIGH').length;
+                    const critical = aiRiskPredictions.filter(p => p.riskLevel === 'CRITICAL').length;
+                    const total = aiRiskPredictions.length;
+
+                    return (
+                      <>
+                        <div style={{ fontSize: 11 }}>
+                          <span style={{ color: "#5cdb95" }}>🟢 Safe:</span>
+                          <span style={{ color: "rgba(255,255,255,0.85)", marginLeft: 6 }}>
+                            {((safe / total) * 100).toFixed(0)}%
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 11 }}>
+                          <span style={{ color: "#90ee90" }}>🟡 Low:</span>
+                          <span style={{ color: "rgba(255,255,255,0.85)", marginLeft: 6 }}>
+                            {((low / total) * 100).toFixed(0)}%
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 11 }}>
+                          <span style={{ color: "#ffd666" }}>🟡 Moderate:</span>
+                          <span style={{ color: "rgba(255,255,255,0.85)", marginLeft: 6 }}>
+                            {((moderate / total) * 100).toFixed(0)}%
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 11 }}>
+                          <span style={{ color: "#ffa500" }}>🟠 High:</span>
+                          <span style={{ color: "rgba(255,255,255,0.85)", marginLeft: 6 }}>
+                            {((high / total) * 100).toFixed(0)}%
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 11, gridColumn: "1 / -1" }}>
+                          <span style={{ color: "#ff4d4f" }}>🔴 Critical:</span>
+                          <span style={{ color: "rgba(255,255,255,0.85)", marginLeft: 6 }}>
+                            {((critical / total) * 100).toFixed(0)}%
+                          </span>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+            )}
+
+            {/* Features Info */}
+            <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.75)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
+                📊 Analysis Features
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 11, color: "rgba(255,255,255,0.65)" }}>
+                <div>✓ Terrain slope and elevation</div>
+                <div>✓ Rainfall and soil moisture</div>
+                <div>✓ Vegetation density</div>
+                <div>✓ Distance to water bodies</div>
+                <div>✓ Historical disaster data</div>
+                <div>✓ Real-time weather integration</div>
+              </div>
+            </div>
+
+            {/* Info Box */}
+            <div style={{ marginTop: 16, padding: 12, background: "rgba(138,43,226,0.08)", border: "1px solid rgba(138,43,226,0.15)", borderRadius: 8 }}>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.65)", lineHeight: 1.6 }}>
+                💡 <strong>About:</strong> AI model uses deep learning to predict landslide and flood risks. Predictions are probabilistic and should be used as decision support, not sole determinant.
               </div>
             </div>
           </div>
