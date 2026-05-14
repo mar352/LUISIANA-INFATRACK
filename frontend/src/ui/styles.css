@@ -214,3 +214,13 @@ html, body, #root { height: 100%; margin: 0; background: var(--bg); color: var(-
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
 }
+
+/* Hide scrollbar for modal content */
+.modal-content-scroll::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
+
+.modal-content-scroll {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}

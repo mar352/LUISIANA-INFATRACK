@@ -1418,6 +1418,16 @@ export default function App() {
   const customModelFileRef = useRef<File | null>(null);
   // Set to true by BuildingOverlay when a building is clicked — prevents placement
   const buildingHitRef = useRef(false);
+  
+  // Modal state for entering building details before placement
+  const [showPlacementModal, setShowPlacementModal] = useState(false);
+  const [pendingPlacement, setPendingPlacement] = useState<{ lng: number; lat: number } | null>(null);
+  const [modalProjectName, setModalProjectName] = useState("");
+  const [modalProjectType, setModalProjectType] = useState<"Municipal Project" | "Private Building" | "Agricultural Structure">("Municipal Project");
+  const [modalDepartment, setModalDepartment] = useState<"MPDC" | "Engineering" | "Agriculture" | "Negosyo Center">("Engineering");
+  const [modalStatus, setModalStatus] = useState<"Planning" | "Ongoing" | "Completed">("Planning");
+  const [modalProgress, setModalProgress] = useState(0);
+  const [modalDescription, setModalDescription] = useState("");
 
   useEffect(() => { placementModeRef.current = placementMode; }, [placementMode]);
   useEffect(() => { selectedModelRef.current = selectedModel; }, [selectedModel]);
@@ -1433,57 +1443,97 @@ export default function App() {
       if (!placementModeRef.current) return;
       // If BuildingOverlay consumed this click (building was hit), skip placement
       if (buildingHitRef.current) { buildingHitRef.current = false; return; }
+      
       const { lng, lat } = e.lngLat;
+      
+      // Show modal to enter building details
+      setPendingPlacement({ lng, lat });
       const catalog = MODEL_CATALOG.find((m) => m.type === selectedModelRef.current);
-      const name = placingNameRef.current.trim() ||
-        `${catalog?.label ?? selectedModelRef.current} (${new Date().toLocaleTimeString()})`;
-
-      try {
-        // If custom model is selected and a file is provided, upload it first
-        let customModelUrl: string | undefined;
-        if (selectedModelRef.current === "custom" && customModelFileRef.current) {
-          const formData = new FormData();
-          formData.append("model", customModelFileRef.current);
-          
-          const uploadRes = await fetch("http://localhost:4000/api/upload-model", {
-            method: "POST",
-            body: formData,
-          });
-          
-          if (uploadRes.ok) {
-            const data = await uploadRes.json();
-            customModelUrl = data.url;
-          } else {
-            console.error("Failed to upload custom model");
-            alert("Failed to upload custom model. Please try again.");
-            return;
-          }
-        }
-
-        await fetch("http://localhost:4000/api/projects", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name,
-            modelType: selectedModelRef.current,
-            type: catalog?.category === "Agriculture" ? "Agricultural Structure" :
-                  catalog?.category === "Infrastructure" ? "Municipal Project" :
-                  catalog?.category === "Construction" ? "Municipal Project" : "Private Building",
-            department: "Engineering",
-            location: { lat, lon: lng },
-            rotation: placementRotationRef.current,
-            customModelUrl,
-          }),
-        });
-        // Backend will emit projects:update via socket
-      } catch (err) {
-        console.error("Failed to place project:", err);
-      }
+      setModalProjectName(placingNameRef.current.trim() || `${catalog?.label ?? selectedModelRef.current}`);
+      setModalProjectType(
+        catalog?.category === "Agriculture" ? "Agricultural Structure" :
+        catalog?.category === "Infrastructure" ? "Municipal Project" :
+        catalog?.category === "Construction" ? "Municipal Project" : "Private Building"
+      );
+      setModalDepartment("Engineering");
+      setModalStatus("Planning");
+      setModalProgress(0);
+      setModalDescription(catalog?.description || "");
+      setShowPlacementModal(true);
     };
 
     map.on("click", handleClick);
     return () => { map.off("click", handleClick); };
   }, [mapRef.current]);
+
+  // Function to actually place the building after modal submission
+  const handlePlaceBuilding = async () => {
+    if (!pendingPlacement) return;
+
+    const { lng, lat } = pendingPlacement;
+
+    try {
+      // If custom model is selected and a file is provided, upload it first
+      let customModelUrl: string | undefined;
+      if (selectedModelRef.current === "custom" && customModelFileRef.current) {
+        const formData = new FormData();
+        formData.append("model", customModelFileRef.current);
+        
+        const uploadRes = await fetch("http://localhost:4000/api/upload-model", {
+          method: "POST",
+          body: formData,
+        });
+        
+        if (uploadRes.ok) {
+          const data = await uploadRes.json();
+          customModelUrl = data.url;
+        } else {
+          console.error("Failed to upload custom model");
+          alert("Failed to upload custom model. Please try again.");
+          return;
+        }
+      }
+
+      await fetch("http://localhost:4000/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: modalProjectName,
+          modelType: selectedModelRef.current,
+          type: modalProjectType,
+          department: modalDepartment,
+          status: modalStatus,
+          progress: modalProgress,
+          location: { lat, lon: lng },
+          rotation: placementRotationRef.current,
+          customModelUrl,
+        }),
+      });
+      
+      // Close modal and reset
+      setShowPlacementModal(false);
+      setPendingPlacement(null);
+      setModalProjectName("");
+      setModalDescription("");
+      
+      // Backend will emit projects:update via socket
+    } catch (err) {
+      console.error("Failed to place project:", err);
+      alert("Failed to place building. Please try again.");
+    }
+  };
+
+  // ESC key to close placement modal
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && showPlacementModal) {
+        setShowPlacementModal(false);
+        setPendingPlacement(null);
+      }
+    };
+    window.addEventListener("keydown", handleEsc);
+    return () => window.removeEventListener("keydown", handleEsc);
+  }, [showPlacementModal]);
 
   function upsertGibsLayer(args: { layer: GibsLayerId; date: string; opacity: number; visible: boolean }) {
     const map = mapRef.current;
@@ -3509,6 +3559,290 @@ export default function App() {
         )}
       </aside>
       </>}
+      
+      {/* Placement Modal - Enter Building Details */}
+      {showPlacementModal && pendingPlacement && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 10000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "rgba(0, 0, 0, 0.80)",
+            backdropFilter: "blur(10px)",
+          }}
+          onClick={() => {
+            setShowPlacementModal(false);
+            setPendingPlacement(null);
+          }}
+        >
+          <div
+            style={{
+              background: "rgba(15, 23, 35, 0.98)",
+              border: "1px solid rgba(255,255,255,0.1)",
+              borderRadius: 12,
+              padding: "24px 28px",
+              maxWidth: 500,
+              width: "90%",
+              maxHeight: "85vh",
+              overflowY: "auto",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
+              color: "rgba(255,255,255,0.9)",
+              position: "relative",
+            }}
+            className="modal-content-scroll"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close button */}
+            <button
+              onClick={() => {
+                setShowPlacementModal(false);
+                setPendingPlacement(null);
+              }}
+              style={{
+                position: "absolute",
+                top: 12,
+                right: 12,
+                cursor: "pointer",
+                background: "none",
+                border: "none",
+                color: "rgba(255,255,255,0.5)",
+                fontSize: 24,
+                padding: 0,
+                width: 32,
+                height: 32,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+              title="Close (ESC)"
+            >
+              ×
+            </button>
+
+            {/* Header */}
+            <div style={{ marginBottom: 20 }}>
+              <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: "#fff", lineHeight: 1.3, marginBottom: 4 }}>
+                Place New Infrastructure
+              </h2>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>
+                Enter building details before placing on map
+              </div>
+            </div>
+
+            {/* Form Fields */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {/* Project Name */}
+              <div>
+                <label style={{ display: "block", fontSize: 11, color: "rgba(255,255,255,0.5)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
+                  Project Name *
+                </label>
+                <input
+                  type="text"
+                  value={modalProjectName}
+                  onChange={(e) => setModalProjectName(e.target.value)}
+                  placeholder="e.g. Barangay Hall Phase 2"
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    padding: "10px 12px",
+                    borderRadius: 6,
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    background: "rgba(0,0,0,0.25)",
+                    color: "rgba(255,255,255,0.9)",
+                    fontSize: 14,
+                    outline: "none",
+                  }}
+                />
+              </div>
+
+              {/* Type */}
+              <div>
+                <label style={{ display: "block", fontSize: 11, color: "rgba(255,255,255,0.5)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
+                  Project Type *
+                </label>
+                <select
+                  value={modalProjectType}
+                  onChange={(e) => setModalProjectType(e.target.value as any)}
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    padding: "10px 12px",
+                    borderRadius: 6,
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    background: "rgba(0,0,0,0.25)",
+                    color: "rgba(255,255,255,0.9)",
+                    fontSize: 14,
+                    outline: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  <option value="Municipal Project">Municipal Project</option>
+                  <option value="Private Building">Private Building</option>
+                  <option value="Agricultural Structure">Agricultural Structure</option>
+                </select>
+              </div>
+
+              {/* Department */}
+              <div>
+                <label style={{ display: "block", fontSize: 11, color: "rgba(255,255,255,0.5)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
+                  Department *
+                </label>
+                <select
+                  value={modalDepartment}
+                  onChange={(e) => setModalDepartment(e.target.value as any)}
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    padding: "10px 12px",
+                    borderRadius: 6,
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    background: "rgba(0,0,0,0.25)",
+                    color: "rgba(255,255,255,0.9)",
+                    fontSize: 14,
+                    outline: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  <option value="MPDC">MPDC</option>
+                  <option value="Engineering">Engineering</option>
+                  <option value="Agriculture">Agriculture</option>
+                  <option value="Negosyo Center">Negosyo Center</option>
+                </select>
+              </div>
+
+              {/* Status */}
+              <div>
+                <label style={{ display: "block", fontSize: 11, color: "rgba(255,255,255,0.5)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
+                  Status *
+                </label>
+                <select
+                  value={modalStatus}
+                  onChange={(e) => setModalStatus(e.target.value as any)}
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    padding: "10px 12px",
+                    borderRadius: 6,
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    background: "rgba(0,0,0,0.25)",
+                    color: "rgba(255,255,255,0.9)",
+                    fontSize: 14,
+                    outline: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  <option value="Planning">Planning</option>
+                  <option value="Ongoing">Ongoing</option>
+                  <option value="Completed">Completed</option>
+                </select>
+              </div>
+
+              {/* Progress */}
+              <div>
+                <label style={{ display: "block", fontSize: 11, color: "rgba(255,255,255,0.5)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
+                  Progress: {modalProgress}%
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="5"
+                  value={modalProgress}
+                  onChange={(e) => setModalProgress(Number(e.target.value))}
+                  style={{
+                    width: "100%",
+                    cursor: "pointer",
+                  }}
+                />
+              </div>
+
+              {/* Description */}
+              <div>
+                <label style={{ display: "block", fontSize: 11, color: "rgba(255,255,255,0.5)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
+                  Description (Optional)
+                </label>
+                <textarea
+                  value={modalDescription}
+                  onChange={(e) => setModalDescription(e.target.value)}
+                  placeholder="Enter project description..."
+                  rows={3}
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    padding: "10px 12px",
+                    borderRadius: 6,
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    background: "rgba(0,0,0,0.25)",
+                    color: "rgba(255,255,255,0.9)",
+                    fontSize: 13,
+                    outline: "none",
+                    resize: "vertical",
+                    fontFamily: "inherit",
+                  }}
+                />
+              </div>
+
+              {/* Location Info */}
+              <div style={{ padding: "10px 12px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 6 }}>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Location
+                </div>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)", fontFamily: "monospace" }}>
+                  {pendingPlacement.lat.toFixed(6)}°N, {pendingPlacement.lng.toFixed(6)}°E
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div style={{ display: "flex", gap: 10, marginTop: 20, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+              <button
+                onClick={() => {
+                  setShowPlacementModal(false);
+                  setPendingPlacement(null);
+                }}
+                style={{
+                  flex: 1,
+                  cursor: "pointer",
+                  padding: "11px 0",
+                  borderRadius: 8,
+                  background: "rgba(255,255,255,0.05)",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  color: "rgba(255,255,255,0.6)",
+                  fontSize: 14,
+                  fontWeight: 600,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handlePlaceBuilding}
+                disabled={!modalProjectName.trim()}
+                style={{
+                  flex: 1,
+                  cursor: modalProjectName.trim() ? "pointer" : "not-allowed",
+                  padding: "11px 0",
+                  borderRadius: 8,
+                  background: modalProjectName.trim() 
+                    ? "rgba(25,195,125,0.2)" 
+                    : "rgba(100,100,100,0.15)",
+                  border: modalProjectName.trim()
+                    ? "1px solid rgba(25,195,125,0.4)"
+                    : "1px solid rgba(100,100,100,0.25)",
+                  color: modalProjectName.trim() ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.35)",
+                  fontSize: 14,
+                  fontWeight: 600,
+                  opacity: modalProjectName.trim() ? 1 : 0.6,
+                }}
+              >
+                Place Building
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
