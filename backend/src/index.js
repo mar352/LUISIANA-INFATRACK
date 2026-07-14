@@ -19,10 +19,12 @@ const __dirname = path.dirname(__filename);
 
 const PORT = Number(process.env.PORT || 4000);
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:5173";
-const LOCALHOST_ORIGIN_RE = /^http:\/\/localhost:\d+$/;
+const LOCALHOST_ORIGIN_RE = /^http:\/\/(localhost|127\.0\.0\.1):\d+$/;
 
 // Setup multer for file uploads
-const uploadsDir = path.join(__dirname, "../../frontend/public/uploads");
+// Local: frontend/public/uploads · Docker: UPLOADS_DIR=/app/uploads (shared volume)
+const uploadsDir =
+  process.env.UPLOADS_DIR || path.join(__dirname, "../../frontend/public/uploads");
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
@@ -52,6 +54,7 @@ const upload = multer({
 
 const app = express();
 app.use(express.json({ limit: "2mb" }));
+app.use("/uploads", express.static(uploadsDir));
 app.use(
   cors({
     origin: (origin, cb) => {
@@ -215,9 +218,10 @@ setInterval(async () => {
   }
 }, 5000);
 
-server.listen(PORT, () => {
-  console.log(`[INFA-TRACK] backend listening on http://localhost:${PORT}`);
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`[INFA-TRACK] backend listening on http://0.0.0.0:${PORT}`);
   console.log(`[INFA-TRACK] allowed client origin: ${CLIENT_ORIGIN}`);
+  console.log(`[INFA-TRACK] uploads dir: ${uploadsDir}`);
 
   // Build real slope cache from AWS Terrarium DEM on startup
   // Runs in background — risk zones fall back to 0.4 until ready (~5-10s)

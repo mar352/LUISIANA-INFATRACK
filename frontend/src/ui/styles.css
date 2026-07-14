@@ -120,10 +120,16 @@ input[type="range"] {
   display: grid;
   grid-template-columns: 1fr minmax(320px, 22rem);
   background: var(--cream);
+  transition: grid-template-columns 0.28s ease;
+}
+
+.appShell.sidebar-collapsed {
+  grid-template-columns: 1fr 0px;
 }
 
 @media (max-width: 1024px) {
-  .appShell { grid-template-columns: 1fr; }
+  .appShell,
+  .appShell.sidebar-collapsed { grid-template-columns: 1fr; }
 }
 
 .mapWrap { position: relative; height: 100%; min-height: 0; }
@@ -199,6 +205,7 @@ input[type="range"] {
 }
 
 .sidePanel {
+  position: relative;
   height: 100%;
   min-width: 0;
   border-left: 3px solid var(--burnt);
@@ -208,6 +215,88 @@ input[type="range"] {
   overflow-y: hidden;
   display: flex;
   flex-direction: column;
+  transition: opacity 0.22s ease, transform 0.28s ease;
+}
+
+.sidePanel.is-collapsed {
+  opacity: 0;
+  pointer-events: none;
+  border-left-width: 0;
+}
+
+.sidePanel-head {
+  display: flex;
+  align-items: stretch;
+  background: var(--surface-burnt);
+  flex-shrink: 0;
+}
+
+.sidePanel-head > .sectionTitle {
+  flex: 1;
+  background: transparent;
+  color: var(--cream);
+  margin: 0;
+  padding: 18px 10px 14px 18px;
+  font-size: var(--fs-label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 700;
+  border-radius: 0;
+}
+
+.sidePanel-collapseBtn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-left: 1px solid color-mix(in oklch, var(--cream) 18%, transparent);
+  border-radius: 0;
+  background: transparent;
+  color: var(--cream);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.sidePanel-collapseBtn:hover {
+  background: color-mix(in oklch, var(--cream) 14%, transparent);
+  color: #fff;
+}
+
+/* Expand control — only when the panel is collapsed */
+.sidePanel-edgeToggle {
+  display: none;
+  position: fixed;
+  right: 0;
+  top: 50%;
+  z-index: calc(var(--z-sticky) + 2);
+  width: 28px;
+  height: 56px;
+  margin: 0;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  transform: translateY(-50%);
+  border: 3px solid var(--burnt);
+  border-right: none;
+  border-radius: 0;
+  background: var(--surface-burnt);
+  color: var(--cream);
+  cursor: pointer;
+  box-shadow: none;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.sidePanel-edgeToggle.is-collapsed {
+  display: inline-flex;
+}
+
+.sidePanel-edgeToggle:hover {
+  background: var(--burnt);
+  color: #fff;
 }
 
 .sidePanel > .sectionTitle {
@@ -222,7 +311,7 @@ input[type="range"] {
   border-radius: 0;
 }
 
-.sidePanel > *:not(.sectionTitle) {
+.sidePanel > *:not(.sectionTitle):not(.sidePanel-head) {
   padding-left: 16px;
   padding-right: 16px;
   min-width: 0;
@@ -278,6 +367,13 @@ input[type="range"] {
     border-radius: 0;
     background: var(--cream);
     z-index: var(--z-sticky);
+    transition: transform 0.28s ease, opacity 0.22s ease;
+  }
+
+  .sidePanel.is-collapsed {
+    transform: translateX(calc(100% + 8px));
+    opacity: 0;
+    pointer-events: none;
   }
 }
 

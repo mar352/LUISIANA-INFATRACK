@@ -10,7 +10,8 @@ type Events = {
 };
 
 export function connectRealtime(baseUrl: string) {
-  const socket: Socket<Events> = io(baseUrl, { transports: ["websocket"] });
+  // Empty string → connect to same origin (Docker / nginx)
+  const socket: Socket<Events> = io(baseUrl || undefined, { transports: ["websocket"] });
   return socket;
 }
 

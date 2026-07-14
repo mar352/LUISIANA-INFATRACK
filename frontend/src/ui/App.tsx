@@ -6,6 +6,7 @@ import { BuildingOverlay } from "./BuildingOverlay";
 import type { AlertItem, HeatPoint, Project, RiskZones, WeatherSnapshot } from "../types";
 import { MODEL_CATALOG, type ModelType } from "../types";
 import { connectRealtime } from "../lib/realtime";
+import { BACKEND_URL, backendUrl } from "../lib/api";
 import { buildHeatmapPoints, type BBox, type HeatmapMetric } from "../lib/heatmap";
 import { fetchRadarFrames, radarTileUrl, formatRadarTime, type RadarColorScheme, type RadarFrame, RADAR_COLOR_SCHEMES } from "../lib/radar";
 import { formatGibsDate, gibsWmtsTileUrl, type GibsLayerId } from "../lib/gibs";
@@ -36,15 +37,9 @@ import {
   getRiskDescription,
   type RiskPrediction 
 } from "../lib/ml-risk";
-import SunCalc from "suncalc";
 import { LandingPage, LoginScreen, ROLE_CONFIGS, type UserRole } from "./Landing";
 
 // ── Dashboard icons ────────────────────────────────────────────────────────────
-const IconCloud = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
-  </svg>
-);
 const IconClipboard = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
     <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
@@ -140,7 +135,6 @@ const ModelIcons: Record<string, React.FC<{ size?: number; color?: string }>> = 
 
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined;
-const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL as string | undefined) || "http://localhost:4000";
 
 // OpenFreeMap Liberty — free vector tiles with OSM building footprints + heights.
 // No API key needed. Buildings have render_height / render_min_height properties.
@@ -261,18 +255,30 @@ export default function App() {
   const [placingName, setPlacingName] = useState("");
   const [customModelFile, setCustomModelFile] = useState<File | null>(null);
   const [customModelPreview, setCustomModelPreview] = useState<string | null>(null);
-  const [sidebarTab, setSidebarTab] = useState<"weather" | "layers" | "radar" | "risk" | "projects" | "climate" | "events" | "ai-risk">("weather");
+  const [sidebarTab, setSidebarTab] = useState<"layers" | "radar" | "risk" | "projects" | "climate" | "events" | "ai-risk">("climate");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
 
   // Set default tab based on role permissions
   useEffect(() => {
     if (roleConfig) {
-      if (roleConfig.canSeeWeather) setSidebarTab("weather");
-      else if (roleConfig.canSeeLayers) setSidebarTab("layers");
+      if (roleConfig.canSeeWeather || roleConfig.canSeeLayers) setSidebarTab("climate");
       else if (roleConfig.canSeeRisk) setSidebarTab("risk");
       else if (roleConfig.canSeeProjects) setSidebarTab("projects");
     }
   }, [currentRole]);
+
+  // MapLibre needs a resize after the panel width animates
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const timers = [50, 280, 420].map((ms) =>
+      window.setTimeout(() => {
+        try { map.resize(); } catch { /* map may be gone */ }
+      }, ms)
+    );
+    return () => timers.forEach(clearTimeout);
+  }, [sidebarCollapsed]);
   const [heatMetric, setHeatMetric] = useState<HeatmapMetric>("combined");
   const [viewport, setViewport] = useState<{ bbox: BBox; zoom: number } | null>(null);
   const [radarHost, setRadarHost] = useState<string | null>(null);
@@ -846,11 +852,11 @@ export default function App() {
         const formData = new FormData();
         formData.append("model", customModelFileRef.current);
         
-        const uploadRes = await fetch("http://localhost:4000/api/upload-model", {
+        const uploadRes = await fetch(backendUrl("/api/upload-model"), {
           method: "POST",
           body: formData,
         });
-        
+
         if (uploadRes.ok) {
           const data = await uploadRes.json();
           customModelUrl = data.url;
@@ -861,7 +867,7 @@ export default function App() {
         }
       }
 
-      await fetch("http://localhost:4000/api/projects", {
+      await fetch(backendUrl("/api/projects"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1288,7 +1294,7 @@ export default function App() {
   }, [projects]);
 
   return (
-    <div className="appShell">
+    <div className={`appShell${sidebarCollapsed ? " sidebar-collapsed" : ""}`}>
       {/* Landing page */}
       {screen === "landing" && <LandingPage onEnter={() => setScreen("login")} />}
 
@@ -1326,7 +1332,7 @@ export default function App() {
           onBuildingClick={(hit) => { buildingHitRef.current = hit; }}
           onDeleteBuilding={async (projectId) => {
             try {
-              await fetch(`${BACKEND_URL}/api/projects/${projectId}`, { method: "DELETE" });
+              await fetch(backendUrl(`/api/projects/${projectId}`), { method: "DELETE" });
             } catch (err) {
               console.error("Failed to delete project:", err);
             }
@@ -1435,13 +1441,40 @@ export default function App() {
 
       </div>
 
-      <aside className="sidePanel">
-        <div className="sectionTitle">Live Situation Panel</div>
+      <button
+        type="button"
+        className={`sidePanel-edgeToggle${sidebarCollapsed ? " is-collapsed" : ""}`}
+        aria-label={sidebarCollapsed ? "Expand side panel" : "Collapse side panel"}
+        title={sidebarCollapsed ? "Expand panel" : "Collapse panel"}
+        onClick={() => setSidebarCollapsed((v) => !v)}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          {sidebarCollapsed
+            ? <polyline points="15 18 9 12 15 6" />
+            : <polyline points="9 18 15 12 9 6" />}
+        </svg>
+      </button>
+
+      <aside className={`sidePanel${sidebarCollapsed ? " is-collapsed" : ""}`} aria-hidden={sidebarCollapsed}>
+        <div className="sidePanel-head">
+          <div className="sectionTitle">Live Situation Panel</div>
+          <button
+            type="button"
+            className="sidePanel-collapseBtn"
+            aria-label="Collapse side panel"
+            title="Collapse panel"
+            onClick={() => setSidebarCollapsed(true)}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </button>
+        </div>
 
         {/* Tab Navigation */}
         <div className="sidebar-tabs">
-          {roleConfig?.canSeeWeather && (
-            <button type="button" className={`sidebar-tab${sidebarTab === "weather" ? " active" : ""}`} onClick={() => setSidebarTab("weather")}>Weather</button>
+          {(roleConfig?.canSeeWeather || roleConfig?.canSeeLayers) && (
+            <button type="button" className={`sidebar-tab${sidebarTab === "climate" ? " active" : ""}`} onClick={() => setSidebarTab("climate")}>Climate</button>
           )}
           {roleConfig?.canSeeLayers && (
             <button type="button" className={`sidebar-tab${sidebarTab === "layers" ? " active" : ""}`} onClick={() => setSidebarTab("layers")}>Layers</button>
@@ -1456,9 +1489,6 @@ export default function App() {
             <button type="button" className={`sidebar-tab${sidebarTab === "projects" ? " active" : ""}`} onClick={() => setSidebarTab("projects")}>Projects</button>
           )}
           {roleConfig?.canSeeLayers && (
-            <button type="button" className={`sidebar-tab${sidebarTab === "climate" ? " active" : ""}`} onClick={() => setSidebarTab("climate")}>Climate</button>
-          )}
-          {roleConfig?.canSeeLayers && (
             <button type="button" className={`sidebar-tab${sidebarTab === "events" ? " active" : ""}`} onClick={() => setSidebarTab("events")}>Events</button>
           )}
           {roleConfig?.canSeeLayers && (
@@ -1469,9 +1499,6 @@ export default function App() {
         {/* Tab Content */}
         <div className="sidePanel-body">
 
-        {/* ── Weather Tab ── */}
-        {sidebarTab === "weather" && roleConfig?.canSeeWeather && (
-          <>
         {/* ── Negosyo Center: Business Permit Panel ── */}
         {roleConfig?.canSeeBusinessPermits && (
           <div className="card" style={{ marginBottom: 12 }}>
@@ -1517,82 +1544,6 @@ export default function App() {
               </div>
             </div>
           </div>
-        )}
-
-        <div className="card" style={{ marginBottom: 12 }}>
-          <div className="sectionTitle" style={{ marginBottom: 8 }}>
-            Weather — ECMWF IFS
-          </div>
-          <div className="grid2">
-            <div className="stat">
-              <div className="v">{weather ? `${weather.temperatureC}°C` : "—"}</div>
-              <div className="l">Temperature</div>
-            </div>
-            <div className="stat">
-              <div className="v">{weather ? `${weather.rainfallMm} mm` : "—"}</div>
-              <div className="l">Rainfall</div>
-            </div>
-            <div className="stat">
-              <div className="v">{weather ? `${weather.windSpeedMps} m/s` : "—"}</div>
-              <div className="l">Wind Speed</div>
-            </div>
-            <div className="stat">
-              <div className="v">{weather ? `${weather.cloudinessPct}%` : "—"}</div>
-              <div className="l">Cloud Cover</div>
-            </div>
-            <div className="stat">
-              <div className="v">{weather ? `${weather.humidityPct ?? "—"}%` : "—"}</div>
-              <div className="l">Humidity</div>
-            </div>
-            <div className="stat">
-              <div className="v">{weather ? `${weather.pressureHpa ?? "—"} hPa` : "—"}</div>
-              <div className="l">Pressure</div>
-            </div>
-          </div>
-          <div style={{ marginTop: 8, color: "var(--muted2)", fontSize: 11, display: "flex", justifyContent: "space-between" }}>
-            <span>Source: {weather?.source ?? "—"}</span>
-            <span>Updated: {weather ? formatAgo(weather.observedAt) : "—"}</span>
-          </div>
-
-          {/* 6-hour ECMWF forecast — key for infrastructure safety decisions */}
-          {weather?.forecast?.length ? (
-            <div style={{ marginTop: 10 }}>
-              <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                6-Hour Forecast (ECMWF)
-              </div>
-              <div style={{ display: "flex", gap: 4, flexWrap: "wrap", paddingBottom: 4 }}>
-                {weather.forecast.map((f) => {
-                  const rainColor = f.rainfallMm > 10 ? "var(--danger)" : f.rainfallMm > 3 ? "var(--warn)" : "var(--safe)";
-                  return (
-                    <div key={f.hour} style={{
-                      flex: "0 0 auto",
-                      minWidth: 52,
-                      border: "1px solid var(--stroke2)",
-                      borderRadius: 2,
-                      padding: "6px 5px",
-                      background: "oklch(0.88 0.032 152)",
-                      textAlign: "center",
-                    }}>
-                      <div style={{ fontSize: 10, color: "var(--muted2)", marginBottom: 3 }}>+{f.hour}h</div>
-                      <div style={{ fontSize: 12, fontWeight: 600 }}>{f.temperatureC}°</div>
-                      <div style={{ fontSize: 11, color: rainColor, marginTop: 2 }}>{f.rainfallMm}mm</div>
-                      <div style={{ fontSize: 10, color: "var(--muted2)", marginTop: 2 }}>{f.windSpeedMps}m/s</div>
-                    </div>
-                  );
-                })}
-              </div>
-              <div style={{ marginTop: 6, fontSize: 11, color: "var(--muted2)", display: "flex", alignItems: "center", gap: 5 }}>
-                {(() => {
-                  const maxRain = Math.max(...(weather.forecast.map(f => f.rainfallMm)));
-                  if (maxRain > 10) return <><IconWarn /> Heavy rain forecast — review construction schedules</>;
-                  if (maxRain > 3)  return <><IconCloud /> Moderate rain expected — monitor drainage</>;
-                  return <><IconCheck /> Conditions favorable for outdoor infrastructure work</>;
-                })()}
-              </div>
-            </div>
-          ) : null}
-        </div>
-          </>
         )}
 
         {/* ── Layers Tab ── */}
@@ -2052,7 +2003,7 @@ export default function App() {
                       </span>
                       <button
                         onClick={async () => {
-                          await fetch(`http://localhost:4000/api/projects/${p.id}`, { method: "DELETE" });
+                          await fetch(backendUrl(`/api/projects/${p.id}`), { method: "DELETE" });
                         }}
                         style={{
                           cursor: "pointer", padding: "2px 7px", borderRadius: 5, fontSize: 11,
@@ -2146,13 +2097,120 @@ export default function App() {
         )}
 
         {/* ── Climate Tab ── */}
-        {sidebarTab === "climate" && roleConfig?.canSeeLayers && (
+        {sidebarTab === "climate" && (roleConfig?.canSeeWeather || roleConfig?.canSeeLayers) && (
           <div className="card" style={{ marginBottom: 12 }}>
             <div className="sectionTitle" style={{ marginBottom: 8 }}>
-              🛰️ NASA GIBS Climate Data
+              Climate Readings
             </div>
             <div style={{ fontSize: 12, color: "oklch(0.48 0.035 152)", marginBottom: 12, lineHeight: 1.5 }}>
-              Real satellite data from NASA - Precipitation, Temperature, Imagery, Atmosphere
+              Live station values for Luisiana — readable numbers, not particle visualizations.
+            </div>
+
+            <div className="grid2" style={{ marginBottom: 12 }}>
+              <div className="stat">
+                <div className="v">{weather ? `${Math.round(weather.windSpeedMps * 3.6)} kph` : "—"}</div>
+                <div className="l">Wind Speed</div>
+              </div>
+              <div className="stat">
+                <div className="v">
+                  {weather
+                    ? (() => {
+                        const dirs = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+                        const label = dirs[Math.round(((weather.windDirectionDeg % 360) + 360) % 360 / 45) % 8];
+                        return `${label} · ${Math.round(weather.windDirectionDeg)}°`;
+                      })()
+                    : "—"}
+                </div>
+                <div className="l">Wind Direction</div>
+              </div>
+              <div className="stat">
+                <div className="v">{weather ? `${weather.temperatureC.toFixed(1)}°C` : "—"}</div>
+                <div className="l">Air Temperature</div>
+              </div>
+              <div className="stat">
+                <div className="v">{weather ? `${weather.rainfallMm.toFixed(1)} mm` : "—"}</div>
+                <div className="l">Rainfall</div>
+              </div>
+              <div className="stat">
+                <div className="v">{weather ? `${weather.humidityPct ?? "—"}%` : "—"}</div>
+                <div className="l">Humidity</div>
+              </div>
+              <div className="stat">
+                <div className="v">{weather ? `${weather.cloudinessPct}%` : "—"}</div>
+                <div className="l">Cloud Cover</div>
+              </div>
+              <div className="stat">
+                <div className="v">{weather ? `${weather.pressureHpa ?? "—"} hPa` : "—"}</div>
+                <div className="l">Pressure</div>
+              </div>
+              <div className="stat">
+                <div className="v">{weather ? `${(weather.rainfallIntensity * 100).toFixed(0)}%` : "—"}</div>
+                <div className="l">Rain Intensity</div>
+              </div>
+            </div>
+
+            {weather && (
+              <div style={{
+                marginBottom: 14,
+                padding: "10px 12px",
+                borderLeft: "4px solid var(--accent)",
+                background: "var(--cream-deep)",
+                fontSize: 12,
+                lineHeight: 1.45,
+                color: "var(--ink-soft)",
+              }}>
+                <strong style={{ color: "var(--ink)" }}>Hangin:</strong>{" "}
+                {Math.round(weather.windSpeedMps * 3.6) >= 118
+                  ? `Bagyo-level wind signal — ${Math.round(weather.windSpeedMps * 3.6)} kph. Limit outdoor / elevated work.`
+                  : Math.round(weather.windSpeedMps * 3.6) >= 62
+                    ? `Strong breeze at ${Math.round(weather.windSpeedMps * 3.6)} kph. Secure loose materials on site.`
+                    : Math.round(weather.windSpeedMps * 3.6) >= 30
+                      ? `Moderate wind at ${Math.round(weather.windSpeedMps * 3.6)} kph from ${["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(((weather.windDirectionDeg % 360) + 360) % 360 / 45) % 8]}.`
+                      : `Light wind at ${Math.round(weather.windSpeedMps * 3.6)} kph — conditions are manageable for outdoor operations.`}
+                <div style={{ marginTop: 6, fontSize: 11, color: "var(--muted2)" }}>
+                  Source: {weather.source} · Updated {formatAgo(weather.observedAt)}
+                </div>
+              </div>
+            )}
+
+            {weather?.forecast?.length ? (
+              <div style={{ marginBottom: 16 }}>
+                <div className="sectionTitle" style={{ marginBottom: 8 }}>Next hours (text forecast)</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                  {weather.forecast.slice(0, 6).map((f) => {
+                    const kph = Math.round(f.windSpeedMps * 3.6);
+                    const dirs = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+                    const dir = dirs[Math.round(((f.windDirectionDeg % 360) + 360) % 360 / 45) % 8];
+                    return (
+                      <div key={f.hour} style={{
+                        display: "grid",
+                        gridTemplateColumns: "3.2rem 1fr",
+                        gap: 10,
+                        padding: "8px 0",
+                        borderBottom: "1px solid var(--stroke2)",
+                        fontSize: 12,
+                      }}>
+                        <div style={{ fontWeight: 700, color: "var(--burnt-deep)" }}>+{f.hour}h</div>
+                        <div style={{ color: "var(--ink-soft)", lineHeight: 1.4 }}>
+                          Temp <strong style={{ color: "var(--ink)" }}>{f.temperatureC}°C</strong>
+                          {" · "}Wind <strong style={{ color: "var(--ink)" }}>{kph} kph {dir}</strong>
+                          {" · "}Rain <strong style={{ color: "var(--ink)" }}>{f.rainfallMm} mm</strong>
+                          {" · "}Clouds <strong style={{ color: "var(--ink)" }}>{f.cloudinessPct}%</strong>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+
+            {roleConfig?.canSeeLayers && (
+            <>
+            <div className="sectionTitle" style={{ marginBottom: 8 }}>
+              NASA GIBS Map Layers
+            </div>
+            <div style={{ fontSize: 12, color: "oklch(0.48 0.035 152)", marginBottom: 12, lineHeight: 1.5 }}>
+              Optional map overlays — precipitation, temperature, imagery, atmosphere.
             </div>
 
             {/* Enable/Disable Toggle */}
@@ -2362,6 +2420,8 @@ export default function App() {
                 💡 <strong>Tip:</strong> Use yesterday's date for most reliable data. Some layers have 1-2 day processing lag.
               </div>
             </div>
+            </>
+            )}
           </div>
         )}
 

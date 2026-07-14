@@ -1,0 +1,16 @@
+**/node_modules
+**/dist
+**/.vite
+**/.git
+**/.cursor
+**/.impeccable
+**/*.md
+!README.md
+**/.env
+**/.env.local
+frontend/public/uploads/*
+!frontend/public/uploads/.gitkeep
+**/agent-transcripts
+**/*.log
+**/.DS_Store
+**/Thumbs.db

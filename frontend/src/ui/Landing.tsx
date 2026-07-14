@@ -291,7 +291,7 @@ const PageDepartments = ({ onEnter }: { onEnter: () => void }) => (
             </div>
             <div className="dept-perms">
               {[
-                cfg.canSeeWeather && "Weather & Forecast",
+                cfg.canSeeWeather && "Climate & Forecast",
                 cfg.canSeeLayers && "Map Layer Controls",
                 cfg.canSeeRadar && "Radar Animation",
                 cfg.canSeeRisk && "Risk Zone Monitoring",
