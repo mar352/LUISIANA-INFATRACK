@@ -3,8 +3,8 @@ import maplibregl, { Map as MapLibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { DeckGLOverlay } from "./DeckOverlay";
 import { BuildingOverlay } from "./BuildingOverlay";
-import type { AlertItem, HeatPoint, Project, RiskZones, WeatherSnapshot } from "../types";
-import { MODEL_CATALOG, type ModelType } from "../types";
+import type { AlertItem, HeatPoint, Project, RiskZones, WeatherSnapshot, ProjectStatus } from "../types";
+import { MODEL_CATALOG, type ModelType, PROJECT_STATUS_COLORS } from "../types";
 import { connectRealtime } from "../lib/realtime";
 import { BACKEND_URL, backendUrl } from "../lib/api";
 import { buildHeatmapPoints, type BBox, type HeatmapMetric } from "../lib/heatmap";
@@ -38,6 +38,7 @@ import {
   type RiskPrediction 
 } from "../lib/ml-risk";
 import { LandingPage, LoginScreen, ROLE_CONFIGS, type UserRole } from "./Landing";
+import { ProjectMonitoringPanel } from "./ProjectMonitoringPanel";
 
 // ── Dashboard icons ────────────────────────────────────────────────────────────
 const IconClipboard = () => (
@@ -555,10 +556,13 @@ export default function App() {
           "circle-radius": 5,
           "circle-color": [
             "match", ["get", "status"],
-            "Completed", "#245C3A",
-            "Ongoing",   "#f5a623",
-            "Planning",  "#9b9b9b",
-            "#245C3A",
+            "Completed", PROJECT_STATUS_COLORS.Completed,
+            "Ongoing",   PROJECT_STATUS_COLORS.Ongoing,
+            "Delayed",   PROJECT_STATUS_COLORS.Delayed,
+            "Suspended", PROJECT_STATUS_COLORS.Suspended,
+            "Planned",   PROJECT_STATUS_COLORS.Planned,
+            "Planning",  PROJECT_STATUS_COLORS.Planned,
+            PROJECT_STATUS_COLORS.Planned,
           ],
           "circle-stroke-width": 1.5,
           "circle-stroke-color": "#ffffff",
@@ -798,9 +802,12 @@ export default function App() {
   const [modalProjectName, setModalProjectName] = useState("");
   const [modalProjectType, setModalProjectType] = useState<"Municipal Project" | "Private Building" | "Agricultural Structure">("Municipal Project");
   const [modalDepartment, setModalDepartment] = useState<"MPDC" | "Engineering" | "Agriculture" | "Negosyo Center">("Engineering");
-  const [modalStatus, setModalStatus] = useState<"Planning" | "Ongoing" | "Completed">("Planning");
+  const [modalStatus, setModalStatus] = useState<ProjectStatus>("Planned");
   const [modalProgress, setModalProgress] = useState(0);
   const [modalDescription, setModalDescription] = useState("");
+  const [modalStartDate, setModalStartDate] = useState("");
+  const [modalTargetEndDate, setModalTargetEndDate] = useState("");
+  const [modalBudgetTotal, setModalBudgetTotal] = useState("");
 
   useEffect(() => { placementModeRef.current = placementMode; }, [placementMode]);
   useEffect(() => { selectedModelRef.current = selectedModel; }, [selectedModel]);
@@ -829,7 +836,7 @@ export default function App() {
         catalog?.category === "Construction" ? "Municipal Project" : "Private Building"
       );
       setModalDepartment("Engineering");
-      setModalStatus("Planning");
+      setModalStatus("Planned");
       setModalProgress(0);
       setModalDescription(catalog?.description || "");
       setShowPlacementModal(true);
@@ -877,6 +884,10 @@ export default function App() {
           department: modalDepartment,
           status: modalStatus,
           progress: modalProgress,
+          description: modalDescription,
+          startDate: modalStartDate || undefined,
+          targetEndDate: modalTargetEndDate || undefined,
+          budgetTotal: modalBudgetTotal ? Number(modalBudgetTotal) : undefined,
           location: { lat, lon: lng },
           rotation: placementRotationRef.current,
           customModelUrl,
@@ -1286,13 +1297,6 @@ export default function App() {
     return { high, mod, low, total: feats.length };
   }, [riskZones]);
 
-  const projectSummary = useMemo(() => {
-    const ongoing = projects.filter((p) => p.status === "Ongoing").length;
-    const completed = projects.filter((p) => p.status === "Completed").length;
-    const planning = projects.filter((p) => p.status === "Planning").length;
-    return { ongoing, completed, planning, total: projects.length };
-  }, [projects]);
-
   return (
     <div className={`appShell${sidebarCollapsed ? " sidebar-collapsed" : ""}`}>
       {/* Landing page */}
@@ -1513,7 +1517,7 @@ export default function App() {
                 <div className="l">Approved</div>
               </div>
               <div className="stat">
-                <div className="v" style={{ color: "var(--muted)" }}>{projects.filter(p => p.department === "Negosyo Center" && p.status === "Planning").length}</div>
+                <div className="v" style={{ color: "var(--muted)" }}>{projects.filter(p => p.department === "Negosyo Center" && p.status === "Planned").length}</div>
                 <div className="l">For Review</div>
               </div>
               <div className="stat">
@@ -1533,7 +1537,9 @@ export default function App() {
                         ? <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><IconCheck /> Approved</span>
                         : p.status === "Ongoing"
                         ? <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><IconClock /> Pending</span>
-                        : <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><IconClipboard /> For Review</span>
+                        : p.status === "Planned"
+                        ? <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><IconClipboard /> For Review</span>
+                        : <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><IconClipboard /> {p.status}</span>
                       }
                       </span>
                       <span>{p.progress}%</span>
@@ -2020,78 +2026,11 @@ export default function App() {
         )}
 
         {roleConfig?.canSeeProjects && (
-          <div className="card" style={{ marginBottom: 12 }}>
-          <div className="sectionTitle" style={{ marginBottom: 8 }}>
-            Infrastructure Snapshot
-          </div>
-          <div className="grid2">
-            <div className="stat">
-              <div className="v">{projectSummary.total}</div>
-              <div className="l">Total Projects</div>
-            </div>
-            <div className="stat">
-              <div className="v" style={{ color: "var(--accent)" }}>
-                {projectSummary.ongoing}
-              </div>
-              <div className="l">Ongoing</div>
-            </div>
-            <div className="stat">
-              <div className="v" style={{ color: "rgba(88, 160, 255, 0.95)" }}>
-                {projectSummary.completed}
-              </div>
-              <div className="l">Completed</div>
-            </div>
-            <div className="stat">
-              <div className="v" style={{ color: "rgba(160, 174, 192, 0.95)" }}>
-                {projectSummary.planning}
-              </div>
-              <div className="l">Planning</div>
-            </div>
-          </div>
-
-          <div style={{ marginTop: 10 }} className="miniList">
-            {projects
-              .filter(p => currentRole === "Engineer" ? p.department === "Engineering" : true)
-              .slice(0, 4).map((p) => (
-              <div
-                key={p.id}
-                className="proj"
-                onClick={() => {
-                  mapRef.current?.flyTo({
-                    center: [p.location.lon, p.location.lat],
-                    zoom: 16,
-                    pitch: 62,
-                    bearing: -15,
-                    duration: 1400,
-                    essential: true,
-                  });
-                }}
-                style={{ cursor: "pointer" }}
-                title="Click to fly to this project"
-              >
-                <div className="n" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <span style={{ display: "flex", alignItems: "center", color: "oklch(0.48 0.035 152)" }}>
-                    {(() => { const ic = MODEL_CATALOG.find(m => m.type === p.modelType)?.icon ?? "construction"; const Ic = ModelIcons[ic] ?? ModelIcons.construction; return <Ic size={14} />; })()}
-                  </span>
-                  {p.name}
-                  <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", color: "oklch(0.58 0.03 152)" }}>
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                  </span>
-                </div>
-                <div className="s">
-                  <span>{p.department}</span>
-                  <span>{p.status}</span>
-                </div>
-                <div className="bar">
-                  <div style={{ width: `${Math.max(0, Math.min(100, p.progress))}%` }} />
-                </div>
-                <div style={{ marginTop: 6, fontSize: 12, color: "var(--muted2)" }}>
-                  Progress: {p.progress}% · Updated {formatAgo(p.updatedAt)}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+          <ProjectMonitoringPanel
+            projects={projects}
+            currentRole={currentRole}
+            mapRef={mapRef}
+          />
         )}
         </>
         )}
@@ -3001,9 +2940,11 @@ export default function App() {
                     cursor: "pointer",
                   }}
                 >
-                  <option value="Planning">Planning</option>
+                  <option value="Planned">Planned</option>
                   <option value="Ongoing">Ongoing</option>
+                  <option value="Delayed">Delayed</option>
                   <option value="Completed">Completed</option>
+                  <option value="Suspended">Suspended</option>
                 </select>
               </div>
 
@@ -3023,6 +2964,46 @@ export default function App() {
                     width: "100%",
                     cursor: "pointer",
                   }}
+                />
+              </div>
+
+              {/* Timeline & budget */}
+              <div className="grid2" style={{ gap: 10 }}>
+                <div>
+                  <label style={{ display: "block", fontSize: 11, color: "oklch(0.58 0.03 152)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
+                    Start Date
+                  </label>
+                  <input
+                    type="date"
+                    value={modalStartDate}
+                    onChange={(e) => setModalStartDate(e.target.value)}
+                    style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 0, border: "1px solid oklch(0.24 0.035 152 / 0.14)", background: "oklch(0.915 0.028 152)", fontSize: 13 }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 11, color: "oklch(0.58 0.03 152)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
+                    Target End
+                  </label>
+                  <input
+                    type="date"
+                    value={modalTargetEndDate}
+                    onChange={(e) => setModalTargetEndDate(e.target.value)}
+                    style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 0, border: "1px solid oklch(0.24 0.035 152 / 0.14)", background: "oklch(0.915 0.028 152)", fontSize: 13 }}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: 11, color: "oklch(0.58 0.03 152)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
+                  Budget Total (PHP, optional)
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  value={modalBudgetTotal}
+                  onChange={(e) => setModalBudgetTotal(e.target.value)}
+                  placeholder="e.g. 1500000"
+                  style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 0, border: "1px solid oklch(0.24 0.035 152 / 0.14)", background: "oklch(0.915 0.028 152)", fontSize: 13 }}
                 />
               </div>
 

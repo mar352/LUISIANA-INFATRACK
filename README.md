@@ -43,6 +43,27 @@ docker compose down
 
 Groupmates only need Docker + this repo + a Mapbox token in `.env` (shared or each creates their own).
 
+### Hot reload (dev)
+
+The default `docker compose up` builds a **production** image (nginx + static files). Code changes do **not** auto-reload — you must rebuild:
+
+```bash
+docker compose up --build -d
+```
+
+For **hot reload** while coding (Vite HMR + backend `node --watch`):
+
+```bash
+docker compose -f docker-compose.dev.yml up
+```
+
+Or double-click `run-docker-dev.bat`, then open **http://localhost:5173**.
+
+| Mode | Command | URL | Auto-reload |
+|------|---------|-----|-------------|
+| Share / demo | `docker compose up --build` | :8080 | No — rebuild required |
+| Development | `docker compose -f docker-compose.dev.yml up` | :5173 | Yes |
+
 ---
 
 ### Local development (without Docker)
@@ -73,3 +94,12 @@ This project uses Mapbox for the base map. Create a Mapbox token and set it in:
 - Local: `frontend/.env` as `VITE_MAPBOX_TOKEN=...`
 
 If you don’t have a token yet, the app will still load the UI but the map will show a token warning.
+
+### Project monitoring data
+
+Infrastructure project records (status, progress, milestones, budget, issues) are persisted to:
+
+- **Local dev:** `backend/data/projects.json` (auto-seeded on first run)
+- **Docker:** volume `project_data` mounted at `/app/data/projects.json` inside the backend container
+
+Edits from the **Projects** tab survive container restarts when using Docker Compose.

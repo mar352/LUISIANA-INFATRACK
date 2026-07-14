@@ -5,8 +5,10 @@ services:
       PORT: 4000
       CLIENT_ORIGIN: ${CLIENT_ORIGIN:-http://localhost:8080}
       UPLOADS_DIR: /app/uploads
+      PROJECTS_DATA_PATH: /app/data/projects.json
     volumes:
       - uploads_data:/app/uploads
+      - project_data:/app/data
     healthcheck:
       test:
         [
@@ -39,3 +41,4 @@ services:
 
 volumes:
   uploads_data:
+  project_data:

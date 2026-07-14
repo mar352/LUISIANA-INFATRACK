@@ -9,9 +9,10 @@ COPY src ./src
 
 ENV PORT=4000
 ENV UPLOADS_DIR=/app/uploads
+ENV PROJECTS_DATA_PATH=/app/data/projects.json
 ENV CLIENT_ORIGIN=http://localhost:8080
 
-RUN mkdir -p /app/uploads
+RUN mkdir -p /app/uploads /app/data
 
 EXPOSE 4000
 

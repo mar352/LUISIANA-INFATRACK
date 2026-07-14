@@ -10,7 +10,18 @@ import fs from "fs";
 
 import { buildHeatPointsForBbox, computeRiskZones } from "./services/risk.js";
 import { getWeatherSnapshot } from "./services/weather.js";
-import { projectsSeed, tickProjects, addProject, removeProject } from "./services/projects.js";
+import {
+  projectsSeed,
+  tickProjects,
+  addProject,
+  removeProject,
+  updateProject,
+  addMilestone,
+  completeMilestone,
+  reportIssue,
+  resolveIssue,
+  emitProjectsPayload,
+} from "./services/projects.js";
 import { createAlertFromRisk } from "./services/alerts.js";
 import { buildSlopeCache } from "./services/dem.js";
 
@@ -120,17 +131,82 @@ app.get("/api/risk-zones", (req, res) => {
 });
 
 app.get("/api/projects", (_req, res) => {
-  res.json({ projects: projectsSeed() });
+  res.json(emitProjectsPayload());
 });
 
 app.post("/api/projects", (req, res) => {
-  const { name, modelType, type, department, location, rotation, customModelUrl } = req.body;
+  const {
+    name,
+    modelType,
+    type,
+    department,
+    location,
+    rotation,
+    customModelUrl,
+    status,
+    progress,
+    description,
+    startDate,
+    targetEndDate,
+    budgetTotal,
+    budgetSpent,
+  } = req.body;
   if (!name || !modelType || !location?.lat || !location?.lon) {
     return res.status(400).json({ error: "Missing required fields: name, modelType, location" });
   }
-  const project = addProject({ name, modelType, type, department, location, rotation, customModelUrl });
-  io.emit("projects:update", { projects: projectsSeed(), generatedAt: new Date().toISOString() });
+  const project = addProject({
+    name,
+    modelType,
+    type,
+    department,
+    location,
+    rotation,
+    customModelUrl,
+    status,
+    progress,
+    description,
+    startDate,
+    targetEndDate,
+    budgetTotal,
+    budgetSpent,
+  });
+  io.emit("projects:update", emitProjectsPayload());
   res.json({ project });
+});
+
+app.patch("/api/projects/:id", (req, res) => {
+  const project = updateProject(req.params.id, req.body);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+  io.emit("projects:update", emitProjectsPayload());
+  res.json({ project });
+});
+
+app.post("/api/projects/:id/milestones", (req, res) => {
+  const milestone = addMilestone(req.params.id, req.body);
+  if (!milestone) return res.status(400).json({ error: "Invalid project or milestone data" });
+  io.emit("projects:update", emitProjectsPayload());
+  res.json({ milestone });
+});
+
+app.patch("/api/projects/:id/milestones/:mid", (req, res) => {
+  const milestone = completeMilestone(req.params.id, req.params.mid);
+  if (!milestone) return res.status(404).json({ error: "Milestone not found" });
+  io.emit("projects:update", emitProjectsPayload());
+  res.json({ milestone });
+});
+
+app.post("/api/projects/:id/issues", (req, res) => {
+  const issue = reportIssue(req.params.id, req.body);
+  if (!issue) return res.status(400).json({ error: "Invalid project or issue data" });
+  io.emit("projects:update", emitProjectsPayload());
+  res.json({ issue });
+});
+
+app.patch("/api/projects/:id/issues/:iid", (req, res) => {
+  const issue = resolveIssue(req.params.id, req.params.iid);
+  if (!issue) return res.status(404).json({ error: "Issue not found" });
+  io.emit("projects:update", emitProjectsPayload());
+  res.json({ issue });
 });
 
 app.post("/api/upload-model", upload.single("model"), (req, res) => {
@@ -151,7 +227,7 @@ app.post("/api/upload-model", upload.single("model"), (req, res) => {
 app.delete("/api/projects/:id", (req, res) => {
   const removed = removeProject(req.params.id);
   if (!removed) return res.status(404).json({ error: "Project not found" });
-  io.emit("projects:update", { projects: projectsSeed(), generatedAt: new Date().toISOString() });
+  io.emit("projects:update", emitProjectsPayload());
   res.json({ ok: true });
 });
 

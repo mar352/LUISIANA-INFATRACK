@@ -29,6 +29,9 @@ Thumbs.db
 frontend/public/uploads/*
 !frontend/public/uploads/.gitkeep
 
+# Runtime project data (seeded on first run)
+backend/data/projects.json
+
 # impeccable-ignore-start
 # Ephemeral output, runtime state, and per-dev overrides.
 # Shared artifacts stay tracked: config.json, live/config.json,

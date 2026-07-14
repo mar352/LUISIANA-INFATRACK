@@ -14,16 +14,21 @@ import maplibregl from "maplibre-gl";
 import type { Map as MapLibreMap, CustomLayerInterface } from "maplibre-gl";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import type { Project } from "../types";
-import { MODEL_CATALOG } from "../types";
+import type { Project, ProjectStatus } from "../types";
+import { MODEL_CATALOG, PROJECT_STATUS_COLORS, PROJECT_STATUS_LABELS } from "../types";
+import { patchProject } from "../lib/api";
 
 const LAYER_ID = "glb-buildings";
 const HIT_RADIUS_PX = 32;
 
+function hexToThree(hex: string): THREE.Color {
+  return new THREE.Color(hex);
+}
+
 function statusColor(status: Project["status"]): THREE.Color {
-  if (status === "Completed") return new THREE.Color(0x3d7fd5);
-  if (status === "Ongoing")   return new THREE.Color(0xf5a623);
-  return new THREE.Color(0x888899);
+  const normalized = status === "Planning" ? "Planned" : status;
+  const hex = PROJECT_STATUS_COLORS[normalized as keyof typeof PROJECT_STATUS_COLORS] ?? PROJECT_STATUS_COLORS.Planned;
+  return hexToThree(hex);
 }
 
 type Props = {
@@ -82,7 +87,17 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
   
   // Modal state for building info
   const [showModal, setShowModal] = useState(false);
-  const [modalMode, setModalMode] = useState<'view' | 'edit'>('view');
+  const [modalMode, setModalMode] = useState<"view" | "edit">("view");
+  const [editDraft, setEditDraft] = useState<{
+    status: ProjectStatus;
+    progress: number;
+    description: string;
+    startDate: string;
+    targetEndDate: string;
+    budgetTotal: string;
+    budgetSpent: string;
+  } | null>(null);
+  const [saving, setSaving] = useState(false);
   
   // Hover state for tooltip
   const [hoveredBuilding, setHoveredBuilding] = useState<{ name: string; status: string; x: number; y: number } | null>(null);
@@ -629,6 +644,47 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
   const project = sel ? projects.find(p => p.id === sel.projectId) : null;
   const modelInfo = MODEL_CATALOG.find(m => m.type === (project?.modelType ?? "office"));
 
+  function openModal(mode: "view" | "edit") {
+    if (!project) return;
+    setModalMode(mode);
+    if (mode === "edit") {
+      setEditDraft({
+        status: project.status === "Planning" ? "Planned" : project.status,
+        progress: project.progress,
+        description: project.description ?? modelInfo?.description ?? "",
+        startDate: project.startDate ?? "",
+        targetEndDate: project.targetEndDate ?? "",
+        budgetTotal: project.budgetTotal != null ? String(project.budgetTotal) : "",
+        budgetSpent: project.budgetSpent != null ? String(project.budgetSpent) : "0",
+      });
+    }
+    setShowModal(true);
+  }
+
+  async function handleSaveEdit() {
+    if (!project || !editDraft) return;
+    setSaving(true);
+    try {
+      await patchProject(project.id, {
+        status: editDraft.status,
+        progress: editDraft.progress,
+        description: editDraft.description,
+        startDate: editDraft.startDate || null,
+        targetEndDate: editDraft.targetEndDate || null,
+        budgetTotal: editDraft.budgetTotal ? Number(editDraft.budgetTotal) : null,
+        budgetSpent: editDraft.budgetSpent ? Number(editDraft.budgetSpent) : 0,
+      });
+      setModalMode("view");
+      setEditDraft(null);
+    } catch (err) {
+      console.error("Failed to save project:", err);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const displayStatus = project?.status === "Planning" ? "Planned" : project?.status;
+
   return (
     <>
       {/* Hover Tooltip */}
@@ -653,8 +709,8 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
             {hoveredBuilding.name}
           </div>
           <div style={{ fontSize: 10, color: "oklch(0.46 0.035 152)" }}>
-            Status: <span style={{ color: hoveredBuilding.status === "Completed" ? "#3D9B5F" : hoveredBuilding.status === "Ongoing" ? "#3D9B5F" : "#245C3A" }}>
-              {hoveredBuilding.status}
+            Status: <span style={{ color: PROJECT_STATUS_COLORS[(hoveredBuilding.status === "Planning" ? "Planned" : hoveredBuilding.status) as keyof typeof PROJECT_STATUS_COLORS] ?? PROJECT_STATUS_COLORS.Planned }}>
+              {hoveredBuilding.status === "Planning" ? "Planned" : hoveredBuilding.status}
             </span>
           </div>
           <div style={{ fontSize: 9, color: "oklch(0.55 0.03 152)", marginTop: 4 }}>
@@ -706,11 +762,11 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
                   {project.name}
                 </h2>
                 <div style={{ fontSize: 12, color: "oklch(0.50 0.032 152)", marginTop: 4 }}>
-                  {modelInfo?.label || "Building"}
+                  {modalMode === "edit" ? "Edit project details" : (modelInfo?.label || "Building")}
                 </div>
               </div>
               <button
-                onClick={() => setShowModal(false)}
+                onClick={() => { setShowModal(false); setEditDraft(null); setModalMode("view"); }}
                 style={{
                   cursor: "pointer",
                   background: "none",
@@ -739,6 +795,109 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
             }}
             className="modal-content-scroll"
             >
+              {modalMode === "edit" && editDraft ? (
+                <>
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ fontSize: 11, color: "oklch(0.55 0.03 152)", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Status</label>
+                    <select
+                      value={editDraft.status}
+                      onChange={(e) => setEditDraft({ ...editDraft, status: e.target.value as ProjectStatus })}
+                      style={{ width: "100%", padding: "10px 12px", fontSize: 13, border: "1px solid oklch(0.24 0.035 152 / 0.14)", background: "oklch(0.915 0.028 152)" }}
+                    >
+                      {(Object.keys(PROJECT_STATUS_LABELS) as ProjectStatus[]).map((s) => (
+                        <option key={s} value={s}>{PROJECT_STATUS_LABELS[s]}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ fontSize: 11, color: "oklch(0.55 0.03 152)", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                      Progress: {editDraft.progress}%
+                    </label>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      value={editDraft.progress}
+                      onChange={(e) => setEditDraft({ ...editDraft, progress: Number(e.target.value) })}
+                      style={{ width: "100%" }}
+                    />
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+                    <div>
+                      <label style={{ fontSize: 11, color: "oklch(0.55 0.03 152)", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Start date</label>
+                      <input
+                        type="date"
+                        value={editDraft.startDate}
+                        onChange={(e) => setEditDraft({ ...editDraft, startDate: e.target.value })}
+                        style={{ width: "100%", padding: "8px", fontSize: 12, border: "1px solid oklch(0.24 0.035 152 / 0.14)" }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 11, color: "oklch(0.55 0.03 152)", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Target end</label>
+                      <input
+                        type="date"
+                        value={editDraft.targetEndDate}
+                        onChange={(e) => setEditDraft({ ...editDraft, targetEndDate: e.target.value })}
+                        style={{ width: "100%", padding: "8px", fontSize: 12, border: "1px solid oklch(0.24 0.035 152 / 0.14)" }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+                    <div>
+                      <label style={{ fontSize: 11, color: "oklch(0.55 0.03 152)", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Budget total (PHP)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={editDraft.budgetTotal}
+                        onChange={(e) => setEditDraft({ ...editDraft, budgetTotal: e.target.value })}
+                        style={{ width: "100%", padding: "8px", fontSize: 12, border: "1px solid oklch(0.24 0.035 152 / 0.14)" }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 11, color: "oklch(0.55 0.03 152)", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Budget spent (PHP)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        value={editDraft.budgetSpent}
+                        onChange={(e) => setEditDraft({ ...editDraft, budgetSpent: e.target.value })}
+                        style={{ width: "100%", padding: "8px", fontSize: 12, border: "1px solid oklch(0.24 0.035 152 / 0.14)" }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ fontSize: 11, color: "oklch(0.55 0.03 152)", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Description</label>
+                    <textarea
+                      value={editDraft.description}
+                      onChange={(e) => setEditDraft({ ...editDraft, description: e.target.value })}
+                      rows={3}
+                      style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", fontSize: 13, border: "1px solid oklch(0.24 0.035 152 / 0.14)", resize: "vertical", fontFamily: "inherit" }}
+                    />
+                  </div>
+
+                  <div style={{ display: "flex", gap: 10, paddingTop: 8, borderTop: "1px solid oklch(0.24 0.035 152 / 0.1)" }}>
+                    <button
+                      type="button"
+                      onClick={() => { setModalMode("view"); setEditDraft(null); }}
+                      style={{ flex: 1, padding: "10px", cursor: "pointer", border: "1px solid oklch(0.24 0.035 152 / 0.14)", background: "oklch(0.915 0.028 152)", fontWeight: 600 }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveEdit}
+                      disabled={saving}
+                      style={{ flex: 1, padding: "10px", cursor: "pointer", border: "2px solid oklch(0.24 0.035 152)", background: "#3D9B5F", color: "oklch(0.24 0.035 152)", fontWeight: 700, opacity: saving ? 0.7 : 1 }}
+                    >
+                      {saving ? "Saving…" : "Save changes"}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
               {/* Status */}
               <div style={{ marginBottom: 20 }}>
                 <div style={{ fontSize: 11, color: "oklch(0.55 0.03 152)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Status</div>
@@ -748,11 +907,11 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
                   borderRadius: 0,
                   fontSize: 12,
                   fontWeight: 600,
-                  background: project.status === "Completed" ? "rgba(61,155,95,0.15)" : project.status === "Ongoing" ? "rgba(61,155,95,0.15)" : "rgba(36,92,58,0.15)",
-                  color: project.status === "Completed" ? "#3D9B5F" : project.status === "Ongoing" ? "#3D9B5F" : "#245C3A",
-                  border: `1px solid ${project.status === "Completed" ? "rgba(61,155,95,0.3)" : project.status === "Ongoing" ? "rgba(61,155,95,0.3)" : "rgba(36,92,58,0.3)"}`,
+                  background: `${PROJECT_STATUS_COLORS[displayStatus as ProjectStatus] ?? PROJECT_STATUS_COLORS.Planned}22`,
+                  color: PROJECT_STATUS_COLORS[displayStatus as ProjectStatus] ?? PROJECT_STATUS_COLORS.Planned,
+                  border: `1px solid ${PROJECT_STATUS_COLORS[displayStatus as ProjectStatus] ?? PROJECT_STATUS_COLORS.Planned}55`,
                 }}>
-                  {project.status}
+                  {displayStatus}
                 </div>
               </div>
 
@@ -783,9 +942,28 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
               <div style={{ marginBottom: 20 }}>
                 <div style={{ fontSize: 11, color: "oklch(0.55 0.03 152)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Description</div>
                 <div style={{ fontSize: 13, color: "oklch(0.48 0.035 152)", lineHeight: 1.6 }}>
-                  {modelInfo?.description || "Infrastructure project for Luisiana municipality."}
+                  {project.description || modelInfo?.description || "Infrastructure project for Luisiana municipality."}
                 </div>
               </div>
+
+              {(project.budgetTotal != null && project.budgetTotal > 0) && (
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 11, color: "oklch(0.55 0.03 152)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Budget</div>
+                  <div style={{ fontSize: 13, color: "oklch(0.48 0.035 152)" }}>
+                    ₱{(project.budgetSpent ?? 0).toLocaleString()} / ₱{project.budgetTotal.toLocaleString()}
+                    {" "}({Math.round(((project.budgetSpent ?? 0) / project.budgetTotal) * 100)}% utilized)
+                  </div>
+                </div>
+              )}
+
+              {(project.startDate || project.targetEndDate) && (
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ fontSize: 11, color: "oklch(0.55 0.03 152)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Timeline</div>
+                  <div style={{ fontSize: 13, color: "oklch(0.48 0.035 152)" }}>
+                    {project.startDate ?? "—"} → {project.targetEndDate ?? "—"}
+                  </div>
+                </div>
+              )}
 
               {/* Location */}
               <div style={{ marginBottom: 20 }}>
@@ -795,12 +973,13 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
                 </div>
               </div>
 
-              {/* Last Updated */}
               <div style={{ paddingTop: 16, borderTop: "1px solid oklch(0.24 0.035 152 / 0.1)" }}>
                 <div style={{ fontSize: 11, color: "oklch(0.55 0.03 152)" }}>
                   Last updated: {new Date(project.updatedAt).toLocaleDateString()} {new Date(project.updatedAt).toLocaleTimeString()}
                 </div>
               </div>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -823,7 +1002,7 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
               {sel.projectName}
             </span>
             <button
-              onClick={() => { setModalMode('view'); setShowModal(true); }}
+              onClick={() => openModal("view")}
               style={{
                 cursor: "pointer", background: "oklch(0.915 0.028 152)", border: "2px solid #245C3A",
                 color: "#245C3A", fontSize: 11, padding: "6px 12px", borderRadius: 0, fontWeight: 700,
@@ -839,7 +1018,7 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
               View
             </button>
             <button
-              onClick={() => { setModalMode('edit'); setShowModal(true); }}
+              onClick={() => openModal("edit")}
               style={{
                 cursor: "pointer", background: "#3D9B5F", border: "2px solid oklch(0.24 0.035 152)",
                 color: "oklch(0.24 0.035 152)", fontSize: 11, padding: "6px 12px", borderRadius: 0, fontWeight: 700,

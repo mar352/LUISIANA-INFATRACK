@@ -81,18 +81,66 @@ export const MODEL_CATALOG: {
   { type: "custom",            label: "Custom Model",        icon: "construction",      category: "Construction",    description: "Upload your own 3D model",                    glb: "building.glb",      scale: 80  },
 ];
 
+export type ProjectStatus = "Planned" | "Ongoing" | "Delayed" | "Completed" | "Suspended";
+
+export type ProjectMilestone = {
+  id: string;
+  title: string;
+  targetDate: string;
+  completedAt?: string;
+  status: "pending" | "done" | "missed";
+};
+
+export type ProjectIssue = {
+  id: string;
+  kind: "delay" | "issue";
+  title: string;
+  description: string;
+  reportedAt: string;
+  resolvedAt?: string;
+};
+
+export type ProjectActivity = {
+  at: string;
+  message: string;
+};
+
 export type Project = {
   id: string;
   name: string;
   modelType: ModelType;
   type: "Municipal Project" | "Private Building" | "Agricultural Structure";
   department: "MPDC" | "Engineering" | "Agriculture" | "Negosyo Center";
-  status: "Planning" | "Ongoing" | "Completed";
+  status: ProjectStatus;
   progress: number;
   location: { lat: number; lon: number };
-  rotation?: number; // degrees 0-360
-  customModelUrl?: string; // URL or path to custom GLB file
+  rotation?: number;
+  customModelUrl?: string;
+  description?: string;
+  startDate?: string | null;
+  targetEndDate?: string | null;
+  budgetTotal?: number | null;
+  budgetSpent?: number;
+  milestones: ProjectMilestone[];
+  issues: ProjectIssue[];
+  activityLog: ProjectActivity[];
   updatedAt: string;
+};
+
+export const PROJECT_STATUS_COLORS: Record<ProjectStatus, string> = {
+  Planned: "#9b9b9b",
+  Ongoing: "#f5a623",
+  Delayed: "#e05252",
+  Completed: "#245C3A",
+  Suspended: "#7a6b8a",
+};
+
+export const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
+  Planned: "Planned",
+  Ongoing: "Ongoing",
+  Delayed: "Delayed",
+  Completed: "Completed",
+  Suspended: "Suspended",
 };
 
 export type AlertItem = {
