@@ -38,9 +38,10 @@ type Props = {
   projects: Project[];
   currentRole: string | null;
   mapRef: React.RefObject<MapLibreMap | null>;
+  readOnly?: boolean;
 };
 
-export function ProjectMonitoringPanel({ projects, currentRole, mapRef }: Props) {
+export function ProjectMonitoringPanel({ projects, currentRole, mapRef, readOnly = false }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [milestoneTitle, setMilestoneTitle] = useState("");
   const [milestoneDate, setMilestoneDate] = useState("");
@@ -241,7 +242,9 @@ export function ProjectMonitoringPanel({ projects, currentRole, mapRef }: Props)
         </div>
         {filtered.length === 0 ? (
           <div style={{ fontSize: 12, color: "var(--muted2)", lineHeight: 1.5 }}>
-            No infrastructure projects yet. Use Engineer placement mode to add projects on the map.
+            {readOnly
+              ? "No infrastructure projects are published on the map yet."
+              : "No infrastructure projects yet. Use Engineer placement mode to add projects on the map."}
           </div>
         ) : (
         <div className="miniList">
@@ -301,6 +304,15 @@ export function ProjectMonitoringPanel({ projects, currentRole, mapRef }: Props)
 
           <div style={{ marginBottom: 12 }}>
             <label style={{ fontSize: 11, color: "var(--muted2)", display: "block", marginBottom: 4 }}>Status</label>
+            {readOnly ? (
+              <div style={{
+                fontSize: 12,
+                fontWeight: 700,
+                color: PROJECT_STATUS_COLORS[selected.status] ?? "var(--muted)",
+              }}>
+                {PROJECT_STATUS_LABELS[selected.status] ?? selected.status}
+              </div>
+            ) : (
             <select
               value={selected.status}
               onChange={(e) => updateField({ status: e.target.value as ProjectStatus })}
@@ -310,12 +322,16 @@ export function ProjectMonitoringPanel({ projects, currentRole, mapRef }: Props)
                 <option key={s} value={s}>{PROJECT_STATUS_LABELS[s]}</option>
               ))}
             </select>
+            )}
           </div>
 
           <div style={{ marginBottom: 12 }}>
             <label style={{ fontSize: 11, color: "var(--muted2)", display: "block", marginBottom: 4 }}>
               Progress: {selected.progress}%
             </label>
+            {readOnly ? (
+              <div className="bar"><div style={{ width: `${selected.progress}%` }} /></div>
+            ) : (
             <input
               type="range"
               min={0}
@@ -325,32 +341,44 @@ export function ProjectMonitoringPanel({ projects, currentRole, mapRef }: Props)
               onChange={(e) => updateField({ progress: Number(e.target.value) })}
               style={{ width: "100%" }}
             />
+            )}
           </div>
 
           <div className="grid2" style={{ marginBottom: 12 }}>
             <div>
               <label style={{ fontSize: 11, color: "var(--muted2)", display: "block", marginBottom: 4 }}>Start date</label>
+              {readOnly ? (
+                <div style={{ fontSize: 12 }}>{selected.startDate || "—"}</div>
+              ) : (
               <input
                 type="date"
                 value={selected.startDate ?? ""}
                 onChange={(e) => updateField({ startDate: e.target.value || null })}
                 style={{ width: "100%", padding: "6px", fontSize: 11, border: "1px solid var(--stroke2)" }}
               />
+              )}
             </div>
             <div>
               <label style={{ fontSize: 11, color: "var(--muted2)", display: "block", marginBottom: 4 }}>Target end</label>
+              {readOnly ? (
+                <div style={{ fontSize: 12 }}>{selected.targetEndDate || "—"}</div>
+              ) : (
               <input
                 type="date"
                 value={selected.targetEndDate ?? ""}
                 onChange={(e) => updateField({ targetEndDate: e.target.value || null })}
                 style={{ width: "100%", padding: "6px", fontSize: 11, border: "1px solid var(--stroke2)" }}
               />
+              )}
             </div>
           </div>
 
           <div className="grid2" style={{ marginBottom: 12 }}>
             <div>
               <label style={{ fontSize: 11, color: "var(--muted2)", display: "block", marginBottom: 4 }}>Budget total (PHP)</label>
+              {readOnly ? (
+                <div style={{ fontSize: 12 }}>{selected.budgetTotal != null ? formatPeso(selected.budgetTotal) : "—"}</div>
+              ) : (
               <input
                 type="number"
                 min={0}
@@ -358,9 +386,13 @@ export function ProjectMonitoringPanel({ projects, currentRole, mapRef }: Props)
                 onChange={(e) => updateField({ budgetTotal: e.target.value ? Number(e.target.value) : null })}
                 style={{ width: "100%", padding: "6px", fontSize: 11, border: "1px solid var(--stroke2)" }}
               />
+              )}
             </div>
             <div>
               <label style={{ fontSize: 11, color: "var(--muted2)", display: "block", marginBottom: 4 }}>Budget spent (PHP)</label>
+              {readOnly ? (
+                <div style={{ fontSize: 12 }}>{formatPeso(selected.budgetSpent ?? 0)}</div>
+              ) : (
               <input
                 type="number"
                 min={0}
@@ -368,6 +400,7 @@ export function ProjectMonitoringPanel({ projects, currentRole, mapRef }: Props)
                 onChange={(e) => updateField({ budgetSpent: Number(e.target.value) })}
                 style={{ width: "100%", padding: "6px", fontSize: 11, border: "1px solid var(--stroke2)" }}
               />
+              )}
             </div>
           </div>
 
@@ -406,7 +439,7 @@ export function ProjectMonitoringPanel({ projects, currentRole, mapRef }: Props)
                   fontWeight: 600,
                 }}>{m.status}</span>
                 <span style={{ flex: 1 }}>{m.title} · {m.targetDate}</span>
-                {m.status !== "done" && (
+                {!readOnly && m.status !== "done" && (
                   <button
                     type="button"
                     onClick={() => completeMilestone(selected.id, m.id)}
@@ -417,6 +450,7 @@ export function ProjectMonitoringPanel({ projects, currentRole, mapRef }: Props)
                 )}
               </div>
             ))}
+            {!readOnly && (
             <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
               <input
                 placeholder="Milestone title"
@@ -434,6 +468,7 @@ export function ProjectMonitoringPanel({ projects, currentRole, mapRef }: Props)
                 Add
               </button>
             </div>
+            )}
           </div>
 
           <div style={{ marginBottom: 12 }}>
@@ -450,6 +485,7 @@ export function ProjectMonitoringPanel({ projects, currentRole, mapRef }: Props)
                   {i.kind === "delay" ? "Delay" : "Issue"}: {i.title}
                 </div>
                 {i.description && <div style={{ marginTop: 4, color: "var(--muted2)" }}>{i.description}</div>}
+                {!readOnly && (
                 <button
                   type="button"
                   onClick={() => resolveIssue(selected.id, i.id)}
@@ -457,8 +493,11 @@ export function ProjectMonitoringPanel({ projects, currentRole, mapRef }: Props)
                 >
                   Resolve
                 </button>
+                )}
               </div>
             ))}
+            {!readOnly && (
+            <>
             <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
               <select
                 value={issueKind}
@@ -485,6 +524,8 @@ export function ProjectMonitoringPanel({ projects, currentRole, mapRef }: Props)
             <button type="button" onClick={handleReportIssue} style={{ marginTop: 6, padding: "6px 10px", fontSize: 11, cursor: "pointer" }}>
               Report
             </button>
+            </>
+            )}
           </div>
 
           <div style={{ marginBottom: 12 }}>
@@ -507,13 +548,16 @@ export function ProjectMonitoringPanel({ projects, currentRole, mapRef }: Props)
                         </span>
                       )}
                     </div>
+                    {!readOnly && (
                     <button type="button" className="project-photo-remove" onClick={() => handleDeletePhoto(photo.id)}>
                       Remove
                     </button>
+                    )}
                   </div>
                 ))}
               </div>
             )}
+            {!readOnly && (
             <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
               <input
                 placeholder="Caption (optional)"
@@ -544,6 +588,7 @@ export function ProjectMonitoringPanel({ projects, currentRole, mapRef }: Props)
                 {photoUploading ? " Uploading…" : " Upload progress photo"}
               </label>
             </div>
+            )}
           </div>
 
           <div style={{ marginBottom: 12 }}>

@@ -1,5 +1,6 @@
-# Dev stack — hot reload (Vite HMR + Node --watch)
-# Usage: docker compose -f docker-compose.dev.yml up
+# Dev stack — hot reload (Vite HMR + Node --watch + Compose file watch)
+# Usage: docker compose -f docker-compose.dev.yml up --build --watch
+# Or double-click run-docker-dev.bat
 
 services:
   backend:
@@ -16,6 +17,11 @@ services:
       - ./backend/src:/app/src
       - uploads_data:/app/uploads
       - project_data:/app/data
+    develop:
+      watch:
+        - action: sync+restart
+          path: ./backend/package.json
+          target: /app/package.json
     restart: unless-stopped
 
   frontend:
@@ -32,6 +38,25 @@ services:
     volumes:
       - ./frontend:/app
       - frontend_node_modules:/app/node_modules
+    develop:
+      watch:
+        - action: sync
+          path: ./frontend/src
+          target: /app/src
+          ignore:
+            - node_modules/
+        - action: sync
+          path: ./frontend/public
+          target: /app/public
+        - action: sync
+          path: ./frontend/index.html
+          target: /app/index.html
+        - action: sync
+          path: ./frontend/vite.config.ts
+          target: /app/vite.config.ts
+        - action: sync+restart
+          path: ./frontend/package.json
+          target: /app/package.json
     depends_on:
       - backend
     restart: unless-stopped

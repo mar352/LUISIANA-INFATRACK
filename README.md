@@ -51,18 +51,20 @@ The default `docker compose up` builds a **production** image (nginx + static fi
 docker compose up --build -d
 ```
 
-For **hot reload** while coding (Vite HMR + backend `node --watch`):
+For **hot reload** while coding (Vite HMR + backend `node --watch` + Compose file watch):
 
 ```bash
-docker compose -f docker-compose.dev.yml up
+docker compose -p infatrack-dev -f docker-compose.dev.yml up --build --watch
 ```
 
-Or double-click `run-docker-dev.bat`, then open **http://localhost:5173**.
+Or double-click `run-docker-dev.bat`, then open **http://localhost:5173**.  
+Uses project name `infatrack-dev` so it won't replace the production stack on `:8080`.  
+Code changes under `frontend/src` and `backend/src` reload automatically — no rebuild needed.
 
 | Mode | Command | URL | Auto-reload |
 |------|---------|-----|-------------|
-| Share / demo | `docker compose up --build` | :8080 | No — rebuild required |
-| Development | `docker compose -f docker-compose.dev.yml up` | :5173 | Yes |
+| Share / demo | `docker compose up --build` | :8080 | No — run `docker compose up --build -d` after changes |
+| Development | `docker compose -p infatrack-dev -f docker-compose.dev.yml up --build --watch` | :5173 | Yes — instant on save |
 
 ---
 

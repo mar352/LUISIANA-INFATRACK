@@ -16,7 +16,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import type { Project, ProjectStatus } from "../types";
 import { MODEL_CATALOG, PROJECT_STATUS_COLORS, PROJECT_STATUS_LABELS } from "../types";
-import { patchProject } from "../lib/api";
+import { patchProject, backendUrl } from "../lib/api";
 
 const LAYER_ID = "glb-buildings";
 const HIT_RADIUS_PX = 32;
@@ -35,17 +35,16 @@ type Props = {
   map: MapLibreMap | null;
   projects: Project[];
   visible: boolean;
+  readOnly?: boolean;
   onBuildingClick?: (hit: boolean) => void;
   onDeleteBuilding?: (projectId: string) => void;
 };
 
 type ModelState = {
   scene: THREE.Group;
-  // Mercator coords (used for hit testing and drag)
   translateX: number;
   translateY: number;
   translateZ: number;
-  // Original lng/lat (used for getMatrixForModel with terrain)
   lng: number;
   lat: number;
   baseScale: number;
@@ -56,7 +55,7 @@ type ModelState = {
   status: Project["status"];
 };
 
-export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDeleteBuilding }: Props) {
+export function BuildingOverlay({ map, projects, visible, readOnly = false, onBuildingClick, onDeleteBuilding }: Props) {
   const gltfCache = useRef<Map<string, THREE.Group>>(new Map());
   const statesRef = useRef<ModelState[]>([]);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -80,6 +79,8 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
 
   const [selectedIdx, setSelectedIdx] = useState(-1);
   const selectedIdxRef = useRef(-1);
+  const readOnlyRef = useRef(readOnly);
+  useEffect(() => { readOnlyRef.current = readOnly; }, [readOnly]);
   useEffect(() => { selectedIdxRef.current = selectedIdx; setConfirmDelete(false); }, [selectedIdx]);
 
   // Confirmation state for delete
@@ -479,6 +480,7 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
     }
 
     const onMouseDown = (e: MouseEvent) => {
+      if (readOnlyRef.current) return;
       const idx = selectedIdxRef.current;
       if (idx < 0) return;
       const rect = canvas.getBoundingClientRect();
@@ -593,6 +595,7 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
     };
 
     const onWheel = (e: WheelEvent) => {
+      if (readOnlyRef.current) return;
       const idx = selectedIdxRef.current;
       if (idx < 0) return;
       const rect = canvas.getBoundingClientRect();
@@ -646,6 +649,7 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
 
   function openModal(mode: "view" | "edit") {
     if (!project) return;
+    if (readOnly && mode === "edit") return;
     setModalMode(mode);
     if (mode === "edit") {
       setEditDraft({
@@ -965,6 +969,49 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
                 </div>
               )}
 
+              {/* Progress photos from engineers */}
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Progress Photos
+                  {(project.photos?.length ?? 0) > 0 && (
+                    <span style={{ marginLeft: 6, fontWeight: 700, color: "var(--seed)" }}>
+                      ({project.photos.length})
+                    </span>
+                  )}
+                </div>
+                {(project.photos?.length ?? 0) === 0 ? (
+                  <div style={{ fontSize: 12, color: "var(--muted2)", lineHeight: 1.5 }}>
+                    No progress photos uploaded yet.
+                  </div>
+                ) : (
+                  <div className="project-photo-grid building-modal-photos">
+                    {project.photos.map((photo) => (
+                      <a
+                        key={photo.id}
+                        href={backendUrl(photo.url)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="project-photo-item building-modal-photo"
+                        title={photo.caption || "Progress photo"}
+                      >
+                        <img src={backendUrl(photo.url)} alt={photo.caption || "Progress photo"} />
+                        <div className="project-photo-meta">
+                          <span>{photo.caption || "Progress photo"}</span>
+                          {photo.milestoneId && (
+                            <span className="project-photo-tag">
+                              {(project.milestones ?? []).find((m) => m.id === photo.milestoneId)?.title ?? "Milestone"}
+                            </span>
+                          )}
+                          <span style={{ opacity: 0.75 }}>
+                            {new Date(photo.uploadedAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Location */}
               <div style={{ marginBottom: 20 }}>
                 <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Location</div>
@@ -1017,6 +1064,7 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
               </svg>
               View
             </button>
+            {!readOnly && (
             <button
               onClick={() => openModal("edit")}
               style={{
@@ -1034,6 +1082,7 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
               </svg>
               Edit
             </button>
+            )}
             <button
               onClick={() => { setSelectedIdx(-1); selectedIdxRef.current = -1; setShowModal(false); setHoveredBuilding(null); map?.triggerRepaint(); }}
               style={{
@@ -1046,6 +1095,7 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
           </div>
 
           {/* Controls hint */}
+          {!readOnly && (
           <div style={{
             display: "flex", gap: 12, fontSize: 11, color: "var(--muted2)",
             borderTop: "1px solid var(--stroke2)", paddingTop: 8, width: "100%",
@@ -1054,8 +1104,10 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
             <span>Right-drag: Rotate</span>
             <span>Scroll: Scale</span>
           </div>
+          )}
 
           {/* Action row */}
+          {!readOnly && (
           <div style={{ display: "flex", gap: 8, width: "100%", paddingTop: 2 }}>
             {!confirmDelete ? (
               <button
@@ -1118,6 +1170,7 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
               </>
             )}
           </div>
+          )}
         </div>
       )}
     </>

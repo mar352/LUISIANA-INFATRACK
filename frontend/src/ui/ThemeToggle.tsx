@@ -18,7 +18,7 @@ function IconMoon() {
   );
 }
 
-export function ThemeToggle({ className = "" }: { className?: string }) {
+export function ThemeToggle({ className = "", iconOnly = false }: { className?: string; iconOnly?: boolean }) {
   const [theme, setTheme] = useState<Theme>(() => resolveTheme());
 
   useEffect(() => {
@@ -35,7 +35,7 @@ export function ThemeToggle({ className = "" }: { className?: string }) {
   return (
     <button
       type="button"
-      className={`btn-amber theme-toggle${className ? ` ${className}` : ""}`}
+      className={`theme-toggle${iconOnly ? " theme-toggle-icon-only" : " btn-amber"}${className ? ` ${className}` : ""}`}
       onClick={() => setTheme(toggleTheme())}
       aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
       title={isDark ? "Light mode" : "Dark mode"}
@@ -43,7 +43,7 @@ export function ThemeToggle({ className = "" }: { className?: string }) {
       <span className="theme-toggle-icon" aria-hidden>
         {isDark ? <IconSun /> : <IconMoon />}
       </span>
-      <span className="theme-toggle-label">{isDark ? "Light" : "Dark"}</span>
+      {!iconOnly && <span className="theme-toggle-label">{isDark ? "Light" : "Dark"}</span>}
     </button>
   );
 }

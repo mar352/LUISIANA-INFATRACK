@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { ThemeToggle } from "./ThemeToggle";
 
-export type UserRole = "MPDC" | "Engineer" | "Agriculture" | "Negosyo Center";
+export type UserRole = "MPDC" | "Engineer" | "Agriculture" | "Negosyo Center" | "Viewer";
 
 export interface RoleConfig {
   label: string;
@@ -64,6 +64,18 @@ export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
     canSeeProjects: false,
     canSeeAlerts: false,
     canSeeBusinessPermits: true,
+  },
+  Viewer: {
+    label: "Public Viewer",
+    color: "#3D9B5F",
+    description: "Read-only live map for residents and visitors",
+    canSeeWeather: true,
+    canSeeLayers: true,
+    canSeeRadar: true,
+    canSeeRisk: true,
+    canSeeProjects: true,
+    canSeeAlerts: true,
+    canSeeBusinessPermits: false,
   },
 };
 
@@ -134,7 +146,15 @@ const PageWrap = ({ children }: { children: ReactNode }) => (
   <div className="page-wrap">{children}</div>
 );
 
-const PageOverview = ({ onEnter, setActivePage }: { onEnter: () => void; setActivePage: (page: LandingPageId) => void }) => (
+const PageOverview = ({
+  onEnter,
+  onViewMap,
+  setActivePage,
+}: {
+  onEnter: () => void;
+  onViewMap: () => void;
+  setActivePage: (page: LandingPageId) => void;
+}) => (
   <>
     <section className="hero">
       <div className="hero-media">
@@ -153,8 +173,11 @@ const PageOverview = ({ onEnter, setActivePage }: { onEnter: () => void; setActi
           Integrated monitoring for municipal GIS, disaster risk, infrastructure, and business permits — built for Luisiana&apos;s departments.
         </p>
         <div className="hero-cta">
-          <button type="button" className="btn-amber" onClick={onEnter}>
-            Access the Dashboard
+          <button type="button" className="btn-amber" onClick={onViewMap}>
+            View Live Map
+          </button>
+          <button type="button" className="btn-ghost" onClick={onEnter}>
+            Department Sign In
           </button>
           <button type="button" className="btn-ghost" onClick={() => setActivePage("features")}>
             Explore Capabilities
@@ -238,14 +261,15 @@ const PageOverview = ({ onEnter, setActivePage }: { onEnter: () => void; setActi
         <p>Open the platform and monitor Luisiana in real time — weather, risk, projects, permits.</p>
       </div>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-        <button type="button" className="btn-amber" onClick={onEnter}>Launch Dashboard</button>
+        <button type="button" className="btn-amber" onClick={onViewMap}>View Live Map</button>
+        <button type="button" className="btn-ghost" onClick={onEnter}>Launch Dashboard</button>
         <button type="button" className="btn-ghost" onClick={() => setActivePage("about")}>About the System</button>
       </div>
     </div>
   </>
 );
 
-const PageFeatures = ({ onEnter }: { onEnter: () => void }) => (
+const PageFeatures = ({ onEnter, onViewMap }: { onEnter: () => void; onViewMap: () => void }) => (
   <>
     <section className="ed-section">
       <div className="ed-rail">
@@ -268,15 +292,16 @@ const PageFeatures = ({ onEnter }: { onEnter: () => void }) => (
             );
           })}
         </div>
-        <div style={{ marginTop: 32 }}>
-          <button type="button" className="btn-amber" onClick={onEnter}>Sign In to Access All Features</button>
+        <div style={{ marginTop: 32, display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <button type="button" className="btn-amber" onClick={onViewMap}>View Live Map</button>
+          <button type="button" className="btn-ghost" onClick={onEnter}>Sign In to Access All Features</button>
         </div>
       </div>
     </section>
   </>
 );
 
-const PageDepartments = ({ onEnter }: { onEnter: () => void }) => (
+const PageDepartments = ({ onEnter, onViewMap }: { onEnter: () => void; onViewMap: () => void }) => (
   <section className="ed-section">
     <div className="ed-rail">
       <h2>Department accounts</h2>
@@ -306,8 +331,9 @@ const PageDepartments = ({ onEnter }: { onEnter: () => void }) => (
           </div>
         ))}
       </div>
-      <div style={{ marginTop: 32 }}>
-        <button type="button" className="btn-amber" onClick={onEnter}>Sign In to Your Department</button>
+      <div style={{ marginTop: 32, display: "flex", gap: 12, flexWrap: "wrap" }}>
+        <button type="button" className="btn-amber" onClick={onViewMap}>View Live Map</button>
+        <button type="button" className="btn-ghost" onClick={onEnter}>Sign In to Your Department</button>
       </div>
     </div>
   </section>
@@ -343,7 +369,7 @@ const PageRisk = () => (
   </section>
 );
 
-const PageAbout = ({ onEnter }: { onEnter: () => void }) => (
+const PageAbout = ({ onEnter, onViewMap }: { onEnter: () => void; onViewMap: () => void }) => (
   <div className="about-grid">
     <div className="about-prose">
       <h2>Built for Luisiana&apos;s municipal government</h2>
@@ -353,7 +379,10 @@ const PageAbout = ({ onEnter }: { onEnter: () => void }) => (
       <p>
         Open-data sources — ECMWF IFS, OpenStreetMap, NASA GIBS, RainViewer — keep licensing cost at zero while staying accurate enough for LGU decisions.
       </p>
-      <button type="button" className="btn-amber" onClick={onEnter}>Sign In to Dashboard</button>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+        <button type="button" className="btn-amber" onClick={onViewMap}>View Live Map</button>
+        <button type="button" className="btn-ghost" onClick={onEnter}>Sign In to Dashboard</button>
+      </div>
     </div>
     <div className="about-meta">
       {[
@@ -375,7 +404,7 @@ const PageAbout = ({ onEnter }: { onEnter: () => void }) => (
   </div>
 );
 
-export function LandingPage({ onEnter }: { onEnter: () => void }) {
+export function LandingPage({ onEnter, onViewMap }: { onEnter: () => void; onViewMap: () => void }) {
   const [activePage, setActivePage] = useState<LandingPageId>("overview");
 
   const NAV_LINKS: { label: string; page: LandingPageId }[] = [
@@ -388,7 +417,9 @@ export function LandingPage({ onEnter }: { onEnter: () => void }) {
 
   const PAGE_MAP = useMemo(
     () => ({
-      overview: (props: { onEnter: () => void }) => <PageOverview {...props} setActivePage={setActivePage} />,
+      overview: (props: { onEnter: () => void; onViewMap: () => void }) => (
+        <PageOverview {...props} setActivePage={setActivePage} />
+      ),
       features: PageFeatures,
       departments: PageDepartments,
       risk: () => <PageRisk />,
@@ -423,13 +454,16 @@ export function LandingPage({ onEnter }: { onEnter: () => void }) {
         </div>
         <div className="landing-nav-actions">
           <ThemeToggle />
+          <button type="button" className="btn-amber" onClick={onViewMap}>
+            View Map
+          </button>
           <button type="button" className="btn-amber" onClick={onEnter}>
             Sign In
           </button>
         </div>
       </nav>
       <PageWrap>
-        <ActivePage onEnter={onEnter} />
+        <ActivePage onEnter={onEnter} onViewMap={onViewMap} />
       </PageWrap>
     </div>
   );

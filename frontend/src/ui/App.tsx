@@ -258,7 +258,9 @@ export default function App() {
   const [customModelFile, setCustomModelFile] = useState<File | null>(null);
   const [customModelPreview, setCustomModelPreview] = useState<string | null>(null);
   const [sidebarTab, setSidebarTab] = useState<"layers" | "radar" | "risk" | "projects" | "climate" | "events" | "ai-risk">("climate");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia("(max-width: 1024px)").matches
+  );
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
 
   // Set default tab based on role permissions
@@ -269,6 +271,17 @@ export default function App() {
       else if (roleConfig.canSeeProjects) setSidebarTab("projects");
     }
   }, [currentRole]);
+
+  // Collapse side panel by default on tablet/phone; full map first
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1024px)");
+    const onChange = (e: MediaQueryListEvent) => {
+      if (e.matches) setSidebarCollapsed(true);
+    };
+    if (mq.matches) setSidebarCollapsed(true);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
 
   // MapLibre needs a resize after the panel width animates
   useEffect(() => {
@@ -1301,7 +1314,12 @@ export default function App() {
   return (
     <div className={`appShell${sidebarCollapsed ? " sidebar-collapsed" : ""}`}>
       {/* Landing page */}
-      {screen === "landing" && <LandingPage onEnter={() => setScreen("login")} />}
+      {screen === "landing" && (
+        <LandingPage
+          onEnter={() => setScreen("login")}
+          onViewMap={() => { setCurrentRole("Viewer"); setScreen("app"); }}
+        />
+      )}
 
       {/* Login screen */}
       {screen === "login" && (
@@ -1334,8 +1352,9 @@ export default function App() {
           map={mapInstance}
           projects={projects}
           visible={toggles.projects}
+          readOnly={currentRole === "Viewer"}
           onBuildingClick={(hit) => { buildingHitRef.current = hit; }}
-          onDeleteBuilding={async (projectId) => {
+          onDeleteBuilding={currentRole === "Viewer" ? undefined : async (projectId) => {
             try {
               await fetch(backendUrl(`/api/projects/${projectId}`), { method: "DELETE" });
             } catch (err) {
@@ -1345,40 +1364,45 @@ export default function App() {
         />
 
         <div className="topBar">
-          <div>
-            <div className="brand">INFA-TRACK Luisiana</div>
-            <div className="sub">Real-Time GIS Infrastructure & Disaster Monitoring</div>
-          </div>
-          <div className="grow" />
-          <ThemeToggle />
-          {roleConfig && (
-            <div className="chip" style={{ borderColor: `${roleConfig.color}50`, color: roleConfig.color, fontWeight: 600 }}>
-              {roleConfig.label}
+          <div className="topBar-brand">
+            <div className="topBar-brand-text">
+              <div className="brand">
+                INFA-TRACK <span className="brand-place">Luisiana</span>
+              </div>
+              <div className="sub">Real-Time GIS Infrastructure & Disaster Monitoring</div>
             </div>
-          )}
-          <div className="chip">
-            <span className="dot" style={{ background: connected ? "var(--accent)" : "rgba(255,77,79,0.9)" }} />
-            {connected ? "Live" : "Disconnected"}
           </div>
-          <div className="chip">
-            Risk:{" "}
-            <span style={{ color: topRisk.level === "HIGH" ? "var(--danger)" : topRisk.level === "MODERATE" ? "var(--warn)" : "var(--safe)" }}>
-              {topRisk.level}
-            </span>
+          <div className="topBar-toolbar">
+            {roleConfig && (
+              <div className="chip chip-role" style={{ borderColor: `${roleConfig.color}50`, color: roleConfig.color, fontWeight: 600 }}>
+                {roleConfig.label}
+              </div>
+            )}
+            <div className="chip chip-live">
+              <span className="dot" style={{ background: connected ? "var(--accent)" : "rgba(255,77,79,0.9)" }} />
+              {connected ? "Live" : "Offline"}
+            </div>
+            <div className="chip chip-risk topBar-hide-sm">
+              Risk:{" "}
+              <span style={{ color: topRisk.level === "HIGH" ? "var(--danger)" : topRisk.level === "MODERATE" ? "var(--warn)" : "var(--safe)" }}>
+                {topRisk.level}
+              </span>
+            </div>
+            <div className="chip chip-updates topBar-hide-mobile">Updates: 5s</div>
           </div>
-          <div className="chip">Updates: 5s</div>
-          {currentRole && (
-            <button
-              onClick={() => { setCurrentRole(null); setScreen("landing"); }}
-              style={{
-                cursor: "pointer", borderRadius: 2, padding: "6px 12px", fontSize: 12,
-                border: "1px solid rgba(255,77,79,0.35)", background: "rgba(255,77,79,0.10)",
-                color: "rgba(255,77,79,0.9)",
-              }}
-            >
-              Sign Out
-            </button>
-          )}
+          <div className="topBar-actions-primary">
+            <ThemeToggle iconOnly />
+            {currentRole && (
+              <button
+                type="button"
+                className="topBar-exit"
+                onClick={() => { setCurrentRole(null); setScreen("landing"); }}
+              >
+                <span className="topBar-exit-full">{currentRole === "Viewer" ? "Exit Map" : "Sign Out"}</span>
+                <span className="topBar-exit-short">{currentRole === "Viewer" ? "Exit" : "Out"}</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* ── Map Controls ── */}
@@ -1501,6 +1525,15 @@ export default function App() {
             <button type="button" className={`sidebar-tab${sidebarTab === "ai-risk" ? " active" : ""}`} onClick={() => setSidebarTab("ai-risk")}>AI Risk</button>
           )}
         </div>
+
+        {currentRole === "Viewer" && (
+          <div className="card viewer-banner" style={{ marginBottom: 12 }}>
+            <div className="sectionTitle" style={{ marginBottom: 4 }}>Public Map Viewer</div>
+            <p style={{ margin: 0, fontSize: 11, color: "var(--muted2)", lineHeight: 1.5 }}>
+              View-only mode — browse weather, risk, and projects without department sign-in.
+            </p>
+          </div>
+        )}
 
         {/* Tab Content */}
         <div className="sidePanel-body">
@@ -2032,6 +2065,7 @@ export default function App() {
             projects={projects}
             currentRole={currentRole}
             mapRef={mapRef}
+            readOnly={currentRole === "Viewer"}
           />
         )}
         </>
