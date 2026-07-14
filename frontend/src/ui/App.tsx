@@ -1439,26 +1439,7 @@ export default function App() {
         <div className="sectionTitle">Live Situation Panel</div>
 
         {/* Tab Navigation */}
-        <div
-          className="sidebar-tabs hide-scrollbar"
-          onMouseDown={(e) => {
-            const ele = e.currentTarget;
-            const startX = e.pageX - ele.offsetLeft;
-            const scrollLeft = ele.scrollLeft;
-            ele.style.cursor = "grabbing";
-            const handleMouseMove = (ev: MouseEvent) => {
-              const x = ev.pageX - ele.offsetLeft;
-              ele.scrollLeft = scrollLeft - (x - startX) * 1.5;
-            };
-            const handleMouseUp = () => {
-              ele.style.cursor = "grab";
-              document.removeEventListener("mousemove", handleMouseMove);
-              document.removeEventListener("mouseup", handleMouseUp);
-            };
-            document.addEventListener("mousemove", handleMouseMove);
-            document.addEventListener("mouseup", handleMouseUp);
-          }}
-        >
+        <div className="sidebar-tabs">
           {roleConfig?.canSeeWeather && (
             <button type="button" className={`sidebar-tab${sidebarTab === "weather" ? " active" : ""}`} onClick={() => setSidebarTab("weather")}>Weather</button>
           )}
@@ -1486,7 +1467,7 @@ export default function App() {
         </div>
 
         {/* Tab Content */}
-        <div style={{ overflowY: "auto", maxHeight: "calc(100vh - 180px)" }}>
+        <div className="sidePanel-body">
 
         {/* ── Weather Tab ── */}
         {sidebarTab === "weather" && roleConfig?.canSeeWeather && (
@@ -1579,7 +1560,7 @@ export default function App() {
               <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em" }}>
                 6-Hour Forecast (ECMWF)
               </div>
-              <div style={{ display: "flex", gap: 4, overflowX: "auto", paddingBottom: 4 }}>
+              <div style={{ display: "flex", gap: 4, flexWrap: "wrap", paddingBottom: 4 }}>
                 {weather.forecast.map((f) => {
                   const rainColor = f.rainfallMm > 10 ? "var(--danger)" : f.rainfallMm > 3 ? "var(--warn)" : "var(--safe)";
                   return (
@@ -1674,8 +1655,8 @@ export default function App() {
             />
           </div>
 
-          <div className="toggleRow" style={{ alignItems: "flex-start" }}>
-            <div>
+          <div className="toggleRow" style={{ alignItems: "flex-start", flexWrap: "wrap" }}>
+            <div style={{ flex: "1 1 180px", minWidth: 0 }}>
               <label>Heatmap Mode</label>
               <div className="hint">What the heatmap represents</div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
@@ -1707,7 +1688,7 @@ export default function App() {
                 ))}
               </div>
             </div>
-            <div style={{ minWidth: 86, textAlign: "right" }}>
+            <div style={{ flex: "0 0 auto", textAlign: "right" }}>
               <span className="pill">Cool→Hot</span>
               <div style={{ marginTop: 6, fontSize: 12, color: "var(--muted2)" }}>
                 {heatMetric === "rainfall"

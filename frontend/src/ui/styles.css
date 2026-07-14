@@ -200,10 +200,12 @@ input[type="range"] {
 
 .sidePanel {
   height: 100%;
+  min-width: 0;
   border-left: 3px solid var(--burnt);
   background: var(--cream);
   padding: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: hidden;
   display: flex;
   flex-direction: column;
 }
@@ -223,6 +225,35 @@ input[type="range"] {
 .sidePanel > *:not(.sectionTitle) {
   padding-left: 16px;
   padding-right: 16px;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.sidePanel-body {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-bottom: 16px;
+}
+
+/* Vertical scrollbar only — hide horizontal */
+.sidePanel,
+.sidePanel-body {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklch, var(--burnt) 45%, transparent) transparent;
+}
+
+.sidePanel-body::-webkit-scrollbar {
+  width: 6px;
+  height: 0;
+}
+
+.sidePanel-body::-webkit-scrollbar:horizontal {
+  display: none;
+  height: 0;
 }
 
 .sidePanel > .sectionTitle + * {
@@ -489,7 +520,8 @@ input[type="range"] {
 .hide-scrollbar::-webkit-scrollbar { display: none; }
 .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
-.sidePanel ::-webkit-scrollbar { width: 6px; }
+.sidePanel ::-webkit-scrollbar { width: 6px; height: 0; }
+.sidePanel ::-webkit-scrollbar:horizontal { display: none; height: 0; }
 .sidePanel ::-webkit-scrollbar-track { background: transparent; }
 .sidePanel ::-webkit-scrollbar-thumb {
   background: color-mix(in oklch, var(--burnt) 45%, transparent);
@@ -510,17 +542,20 @@ input[type="range"] {
 .sidebar-tabs {
   display: flex;
   gap: 0;
-  margin: 0 -16px 12px;
-  padding: 0 16px;
+  margin: 0 0 12px;
+  padding: 0;
   border-bottom: 2px solid var(--ink);
-  overflow-x: auto;
-  flex-wrap: nowrap;
+  overflow: hidden;
+  flex-wrap: wrap;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .sidebar-tab {
-  flex: 0 0 auto;
+  flex: 1 1 auto;
   cursor: pointer;
-  padding: 10px 14px;
+  padding: 10px 10px;
   border-radius: 0;
   font-size: var(--fs-ui);
   font-weight: 700;
@@ -531,6 +566,9 @@ input[type="range"] {
   margin-bottom: -2px;
   font-family: var(--font);
   letter-spacing: 0.02em;
+  white-space: nowrap;
+  text-align: center;
+  min-width: 0;
 }
 
 .sidebar-tab.active {
