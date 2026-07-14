@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { MapboxOverlay } from "@deck.gl/mapbox";
 import { HeatmapLayer } from "@deck.gl/aggregation-layers";
 import { PolygonLayer, ColumnLayer, ScatterplotLayer, IconLayer } from "@deck.gl/layers";
@@ -616,23 +616,23 @@ export function DeckGLOverlay({
             top: hoveredEvent.y + 10,
             pointerEvents: "none",
             zIndex: 1000,
-            background: "oklch(0.955 0.018 152)",
+            background: "var(--cream)",
             backdropFilter: "none",
             border: `2px solid ${getEventColor(hoveredEvent.event)}`,
             borderRadius: 0,
             padding: "12px 16px",
             maxWidth: 320,
-            boxShadow: "8px 8px 0 oklch(0.38 0.09 152)",
+            boxShadow: "8px 8px 0 var(--shadow-accent)",
           }}
         >
           <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 8 }}>
             <span style={{ fontSize: 24 }}>{getEventIcon(hoveredEvent.event)}</span>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "oklch(0.24 0.035 152)", marginBottom: 4, lineHeight: 1.3 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", marginBottom: 4, lineHeight: 1.3 }}>
                 {hoveredEvent.event.title}
               </div>
               {hoveredEvent.event.description && (
-                <div style={{ fontSize: 11, color: "oklch(0.46 0.035 152)", marginBottom: 6, lineHeight: 1.4 }}>
+                <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 6, lineHeight: 1.4 }}>
                   {hoveredEvent.event.description}
                 </div>
               )}
@@ -641,7 +641,7 @@ export function DeckGLOverlay({
           
           <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span style={{ color: "oklch(0.48 0.035 152)" }}>Category:</span>
+              <span style={{ color: "var(--muted)" }}>Category:</span>
               <span style={{ color: getEventColor(hoveredEvent.event), fontWeight: 600 }}>
                 {hoveredEvent.event.categories[0]?.title || "Unknown"}
               </span>
@@ -652,8 +652,8 @@ export function DeckGLOverlay({
               if (geometry?.magnitudeValue && geometry?.magnitudeUnit) {
                 return (
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span style={{ color: "oklch(0.48 0.035 152)" }}>Magnitude:</span>
-                    <span style={{ color: "oklch(0.34 0.038 152)", fontWeight: 600 }}>
+                    <span style={{ color: "var(--muted)" }}>Magnitude:</span>
+                    <span style={{ color: "var(--ink-soft)", fontWeight: 600 }}>
                       {geometry.magnitudeValue.toLocaleString()} {geometry.magnitudeUnit}
                     </span>
                   </div>
@@ -667,8 +667,8 @@ export function DeckGLOverlay({
               if (geometry?.date) {
                 return (
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span style={{ color: "oklch(0.48 0.035 152)" }}>Updated:</span>
-                    <span style={{ color: "oklch(0.42 0.035 152)", fontSize: 10 }}>
+                    <span style={{ color: "var(--muted)" }}>Updated:</span>
+                    <span style={{ color: "var(--muted)", fontSize: 10 }}>
                       {new Date(geometry.date).toLocaleDateString()} {new Date(geometry.date).toLocaleTimeString()}
                     </span>
                   </div>
@@ -678,14 +678,14 @@ export function DeckGLOverlay({
             })()}
             
             <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span style={{ color: "oklch(0.48 0.035 152)" }}>Status:</span>
+              <span style={{ color: "var(--muted)" }}>Status:</span>
               <span style={{ color: hoveredEvent.event.closed ? "rgba(150,150,150,0.85)" : "rgba(255,100,100,0.95)", fontWeight: 600 }}>
                 {hoveredEvent.event.closed ? "Closed" : "Active"}
               </span>
             </div>
           </div>
           
-          <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid oklch(0.24 0.035 152 / 0.14)", fontSize: 9, color: "oklch(0.55 0.03 152)", textAlign: "center" }}>
+          <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--stroke)", fontSize: 9, color: "var(--muted2)", textAlign: "center" }}>
             Click event in sidebar to fly to location
           </div>
         </div>
@@ -700,22 +700,22 @@ export function DeckGLOverlay({
             top: hoveredRisk.y + 10,
             pointerEvents: "none",
             zIndex: 1000,
-            background: "oklch(0.955 0.018 152)",
+            background: "var(--cream)",
             backdropFilter: "none",
-            border: `2px solid ${hoveredRisk.prediction.riskLevel === 'CRITICAL' ? '#ff4d4f' : hoveredRisk.prediction.riskLevel === 'HIGH' ? '#ffa500' : hoveredRisk.prediction.riskLevel === 'MODERATE' ? '#3D9B5F' : '#3D9B5F'}`,
+            border: `2px solid ${hoveredRisk.prediction.riskLevel === 'CRITICAL' ? '#ff4d4f' : hoveredRisk.prediction.riskLevel === 'HIGH' ? '#ffa500' : hoveredRisk.prediction.riskLevel === 'MODERATE' ? 'var(--seed)' : 'var(--seed)'}`,
             borderRadius: 0,
             padding: "12px 16px",
             maxWidth: 320,
-            boxShadow: "8px 8px 0 oklch(0.38 0.09 152)",
+            boxShadow: "8px 8px 0 var(--shadow-accent)",
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
             <span style={{ fontSize: 24 }}>🤖</span>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "oklch(0.24 0.035 152)", marginBottom: 4 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", marginBottom: 4 }}>
                 AI Risk Prediction
               </div>
-              <div style={{ fontSize: 11, color: "oklch(0.46 0.035 152)" }}>
+              <div style={{ fontSize: 11, color: "var(--muted)" }}>
                 {hoveredRisk.prediction.riskLevel} RISK
               </div>
             </div>
@@ -723,29 +723,29 @@ export function DeckGLOverlay({
           
           <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span style={{ color: "oklch(0.48 0.035 152)" }}>Overall Risk:</span>
-              <span style={{ color: "oklch(0.24 0.035 152)", fontWeight: 600 }}>
+              <span style={{ color: "var(--muted)" }}>Overall Risk:</span>
+              <span style={{ color: "var(--ink)", fontWeight: 600 }}>
                 {hoveredRisk.prediction.overallRisk.toFixed(1)}%
               </span>
             </div>
             
             <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span style={{ color: "oklch(0.48 0.035 152)" }}>Landslide:</span>
+              <span style={{ color: "var(--muted)" }}>Landslide:</span>
               <span style={{ color: "#ff6b6b", fontWeight: 600 }}>
                 {hoveredRisk.prediction.landslideRisk.toFixed(1)}%
               </span>
             </div>
             
             <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span style={{ color: "oklch(0.48 0.035 152)" }}>Flood:</span>
+              <span style={{ color: "var(--muted)" }}>Flood:</span>
               <span style={{ color: "#4dabf7", fontWeight: 600 }}>
                 {hoveredRisk.prediction.floodRisk.toFixed(1)}%
               </span>
             </div>
             
             <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span style={{ color: "oklch(0.48 0.035 152)" }}>Confidence:</span>
-              <span style={{ color: "oklch(0.34 0.038 152)" }}>
+              <span style={{ color: "var(--muted)" }}>Confidence:</span>
+              <span style={{ color: "var(--ink-soft)" }}>
                 {hoveredRisk.prediction.confidence.toFixed(0)}%
               </span>
             </div>
@@ -753,12 +753,12 @@ export function DeckGLOverlay({
           
           {hoveredRisk.prediction.factors.length > 0 && (
             <>
-              <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid oklch(0.24 0.035 152 / 0.14)" }}>
-                <div style={{ fontSize: 10, color: "oklch(0.46 0.035 152)", marginBottom: 4, fontWeight: 600 }}>
+              <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--stroke)" }}>
+                <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 4, fontWeight: 600 }}>
                   Top Risk Factors:
                 </div>
                 {hoveredRisk.prediction.factors.slice(0, 3).map((factor, i) => (
-                  <div key={i} style={{ fontSize: 10, color: "oklch(0.42 0.035 152)", marginBottom: 2 }}>
+                  <div key={i} style={{ fontSize: 10, color: "var(--muted)", marginBottom: 2 }}>
                     • {factor.name} ({factor.contribution.toFixed(0)}%)
                   </div>
                 ))}
@@ -766,7 +766,7 @@ export function DeckGLOverlay({
             </>
           )}
           
-          <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid oklch(0.24 0.035 152 / 0.14)", fontSize: 9, color: "oklch(0.55 0.03 152)", textAlign: "center" }}>
+          <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--stroke)", fontSize: 9, color: "var(--muted2)", textAlign: "center" }}>
             AI-powered terrain risk analysis
           </div>
         </div>

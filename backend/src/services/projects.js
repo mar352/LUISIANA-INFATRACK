@@ -25,20 +25,14 @@ function mulberry32(seed) {
 const SEED = 20260427;
 const r = mulberry32(SEED);
 
-const DEPTS = ["MPDC", "Engineering", "Agriculture", "Negosyo Center"];
-
 let state = null;
-let nextId = 100;
+let nextId = 1;
 
 function modelTypeToLegacyType(modelType) {
   if (!modelType) return "Private Building";
   if (["road", "bridge", "water_tank", "solar_farm"].includes(modelType)) return "Municipal Project";
   if (["barn"].includes(modelType)) return "Agricultural Structure";
   return "Private Building";
-}
-
-function jitter(n, amp) {
-  return n + (r() - 0.5) * amp;
 }
 
 function normalizeStatus(status) {
@@ -52,6 +46,7 @@ function ensureProjectShape(p) {
     status: normalizeStatus(p.status),
     milestones: Array.isArray(p.milestones) ? p.milestones : [],
     issues: Array.isArray(p.issues) ? p.issues : [],
+    photos: Array.isArray(p.photos) ? p.photos : [],
     activityLog: Array.isArray(p.activityLog) ? p.activityLog : [],
     budgetTotal: p.budgetTotal ?? null,
     budgetSpent: p.budgetSpent ?? 0,
@@ -66,6 +61,10 @@ function logActivity(project, message) {
   project.activityLog = project.activityLog.slice(0, 50);
 }
 
+function hasRecentActivity(project, prefix) {
+  return project.activityLog.some((a) => a.message.startsWith(prefix));
+}
+
 function saveState() {
   const dir = path.dirname(DATA_PATH);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -76,92 +75,15 @@ function saveState() {
   );
 }
 
-function buildSeedProjects() {
-  const baseLat = 14.19;
-  const baseLon = 121.51;
-
-  return Array.from({ length: 22 }).map((_, i) => {
-    const status =
-      i < 5 ? "Completed" : i < 14 ? "Ongoing" : i < 18 ? "Planned" : i < 20 ? "Delayed" : "Suspended";
-    const progress =
-      status === "Completed" ? 100 : status === "Planned" ? 0 : status === "Suspended" ? 45 : Math.round(20 + r() * 65);
-
-    const nameKind = i % 3;
-    const name =
-      nameKind === 0 ? `Road Improvement Segment ${i + 1}` :
-      nameKind === 1 ? `Barangay Waterline Upgrade ${i + 1}` :
-                       `Agri Post-Harvest Facility ${i + 1}`;
-
-    const modelType =
-      nameKind === 0 ? "road" :
-      nameKind === 2 ? "barn" :
-                       "office";
-
-    const budgetTotal = Math.round(500000 + r() * 4500000);
-    const budgetSpent = Math.round(budgetTotal * (progress / 100) * (0.85 + r() * 0.2));
-
-    const start = new Date();
-    start.setMonth(start.getMonth() - Math.floor(r() * 6));
-    const end = new Date(start);
-    end.setMonth(end.getMonth() + 3 + Math.floor(r() * 6));
-
-    return ensureProjectShape({
-      id: `P${i + 1}`,
-      name,
-      modelType,
-      type: modelTypeToLegacyType(modelType),
-      department: DEPTS[i % DEPTS.length],
-      status,
-      progress,
-      location: {
-        lat: Number(jitter(baseLat, 0.12).toFixed(6)),
-        lon: Number(jitter(baseLon, 0.14).toFixed(6)),
-      },
-      rotation: 0,
-      description: "",
-      startDate: start.toISOString().slice(0, 10),
-      targetEndDate: end.toISOString().slice(0, 10),
-      budgetTotal,
-      budgetSpent: Math.min(budgetSpent, budgetTotal),
-      milestones: [
-        {
-          id: `M${i + 1}-1`,
-          title: "Site preparation",
-          targetDate: new Date(start.getTime() + 14 * 86400000).toISOString().slice(0, 10),
-          status: progress > 20 ? "done" : progress > 0 ? "pending" : "pending",
-          completedAt: progress > 20 ? new Date().toISOString() : undefined,
-        },
-        {
-          id: `M${i + 1}-2`,
-          title: "Main construction phase",
-          targetDate: end.toISOString().slice(0, 10),
-          status: status === "Completed" ? "done" : status === "Delayed" ? "missed" : "pending",
-        },
-      ],
-      issues: status === "Delayed"
-        ? [{
-            id: `I${i + 1}-1`,
-            kind: "delay",
-            title: "Schedule slip",
-            description: "Weather and material delivery caused delay.",
-            reportedAt: new Date(Date.now() - 7 * 86400000).toISOString(),
-          }]
-        : [],
-      activityLog: [{ at: new Date().toISOString(), message: "Project seeded in system." }],
-      updatedAt: new Date().toISOString(),
-    });
-  });
-}
-
 function loadFromDisk() {
   if (!fs.existsSync(DATA_PATH)) return null;
   try {
     const raw = JSON.parse(fs.readFileSync(DATA_PATH, "utf8"));
     const projects = (raw.projects || []).map(ensureProjectShape);
-    nextId = raw.nextId ?? 100;
+    nextId = raw.nextId ?? 1;
     return projects;
   } catch (err) {
-    console.warn("[projects] Failed to load data file, re-seeding:", err.message);
+    console.warn("[projects] Failed to load data file, starting empty:", err.message);
     return null;
   }
 }
@@ -175,7 +97,8 @@ export function projectsSeed() {
     return state;
   }
 
-  state = buildSeedProjects();
+  state = [];
+  nextId = 1;
   saveState();
   return state;
 }
@@ -186,6 +109,23 @@ function findProject(id) {
 
 function hasOpenDelayIssue(project) {
   return project.issues.some((i) => i.kind === "delay" && !i.resolvedAt);
+}
+
+function countOpenIssues(project) {
+  return project.issues.filter((i) => !i.resolvedAt).length;
+}
+
+function countMissedMilestones(project) {
+  return project.milestones.filter((m) => m.status === "missed").length;
+}
+
+function allMilestonesDone(project) {
+  return project.milestones.length > 0 && project.milestones.every((m) => m.status === "done");
+}
+
+function budgetUtilization(project) {
+  if (!project.budgetTotal || project.budgetTotal <= 0) return null;
+  return Math.round(((project.budgetSpent ?? 0) / project.budgetTotal) * 100);
 }
 
 function updateMilestoneStatuses(project, nowIso) {
@@ -205,6 +145,11 @@ function maybeMarkDelayed(project, nowIso) {
     }
     return;
   }
+  if (countMissedMilestones(project) >= 2 && project.status === "Ongoing") {
+    project.status = "Delayed";
+    logActivity(project, "Status auto-set to Delayed (2+ missed milestones).");
+    return;
+  }
   if (
     project.targetEndDate &&
     project.targetEndDate < nowIso.slice(0, 10) &&
@@ -217,13 +162,66 @@ function maybeMarkDelayed(project, nowIso) {
   }
 }
 
+function applyAutomationRules(project, nowIso) {
+  const today = nowIso.slice(0, 10);
+
+  updateMilestoneStatuses(project, nowIso);
+  maybeMarkDelayed(project, nowIso);
+
+  if (project.status === "Planned" && project.startDate && project.startDate <= today) {
+    project.status = "Ongoing";
+    if (project.progress <= 0) project.progress = 5;
+    logActivity(project, "Status changed to Ongoing (start date reached).");
+    project.updatedAt = nowIso;
+  }
+
+  const openIssues = countOpenIssues(project);
+  if (project.status === "Ongoing" && openIssues >= 5) {
+    project.status = "Suspended";
+    logActivity(project, "Status auto-set to Suspended (5+ unresolved issues).");
+    project.updatedAt = nowIso;
+  }
+
+  const util = budgetUtilization(project);
+  if (util != null && util >= 100 && !hasRecentActivity(project, "Budget alert:")) {
+    logActivity(project, `Budget alert: utilization at ${util}% (over budget).`);
+  } else if (util != null && util >= 90 && util < 100 && !hasRecentActivity(project, "Budget alert:")) {
+    logActivity(project, `Budget alert: utilization at ${util}% (approaching limit).`);
+  }
+
+  if (
+    project.status === "Ongoing" &&
+    allMilestonesDone(project) &&
+    project.progress < 100
+  ) {
+    const next = Math.min(100, project.progress + 10);
+    project.progress = next;
+    logActivity(project, `Progress boosted to ${next}% (all milestones completed).`);
+    if (next >= 100) {
+      project.status = "Completed";
+      logActivity(project, "Progress reached 100% — marked Completed.");
+    }
+    project.updatedAt = nowIso;
+  }
+
+  if (
+    project.status === "Delayed" &&
+    !hasOpenDelayIssue(project) &&
+    countMissedMilestones(project) === 0 &&
+    project.progress < 100
+  ) {
+    project.status = "Ongoing";
+    logActivity(project, "Status restored to Ongoing (delays cleared, milestones on track).");
+    project.updatedAt = nowIso;
+  }
+}
+
 export function tickProjects() {
   const projects = projectsSeed();
   const now = new Date().toISOString();
 
   for (const p of projects) {
-    updateMilestoneStatuses(p, now);
-    maybeMarkDelayed(p, now);
+    applyAutomationRules(p, now);
 
     if (p.status === "Ongoing" && !hasOpenDelayIssue(p)) {
       const delta = 0.4 + r() * 1.2;
@@ -283,6 +281,7 @@ export function addProject({
     budgetSpent: budgetSpent != null ? Number(budgetSpent) : 0,
     milestones: [],
     issues: [],
+    photos: [],
     activityLog: [],
     updatedAt: new Date().toISOString(),
   });
@@ -420,6 +419,104 @@ export function removeProject(id) {
   projects.splice(idx, 1);
   saveState();
   return true;
+}
+
+export function addProjectPhoto(projectId, { url, caption, milestoneId }) {
+  const project = findProject(projectId);
+  if (!project || !url) return null;
+
+  const photo = {
+    id: `PH${Date.now()}`,
+    url: String(url),
+    caption: caption ? String(caption) : "",
+    milestoneId: milestoneId || null,
+    uploadedAt: new Date().toISOString(),
+  };
+  project.photos.unshift(photo);
+  logActivity(project, `Progress photo uploaded${photo.caption ? `: ${photo.caption}` : ""}.`);
+  project.updatedAt = new Date().toISOString();
+  saveState();
+  return photo;
+}
+
+export function removeProjectPhoto(projectId, photoId) {
+  const project = findProject(projectId);
+  if (!project) return false;
+
+  const idx = project.photos.findIndex((p) => p.id === photoId);
+  if (idx === -1) return false;
+
+  project.photos.splice(idx, 1);
+  logActivity(project, "Progress photo removed.");
+  project.updatedAt = new Date().toISOString();
+  saveState();
+  return true;
+}
+
+export function generateAccomplishmentReport(projectId) {
+  const project = findProject(projectId);
+  if (!project) return null;
+
+  const openIssues = project.issues.filter((i) => !i.resolvedAt);
+  const openDelays = openIssues.filter((i) => i.kind === "delay");
+  const openOther = openIssues.filter((i) => i.kind === "issue");
+  const resolved = project.issues.filter((i) => i.resolvedAt).length;
+  const doneMs = project.milestones.filter((m) => m.status === "done").length;
+  const missedMs = project.milestones.filter((m) => m.status === "missed").length;
+  const util = budgetUtilization(project);
+
+  const narrative = [
+    `${project.name} (${project.department}) is currently ${project.status} at ${project.progress}% completion.`,
+    project.milestones.length
+      ? `${doneMs} of ${project.milestones.length} milestones completed${missedMs ? `; ${missedMs} missed` : ""}.`
+      : "No milestones recorded yet.",
+    util != null
+      ? `Budget utilization: ${util}% (${project.budgetSpent ?? 0} of ${project.budgetTotal} PHP).`
+      : "No budget data recorded.",
+    openIssues.length
+      ? `${openDelays.length} open delay(s) and ${openOther.length} open issue(s) require attention.`
+      : "No open delays or issues.",
+    project.photos.length ? `${project.photos.length} progress photo(s) on file.` : "No progress photos yet.",
+  ].join(" ");
+
+  return {
+    generatedAt: new Date().toISOString(),
+    project: {
+      id: project.id,
+      name: project.name,
+      department: project.department,
+      type: project.type,
+      status: project.status,
+      progress: project.progress,
+      description: project.description || "",
+    },
+    timeline: {
+      startDate: project.startDate ?? null,
+      targetEndDate: project.targetEndDate ?? null,
+      milestonesTotal: project.milestones.length,
+      milestonesDone: doneMs,
+      milestonesMissed: missedMs,
+      milestones: project.milestones,
+    },
+    budget: {
+      total: project.budgetTotal ?? null,
+      spent: project.budgetSpent ?? 0,
+      utilizationPct: util,
+      overBudget: util != null && util > 100,
+    },
+    issues: {
+      openDelays: openDelays.length,
+      openIssues: openOther.length,
+      resolved,
+      items: project.issues,
+    },
+    photos: {
+      count: project.photos.length,
+      items: project.photos,
+    },
+    activityLog: project.activityLog.slice(0, 20),
+    narrative,
+  };
 }
 
 export function emitProjectsPayload() {

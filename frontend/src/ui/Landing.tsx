@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from "react";
+import { ThemeToggle } from "./ThemeToggle";
 
 export type UserRole = "MPDC" | "Engineer" | "Agriculture" | "Negosyo Center";
 
@@ -420,9 +421,12 @@ export function LandingPage({ onEnter }: { onEnter: () => void }) {
             </button>
           ))}
         </div>
-        <button type="button" className="btn-amber" onClick={onEnter}>
-          Sign In
-        </button>
+        <div className="landing-nav-actions">
+          <ThemeToggle />
+          <button type="button" className="btn-amber" onClick={onEnter}>
+            Sign In
+          </button>
+        </div>
       </nav>
       <PageWrap>
         <ActivePage onEnter={onEnter} />
@@ -451,7 +455,7 @@ export function LoginScreen({ onLogin, onBack }: { onLogin: (role: UserRole) => 
     <div className="login">
       <aside className="login-rail">
         <div>
-          <img src="/logo.png" alt="" width={56} height={56} style={{ border: "2px solid color-mix(in oklch, oklch(0.955 0.018 152) 50%, transparent)", objectFit: "cover" }} />
+          <img src="/logo.png" alt="" className="login-rail-logo" />
           <h1>INFA-TRACK</h1>
           <p>Department access for Luisiana municipal operations.</p>
         </div>
@@ -460,6 +464,7 @@ export function LoginScreen({ onLogin, onBack }: { onLogin: (role: UserRole) => 
         </p>
       </aside>
       <div className="login-main">
+        <ThemeToggle className="theme-toggle-login" />
         <button type="button" className="login-back" onClick={onBack}>← Back to home</button>
         <div className="login-panel">
           <div className="title">Sign in</div>

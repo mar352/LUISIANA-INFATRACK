@@ -1,4 +1,4 @@
-import type { Project, ProjectIssue, ProjectMilestone } from "../types";
+import type { Project, ProjectIssue, ProjectMilestone, ProjectPhoto, ProjectAccomplishmentReport } from "../types";
 
 // undefined → local default; "" → same-origin (Docker / nginx proxy)
 const envBackend = import.meta.env.VITE_BACKEND_URL as string | undefined;
@@ -55,4 +55,29 @@ export function resolveIssue(projectId: string, issueId: string) {
     "PATCH",
     {}
   );
+}
+
+export function fetchAccomplishmentReport(projectId: string) {
+  return getJson<{ report: ProjectAccomplishmentReport }>(`/api/projects/${projectId}/report`);
+}
+
+export async function uploadProjectPhoto(
+  projectId: string,
+  file: File,
+  opts?: { caption?: string; milestoneId?: string | null }
+) {
+  const form = new FormData();
+  form.append("photo", file);
+  if (opts?.caption) form.append("caption", opts.caption);
+  if (opts?.milestoneId) form.append("milestoneId", opts.milestoneId);
+  const res = await fetch(backendUrl(`/api/projects/${projectId}/photos`), {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+  return (await res.json()) as { photo: ProjectPhoto };
+}
+
+export function deleteProjectPhoto(projectId: string, photoId: string) {
+  return sendJson<{ ok: boolean }>(`/api/projects/${projectId}/photos/${photoId}`, "DELETE");
 }

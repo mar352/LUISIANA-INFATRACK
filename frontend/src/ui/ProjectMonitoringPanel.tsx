@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import {
   PROJECT_STATUS_COLORS,
@@ -13,7 +13,12 @@ import {
   completeMilestone,
   reportIssue,
   resolveIssue,
+  uploadProjectPhoto,
+  deleteProjectPhoto,
+  fetchAccomplishmentReport,
+  backendUrl,
 } from "../lib/api";
+import { downloadReportJson, printAccomplishmentReport } from "../lib/projectReport";
 
 function formatPeso(n: number) {
   return new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: 0 }).format(n);
@@ -42,13 +47,41 @@ export function ProjectMonitoringPanel({ projects, currentRole, mapRef }: Props)
   const [issueKind, setIssueKind] = useState<"delay" | "issue">("delay");
   const [issueTitle, setIssueTitle] = useState("");
   const [issueDesc, setIssueDesc] = useState("");
+  const [photoCaption, setPhotoCaption] = useState("");
+  const [photoMilestoneId, setPhotoMilestoneId] = useState("");
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [reportLoading, setReportLoading] = useState(false);
+
+  const detailRef = useRef<HTMLDivElement | null>(null);
 
   const filtered = useMemo(
     () => projects.filter((p) => (currentRole === "Engineer" ? p.department === "Engineering" : true)),
     [projects, currentRole]
   );
 
-  const selected = filtered.find((p) => p.id === selectedId) ?? null;
+  // Look up from full projects list so the pane still opens if filter drifts
+  const selected = (selectedId ? projects.find((p) => p.id === selectedId) : null) ?? null;
+
+  useEffect(() => {
+    if (!selectedId || !detailRef.current) return;
+    detailRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [selectedId]);
+
+  function openProject(p: Project) {
+    setSelectedId(p.id);
+    mapRef.current?.flyTo({
+      center: [p.location.lon, p.location.lat],
+      zoom: 16,
+      pitch: 62,
+      bearing: -15,
+      duration: 1400,
+      essential: true,
+    });
+  }
+
+  function closeProject() {
+    setSelectedId(null);
+  }
 
   const summary = useMemo(() => {
     const counts: Record<ProjectStatus, number> = {
@@ -102,6 +135,60 @@ export function ProjectMonitoringPanel({ projects, currentRole, mapRef }: Props)
     }
   }
 
+  async function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!selected || !file) return;
+    setPhotoUploading(true);
+    try {
+      await uploadProjectPhoto(selected.id, file, {
+        caption: photoCaption || undefined,
+        milestoneId: photoMilestoneId || null,
+      });
+      setPhotoCaption("");
+      setPhotoMilestoneId("");
+      e.target.value = "";
+    } catch (err) {
+      console.error("Failed to upload photo:", err);
+    } finally {
+      setPhotoUploading(false);
+    }
+  }
+
+  async function handleDeletePhoto(photoId: string) {
+    if (!selected) return;
+    try {
+      await deleteProjectPhoto(selected.id, photoId);
+    } catch (err) {
+      console.error("Failed to delete photo:", err);
+    }
+  }
+
+  async function handleDownloadReport() {
+    if (!selected) return;
+    setReportLoading(true);
+    try {
+      const { report } = await fetchAccomplishmentReport(selected.id);
+      downloadReportJson(report, selected.name);
+    } catch (err) {
+      console.error("Failed to generate report:", err);
+    } finally {
+      setReportLoading(false);
+    }
+  }
+
+  async function handlePrintReport() {
+    if (!selected) return;
+    setReportLoading(true);
+    try {
+      const { report } = await fetchAccomplishmentReport(selected.id);
+      printAccomplishmentReport(report);
+    } catch (err) {
+      console.error("Failed to print report:", err);
+    } finally {
+      setReportLoading(false);
+    }
+  }
+
   return (
     <>
       <div className="card" style={{ marginBottom: 12 }}>
@@ -146,46 +233,71 @@ export function ProjectMonitoringPanel({ projects, currentRole, mapRef }: Props)
         )}
       </div>
 
+      {!selected && (
       <div className="card" style={{ marginBottom: 12 }}>
         <div className="sectionTitle" style={{ marginBottom: 8 }}>Project List</div>
+        <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 8 }}>
+          Click a project to open details, photos, and reports.
+        </div>
+        {filtered.length === 0 ? (
+          <div style={{ fontSize: 12, color: "var(--muted2)", lineHeight: 1.5 }}>
+            No infrastructure projects yet. Use Engineer placement mode to add projects on the map.
+          </div>
+        ) : (
         <div className="miniList">
           {filtered.map((p) => (
-            <div
+            <button
               key={p.id}
+              type="button"
               className="proj"
-              onClick={() => {
-                setSelectedId(p.id);
-                mapRef.current?.flyTo({
-                  center: [p.location.lon, p.location.lat],
-                  zoom: 16,
-                  pitch: 62,
-                  bearing: -15,
-                  duration: 1400,
-                  essential: true,
-                });
-              }}
+              onClick={() => openProject(p)}
               style={{
                 cursor: "pointer",
-                outline: selectedId === p.id ? "2px solid var(--accent)" : undefined,
+                width: "100%",
+                textAlign: "left",
+                font: "inherit",
+                background: "transparent",
               }}
             >
               <div className="n">{p.name}</div>
               <div className="s">
-                <span style={{ color: PROJECT_STATUS_COLORS[p.status] }}>{PROJECT_STATUS_LABELS[p.status]}</span>
+                <span style={{ color: PROJECT_STATUS_COLORS[p.status] ?? "var(--muted)" }}>
+                  {PROJECT_STATUS_LABELS[p.status] ?? p.status}
+                </span>
                 <span>{p.progress}%</span>
               </div>
               <div className="bar"><div style={{ width: `${p.progress}%` }} /></div>
               <div style={{ marginTop: 4, fontSize: 11, color: "var(--muted2)" }}>
-                {p.department} · {formatAgo(p.updatedAt)}
+                {p.department} · {formatAgo(p.updatedAt)} · Open details →
               </div>
-            </div>
+            </button>
           ))}
         </div>
+        )}
       </div>
+      )}
 
       {selected && (
-        <div className="card" style={{ marginBottom: 12 }}>
-          <div className="sectionTitle" style={{ marginBottom: 8 }}>{selected.name}</div>
+        <div className="card" ref={detailRef} style={{ marginBottom: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <button
+              type="button"
+              onClick={closeProject}
+              style={{
+                cursor: "pointer",
+                padding: "6px 10px",
+                fontSize: 11,
+                fontWeight: 700,
+                border: "2px solid var(--ink)",
+                background: "var(--cream-deep)",
+                color: "var(--ink)",
+                flexShrink: 0,
+              }}
+            >
+              ← Back
+            </button>
+            <div className="sectionTitle" style={{ margin: 0, flex: 1 }}>{selected.name}</div>
+          </div>
 
           <div style={{ marginBottom: 12 }}>
             <label style={{ fontSize: 11, color: "var(--muted2)", display: "block", marginBottom: 4 }}>Status</label>
@@ -373,6 +485,90 @@ export function ProjectMonitoringPanel({ projects, currentRole, mapRef }: Props)
             <button type="button" onClick={handleReportIssue} style={{ marginTop: 6, padding: "6px 10px", fontSize: 11, cursor: "pointer" }}>
               Report
             </button>
+          </div>
+
+          <div style={{ marginBottom: 12 }}>
+            <div className="sectionTitle" style={{ fontSize: 11, marginBottom: 6 }}>Progress Photos</div>
+            {(selected.photos ?? []).length === 0 && (
+              <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 8 }}>No progress photos yet.</div>
+            )}
+            {(selected.photos ?? []).length > 0 && (
+              <div className="project-photo-grid">
+                {(selected.photos ?? []).map((photo) => (
+                  <div key={photo.id} className="project-photo-item">
+                    <a href={backendUrl(photo.url)} target="_blank" rel="noreferrer">
+                      <img src={backendUrl(photo.url)} alt={photo.caption || "Progress photo"} />
+                    </a>
+                    <div className="project-photo-meta">
+                      <span>{photo.caption || "Progress photo"}</span>
+                      {photo.milestoneId && (
+                        <span className="project-photo-tag">
+                          {(selected.milestones ?? []).find((m) => m.id === photo.milestoneId)?.title ?? "Milestone"}
+                        </span>
+                      )}
+                    </div>
+                    <button type="button" className="project-photo-remove" onClick={() => handleDeletePhoto(photo.id)}>
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+              <input
+                placeholder="Caption (optional)"
+                value={photoCaption}
+                onChange={(e) => setPhotoCaption(e.target.value)}
+                style={{ width: "100%", padding: "6px", fontSize: 11, border: "1px solid var(--stroke2)" }}
+              />
+              {(selected.milestones ?? []).length > 0 && (
+                <select
+                  value={photoMilestoneId}
+                  onChange={(e) => setPhotoMilestoneId(e.target.value)}
+                  style={{ padding: "6px", fontSize: 11, border: "1px solid var(--stroke2)" }}
+                >
+                  <option value="">Link to milestone (optional)</option>
+                  {selected.milestones.map((m) => (
+                    <option key={m.id} value={m.id}>{m.title}</option>
+                  ))}
+                </select>
+              )}
+              <label style={{ fontSize: 11, cursor: photoUploading ? "wait" : "pointer" }}>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={handlePhotoUpload}
+                  disabled={photoUploading}
+                  style={{ fontSize: 11 }}
+                />
+                {photoUploading ? " Uploading…" : " Upload progress photo"}
+              </label>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 12 }}>
+            <div className="sectionTitle" style={{ fontSize: 11, marginBottom: 6 }}>Accomplishment Report</div>
+            <p style={{ fontSize: 11, color: "var(--muted2)", margin: "0 0 8px", lineHeight: 1.5 }}>
+              Export a summary of progress, milestones, budget, issues, and photos.
+            </p>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={handleDownloadReport}
+                disabled={reportLoading}
+                style={{ padding: "6px 10px", fontSize: 11, cursor: "pointer" }}
+              >
+                Download JSON
+              </button>
+              <button
+                type="button"
+                onClick={handlePrintReport}
+                disabled={reportLoading}
+                style={{ padding: "6px 10px", fontSize: 11, cursor: "pointer" }}
+              >
+                Print / Save PDF
+              </button>
+            </div>
           </div>
 
           <div>

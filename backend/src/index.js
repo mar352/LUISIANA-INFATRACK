@@ -20,6 +20,9 @@ import {
   completeMilestone,
   reportIssue,
   resolveIssue,
+  addProjectPhoto,
+  removeProjectPhoto,
+  generateAccomplishmentReport,
   emitProjectsPayload,
 } from "./services/projects.js";
 import { createAlertFromRisk } from "./services/alerts.js";
@@ -59,6 +62,27 @@ const upload = multer({
       cb(null, true);
     } else {
       cb(new Error("Only .glb and .gltf files are allowed"));
+    }
+  },
+});
+
+const photoStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, uploadsDir),
+  filename: (_req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, "photo-" + uniqueSuffix + path.extname(file.originalname).toLowerCase());
+  },
+});
+
+const uploadPhoto = multer({
+  storage: photoStorage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if ([".jpg", ".jpeg", ".png", ".webp"].includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only .jpg, .jpeg, .png, and .webp images are allowed"));
     }
   },
 });
@@ -207,6 +231,34 @@ app.patch("/api/projects/:id/issues/:iid", (req, res) => {
   if (!issue) return res.status(404).json({ error: "Issue not found" });
   io.emit("projects:update", emitProjectsPayload());
   res.json({ issue });
+});
+
+app.get("/api/projects/:id/report", (req, res) => {
+  const report = generateAccomplishmentReport(req.params.id);
+  if (!report) return res.status(404).json({ error: "Project not found" });
+  res.json({ report });
+});
+
+app.post("/api/projects/:id/photos", uploadPhoto.single("photo"), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: "No photo uploaded" });
+  }
+  const url = `/uploads/${req.file.filename}`;
+  const photo = addProjectPhoto(req.params.id, {
+    url,
+    caption: req.body?.caption,
+    milestoneId: req.body?.milestoneId || null,
+  });
+  if (!photo) return res.status(404).json({ error: "Project not found" });
+  io.emit("projects:update", emitProjectsPayload());
+  res.json({ photo });
+});
+
+app.delete("/api/projects/:id/photos/:photoId", (req, res) => {
+  const removed = removeProjectPhoto(req.params.id, req.params.photoId);
+  if (!removed) return res.status(404).json({ error: "Photo or project not found" });
+  io.emit("projects:update", emitProjectsPayload());
+  res.json({ ok: true });
 });
 
 app.post("/api/upload-model", upload.single("model"), (req, res) => {

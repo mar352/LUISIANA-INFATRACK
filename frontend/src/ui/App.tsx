@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import maplibregl, { Map as MapLibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { DeckGLOverlay } from "./DeckOverlay";
@@ -39,6 +39,7 @@ import {
 } from "../lib/ml-risk";
 import { LandingPage, LoginScreen, ROLE_CONFIGS, type UserRole } from "./Landing";
 import { ProjectMonitoringPanel } from "./ProjectMonitoringPanel";
+import { ThemeToggle } from "./ThemeToggle";
 
 // ── Dashboard icons ────────────────────────────────────────────────────────────
 const IconClipboard = () => (
@@ -738,10 +739,10 @@ export default function App() {
         buildingPopup
           .setLngLat(e.lngLat)
           .setHTML(`
-            <div style="font-family:'Chakra Petch',sans-serif;font-size:12px;color:oklch(0.24 0.035 152);line-height:1.5">
-              <div style="font-weight:700;font-size:13px;margin-bottom:4px;color:oklch(0.24 0.035 152)">${name}</div>
-              <div style="color:oklch(0.48 0.035 152)">Type: <span style="color:#3D9B5F">${type}</span></div>
-              <div style="color:oklch(0.48 0.035 152)">Height: <span style="color:#3D9B5F">${height}</span></div>
+            <div style="font-family:'Chakra Petch',sans-serif;font-size:12px;color:var(--ink);line-height:1.5">
+              <div style="font-weight:700;font-size:13px;margin-bottom:4px;color:var(--ink)">${name}</div>
+              <div style="color:var(--muted)">Type: <span style="color:var(--seed)">${type}</span></div>
+              <div style="color:var(--muted)">Height: <span style="color:var(--seed)">${height}</span></div>
             </div>
           `)
           .addTo(map);
@@ -1349,6 +1350,7 @@ export default function App() {
             <div className="sub">Real-Time GIS Infrastructure & Disaster Monitoring</div>
           </div>
           <div className="grow" />
+          <ThemeToggle />
           {roleConfig && (
             <div className="chip" style={{ borderColor: `${roleConfig.color}50`, color: roleConfig.color, fontWeight: 600 }}>
               {roleConfig.label}
@@ -1401,7 +1403,7 @@ export default function App() {
               />
               <path
                 d="M12 22 L9.5 15 L12 16 L14.5 15 Z"
-                fill="oklch(0.55 0.03 152)"
+                fill="var(--muted2)"
                 transform={`rotate(${mapBearing}, 12, 12)`}
               />
             </svg>
@@ -1633,11 +1635,11 @@ export default function App() {
                       borderRadius: 2,
                       padding: "6px 10px",
                       fontSize: 12,
-                      background: heatMetric === k ? "#3D9B5F" : "oklch(0.88 0.032 152)",
-                      color: "oklch(0.24 0.035 152)",
+                      background: heatMetric === k ? "var(--seed)" : "var(--cream-ink)",
+                      color: "var(--ink)",
                       fontWeight: 700,
-                      border: heatMetric === k ? "2px solid oklch(0.24 0.035 152)" : "1px solid oklch(0.24 0.035 152 / 0.14)",
-                      boxShadow: heatMetric === k ? "2px 2px 0 oklch(0.24 0.035 152)" : "none",
+                      border: heatMetric === k ? "2px solid var(--ink)" : "1px solid var(--stroke)",
+                      boxShadow: heatMetric === k ? "2px 2px 0 var(--ink)" : "none",
                     }}
                   >
                     {label}
@@ -1712,9 +1714,9 @@ export default function App() {
                 <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
                   <button onClick={() => setRadarPlaying(!radarPlaying)} style={{
                     cursor: "pointer", borderRadius: 2, padding: "6px 14px", fontSize: 13,
-                    fontWeight: 600, border: "1px solid oklch(0.24 0.035 152 / 0.14)",
+                    fontWeight: 600, border: "1px solid var(--stroke)",
                     background: radarPlaying ? "rgba(61,155,95,0.20)" : "rgba(61,155,95,0.16)",
-                    color: "oklch(0.24 0.035 152)", letterSpacing: "0.02em",
+                    color: "var(--ink)", letterSpacing: "0.02em",
                   }}>
                     {radarPlaying ? <><IconPause /> Pause</> : <><IconPlay /> Play</>}
                   </button>
@@ -1751,9 +1753,9 @@ export default function App() {
                     {RADAR_COLOR_SCHEMES.map(({ value, label }) => (
                       <button key={value} onClick={() => setRadarColorScheme(value)} style={{
                         cursor: "pointer", borderRadius: 2, padding: "5px 10px", fontSize: 11,
-                        border: "1px solid oklch(0.24 0.035 152 / 0.14)",
-                        background: radarColorScheme === value ? "rgba(255,140,60,0.22)" : "oklch(0.88 0.032 152)",
-                        color: radarColorScheme === value ? "#3D9B5F" : "oklch(0.48 0.035 152)",
+                        border: "1px solid var(--stroke)",
+                        background: radarColorScheme === value ? "rgba(255,140,60,0.22)" : "var(--cream-ink)",
+                        color: radarColorScheme === value ? "var(--seed)" : "var(--muted)",
                         fontWeight: radarColorScheme === value ? 600 : 400,
                       }}>{label}</button>
                     ))}
@@ -1848,9 +1850,9 @@ export default function App() {
               style={{
                 width: "100%", cursor: "pointer", padding: "10px 0",
                 borderRadius: 2, fontWeight: 700, fontSize: 13,
-                border: placementMode ? "1px solid rgba(61,155,95,0.6)" : "1px solid oklch(0.24 0.035 152 / 0.14)",
-                background: placementMode ? "rgba(61,155,95,0.20)" : "oklch(0.915 0.028 152)",
-                color: placementMode ? "#3D9B5F" : "oklch(0.48 0.035 152)",
+                border: placementMode ? "1px solid rgba(61,155,95,0.6)" : "1px solid var(--stroke)",
+                background: placementMode ? "rgba(61,155,95,0.20)" : "var(--cream-deep)",
+                color: placementMode ? "var(--seed)" : "var(--muted)",
                 marginBottom: 10,
               }}
             >
@@ -1876,8 +1878,8 @@ export default function App() {
                 placeholder="e.g. Brgy. Hall Phase 2"
                 style={{
                   width: "100%", boxSizing: "border-box", padding: "7px 10px",
-                  borderRadius: 2, border: "1px solid oklch(0.24 0.035 152 / 0.14)",
-                  background: "oklch(0.915 0.028 152)", color: "oklch(0.36 0.04 152)",
+                  borderRadius: 2, border: "1px solid var(--stroke)",
+                  background: "var(--cream-deep)", color: "var(--ink-soft)",
                   fontSize: 12, outline: "none",
                 }}
               />
@@ -1914,14 +1916,14 @@ export default function App() {
                         cursor: "pointer", padding: "8px 6px", borderRadius: 2, textAlign: "left",
                         border: selectedModel === m.type
                           ? "1px solid rgba(61,155,95,0.55)"
-                          : "1px solid oklch(0.24 0.035 152 / 0.08)",
+                          : "1px solid var(--stroke2)",
                         background: selectedModel === m.type
                           ? "rgba(61,155,95,0.14)"
-                          : "oklch(0.88 0.032 152)",
-                        color: selectedModel === m.type ? "#3D9B5F" : "oklch(0.48 0.035 152)",
+                          : "var(--cream-ink)",
+                        color: selectedModel === m.type ? "var(--seed)" : "var(--muted)",
                       }}
                     >
-                      <div style={{ marginBottom: 4, display: "flex", alignItems: "center", color: selectedModel === m.type ? "#3D9B5F" : "oklch(0.48 0.035 152)" }}>
+                      <div style={{ marginBottom: 4, display: "flex", alignItems: "center", color: selectedModel === m.type ? "var(--seed)" : "var(--muted)" }}>
                         {(() => { const Ic = ModelIcons[m.icon] ?? ModelIcons.construction; return <Ic size={18} />; })()}
                       </div>
                       <div style={{ fontSize: 11, fontWeight: 600 }}>{m.label}</div>
@@ -1940,7 +1942,7 @@ export default function App() {
                 border: "1px solid rgba(61,155,95,0.25)", 
                 borderRadius: 2 
               }}>
-                <div style={{ fontSize: 11, color: "#3D9B5F", fontWeight: 600, marginBottom: 8 }}>
+                <div style={{ fontSize: 11, color: "var(--seed)", fontWeight: 600, marginBottom: 8 }}>
                   Upload Custom GLB Model
                 </div>
                 <input
@@ -1957,9 +1959,9 @@ export default function App() {
                     width: "100%",
                     padding: "8px",
                     borderRadius: 0,
-                    border: "1px solid oklch(0.24 0.035 152 / 0.14)",
+                    border: "1px solid var(--stroke)",
                     background: "rgba(0,0,0,0.3)",
-                    color: "oklch(0.36 0.04 152)",
+                    color: "var(--ink-soft)",
                     fontSize: 11,
                     cursor: "pointer",
                   }}
@@ -1968,12 +1970,12 @@ export default function App() {
                   <div style={{ 
                     marginTop: 8, 
                     fontSize: 10, 
-                    color: "oklch(0.48 0.035 152)",
+                    color: "var(--muted)",
                     display: "flex",
                     alignItems: "center",
                     gap: 6
                   }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#3D9B5F" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--seed)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <polyline points="20 6 9 17 4 12"/>
                     </svg>
                     {customModelPreview}
@@ -1982,7 +1984,7 @@ export default function App() {
                 <div style={{ 
                   marginTop: 8, 
                   fontSize: 10, 
-                  color: "oklch(0.58 0.03 152)", 
+                  color: "var(--muted2)", 
                   lineHeight: 1.4 
                 }}>
                   Upload your own 3D model in GLB or GLTF format. The model will be placed on the map at the clicked location.
@@ -1998,13 +2000,13 @@ export default function App() {
                   {projects.filter((p) => p.department === "Engineering").map((p) => (
                     <div key={p.id} style={{
                       display: "flex", alignItems: "center", gap: 6, padding: "6px 8px",
-                      background: "oklch(0.88 0.032 152)", borderRadius: 0,
-                      border: "1px solid oklch(0.24 0.035 152 / 0.08)",
+                      background: "var(--cream-ink)", borderRadius: 0,
+                      border: "1px solid var(--stroke2)",
                     }}>
-                      <span style={{ display: "flex", alignItems: "center", color: "oklch(0.48 0.035 152)" }}>
+                      <span style={{ display: "flex", alignItems: "center", color: "var(--muted)" }}>
                         {(() => { const ic = MODEL_CATALOG.find((m) => m.type === p.modelType)?.icon ?? "construction"; const Ic = ModelIcons[ic] ?? ModelIcons.construction; return <Ic size={15} />; })()}
                       </span>
-                      <span style={{ flex: 1, fontSize: 11, color: "oklch(0.48 0.035 152)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <span style={{ flex: 1, fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {p.name}
                       </span>
                       <button
@@ -2041,7 +2043,7 @@ export default function App() {
             <div className="sectionTitle" style={{ marginBottom: 8 }}>
               Climate Readings
             </div>
-            <div style={{ fontSize: 12, color: "oklch(0.48 0.035 152)", marginBottom: 12, lineHeight: 1.5 }}>
+            <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12, lineHeight: 1.5 }}>
               Live station values for Luisiana — readable numbers, not particle visualizations.
             </div>
 
@@ -2148,7 +2150,7 @@ export default function App() {
             <div className="sectionTitle" style={{ marginBottom: 8 }}>
               NASA GIBS Map Layers
             </div>
-            <div style={{ fontSize: 12, color: "oklch(0.48 0.035 152)", marginBottom: 12, lineHeight: 1.5 }}>
+            <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12, lineHeight: 1.5 }}>
               Optional map overlays — precipitation, temperature, imagery, atmosphere.
             </div>
 
@@ -2189,7 +2191,7 @@ export default function App() {
                       fontWeight: 600,
                       border: "1px solid rgba(61,155,95,0.20)",
                       background: gibsLayer === k ? "rgba(61,155,95,0.25)" : "rgba(0,0,0,0.15)",
-                      color: gibsLayer === k ? "rgba(61,155,95,1)" : "oklch(0.48 0.035 152)",
+                      color: gibsLayer === k ? "rgba(61,155,95,1)" : "var(--muted)",
                     }}
                   >
                     {label}
@@ -2222,7 +2224,7 @@ export default function App() {
                       fontWeight: 600,
                       border: "1px solid rgba(255,140,60,0.20)",
                       background: gibsLayer === k ? "rgba(255,140,60,0.25)" : "rgba(0,0,0,0.15)",
-                      color: gibsLayer === k ? "#245C3A" : "oklch(0.48 0.035 152)",
+                      color: gibsLayer === k ? "var(--primary)" : "var(--muted)",
                     }}
                   >
                     {label}
@@ -2254,7 +2256,7 @@ export default function App() {
                       fontWeight: 600,
                       border: "1px solid rgba(61,155,95,0.20)",
                       background: gibsLayer === k ? "rgba(61,155,95,0.25)" : "rgba(0,0,0,0.15)",
-                      color: gibsLayer === k ? "rgba(61,155,95,1)" : "oklch(0.48 0.035 152)",
+                      color: gibsLayer === k ? "rgba(61,155,95,1)" : "var(--muted)",
                     }}
                   >
                     {label}
@@ -2287,7 +2289,7 @@ export default function App() {
                       fontWeight: 600,
                       border: "1px solid rgba(255,215,0,0.20)",
                       background: gibsLayer === k ? "rgba(255,215,0,0.25)" : "rgba(0,0,0,0.15)",
-                      color: gibsLayer === k ? "#3D9B5F" : "oklch(0.48 0.035 152)",
+                      color: gibsLayer === k ? "var(--seed)" : "var(--muted)",
                     }}
                   >
                     {label}
@@ -2297,7 +2299,7 @@ export default function App() {
             </div>
 
             {/* Opacity Control */}
-            <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid oklch(0.24 0.035 152 / 0.08)" }}>
+            <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--stroke2)" }}>
               <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
                 <span className="pill">Opacity</span>
                 <input
@@ -2309,7 +2311,7 @@ export default function App() {
                   onChange={(e) => setGibsOpacity(Number(e.target.value))}
                   style={{ flex: 1 }}
                 />
-                <span style={{ fontSize: 11, color: "oklch(0.48 0.035 152)", minWidth: 35 }}>
+                <span style={{ fontSize: 11, color: "var(--muted)", minWidth: 35 }}>
                   {Math.round(gibsOpacity * 100)}%
                 </span>
               </div>
@@ -2324,10 +2326,10 @@ export default function App() {
                   style={{
                     flex: 1,
                     background: "rgba(0,0,0,0.15)",
-                    border: "1px solid oklch(0.24 0.035 152 / 0.14)",
+                    border: "1px solid var(--stroke)",
                     borderRadius: 0,
                     padding: "6px 8px",
-                    color: "oklch(0.36 0.04 152)",
+                    color: "var(--ink-soft)",
                     fontSize: 11,
                   }}
                 />
@@ -2355,7 +2357,7 @@ export default function App() {
 
             {/* Info Box */}
             <div style={{ marginTop: 16, padding: 12, background: "rgba(61,155,95,0.08)", border: "1px solid rgba(61,155,95,0.15)", borderRadius: 2 }}>
-              <div style={{ fontSize: 11, color: "oklch(0.48 0.035 152)", lineHeight: 1.6 }}>
+              <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.6 }}>
                 💡 <strong>Tip:</strong> Use yesterday's date for most reliable data. Some layers have 1-2 day processing lag.
               </div>
             </div>
@@ -2370,7 +2372,7 @@ export default function App() {
             <div className="sectionTitle" style={{ marginBottom: 8 }}>
               🌍 NASA Natural Event Tracker
             </div>
-            <div style={{ fontSize: 12, color: "oklch(0.48 0.035 152)", marginBottom: 12, lineHeight: 1.5 }}>
+            <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12, lineHeight: 1.5 }}>
               Real-time natural events from NASA EONET - Wildfires, Storms, Volcanoes, Earthquakes, and more
             </div>
 
@@ -2391,7 +2393,7 @@ export default function App() {
             {/* Event Statistics */}
             {eonetEnabled && eonetEvents.length > 0 && (
               <div style={{ marginBottom: 16, padding: 12, background: "rgba(255,100,100,0.08)", border: "1px solid rgba(255,100,100,0.15)", borderRadius: 2 }}>
-                <div style={{ fontSize: 11, color: "oklch(0.48 0.035 152)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
+                <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
                   Active Events Nearby
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
@@ -2401,8 +2403,8 @@ export default function App() {
                     return (
                       <div key={catId} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
                         <span style={{ fontSize: 14 }}>{cat.icon}</span>
-                        <span style={{ color: "oklch(0.36 0.04 152)" }}>{count}</span>
-                        <span style={{ color: "oklch(0.48 0.035 152)" }}>{cat.title}</span>
+                        <span style={{ color: "var(--ink-soft)" }}>{count}</span>
+                        <span style={{ color: "var(--muted)" }}>{cat.title}</span>
                       </div>
                     );
                   })}
@@ -2412,7 +2414,7 @@ export default function App() {
 
             {/* Category Filters */}
             <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 11, color: "oklch(0.48 0.035 152)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
+              <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
                 Event Categories
               </div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -2436,7 +2438,7 @@ export default function App() {
                         fontWeight: 600,
                         border: `1px solid ${cat.color}40`,
                         background: isSelected ? `${cat.color}30` : "rgba(0,0,0,0.15)",
-                        color: isSelected ? cat.color : "oklch(0.48 0.035 152)",
+                        color: isSelected ? cat.color : "var(--muted)",
                         display: "flex",
                         alignItems: "center",
                         gap: 4,
@@ -2451,7 +2453,7 @@ export default function App() {
             </div>
 
             {/* Radius Control */}
-            <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid oklch(0.24 0.035 152 / 0.08)" }}>
+            <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--stroke2)" }}>
               <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
                 <span className="pill">Search Radius</span>
                 <input
@@ -2463,7 +2465,7 @@ export default function App() {
                   onChange={(e) => setEonetRadius(Number(e.target.value))}
                   style={{ flex: 1 }}
                 />
-                <span style={{ fontSize: 11, color: "oklch(0.48 0.035 152)", minWidth: 60 }}>
+                <span style={{ fontSize: 11, color: "var(--muted)", minWidth: 60 }}>
                   {eonetRadius} km
                 </span>
               </div>
@@ -2490,8 +2492,8 @@ export default function App() {
 
             {/* Event List */}
             {eonetEnabled && eonetEvents.length > 0 && (
-              <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid oklch(0.24 0.035 152 / 0.08)" }}>
-                <div style={{ fontSize: 11, color: "oklch(0.48 0.035 152)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
+              <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--stroke2)" }}>
+                <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
                   📍 Event Locations
                 </div>
                 <div style={{ maxHeight: 300, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
@@ -2535,15 +2537,15 @@ export default function App() {
                         <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
                           <span style={{ fontSize: 18, flexShrink: 0 }}>{catInfo?.icon || '📍'}</span>
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 11, fontWeight: 600, color: "oklch(0.24 0.035 152)", marginBottom: 4, lineHeight: 1.3 }}>
+                            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--ink)", marginBottom: 4, lineHeight: 1.3 }}>
                               {event.title}
                             </div>
                             {event.description && (
-                              <div style={{ fontSize: 10, color: "oklch(0.48 0.035 152)", marginBottom: 4, lineHeight: 1.3 }}>
+                              <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 4, lineHeight: 1.3 }}>
                                 {event.description}
                               </div>
                             )}
-                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", fontSize: 10, color: "oklch(0.48 0.035 152)" }}>
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", fontSize: 10, color: "var(--muted)" }}>
                               <span style={{ color: catInfo?.color || '#888' }}>
                                 {category?.title || 'Unknown'}
                               </span>
@@ -2557,7 +2559,7 @@ export default function App() {
                               )}
                             </div>
                             {geometry?.date && (
-                              <div style={{ fontSize: 9, color: "oklch(0.58 0.03 152)", marginTop: 4 }}>
+                              <div style={{ fontSize: 9, color: "var(--muted2)", marginTop: 4 }}>
                                 Updated: {new Date(geometry.date).toLocaleDateString()} {new Date(geometry.date).toLocaleTimeString()}
                               </div>
                             )}
@@ -2568,7 +2570,7 @@ export default function App() {
                   })}
                 </div>
                 {eonetEvents.length > 20 && (
-                  <div style={{ marginTop: 8, fontSize: 10, color: "oklch(0.58 0.03 152)", textAlign: "center" }}>
+                  <div style={{ marginTop: 8, fontSize: 10, color: "var(--muted2)", textAlign: "center" }}>
                     Showing 20 of {eonetEvents.length} events
                   </div>
                 )}
@@ -2577,7 +2579,7 @@ export default function App() {
 
             {/* Info Box */}
             <div style={{ marginTop: 16, padding: 12, background: "rgba(255,100,100,0.08)", border: "1px solid rgba(255,100,100,0.15)", borderRadius: 2 }}>
-              <div style={{ fontSize: 11, color: "oklch(0.48 0.035 152)", lineHeight: 1.6 }}>
+              <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.6 }}>
                 💡 <strong>About:</strong> NASA EONET provides near real-time natural event data. Events are updated every 30 minutes. Click on map markers for details.
               </div>
             </div>
@@ -2590,29 +2592,29 @@ export default function App() {
             <div className="sectionTitle" style={{ marginBottom: 8 }}>
               🤖 AI-Powered Risk Analysis
             </div>
-            <div style={{ fontSize: 12, color: "oklch(0.48 0.035 152)", marginBottom: 12, lineHeight: 1.5 }}>
+            <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12, lineHeight: 1.5 }}>
               Machine learning model predicts landslide and flood risks based on terrain, weather, and historical data
             </div>
 
             {/* Model Status */}
             <div style={{ marginBottom: 16, padding: 12, background: aiRiskTrained ? "rgba(61,155,95,0.08)" : aiRiskLoading ? "rgba(255,215,0,0.08)" : "rgba(255,215,0,0.08)", border: `1px solid ${aiRiskTrained ? "rgba(61,155,95,0.15)" : aiRiskLoading ? "rgba(255,215,0,0.15)" : "rgba(255,215,0,0.15)"}`, borderRadius: 2 }}>
-              <div style={{ fontSize: 11, color: "oklch(0.48 0.035 152)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
+              <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
                 Model Status
               </div>
-              <div style={{ fontSize: 12, color: "oklch(0.36 0.04 152)" }}>
+              <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>
                 {aiRiskLoading ? (
                   <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#3D9B5F", animation: "pulse 1.5s infinite" }} />
+                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--seed)", animation: "pulse 1.5s infinite" }} />
                     Auto-training model... (50 epochs)
                   </span>
                 ) : aiRiskTrained ? (
                   <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#3D9B5F" }} />
+                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--seed)" }} />
                     Model trained and ready (2000 samples)
                   </span>
                 ) : (
                   <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#3D9B5F" }} />
+                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--seed)" }} />
                     Initializing...
                   </span>
                 )}
@@ -2648,7 +2650,7 @@ export default function App() {
                     borderRadius: 2,
                     background: "rgba(36,92,58,0.20)",
                     border: "1px solid rgba(36,92,58,0.40)",
-                    color: "oklch(0.24 0.035 152)",
+                    color: "var(--ink)",
                     fontSize: 13,
                     fontWeight: 600,
                   }}
@@ -2677,7 +2679,7 @@ export default function App() {
             {/* Risk Statistics */}
             {aiRiskEnabled && aiRiskPredictions.length > 0 && (
               <div style={{ marginBottom: 16, padding: 12, background: "rgba(36,92,58,0.08)", border: "1px solid rgba(36,92,58,0.15)", borderRadius: 2 }}>
-                <div style={{ fontSize: 11, color: "oklch(0.48 0.035 152)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
+                <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
                   Risk Analysis Summary
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
@@ -2692,32 +2694,32 @@ export default function App() {
                     return (
                       <>
                         <div style={{ fontSize: 11 }}>
-                          <span style={{ color: "#3D9B5F" }}>🟢 Safe:</span>
-                          <span style={{ color: "oklch(0.36 0.04 152)", marginLeft: 6 }}>
+                          <span style={{ color: "var(--seed)" }}>🟢 Safe:</span>
+                          <span style={{ color: "var(--ink-soft)", marginLeft: 6 }}>
                             {((safe / total) * 100).toFixed(0)}%
                           </span>
                         </div>
                         <div style={{ fontSize: 11 }}>
                           <span style={{ color: "#90ee90" }}>🟡 Low:</span>
-                          <span style={{ color: "oklch(0.36 0.04 152)", marginLeft: 6 }}>
+                          <span style={{ color: "var(--ink-soft)", marginLeft: 6 }}>
                             {((low / total) * 100).toFixed(0)}%
                           </span>
                         </div>
                         <div style={{ fontSize: 11 }}>
-                          <span style={{ color: "#3D9B5F" }}>🟡 Moderate:</span>
-                          <span style={{ color: "oklch(0.36 0.04 152)", marginLeft: 6 }}>
+                          <span style={{ color: "var(--seed)" }}>🟡 Moderate:</span>
+                          <span style={{ color: "var(--ink-soft)", marginLeft: 6 }}>
                             {((moderate / total) * 100).toFixed(0)}%
                           </span>
                         </div>
                         <div style={{ fontSize: 11 }}>
                           <span style={{ color: "#ffa500" }}>🟠 High:</span>
-                          <span style={{ color: "oklch(0.36 0.04 152)", marginLeft: 6 }}>
+                          <span style={{ color: "var(--ink-soft)", marginLeft: 6 }}>
                             {((high / total) * 100).toFixed(0)}%
                           </span>
                         </div>
                         <div style={{ fontSize: 11, gridColumn: "1 / -1" }}>
                           <span style={{ color: "#ff4d4f" }}>🔴 Critical:</span>
-                          <span style={{ color: "oklch(0.36 0.04 152)", marginLeft: 6 }}>
+                          <span style={{ color: "var(--ink-soft)", marginLeft: 6 }}>
                             {((critical / total) * 100).toFixed(0)}%
                           </span>
                         </div>
@@ -2729,11 +2731,11 @@ export default function App() {
             )}
 
             {/* Features Info */}
-            <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid oklch(0.24 0.035 152 / 0.08)" }}>
-              <div style={{ fontSize: 11, color: "oklch(0.48 0.035 152)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
+            <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--stroke2)" }}>
+              <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
                 📊 Analysis Features
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 11, color: "oklch(0.48 0.035 152)" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 11, color: "var(--muted)" }}>
                 <div>✓ Terrain slope and elevation</div>
                 <div>✓ Rainfall and soil moisture</div>
                 <div>✓ Vegetation density</div>
@@ -2745,7 +2747,7 @@ export default function App() {
 
             {/* Info Box */}
             <div style={{ marginTop: 16, padding: 12, background: "rgba(36,92,58,0.08)", border: "1px solid rgba(36,92,58,0.15)", borderRadius: 2 }}>
-              <div style={{ fontSize: 11, color: "oklch(0.48 0.035 152)", lineHeight: 1.6 }}>
+              <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.6 }}>
                 💡 <strong>About:</strong> AI model uses deep learning to predict landslide and flood risks. Predictions are probabilistic and should be used as decision support, not sole determinant.
               </div>
             </div>
@@ -2775,7 +2777,7 @@ export default function App() {
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            background: "oklch(0.24 0.035 152 / 0.45)",
+            background: "var(--overlay)",
             backdropFilter: "none",
           }}
           onClick={() => {
@@ -2785,16 +2787,16 @@ export default function App() {
         >
           <div
             style={{
-              background: "oklch(0.955 0.018 152)",
-              border: "3px solid oklch(0.24 0.035 152)",
+              background: "var(--cream)",
+              border: "3px solid var(--ink)",
               borderRadius: 0,
               padding: "24px 28px",
               maxWidth: 500,
               width: "90%",
               maxHeight: "85vh",
               overflowY: "auto",
-              boxShadow: "8px 8px 0 oklch(0.38 0.09 152)",
-              color: "oklch(0.24 0.035 152)",
+              boxShadow: "8px 8px 0 var(--shadow-accent)",
+              color: "var(--ink)",
               position: "relative",
               fontFamily: '"Chakra Petch", sans-serif',
             }}
@@ -2814,7 +2816,7 @@ export default function App() {
                 cursor: "pointer",
                 background: "none",
                 border: "none",
-                color: "oklch(0.48 0.035 152)",
+                color: "var(--muted)",
                 fontSize: 24,
                 padding: 0,
                 width: 32,
@@ -2830,10 +2832,10 @@ export default function App() {
 
             {/* Header */}
             <div style={{ marginBottom: 20 }}>
-              <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: "oklch(0.24 0.035 152)", lineHeight: 1.3, marginBottom: 4 }}>
+              <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: "var(--ink)", lineHeight: 1.3, marginBottom: 4 }}>
                 Place New Infrastructure
               </h2>
-              <div style={{ fontSize: 12, color: "oklch(0.58 0.03 152)" }}>
+              <div style={{ fontSize: 12, color: "var(--muted2)" }}>
                 Enter building details before placing on map
               </div>
             </div>
@@ -2842,7 +2844,7 @@ export default function App() {
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               {/* Project Name */}
               <div>
-                <label style={{ display: "block", fontSize: 11, color: "oklch(0.58 0.03 152)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
+                <label style={{ display: "block", fontSize: 11, color: "var(--muted2)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
                   Project Name *
                 </label>
                 <input
@@ -2855,9 +2857,9 @@ export default function App() {
                     boxSizing: "border-box",
                     padding: "10px 12px",
                     borderRadius: 0,
-                    border: "1px solid oklch(0.24 0.035 152 / 0.14)",
-                    background: "oklch(0.915 0.028 152)",
-                    color: "oklch(0.24 0.035 152)",
+                    border: "1px solid var(--stroke)",
+                    background: "var(--cream-deep)",
+                    color: "var(--ink)",
                     fontSize: 14,
                     outline: "none",
                   }}
@@ -2866,7 +2868,7 @@ export default function App() {
 
               {/* Type */}
               <div>
-                <label style={{ display: "block", fontSize: 11, color: "oklch(0.58 0.03 152)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
+                <label style={{ display: "block", fontSize: 11, color: "var(--muted2)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
                   Project Type *
                 </label>
                 <select
@@ -2877,9 +2879,9 @@ export default function App() {
                     boxSizing: "border-box",
                     padding: "10px 12px",
                     borderRadius: 0,
-                    border: "1px solid oklch(0.24 0.035 152 / 0.14)",
-                    background: "oklch(0.915 0.028 152)",
-                    color: "oklch(0.24 0.035 152)",
+                    border: "1px solid var(--stroke)",
+                    background: "var(--cream-deep)",
+                    color: "var(--ink)",
                     fontSize: 14,
                     outline: "none",
                     cursor: "pointer",
@@ -2893,7 +2895,7 @@ export default function App() {
 
               {/* Department */}
               <div>
-                <label style={{ display: "block", fontSize: 11, color: "oklch(0.58 0.03 152)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
+                <label style={{ display: "block", fontSize: 11, color: "var(--muted2)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
                   Department *
                 </label>
                 <select
@@ -2904,9 +2906,9 @@ export default function App() {
                     boxSizing: "border-box",
                     padding: "10px 12px",
                     borderRadius: 0,
-                    border: "1px solid oklch(0.24 0.035 152 / 0.14)",
-                    background: "oklch(0.915 0.028 152)",
-                    color: "oklch(0.24 0.035 152)",
+                    border: "1px solid var(--stroke)",
+                    background: "var(--cream-deep)",
+                    color: "var(--ink)",
                     fontSize: 14,
                     outline: "none",
                     cursor: "pointer",
@@ -2921,7 +2923,7 @@ export default function App() {
 
               {/* Status */}
               <div>
-                <label style={{ display: "block", fontSize: 11, color: "oklch(0.58 0.03 152)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
+                <label style={{ display: "block", fontSize: 11, color: "var(--muted2)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
                   Status *
                 </label>
                 <select
@@ -2932,9 +2934,9 @@ export default function App() {
                     boxSizing: "border-box",
                     padding: "10px 12px",
                     borderRadius: 0,
-                    border: "1px solid oklch(0.24 0.035 152 / 0.14)",
-                    background: "oklch(0.915 0.028 152)",
-                    color: "oklch(0.24 0.035 152)",
+                    border: "1px solid var(--stroke)",
+                    background: "var(--cream-deep)",
+                    color: "var(--ink)",
                     fontSize: 14,
                     outline: "none",
                     cursor: "pointer",
@@ -2950,7 +2952,7 @@ export default function App() {
 
               {/* Progress */}
               <div>
-                <label style={{ display: "block", fontSize: 11, color: "oklch(0.58 0.03 152)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
+                <label style={{ display: "block", fontSize: 11, color: "var(--muted2)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
                   Progress: {modalProgress}%
                 </label>
                 <input
@@ -2970,31 +2972,31 @@ export default function App() {
               {/* Timeline & budget */}
               <div className="grid2" style={{ gap: 10 }}>
                 <div>
-                  <label style={{ display: "block", fontSize: 11, color: "oklch(0.58 0.03 152)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
+                  <label style={{ display: "block", fontSize: 11, color: "var(--muted2)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
                     Start Date
                   </label>
                   <input
                     type="date"
                     value={modalStartDate}
                     onChange={(e) => setModalStartDate(e.target.value)}
-                    style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 0, border: "1px solid oklch(0.24 0.035 152 / 0.14)", background: "oklch(0.915 0.028 152)", fontSize: 13 }}
+                    style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 0, border: "1px solid var(--stroke)", background: "var(--cream-deep)", fontSize: 13 }}
                   />
                 </div>
                 <div>
-                  <label style={{ display: "block", fontSize: 11, color: "oklch(0.58 0.03 152)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
+                  <label style={{ display: "block", fontSize: 11, color: "var(--muted2)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
                     Target End
                   </label>
                   <input
                     type="date"
                     value={modalTargetEndDate}
                     onChange={(e) => setModalTargetEndDate(e.target.value)}
-                    style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 0, border: "1px solid oklch(0.24 0.035 152 / 0.14)", background: "oklch(0.915 0.028 152)", fontSize: 13 }}
+                    style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 0, border: "1px solid var(--stroke)", background: "var(--cream-deep)", fontSize: 13 }}
                   />
                 </div>
               </div>
 
               <div>
-                <label style={{ display: "block", fontSize: 11, color: "oklch(0.58 0.03 152)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
+                <label style={{ display: "block", fontSize: 11, color: "var(--muted2)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
                   Budget Total (PHP, optional)
                 </label>
                 <input
@@ -3003,13 +3005,13 @@ export default function App() {
                   value={modalBudgetTotal}
                   onChange={(e) => setModalBudgetTotal(e.target.value)}
                   placeholder="e.g. 1500000"
-                  style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 0, border: "1px solid oklch(0.24 0.035 152 / 0.14)", background: "oklch(0.915 0.028 152)", fontSize: 13 }}
+                  style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 0, border: "1px solid var(--stroke)", background: "var(--cream-deep)", fontSize: 13 }}
                 />
               </div>
 
               {/* Description */}
               <div>
-                <label style={{ display: "block", fontSize: 11, color: "oklch(0.58 0.03 152)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
+                <label style={{ display: "block", fontSize: 11, color: "var(--muted2)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
                   Description (Optional)
                 </label>
                 <textarea
@@ -3022,9 +3024,9 @@ export default function App() {
                     boxSizing: "border-box",
                     padding: "10px 12px",
                     borderRadius: 0,
-                    border: "1px solid oklch(0.24 0.035 152 / 0.14)",
-                    background: "oklch(0.915 0.028 152)",
-                    color: "oklch(0.24 0.035 152)",
+                    border: "1px solid var(--stroke)",
+                    background: "var(--cream-deep)",
+                    color: "var(--ink)",
                     fontSize: 13,
                     outline: "none",
                     resize: "vertical",
@@ -3034,18 +3036,18 @@ export default function App() {
               </div>
 
               {/* Location Info */}
-              <div style={{ padding: "10px 12px", background: "oklch(0.88 0.032 152)", border: "1px solid oklch(0.24 0.035 152 / 0.08)", borderRadius: 0 }}>
-                <div style={{ fontSize: 11, color: "oklch(0.55 0.03 152)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              <div style={{ padding: "10px 12px", background: "var(--cream-ink)", border: "1px solid var(--stroke2)", borderRadius: 0 }}>
+                <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>
                   Location
                 </div>
-                <div style={{ fontSize: 12, color: "oklch(0.48 0.035 152)", fontFamily: "monospace" }}>
+                <div style={{ fontSize: 12, color: "var(--muted)", fontFamily: "monospace" }}>
                   {pendingPlacement.lat.toFixed(6)}°N, {pendingPlacement.lng.toFixed(6)}°E
                 </div>
               </div>
             </div>
 
             {/* Action Buttons */}
-            <div style={{ display: "flex", gap: 10, marginTop: 20, paddingTop: 16, borderTop: "1px solid oklch(0.24 0.035 152 / 0.08)" }}>
+            <div style={{ display: "flex", gap: 10, marginTop: 20, paddingTop: 16, borderTop: "1px solid var(--stroke2)" }}>
               <button
                 onClick={() => {
                   setShowPlacementModal(false);
@@ -3056,9 +3058,9 @@ export default function App() {
                   cursor: "pointer",
                   padding: "11px 0",
                   borderRadius: 2,
-                  background: "oklch(0.915 0.028 152)",
-                  border: "1px solid oklch(0.24 0.035 152 / 0.14)",
-                  color: "oklch(0.48 0.035 152)",
+                  background: "var(--cream-deep)",
+                  border: "1px solid var(--stroke)",
+                  color: "var(--muted)",
                   fontSize: 14,
                   fontWeight: 600,
                 }}
@@ -3074,16 +3076,16 @@ export default function App() {
                   padding: "11px 0",
                   borderRadius: 2,
                   background: modalProjectName.trim()
-                    ? "#3D9B5F"
-                    : "oklch(0.88 0.032 152)",
+                    ? "var(--seed)"
+                    : "var(--cream-ink)",
                   border: modalProjectName.trim()
-                    ? "2px solid oklch(0.24 0.035 152)"
-                    : "1px solid oklch(0.24 0.035 152 / 0.14)",
-                  color: modalProjectName.trim() ? "oklch(0.24 0.035 152)" : "oklch(0.58 0.03 152)",
+                    ? "2px solid var(--ink)"
+                    : "1px solid var(--stroke)",
+                  color: modalProjectName.trim() ? "var(--ink)" : "var(--muted2)",
                   fontSize: 14,
                   fontWeight: 700,
                   fontFamily: '"Chakra Petch", sans-serif',
-                  boxShadow: modalProjectName.trim() ? "4px 4px 0 oklch(0.24 0.035 152)" : "none",
+                  boxShadow: modalProjectName.trim() ? "4px 4px 0 var(--ink)" : "none",
                   opacity: modalProjectName.trim() ? 1 : 0.6,
                 }}
               >

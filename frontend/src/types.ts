@@ -100,6 +100,14 @@ export type ProjectIssue = {
   resolvedAt?: string;
 };
 
+export type ProjectPhoto = {
+  id: string;
+  url: string;
+  caption?: string;
+  milestoneId?: string | null;
+  uploadedAt: string;
+};
+
 export type ProjectActivity = {
   at: string;
   message: string;
@@ -123,8 +131,48 @@ export type Project = {
   budgetSpent?: number;
   milestones: ProjectMilestone[];
   issues: ProjectIssue[];
+  photos: ProjectPhoto[];
   activityLog: ProjectActivity[];
   updatedAt: string;
+};
+
+export type ProjectAccomplishmentReport = {
+  generatedAt: string;
+  project: {
+    id: string;
+    name: string;
+    department: string;
+    type: string;
+    status: ProjectStatus;
+    progress: number;
+    description?: string;
+  };
+  timeline: {
+    startDate: string | null;
+    targetEndDate: string | null;
+    milestonesTotal: number;
+    milestonesDone: number;
+    milestonesMissed: number;
+    milestones: ProjectMilestone[];
+  };
+  budget: {
+    total: number | null;
+    spent: number;
+    utilizationPct: number | null;
+    overBudget: boolean;
+  };
+  issues: {
+    openDelays: number;
+    openIssues: number;
+    resolved: number;
+    items: ProjectIssue[];
+  };
+  photos: {
+    count: number;
+    items: ProjectPhoto[];
+  };
+  activityLog: ProjectActivity[];
+  narrative: string;
 };
 
 export const PROJECT_STATUS_COLORS: Record<ProjectStatus, string> = {

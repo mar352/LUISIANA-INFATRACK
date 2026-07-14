@@ -1,4 +1,4 @@
-/**
+﻿/**
  * BuildingOverlay — renders GLB models on the MapLibre map using Three.js.
  *
  * Architecture:
@@ -696,24 +696,24 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
             top: hoveredBuilding.y + 15,
             pointerEvents: "none",
             zIndex: 9998,
-            background: "oklch(0.955 0.018 152)",
+            background: "var(--cream)",
             backdropFilter: "none",
-            border: "2px solid oklch(0.24 0.035 152)",
+            border: "2px solid var(--ink)",
             borderRadius: 0,
             padding: "8px 12px",
-            boxShadow: "5px 5px 0 oklch(0.38 0.09 152)",
+            boxShadow: "5px 5px 0 var(--shadow-accent)",
             whiteSpace: "nowrap",
           }}
         >
-          <div style={{ fontSize: 12, fontWeight: 600, color: "#3D9B5F", marginBottom: 2 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--seed)", marginBottom: 2 }}>
             {hoveredBuilding.name}
           </div>
-          <div style={{ fontSize: 10, color: "oklch(0.46 0.035 152)" }}>
+          <div style={{ fontSize: 10, color: "var(--muted)" }}>
             Status: <span style={{ color: PROJECT_STATUS_COLORS[(hoveredBuilding.status === "Planning" ? "Planned" : hoveredBuilding.status) as keyof typeof PROJECT_STATUS_COLORS] ?? PROJECT_STATUS_COLORS.Planned }}>
               {hoveredBuilding.status === "Planning" ? "Planned" : hoveredBuilding.status}
             </span>
           </div>
-          <div style={{ fontSize: 9, color: "oklch(0.55 0.03 152)", marginTop: 4 }}>
+          <div style={{ fontSize: 9, color: "var(--muted2)", marginTop: 4 }}>
             Click to select
           </div>
         </div>
@@ -729,39 +729,39 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            background: "oklch(0.24 0.035 152 / 0.45)",
+            background: "var(--overlay)",
             backdropFilter: "none",
           }}
           onClick={() => setShowModal(false)}
         >
           <div
             style={{
-              background: "oklch(0.955 0.018 152)",
-              border: "2px solid oklch(0.24 0.035 152)",
+              background: "var(--cream)",
+              border: "2px solid var(--ink)",
               borderRadius: 0,
               maxWidth: 500,
               width: "90%",
               maxHeight: "85vh",
               display: "flex",
               flexDirection: "column",
-              boxShadow: "8px 8px 0 oklch(0.38 0.09 152)",
-              color: "oklch(0.24 0.035 152)",
+              boxShadow: "8px 8px 0 var(--shadow-accent)",
+              color: "var(--ink)",
             }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Fixed Header */}
             <div style={{
               padding: "20px 24px",
-              borderBottom: "1px solid oklch(0.24 0.035 152 / 0.12)",
+              borderBottom: "1px solid var(--stroke)",
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
             }}>
               <div style={{ flex: 1 }}>
-                <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: "oklch(0.24 0.035 152)", lineHeight: 1.3 }}>
+                <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: "var(--ink)", lineHeight: 1.3 }}>
                   {project.name}
                 </h2>
-                <div style={{ fontSize: 12, color: "oklch(0.50 0.032 152)", marginTop: 4 }}>
+                <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>
                   {modalMode === "edit" ? "Edit project details" : (modelInfo?.label || "Building")}
                 </div>
               </div>
@@ -771,7 +771,7 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
                   cursor: "pointer",
                   background: "none",
                   border: "none",
-                  color: "oklch(0.50 0.032 152)",
+                  color: "var(--muted)",
                   fontSize: 24,
                   padding: 0,
                   width: 32,
@@ -798,11 +798,11 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
               {modalMode === "edit" && editDraft ? (
                 <>
                   <div style={{ marginBottom: 16 }}>
-                    <label style={{ fontSize: 11, color: "oklch(0.55 0.03 152)", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Status</label>
+                    <label style={{ fontSize: 11, color: "var(--muted2)", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Status</label>
                     <select
                       value={editDraft.status}
                       onChange={(e) => setEditDraft({ ...editDraft, status: e.target.value as ProjectStatus })}
-                      style={{ width: "100%", padding: "10px 12px", fontSize: 13, border: "1px solid oklch(0.24 0.035 152 / 0.14)", background: "oklch(0.915 0.028 152)" }}
+                      style={{ width: "100%", padding: "10px 12px", fontSize: 13, border: "1px solid var(--stroke)", background: "var(--cream-deep)" }}
                     >
                       {(Object.keys(PROJECT_STATUS_LABELS) as ProjectStatus[]).map((s) => (
                         <option key={s} value={s}>{PROJECT_STATUS_LABELS[s]}</option>
@@ -811,7 +811,7 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
                   </div>
 
                   <div style={{ marginBottom: 16 }}>
-                    <label style={{ fontSize: 11, color: "oklch(0.55 0.03 152)", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                    <label style={{ fontSize: 11, color: "var(--muted2)", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>
                       Progress: {editDraft.progress}%
                     </label>
                     <input
@@ -826,63 +826,63 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
 
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
                     <div>
-                      <label style={{ fontSize: 11, color: "oklch(0.55 0.03 152)", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Start date</label>
+                      <label style={{ fontSize: 11, color: "var(--muted2)", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Start date</label>
                       <input
                         type="date"
                         value={editDraft.startDate}
                         onChange={(e) => setEditDraft({ ...editDraft, startDate: e.target.value })}
-                        style={{ width: "100%", padding: "8px", fontSize: 12, border: "1px solid oklch(0.24 0.035 152 / 0.14)" }}
+                        style={{ width: "100%", padding: "8px", fontSize: 12, border: "1px solid var(--stroke)" }}
                       />
                     </div>
                     <div>
-                      <label style={{ fontSize: 11, color: "oklch(0.55 0.03 152)", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Target end</label>
+                      <label style={{ fontSize: 11, color: "var(--muted2)", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Target end</label>
                       <input
                         type="date"
                         value={editDraft.targetEndDate}
                         onChange={(e) => setEditDraft({ ...editDraft, targetEndDate: e.target.value })}
-                        style={{ width: "100%", padding: "8px", fontSize: 12, border: "1px solid oklch(0.24 0.035 152 / 0.14)" }}
+                        style={{ width: "100%", padding: "8px", fontSize: 12, border: "1px solid var(--stroke)" }}
                       />
                     </div>
                   </div>
 
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
                     <div>
-                      <label style={{ fontSize: 11, color: "oklch(0.55 0.03 152)", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Budget total (PHP)</label>
+                      <label style={{ fontSize: 11, color: "var(--muted2)", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Budget total (PHP)</label>
                       <input
                         type="number"
                         min={0}
                         value={editDraft.budgetTotal}
                         onChange={(e) => setEditDraft({ ...editDraft, budgetTotal: e.target.value })}
-                        style={{ width: "100%", padding: "8px", fontSize: 12, border: "1px solid oklch(0.24 0.035 152 / 0.14)" }}
+                        style={{ width: "100%", padding: "8px", fontSize: 12, border: "1px solid var(--stroke)" }}
                       />
                     </div>
                     <div>
-                      <label style={{ fontSize: 11, color: "oklch(0.55 0.03 152)", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Budget spent (PHP)</label>
+                      <label style={{ fontSize: 11, color: "var(--muted2)", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Budget spent (PHP)</label>
                       <input
                         type="number"
                         min={0}
                         value={editDraft.budgetSpent}
                         onChange={(e) => setEditDraft({ ...editDraft, budgetSpent: e.target.value })}
-                        style={{ width: "100%", padding: "8px", fontSize: 12, border: "1px solid oklch(0.24 0.035 152 / 0.14)" }}
+                        style={{ width: "100%", padding: "8px", fontSize: 12, border: "1px solid var(--stroke)" }}
                       />
                     </div>
                   </div>
 
                   <div style={{ marginBottom: 16 }}>
-                    <label style={{ fontSize: 11, color: "oklch(0.55 0.03 152)", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Description</label>
+                    <label style={{ fontSize: 11, color: "var(--muted2)", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Description</label>
                     <textarea
                       value={editDraft.description}
                       onChange={(e) => setEditDraft({ ...editDraft, description: e.target.value })}
                       rows={3}
-                      style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", fontSize: 13, border: "1px solid oklch(0.24 0.035 152 / 0.14)", resize: "vertical", fontFamily: "inherit" }}
+                      style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", fontSize: 13, border: "1px solid var(--stroke)", resize: "vertical", fontFamily: "inherit" }}
                     />
                   </div>
 
-                  <div style={{ display: "flex", gap: 10, paddingTop: 8, borderTop: "1px solid oklch(0.24 0.035 152 / 0.1)" }}>
+                  <div style={{ display: "flex", gap: 10, paddingTop: 8, borderTop: "1px solid var(--stroke2)" }}>
                     <button
                       type="button"
                       onClick={() => { setModalMode("view"); setEditDraft(null); }}
-                      style={{ flex: 1, padding: "10px", cursor: "pointer", border: "1px solid oklch(0.24 0.035 152 / 0.14)", background: "oklch(0.915 0.028 152)", fontWeight: 600 }}
+                      style={{ flex: 1, padding: "10px", cursor: "pointer", border: "1px solid var(--stroke)", background: "var(--cream-deep)", fontWeight: 600 }}
                     >
                       Cancel
                     </button>
@@ -890,7 +890,7 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
                       type="button"
                       onClick={handleSaveEdit}
                       disabled={saving}
-                      style={{ flex: 1, padding: "10px", cursor: "pointer", border: "2px solid oklch(0.24 0.035 152)", background: "#3D9B5F", color: "oklch(0.24 0.035 152)", fontWeight: 700, opacity: saving ? 0.7 : 1 }}
+                      style={{ flex: 1, padding: "10px", cursor: "pointer", border: "2px solid var(--ink)", background: "var(--seed)", color: "var(--ink)", fontWeight: 700, opacity: saving ? 0.7 : 1 }}
                     >
                       {saving ? "Saving…" : "Save changes"}
                     </button>
@@ -900,7 +900,7 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
                 <>
               {/* Status */}
               <div style={{ marginBottom: 20 }}>
-                <div style={{ fontSize: 11, color: "oklch(0.55 0.03 152)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Status</div>
+                <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Status</div>
                 <div style={{
                   display: "inline-block",
                   padding: "4px 12px",
@@ -918,38 +918,38 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
               {/* Details Grid */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
                 <div>
-                  <div style={{ fontSize: 11, color: "oklch(0.55 0.03 152)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Type</div>
-                  <div style={{ fontSize: 14, color: "oklch(0.34 0.038 152)" }}>{project.type}</div>
+                  <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Type</div>
+                  <div style={{ fontSize: 14, color: "var(--ink-soft)" }}>{project.type}</div>
                 </div>
 
                 <div>
-                  <div style={{ fontSize: 11, color: "oklch(0.55 0.03 152)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Department</div>
-                  <div style={{ fontSize: 14, color: "oklch(0.34 0.038 152)" }}>{project.department}</div>
+                  <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Department</div>
+                  <div style={{ fontSize: 14, color: "var(--ink-soft)" }}>{project.department}</div>
                 </div>
 
                 <div>
-                  <div style={{ fontSize: 11, color: "oklch(0.55 0.03 152)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Category</div>
-                  <div style={{ fontSize: 14, color: "oklch(0.34 0.038 152)" }}>{modelInfo?.category || "Building"}</div>
+                  <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Category</div>
+                  <div style={{ fontSize: 14, color: "var(--ink-soft)" }}>{modelInfo?.category || "Building"}</div>
                 </div>
 
                 <div>
-                  <div style={{ fontSize: 11, color: "oklch(0.55 0.03 152)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Progress</div>
-                  <div style={{ fontSize: 14, color: "oklch(0.34 0.038 152)" }}>{project.progress}%</div>
+                  <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Progress</div>
+                  <div style={{ fontSize: 14, color: "var(--ink-soft)" }}>{project.progress}%</div>
                 </div>
               </div>
 
               {/* Description */}
               <div style={{ marginBottom: 20 }}>
-                <div style={{ fontSize: 11, color: "oklch(0.55 0.03 152)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Description</div>
-                <div style={{ fontSize: 13, color: "oklch(0.48 0.035 152)", lineHeight: 1.6 }}>
+                <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Description</div>
+                <div style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.6 }}>
                   {project.description || modelInfo?.description || "Infrastructure project for Luisiana municipality."}
                 </div>
               </div>
 
               {(project.budgetTotal != null && project.budgetTotal > 0) && (
                 <div style={{ marginBottom: 20 }}>
-                  <div style={{ fontSize: 11, color: "oklch(0.55 0.03 152)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Budget</div>
-                  <div style={{ fontSize: 13, color: "oklch(0.48 0.035 152)" }}>
+                  <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Budget</div>
+                  <div style={{ fontSize: 13, color: "var(--muted)" }}>
                     ₱{(project.budgetSpent ?? 0).toLocaleString()} / ₱{project.budgetTotal.toLocaleString()}
                     {" "}({Math.round(((project.budgetSpent ?? 0) / project.budgetTotal) * 100)}% utilized)
                   </div>
@@ -958,8 +958,8 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
 
               {(project.startDate || project.targetEndDate) && (
                 <div style={{ marginBottom: 20 }}>
-                  <div style={{ fontSize: 11, color: "oklch(0.55 0.03 152)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Timeline</div>
-                  <div style={{ fontSize: 13, color: "oklch(0.48 0.035 152)" }}>
+                  <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Timeline</div>
+                  <div style={{ fontSize: 13, color: "var(--muted)" }}>
                     {project.startDate ?? "—"} → {project.targetEndDate ?? "—"}
                   </div>
                 </div>
@@ -967,14 +967,14 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
 
               {/* Location */}
               <div style={{ marginBottom: 20 }}>
-                <div style={{ fontSize: 11, color: "oklch(0.55 0.03 152)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Location</div>
-                <div style={{ fontSize: 12, color: "oklch(0.48 0.035 152)", fontFamily: "monospace" }}>
+                <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>Location</div>
+                <div style={{ fontSize: 12, color: "var(--muted)", fontFamily: "monospace" }}>
                   {project.location.lat.toFixed(6)}°N, {project.location.lon.toFixed(6)}°E
                 </div>
               </div>
 
-              <div style={{ paddingTop: 16, borderTop: "1px solid oklch(0.24 0.035 152 / 0.1)" }}>
-                <div style={{ fontSize: 11, color: "oklch(0.55 0.03 152)" }}>
+              <div style={{ paddingTop: 16, borderTop: "1px solid var(--stroke2)" }}>
+                <div style={{ fontSize: 11, color: "var(--muted2)" }}>
                   Last updated: {new Date(project.updatedAt).toLocaleDateString()} {new Date(project.updatedAt).toLocaleTimeString()}
                 </div>
               </div>
@@ -989,23 +989,23 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
       {sel && (
         <div style={{
           position: "absolute", bottom: 80, left: "50%", transform: "translateX(-50%)",
-          background: "oklch(0.955 0.018 152)", backdropFilter: "none",
-          border: "2px solid oklch(0.24 0.035 152)", borderRadius: 0,
+          background: "var(--cream)", backdropFilter: "none",
+          border: "2px solid var(--ink)", borderRadius: 0,
           padding: "12px 16px", display: "flex", flexDirection: "column", alignItems: "center",
-          gap: 10, color: "oklch(0.34 0.038 152)", fontSize: 13,
-          zIndex: 100, boxShadow: "6px 6px 0 oklch(0.38 0.09 152)", whiteSpace: "nowrap",
+          gap: 10, color: "var(--ink-soft)", fontSize: 13,
+          zIndex: 100, boxShadow: "6px 6px 0 var(--shadow-accent)", whiteSpace: "nowrap",
           minWidth: 380,
         }}>
           {/* Title row */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, width: "100%" }}>
-            <span style={{ color: "oklch(0.24 0.035 152)", fontWeight: 600, fontSize: 14, flex: 1 }}>
+            <span style={{ color: "var(--ink)", fontWeight: 600, fontSize: 14, flex: 1 }}>
               {sel.projectName}
             </span>
             <button
               onClick={() => openModal("view")}
               style={{
-                cursor: "pointer", background: "oklch(0.915 0.028 152)", border: "2px solid #245C3A",
-                color: "#245C3A", fontSize: 11, padding: "6px 12px", borderRadius: 0, fontWeight: 700,
+                cursor: "pointer", background: "var(--cream-deep)", border: "2px solid var(--primary)",
+                color: "var(--primary)", fontSize: 11, padding: "6px 12px", borderRadius: 0, fontWeight: 700,
                 display: "flex", alignItems: "center", gap: 5,
                 fontFamily: '"Chakra Petch", sans-serif',
               }}
@@ -1020,11 +1020,11 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
             <button
               onClick={() => openModal("edit")}
               style={{
-                cursor: "pointer", background: "#3D9B5F", border: "2px solid oklch(0.24 0.035 152)",
-                color: "oklch(0.24 0.035 152)", fontSize: 11, padding: "6px 12px", borderRadius: 0, fontWeight: 700,
+                cursor: "pointer", background: "var(--seed)", border: "2px solid var(--ink)",
+                color: "var(--ink)", fontSize: 11, padding: "6px 12px", borderRadius: 0, fontWeight: 700,
                 display: "flex", alignItems: "center", gap: 5,
                 fontFamily: '"Chakra Petch", sans-serif',
-                boxShadow: "2px 2px 0 oklch(0.24 0.035 152)",
+                boxShadow: "2px 2px 0 var(--ink)",
               }}
               title="Edit Details"
             >
@@ -1038,7 +1038,7 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
               onClick={() => { setSelectedIdx(-1); selectedIdxRef.current = -1; setShowModal(false); setHoveredBuilding(null); map?.triggerRepaint(); }}
               style={{
                 cursor: "pointer", background: "none", border: "none",
-                color: "oklch(0.55 0.03 152)", fontSize: 20, padding: "0 4px",
+                color: "var(--muted2)", fontSize: 20, padding: "0 4px",
                 lineHeight: 1,
               }}
               title="Deselect"
@@ -1047,8 +1047,8 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
 
           {/* Controls hint */}
           <div style={{
-            display: "flex", gap: 12, fontSize: 11, color: "oklch(0.55 0.03 152)",
-            borderTop: "1px solid oklch(0.24 0.035 152 / 0.1)", paddingTop: 8, width: "100%",
+            display: "flex", gap: 12, fontSize: 11, color: "var(--muted2)",
+            borderTop: "1px solid var(--stroke2)", paddingTop: 8, width: "100%",
           }}>
             <span>Left-drag: Move</span>
             <span>Right-drag: Rotate</span>
@@ -1082,8 +1082,8 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
                   padding: "8px 10px", borderRadius: 0,
                   background: "rgba(255,77,79,0.1)", border: "1px solid rgba(255,77,79,0.3)",
                 }}>
-                  <span style={{ fontSize: 12, color: "oklch(0.42 0.035 152)", textAlign: "center" }}>
-                    Remove <strong style={{ color: "#3D9B5F" }}>{sel.projectName}</strong>?
+                  <span style={{ fontSize: 12, color: "var(--muted)", textAlign: "center" }}>
+                    Remove <strong style={{ color: "var(--seed)" }}>{sel.projectName}</strong>?
                   </span>
                   <div style={{ display: "flex", gap: 6 }}>
                     <button
@@ -1107,8 +1107,8 @@ export function BuildingOverlay({ map, projects, visible, onBuildingClick, onDel
                       onClick={() => setConfirmDelete(false)}
                       style={{
                         cursor: "pointer", flex: 1, padding: "7px 0", borderRadius: 0,
-                        background: "oklch(0.915 0.028 152)", border: "1px solid oklch(0.24 0.035 152 / 0.14)",
-                        color: "oklch(0.46 0.035 152)", fontSize: 12, fontWeight: 600,
+                        background: "var(--cream-deep)", border: "1px solid var(--stroke)",
+                        color: "var(--muted)", fontSize: 12, fontWeight: 600,
                       }}
                     >
                       Cancel
