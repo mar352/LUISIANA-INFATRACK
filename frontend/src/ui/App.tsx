@@ -144,6 +144,7 @@ const VECTOR_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
 
 type LayerToggles = {
   satellite: boolean;
+  streetMap: boolean;
   terrain: boolean;
   heatmap: boolean;
   weather: boolean;
@@ -156,6 +157,7 @@ type LayerToggles = {
 
 const DEFAULT_TOGGLES: LayerToggles = {
   satellite: false,
+  streetMap: false,
   terrain: false,
   heatmap: false,
   weather: false,
@@ -584,6 +586,15 @@ export default function App() {
         },
       });
 
+      // ── OSM Street Map raster source ──
+      map.addSource("osm-street", {
+        type: "raster",
+        tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+        tileSize: 256,
+        maxzoom: 19,
+        attribution: "© OpenStreetMap contributors",
+      } as any);
+
       // ── Satellite imagery source (Enhanced WebGL with multiple providers) ──
       const satelliteSource = getSatelliteSource("esri");
       map.addSource("satellite", {
@@ -641,7 +652,18 @@ export default function App() {
         },
       } as any);
 
-      // Satellite goes above GIBS, below 3d buildings
+      // OSM Street layer goes above GIBS, below satellite
+      map.addLayer(
+        {
+          id: "osm-street-layer",
+          type: "raster",
+          source: "osm-street",
+          paint: { "raster-opacity": 0 },
+        } as any,
+        "3d-buildings"
+      );
+
+      // Satellite goes above OSM street, below 3d buildings
       map.addLayer(
         {
           id: "satellite-layer",
@@ -1204,6 +1226,51 @@ export default function App() {
     else map.once("style.load", applySatellite);
   }, [toggles.satellite]);
 
+  // OSM Street Map toggle
+  useEffect(() => {
+    const map = mapInstance ?? mapRef.current;
+    if (!map) return;
+
+    const applyStreet = () => {
+      if (!map.getSource("osm-street")) {
+        try {
+          map.addSource("osm-street", {
+            type: "raster",
+            tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+            tileSize: 256,
+            maxzoom: 19,
+            attribution: "© OpenStreetMap contributors",
+          } as any);
+        } catch {
+          // source may be in-flight during style load
+        }
+      }
+
+      if (!map.getLayer("osm-street-layer") && map.getSource("osm-street")) {
+        try {
+          map.addLayer(
+            {
+              id: "osm-street-layer",
+              type: "raster",
+              source: "osm-street",
+              paint: { "raster-opacity": 0 },
+            } as any,
+            map.getLayer("satellite-layer") ? "satellite-layer" : (map.getLayer("3d-buildings") ? "3d-buildings" : undefined)
+          );
+        } catch {
+          // layer may already exist
+        }
+      }
+
+      if (map.getLayer("osm-street-layer")) {
+        map.setPaintProperty("osm-street-layer", "raster-opacity", toggles.streetMap ? 1 : 0);
+      }
+    };
+
+    if (map.isStyleLoaded()) applyStreet();
+    else map.once("style.load", applyStreet);
+  }, [toggles.streetMap]);
+
   // Terrain (3D elevation) toggle with WebGL enhancements
   useEffect(() => {
     const map = mapInstance ?? mapRef.current;
@@ -1696,6 +1763,24 @@ export default function App() {
 
           <div className="toggleRow">
             <div>
+              <label>Street Map</label>
+              <div className="hint">OpenStreetMap — clean roads, labels, POIs</div>
+            </div>
+            <div
+              className={`switch ${toggles.streetMap ? "on" : ""}`}
+              role="switch"
+              aria-checked={toggles.streetMap}
+              onClick={() =>
+                setToggles((t) => ({
+                  ...t,
+                  streetMap: !t.streetMap,
+                  satellite: t.streetMap ? t.satellite : false,
+                }))
+              }
+            />
+          </div>
+          <div className="toggleRow">
+            <div>
               <label>Satellite</label>
               <div className="hint">ESRI World Imagery — damage validation</div>
             </div>
@@ -1707,6 +1792,7 @@ export default function App() {
                 setToggles((t) => ({
                   ...t,
                   satellite: !t.satellite,
+                  streetMap: t.satellite ? t.streetMap : false,
                   terrain: t.satellite ? t.terrain : false,
                 }))
               }
