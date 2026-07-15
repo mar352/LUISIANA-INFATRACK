@@ -19,6 +19,7 @@
     "@tensorflow/tfjs": "^4.22.0",
     "@tensorflow/tfjs-vis": "^1.5.1",
     "@types/three": "0.169.0",
+    "firebase": "^12.16.0",
     "mapbox-gl": "^3.12.0",
     "maplibre-gl": "^5.24.0",
     "react": "^18.3.1",

@@ -81,6 +81,39 @@ export const MODEL_CATALOG: {
   { type: "custom",            label: "Custom Model",        icon: "construction",      category: "Construction",    description: "Upload your own 3D model",                    glb: "building.glb",      scale: 80  },
 ];
 
+export type LifecyclePhase =
+  | "Planning"
+  | "Procurement"
+  | "Construction"
+  | "Inspection"
+  | "Turnover"
+  | "Maintenance"
+  | "Decommissioned";
+
+export const LIFECYCLE_PHASES: { phase: LifecyclePhase; label: string; color: string }[] = [
+  { phase: "Planning",        label: "Planning",        color: "#9b9b9b" },
+  { phase: "Procurement",     label: "Procurement",     color: "#6c8ebf" },
+  { phase: "Construction",    label: "Construction",    color: "#f5a623" },
+  { phase: "Inspection",      label: "Inspection",      color: "#d4a017" },
+  { phase: "Turnover",        label: "Turnover",        color: "#82b366" },
+  { phase: "Maintenance",     label: "Maintenance",     color: "#245C3A" },
+  { phase: "Decommissioned",  label: "Decommissioned",  color: "#7a6b8a" },
+];
+
+export const BARANGAY_LIST = [
+  "Bagong Silang", "Balayhangin", "Bangcuangan", "Banilan", "Batis",
+  "Bubukal", "Calumpang", "Kanluran Talagas", "Labuin", "Laguio",
+  "Luisiana Proper", "Lusacan", "Mahabang Parang", "Masiit", "Nagcalbang",
+  "Oples", "Palayan", "Piit", "San Andres", "San Buenaventura",
+  "San Diego", "San Isidro", "San Jose", "San Juan", "San Luis",
+  "San Pablo", "San Pedro", "San Rafael", "San Roque", "San Salvador",
+  "Santa Ana", "Santa Catalina", "Santa Cruz", "Santa Elena", "Santa Maria",
+  "Santo Domingo", "Santo Tomas", "Silangan Talagas", "Sumucab",
+  "Talangka", "Tigkan",
+] as const;
+
+export type Barangay = typeof BARANGAY_LIST[number];
+
 export type ProjectStatus = "Planned" | "Ongoing" | "Delayed" | "Completed" | "Suspended";
 
 export type ProjectMilestone = {
@@ -129,6 +162,11 @@ export type Project = {
   targetEndDate?: string | null;
   budgetTotal?: number | null;
   budgetSpent?: number;
+  barangay?: string;
+  fundingSource?: string;
+  contractor?: string;
+  lifecyclePhase?: LifecyclePhase;
+  archivedAt?: string | null;
   milestones: ProjectMilestone[];
   issues: ProjectIssue[];
   photos: ProjectPhoto[];

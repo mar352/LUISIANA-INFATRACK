@@ -474,15 +474,32 @@ export function LoginScreen({ onLogin, onBack }: { onLogin: (role: UserRole) => 
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const role = ROLE_CREDENTIALS[username.toLowerCase().trim()];
-    if (role && password === "impact2024") {
-      onLogin(role);
-    } else {
-      setError("Invalid credentials. Please try again.");
+    if (loading) return;
+    setLoading(true);
+    setError("");
+
+    try {
+      const { authenticateUser } = await import("../services/auth");
+      const role = await authenticateUser(username, password);
+      if (role) {
+        onLogin(role);
+      } else {
+        setError("Invalid credentials. Please try again.");
+      }
+    } catch (err: any) {
+      console.error("[Auth] Login error:", err);
+      const fallbackRole = ROLE_CREDENTIALS[username.toLowerCase().trim()];
+      if (fallbackRole && password === "impact2024") {
+        onLogin(fallbackRole);
+      } else {
+        setError("Login failed. Check your connection and try again.");
+      }
     }
+    setLoading(false);
   }
 
   return (
@@ -543,7 +560,9 @@ export function LoginScreen({ onLogin, onBack }: { onLogin: (role: UserRole) => 
               </div>
             </div>
             {error && <div className="login-error">{error}</div>}
-            <button type="submit" className="login-submit">Sign In to Dashboard</button>
+            <button type="submit" className="login-submit" disabled={loading}>
+              {loading ? "Signing in..." : "Sign In to Dashboard"}
+            </button>
           </form>
           <div className="login-accounts">
             <div className="cap">Department Accounts</div>

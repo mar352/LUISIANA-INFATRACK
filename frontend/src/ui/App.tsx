@@ -3,6 +3,8 @@ import maplibregl, { Map as MapLibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { DeckGLOverlay } from "./DeckOverlay";
 import { BuildingOverlay } from "./BuildingOverlay";
+import InventoryPage from "./InventoryPage";
+import { addProjectToFirestore } from "../services/firestore-projects";
 import type { AlertItem, HeatPoint, Project, RiskZones, WeatherSnapshot, ProjectStatus } from "../types";
 import { MODEL_CATALOG, type ModelType, PROJECT_STATUS_COLORS } from "../types";
 import { connectRealtime } from "../lib/realtime";
@@ -40,6 +42,7 @@ import {
 import { LandingPage, LoginScreen, ROLE_CONFIGS, type UserRole } from "./Landing";
 import { ProjectMonitoringPanel } from "./ProjectMonitoringPanel";
 import { ThemeToggle } from "./ThemeToggle";
+import { seedAccounts, getSessionFromCookie, clearSessionCookie } from "../services/auth";
 
 // ── Dashboard icons ────────────────────────────────────────────────────────────
 const IconClipboard = () => (
@@ -168,6 +171,7 @@ const DEFAULT_TOGGLES: LayerToggles = {
   stormTrack: false,
 };
 
+
 const CENTER = { lat: 14.19, lon: 121.51, zoom: 11.4 };
 
 function levelColor(level: "LOW" | "MODERATE" | "HIGH") {
@@ -244,8 +248,35 @@ export default function App() {
   const [mapInstance, setMapInstance] = useState<MapLibreMap | null>(null);
 
   const [currentRole, setCurrentRole] = useState<UserRole | null>(null);
-  const [screen, setScreen] = useState<"landing" | "login" | "app">("landing");
+  const [screen, setScreen] = useState<"landing" | "login" | "app" | "inventory">("landing");
   const roleConfig = currentRole ? ROLE_CONFIGS[currentRole] : null;
+
+  const [cookieConsent, setCookieConsent] = useState<"pending" | "accepted" | "declined">(() => {
+    const stored = localStorage.getItem("infatrack_cookie_consent");
+    return stored === "accepted" ? "accepted" : stored === "declined" ? "declined" : "pending";
+  });
+
+  useEffect(() => {
+    seedAccounts().catch((err) => console.warn("[Auth] Seed accounts failed:", err));
+
+    if (cookieConsent === "accepted") {
+      const savedRole = getSessionFromCookie();
+      if (savedRole) {
+        setCurrentRole(savedRole);
+        setScreen("app");
+      }
+    }
+  }, []);
+
+  function handleCookieAccept() {
+    localStorage.setItem("infatrack_cookie_consent", "accepted");
+    setCookieConsent("accepted");
+  }
+
+  function handleCookieDecline() {
+    localStorage.setItem("infatrack_cookie_consent", "declined");
+    setCookieConsent("declined");
+  }
 
   const [connected, setConnected] = useState(false);
   const [toggles, setToggles] = useState<LayerToggles>(DEFAULT_TOGGLES);
@@ -328,6 +359,9 @@ export default function App() {
   const [aiRiskPredictions, setAiRiskPredictions] = useState<any[]>([]);
   const [aiRiskModel, setAiRiskModel] = useState<any>(null);
   const [aiRiskAutoTraining, setAiRiskAutoTraining] = useState(false);
+
+  // Google Street View mode — when active, clicking the map opens GSV in a new tab
+  const [streetViewMode, setStreetViewMode] = useState(false);
 
   // Auto-train AI model on app load
   useEffect(() => {
@@ -910,7 +944,7 @@ export default function App() {
         }
       }
 
-      await fetch(backendUrl("/api/projects"), {
+      const res = await fetch(backendUrl("/api/projects"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -929,6 +963,11 @@ export default function App() {
           customModelUrl,
         }),
       });
+
+      if (res.ok) {
+        const { project } = await res.json();
+        addProjectToFirestore(project).catch((e) => console.warn("[Firestore] sync failed:", e));
+      }
       
       // Close modal and reset
       setShowPlacementModal(false);
@@ -1271,6 +1310,32 @@ export default function App() {
     else map.once("style.load", applyStreet);
   }, [toggles.streetMap]);
 
+  // Google Street View mode — click map to open GSV in new tab
+  const streetViewModeRef = useRef(false);
+  useEffect(() => { streetViewModeRef.current = streetViewMode; }, [streetViewMode]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const handleClick = (e: maplibregl.MapMouseEvent) => {
+      if (!streetViewModeRef.current) return;
+      const { lat, lng } = e.lngLat;
+      const url = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lng}`;
+      window.open(url, "_blank");
+    };
+
+    map.on("click", handleClick);
+    return () => { map.off("click", handleClick); };
+  }, [mapInstance]);
+
+  // Update cursor when street view mode changes
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.getCanvas().style.cursor = streetViewMode ? "crosshair" : "";
+  }, [streetViewMode]);
+
   // Terrain (3D elevation) toggle with WebGL enhancements
   useEffect(() => {
     const map = mapInstance ?? mapRef.current;
@@ -1396,6 +1461,15 @@ export default function App() {
         />
       )}
 
+      {/* Inventory Page */}
+      {screen === "inventory" && (
+        <InventoryPage
+          onBack={() => setScreen("app")}
+          backendProjects={projects}
+          currentRole={currentRole}
+        />
+      )}
+
       {/* Main app - only render when logged in */}
       {screen === "app" && <>
       <div className="mapWrap">
@@ -1430,6 +1504,50 @@ export default function App() {
           }}
         />
 
+        {/* Google Street View mode indicator */}
+        {streetViewMode && (
+          <div style={{
+            position: "absolute",
+            top: 70,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 10,
+            background: "rgba(0,0,0,0.85)",
+            color: "#fff",
+            padding: "8px 20px",
+            borderRadius: 8,
+            fontSize: 13,
+            fontFamily: '"Chakra Petch", sans-serif',
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            border: "1px solid rgba(255,255,255,0.2)",
+            backdropFilter: "blur(8px)",
+          }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FBBC05" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="5" r="3"/><path d="M12 8v4"/><path d="M6.5 16a5.5 5.5 0 0 1 11 0"/>
+              <path d="M4 22l2-6"/><path d="M20 22l-2-6"/>
+            </svg>
+            <span>Click anywhere on the map to open <b>Google Street View</b></span>
+            <button
+              onClick={() => setStreetViewMode(false)}
+              style={{
+                cursor: "pointer",
+                background: "rgba(255,255,255,0.15)",
+                border: "1px solid rgba(255,255,255,0.3)",
+                borderRadius: 4,
+                color: "#fff",
+                padding: "3px 12px",
+                fontSize: 11,
+                fontWeight: 600,
+                marginLeft: 4,
+              }}
+            >
+              Exit
+            </button>
+          </div>
+        )}
+
         <div className="topBar">
           <div className="topBar-brand">
             <div className="topBar-brand-text">
@@ -1458,12 +1576,24 @@ export default function App() {
             <div className="chip chip-updates topBar-hide-mobile">Updates: 5s</div>
           </div>
           <div className="topBar-actions-primary">
+            {currentRole !== "Negosyo Center" && (
+              <button
+                type="button"
+                className="topBar-exit"
+                style={{ background: "linear-gradient(135deg, rgba(59,130,246,0.2), rgba(139,92,246,0.2))", borderColor: "rgba(59,130,246,0.4)" }}
+                onClick={() => setScreen("inventory")}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}><rect x="2" y="4" width="20" height="5" rx="1"/><path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9"/><path d="M10 13h4"/></svg>
+                <span className="topBar-exit-full">Inventory</span>
+                <span className="topBar-exit-short">Inv</span>
+              </button>
+            )}
             <ThemeToggle iconOnly />
             {currentRole && (
               <button
                 type="button"
                 className="topBar-exit"
-                onClick={() => { setCurrentRole(null); setScreen("landing"); }}
+                onClick={() => { clearSessionCookie(); setCurrentRole(null); setScreen("landing"); }}
               >
                 <span className="topBar-exit-full">{currentRole === "Viewer" ? "Exit Map" : "Sign Out"}</span>
                 <span className="topBar-exit-short">{currentRole === "Viewer" ? "Exit" : "Out"}</span>
@@ -1777,6 +1907,18 @@ export default function App() {
                   satellite: t.streetMap ? t.satellite : false,
                 }))
               }
+            />
+          </div>
+          <div className="toggleRow">
+            <div>
+              <label>Street View</label>
+              <div className="hint">Google — click map to view 360° street imagery</div>
+            </div>
+            <div
+              className={`switch ${streetViewMode ? "on" : ""}`}
+              role="switch"
+              aria-checked={streetViewMode}
+              onClick={() => setStreetViewMode((v) => !v)}
             />
           </div>
           <div className="toggleRow">
@@ -3210,6 +3352,38 @@ export default function App() {
                 }}
               >
                 Place Building
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {cookieConsent === "pending" && (
+        <div className="cookie-banner-overlay">
+          <div className="cookie-banner">
+            <div className="cookie-banner-icon">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <circle cx="8" cy="9" r="1.2" fill="currentColor" stroke="none" />
+                <circle cx="14" cy="7.5" r="0.9" fill="currentColor" stroke="none" />
+                <circle cx="10" cy="14" r="1" fill="currentColor" stroke="none" />
+                <circle cx="15.5" cy="12" r="1.1" fill="currentColor" stroke="none" />
+                <circle cx="13" cy="16" r="0.8" fill="currentColor" stroke="none" />
+              </svg>
+            </div>
+            <div className="cookie-banner-text">
+              <strong>Cookie Notice</strong>
+              <p>
+                INFA-TRACK uses cookies to keep you signed in and remember your preferences.
+                By accepting, you allow us to store session data on your browser.
+              </p>
+            </div>
+            <div className="cookie-banner-actions">
+              <button type="button" className="cookie-btn-accept" onClick={handleCookieAccept}>
+                Accept Cookies
+              </button>
+              <button type="button" className="cookie-btn-decline" onClick={handleCookieDecline}>
+                Decline
               </button>
             </div>
           </div>
