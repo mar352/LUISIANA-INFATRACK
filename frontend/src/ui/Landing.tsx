@@ -9,11 +9,11 @@ export interface RoleConfig {
   description: string;
   canSeeWeather: boolean;
   canSeeLayers: boolean;
-  canSeeRadar: boolean;
   canSeeRisk: boolean;
   canSeeProjects: boolean;
   canSeeAlerts: boolean;
   canSeeBusinessPermits: boolean;
+  canSeePlanning: boolean;
 }
 
 export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
@@ -23,11 +23,11 @@ export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
     description: "Municipal Planning & Development Coordinator",
     canSeeWeather: true,
     canSeeLayers: true,
-    canSeeRadar: true,
     canSeeRisk: true,
     canSeeProjects: true,
     canSeeAlerts: true,
     canSeeBusinessPermits: false,
+    canSeePlanning: true,
   },
   Engineer: {
     label: "Engineer",
@@ -35,11 +35,11 @@ export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
     description: "Infrastructure & Engineering Office",
     canSeeWeather: true,
     canSeeLayers: true,
-    canSeeRadar: true,
     canSeeRisk: true,
     canSeeProjects: true,
     canSeeAlerts: true,
     canSeeBusinessPermits: false,
+    canSeePlanning: true,
   },
   Agriculture: {
     label: "Agriculture",
@@ -47,11 +47,11 @@ export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
     description: "Municipal Agriculture Office",
     canSeeWeather: true,
     canSeeLayers: false,
-    canSeeRadar: false,
     canSeeRisk: true,
     canSeeProjects: false,
     canSeeAlerts: true,
     canSeeBusinessPermits: false,
+    canSeePlanning: true,
   },
   "Negosyo Center": {
     label: "Negosyo Center",
@@ -59,11 +59,11 @@ export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
     description: "Business Permit & Licensing Office",
     canSeeWeather: false,
     canSeeLayers: false,
-    canSeeRadar: false,
     canSeeRisk: false,
     canSeeProjects: false,
     canSeeAlerts: false,
     canSeeBusinessPermits: true,
+    canSeePlanning: true,
   },
   Viewer: {
     label: "Public Viewer",
@@ -71,11 +71,11 @@ export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
     description: "Read-only live map for residents and visitors",
     canSeeWeather: true,
     canSeeLayers: true,
-    canSeeRadar: true,
     canSeeRisk: true,
     canSeeProjects: true,
     canSeeAlerts: true,
     canSeeBusinessPermits: false,
+    canSeePlanning: true,
   },
 };
 
@@ -133,7 +133,7 @@ const FEATURE_ICON_MAP: Record<FeatureIcon, () => JSX.Element> = {
 
 const FEATURES: { icon: FeatureIcon; title: string; desc: string }[] = [
   { icon: "map", title: "Real-Time GIS Map", desc: "Live 3D map of Luisiana with risk zones, project markers, and satellite imagery." },
-  { icon: "cloud", title: "Weather & Radar", desc: "ECMWF IFS forecasts, animated precipitation radar, and NASA GIBS satellite layers." },
+  { icon: "cloud", title: "Weather & Satellite", desc: "ECMWF IFS forecasts and NASA GIBS satellite precipitation layers." },
   { icon: "alert", title: "Landslide Risk", desc: "Automated risk scoring using rainfall intensity and slope data across all barangays." },
   { icon: "building", title: "Infrastructure Tracking", desc: "Monitor ongoing municipal, agricultural, and private construction projects in real time." },
   { icon: "bell", title: "Instant Alerts", desc: "Automatic HIGH-risk alerts pushed live to relevant departments via WebSocket." },
@@ -191,7 +191,7 @@ const PageOverview = ({
         { v: "5s", l: "Update Interval" },
         { v: "4", l: "Departments" },
         { v: "22+", l: "Projects Tracked" },
-        { v: "Live", l: "Radar & Weather" },
+        { v: "Live", l: "Weather & Satellite" },
       ].map((s) => (
         <div key={s.l} className="masthead-cell">
           <div className="v">{s.v}</div>
@@ -319,7 +319,6 @@ const PageDepartments = ({ onEnter, onViewMap }: { onEnter: () => void; onViewMa
               {[
                 cfg.canSeeWeather && "Climate & Forecast",
                 cfg.canSeeLayers && "Map Layer Controls",
-                cfg.canSeeRadar && "Radar Animation",
                 cfg.canSeeRisk && "Risk Zone Monitoring",
                 cfg.canSeeProjects && "Infrastructure Projects",
                 cfg.canSeeAlerts && "Real-Time Alerts",
@@ -377,7 +376,7 @@ const PageAbout = ({ onEnter, onViewMap }: { onEnter: () => void; onViewMap: () 
         INFA-TRACK is a GIS monitoring platform for the Municipality of Luisiana, Laguna. It consolidates infrastructure tracking, disaster risk, weather, and business permits into one live dashboard.
       </p>
       <p>
-        Open-data sources — ECMWF IFS, OpenStreetMap, NASA GIBS, RainViewer — keep licensing cost at zero while staying accurate enough for LGU decisions.
+        Open-data sources — ECMWF IFS, OpenStreetMap, NASA GIBS — keep licensing cost at zero while staying accurate enough for LGU decisions.
       </p>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
         <button type="button" className="btn-amber" onClick={onViewMap}>View Live Map</button>
@@ -393,7 +392,7 @@ const PageAbout = ({ onEnter, onViewMap }: { onEnter: () => void; onViewMap: () 
         { label: "Data Updates", value: "Every 5 seconds" },
         { label: "Weather Model", value: "ECMWF IFS 0.25°" },
         { label: "Map Provider", value: "OpenFreeMap / ESRI" },
-        { label: "Radar Source", value: "RainViewer API" },
+        { label: "Satellite Source", value: "NASA GIBS" },
       ].map((item) => (
         <div key={item.label} className="meta-row">
           <span className="k">{item.label}</span>
@@ -469,7 +468,13 @@ export function LandingPage({ onEnter, onViewMap }: { onEnter: () => void; onVie
   );
 }
 
-export function LoginScreen({ onLogin, onBack }: { onLogin: (role: UserRole) => void; onBack: () => void }) {
+export function LoginScreen({
+  onLogin,
+  onBack,
+}: {
+  onLogin: (session: import("../services/auth").SessionUser) => void;
+  onBack: () => void;
+}) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -484,9 +489,9 @@ export function LoginScreen({ onLogin, onBack }: { onLogin: (role: UserRole) => 
 
     try {
       const { authenticateUser } = await import("../services/auth");
-      const role = await authenticateUser(username, password);
-      if (role) {
-        onLogin(role);
+      const session = await authenticateUser(username, password);
+      if (session) {
+        onLogin(session);
       } else {
         setError("Invalid credentials. Please try again.");
       }
@@ -494,7 +499,12 @@ export function LoginScreen({ onLogin, onBack }: { onLogin: (role: UserRole) => 
       console.error("[Auth] Login error:", err);
       const fallbackRole = ROLE_CREDENTIALS[username.toLowerCase().trim()];
       if (fallbackRole && password === "impact2024") {
-        onLogin(fallbackRole);
+        const { sessionForRole, setSessionCookie } = await import("../services/auth");
+        const session = sessionForRole(fallbackRole, username.toLowerCase().trim());
+        if (localStorage.getItem("infatrack_cookie_consent") === "accepted") {
+          setSessionCookie(session);
+        }
+        onLogin(session);
       } else {
         setError("Login failed. Check your connection and try again.");
       }

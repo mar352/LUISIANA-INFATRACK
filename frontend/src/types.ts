@@ -100,16 +100,31 @@ export const LIFECYCLE_PHASES: { phase: LifecyclePhase; label: string; color: st
   { phase: "Decommissioned",  label: "Decommissioned",  color: "#7a6b8a" },
 ];
 
+// Official 23 barangays of Luisiana, Laguna (PSGC 0403412000)
 export const BARANGAY_LIST = [
-  "Bagong Silang", "Balayhangin", "Bangcuangan", "Banilan", "Batis",
-  "Bubukal", "Calumpang", "Kanluran Talagas", "Labuin", "Laguio",
-  "Luisiana Proper", "Lusacan", "Mahabang Parang", "Masiit", "Nagcalbang",
-  "Oples", "Palayan", "Piit", "San Andres", "San Buenaventura",
-  "San Diego", "San Isidro", "San Jose", "San Juan", "San Luis",
-  "San Pablo", "San Pedro", "San Rafael", "San Roque", "San Salvador",
-  "Santa Ana", "Santa Catalina", "Santa Cruz", "Santa Elena", "Santa Maria",
-  "Santo Domingo", "Santo Tomas", "Silangan Talagas", "Sumucab",
-  "Talangka", "Tigkan",
+  "Barangay Zone I (Poblacion)",
+  "Barangay Zone II (Poblacion)",
+  "Barangay Zone III (Poblacion)",
+  "Barangay Zone IV (Poblacion)",
+  "Barangay Zone V (Poblacion)",
+  "Barangay Zone VI (Poblacion)",
+  "Barangay Zone VII (Poblacion)",
+  "Barangay Zone VIII (Poblacion)",
+  "De La Paz",
+  "San Antonio",
+  "San Buenaventura",
+  "San Diego",
+  "San Isidro",
+  "San Jose",
+  "San Juan",
+  "San Luis",
+  "San Pablo",
+  "San Pedro",
+  "San Rafael",
+  "San Roque",
+  "San Salvador",
+  "Santo Domingo",
+  "Santo Tomas",
 ] as const;
 
 export type Barangay = typeof BARANGAY_LIST[number];
@@ -156,6 +171,8 @@ export type Project = {
   progress: number;
   location: { lat: number; lon: number };
   rotation?: number;
+  /** User-adjusted multiplier for the map GLB model. */
+  modelScale?: number;
   customModelUrl?: string;
   description?: string;
   startDate?: string | null;
@@ -238,5 +255,108 @@ export type AlertItem = {
   message: string;
   recommendedAction: string;
   triggeredAt: string;
+};
+
+/** Collaborative Planning Module */
+
+export type PlanningProposalStatus =
+  | "draft"
+  | "submitted"
+  | "in_review"
+  | "recommended"
+  | "approved"
+  | "returned"
+  | "rejected";
+
+export type PlanningApprovalDecision = "recommend" | "approve" | "return" | "reject";
+
+export type PlanningEventType = "committee" | "hearing" | "deadline" | "site";
+
+export type PlanningActor = {
+  username: string;
+  role: string;
+  department?: string;
+};
+
+export type PlanningApproval = {
+  role: string;
+  username: string;
+  decision: PlanningApprovalDecision;
+  note?: string;
+  at: string;
+};
+
+export type PlanningProposal = {
+  id: string;
+  title: string;
+  summary: string;
+  department: Project["department"];
+  barangay?: string;
+  priority: 1 | 2 | 3 | 4 | 5;
+  status: PlanningProposalStatus;
+  linkedProjectId?: string | null;
+  location?: { lat: number; lon: number } | null;
+  submitter: PlanningActor;
+  assignees: string[];
+  committeeId?: string | null;
+  approvals: PlanningApproval[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PlanningComment = {
+  id: string;
+  author: string;
+  role: string;
+  body: string;
+  createdAt: string;
+  anchor?: { kind: "map" | "section"; label?: string } | null;
+};
+
+export type PlanningEvent = {
+  id: string;
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  type: PlanningEventType;
+  proposalIds: string[];
+  attendees: string[];
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PlanningMeeting = {
+  id: string;
+  title: string;
+  heldAt: string;
+  attendees: string[];
+  agenda: string;
+  minutes: string;
+  decisions: string[];
+  proposalIds: string[];
+  attachments: string[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export const PLANNING_STATUS_LABELS: Record<PlanningProposalStatus, string> = {
+  draft: "Draft",
+  submitted: "Submitted",
+  in_review: "In Review",
+  recommended: "Recommended",
+  approved: "Approved",
+  returned: "Returned",
+  rejected: "Rejected",
+};
+
+export const PLANNING_STATUS_COLORS: Record<PlanningProposalStatus, string> = {
+  draft: "#9b9b9b",
+  submitted: "#6c8ebf",
+  in_review: "#f5a623",
+  recommended: "#82b366",
+  approved: "#245C3A",
+  returned: "#d4a017",
+  rejected: "#e05252",
 };
 

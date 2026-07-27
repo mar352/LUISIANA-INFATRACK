@@ -1,4 +1,4 @@
-﻿/**
+/**
  * BuildingOverlay — renders GLB models on the MapLibre map using Three.js.
  *
  * Architecture:
@@ -17,9 +17,12 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import type { Project, ProjectStatus } from "../types";
 import { MODEL_CATALOG, PROJECT_STATUS_COLORS, PROJECT_STATUS_LABELS } from "../types";
 import { patchProject, backendUrl } from "../lib/api";
+import { updateProjectInFirestore } from "../services/firestore-projects";
+import { snapLngLatToRoad } from "../lib/snap-to-road";
 
 const LAYER_ID = "glb-buildings";
 const HIT_RADIUS_PX = 32;
+const ORIGIN_NORMALIZED_KEY = "__infatrackOriginNormalized";
 
 function hexToThree(hex: string): THREE.Color {
   return new THREE.Color(hex);
@@ -31,11 +34,168 @@ function statusColor(status: Project["status"]): THREE.Color {
   return hexToThree(hex);
 }
 
+/**
+ * Put GLTF local origin at the bounding-box bottom-center (Y-up).
+ * Heading/scale then pivot on the ground pin instead of an off-center mesh origin.
+ */
+function normalizeModelOrigin(root: THREE.Object3D): THREE.Box3 {
+  if (root.userData[ORIGIN_NORMALIZED_KEY]) {
+    root.updateMatrixWorld(true);
+    return new THREE.Box3().setFromObject(root);
+  }
+
+  root.position.set(0, 0, 0);
+  root.rotation.set(0, 0, 0);
+  root.scale.set(1, 1, 1);
+  root.updateMatrixWorld(true);
+
+  const box = new THREE.Box3().setFromObject(root);
+  if (!box.isEmpty()) {
+    const center = box.getCenter(new THREE.Vector3());
+    const shift = new THREE.Vector3(-center.x, -box.min.y, -center.z);
+    // Shift mesh contents; keep root transform identity for camera-matrix anchoring.
+    for (const child of root.children) {
+      child.position.add(shift);
+    }
+    if (root.children.length === 0 && (root as THREE.Mesh).isMesh) {
+      root.position.copy(shift);
+    }
+  }
+
+  root.updateMatrixWorld(true);
+  root.userData[ORIGIN_NORMALIZED_KEY] = true;
+  return new THREE.Box3().setFromObject(root);
+}
+
+/** Column-major 4×4 multiply in Float64 (MapLibre mercator precision). */
+function mulMat4Float64(a: Float64Array, b: Float64Array, out: Float64Array): Float64Array {
+  for (let col = 0; col < 4; col++) {
+    const b0 = b[col * 4];
+    const b1 = b[col * 4 + 1];
+    const b2 = b[col * 4 + 2];
+    const b3 = b[col * 4 + 3];
+    out[col * 4] = a[0] * b0 + a[4] * b1 + a[8] * b2 + a[12] * b3;
+    out[col * 4 + 1] = a[1] * b0 + a[5] * b1 + a[9] * b2 + a[13] * b3;
+    out[col * 4 + 2] = a[2] * b0 + a[6] * b1 + a[10] * b2 + a[14] * b3;
+    out[col * 4 + 3] = a[3] * b0 + a[7] * b1 + a[11] * b2 + a[15] * b3;
+  }
+  return out;
+}
+
+/**
+ * Model matrix in mercator space (column-major Float64):
+ *   M = T(pos) · S(s, −s, s) · Rx(π/2) · Ry(heading)
+ *
+ * Rx(π/2) maps GLTF Y-up → MapLibre Z-up. S_y = −1 matches the MapLibre
+ * three.js example (mercator Y). Heading is yaw about ground-up after that
+ * conversion (Ry), i.e. rotation in the ground plane — not camera-local tilt.
+ */
+function writeTranslationScaleRotation(
+  out: Float64Array,
+  tx: number,
+  ty: number,
+  tz: number,
+  scale: number,
+  rotateZ: number,
+) {
+  const sx = scale;
+  const sy = -scale;
+  const sz = scale;
+  // Rx(π/2) — column-major
+  const rx = new Float64Array([
+    1, 0, 0, 0,
+    0, 0, 1, 0,
+    0, -1, 0, 0,
+    0, 0, 0, 1,
+  ]);
+  // Ry(heading) — column-major; angle is ground-plane yaw
+  const cy = Math.cos(rotateZ);
+  const syr = Math.sin(rotateZ);
+  const ry = new Float64Array([
+    cy, 0, -syr, 0,
+    0, 1, 0, 0,
+    syr, 0, cy, 0,
+    0, 0, 0, 1,
+  ]);
+  const s = new Float64Array([
+    sx, 0, 0, 0,
+    0, sy, 0, 0,
+    0, 0, sz, 0,
+    0, 0, 0, 1,
+  ]);
+  const t = new Float64Array([
+    1, 0, 0, 0,
+    0, 1, 0, 0,
+    0, 0, 1, 0,
+    tx, ty, tz, 1,
+  ]);
+  const tmp1 = new Float64Array(16);
+  const tmp2 = new Float64Array(16);
+  mulMat4Float64(rx, ry, tmp1); // Rx · Ry
+  mulMat4Float64(s, tmp1, tmp2); // S · Rx · Ry
+  mulMat4Float64(t, tmp2, out); // T · S · Rx · Ry
+  return out;
+}
+
+function queryGroundAltitude(map: MapLibreMap, lng: number, lat: number): number {
+  try {
+    const elev = map.queryTerrainElevation({ lng, lat } as maplibregl.LngLatLike);
+    return typeof elev === "number" && Number.isFinite(elev) ? elev : 0;
+  } catch {
+    return 0;
+  }
+}
+
+type OriginalMaterialAppearance = {
+  opacity: number;
+  transparent: boolean;
+  depthWrite: boolean;
+};
+
+const ORIGINAL_APPEARANCE_KEY = "__infatrackOriginalAppearance";
+
+function rememberMaterialAppearance(material: THREE.Material) {
+  if (material.userData[ORIGINAL_APPEARANCE_KEY]) return;
+  material.userData[ORIGINAL_APPEARANCE_KEY] = {
+    opacity: material.opacity,
+    transparent: material.transparent,
+    depthWrite: material.depthWrite,
+  } satisfies OriginalMaterialAppearance;
+}
+
+function applyGlobalMaterialOpacity(
+  material: THREE.Material,
+  globalOpacity: number,
+) {
+  rememberMaterialAppearance(material);
+  const original = material.userData[
+    ORIGINAL_APPEARANCE_KEY
+  ] as OriginalMaterialAppearance;
+  const nextOpacity = original.opacity * globalOpacity;
+  const nextTransparent =
+    original.transparent || nextOpacity < 0.999 || globalOpacity < 0.999;
+  const nextDepthWrite =
+    original.depthWrite && globalOpacity >= 0.999;
+
+  const shaderModeChanged =
+    material.transparent !== nextTransparent ||
+    material.depthWrite !== nextDepthWrite;
+
+  material.opacity = nextOpacity;
+  material.transparent = nextTransparent;
+  material.depthWrite = nextDepthWrite;
+  if (shaderModeChanged) material.needsUpdate = true;
+}
+
 type Props = {
   map: MapLibreMap | null;
   projects: Project[];
   visible: boolean;
+  /** 0–1 opacity for GLB project blocks */
+  opacity?: number;
   readOnly?: boolean;
+  /** When true, left-drag snaps position + yaw to nearby roads. */
+  snapToRoad?: boolean;
   onBuildingClick?: (hit: boolean) => void;
   onDeleteBuilding?: (projectId: string) => void;
 };
@@ -53,9 +213,11 @@ type ModelState = {
   projectId: string;
   projectName: string;
   status: Project["status"];
+  /** Axis-aligned bounds in model-local space (identity transform). */
+  localBBox: THREE.Box3;
 };
 
-export function BuildingOverlay({ map, projects, visible, readOnly = false, onBuildingClick, onDeleteBuilding }: Props) {
+export function BuildingOverlay({ map, projects, visible, opacity = 1, readOnly = false, snapToRoad = false, onBuildingClick, onDeleteBuilding }: Props) {
   const gltfCache = useRef<Map<string, THREE.Group>>(new Map());
   const statesRef = useRef<ModelState[]>([]);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -65,15 +227,22 @@ export function BuildingOverlay({ map, projects, visible, readOnly = false, onBu
   const lastRenderArgsRef = useRef<any>(null);
   const layerAddedRef = useRef(false);
   const manuallyMovedRef = useRef<Map<string, { x: number; y: number }>>(new Map());
+  const opacityRef = useRef(opacity);
+  const lastAppliedOpacityRef = useRef(-1);
+  const snapToRoadRef = useRef(snapToRoad);
+  useEffect(() => { snapToRoadRef.current = snapToRoad; }, [snapToRoad]);
+  useEffect(() => {
+    opacityRef.current = opacity;
+    map?.triggerRepaint();
+  }, [opacity, map]);
 
   // Pre-allocated matrices to avoid GC pressure every frame
   const _mapMatrix   = useRef(new THREE.Matrix4());
-  const _rotX        = useRef(new THREE.Matrix4());
-  const _rotHeading  = useRef(new THREE.Matrix4());
-  const _localMatrix = useRef(new THREE.Matrix4());
-  const _scaleVec    = useRef(new THREE.Vector3());
-  const _axisX       = new THREE.Vector3(1, 0, 0);
-  const _axisY       = new THREE.Vector3(0, 1, 0);
+  const _vp64        = useRef(new Float64Array(16));
+  const _camT64      = useRef(new Float64Array(16));
+  const _vpCentered  = useRef(new Float64Array(16));
+  const _model64     = useRef(new Float64Array(16));
+  const _result64    = useRef(new Float64Array(16));
   // Track last selection to only update emissive when it changes
   const lastSelIdxRef = useRef(-2); // -2 = uninitialized
 
@@ -99,6 +268,9 @@ export function BuildingOverlay({ map, projects, visible, readOnly = false, onBu
     budgetSpent: string;
   } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [transformDirty, setTransformDirty] = useState(false);
+  const [transformSaving, setTransformSaving] = useState(false);
+  const [transformMessage, setTransformMessage] = useState<string | null>(null);
   
   // Hover state for tooltip
   const [hoveredBuilding, setHoveredBuilding] = useState<{ name: string; status: string; x: number; y: number } | null>(null);
@@ -131,12 +303,12 @@ export function BuildingOverlay({ map, projects, visible, readOnly = false, onBu
 
       // Build a fresh scene with just lights
       const scene = new THREE.Scene();
-      scene.add(new THREE.AmbientLight(0xffffff, 2.5));
-      const sun = new THREE.DirectionalLight(0xfff4e0, 3.0);
-      sun.position.set(0, -70, 100).normalize();
+      scene.add(new THREE.AmbientLight(0xffffff, 1.1));
+      const sun = new THREE.DirectionalLight(0xfff4e0, 1.6);
+      sun.position.set(50, -70, 100).normalize();
       scene.add(sun);
-      const sun2 = new THREE.DirectionalLight(0xffffff, 1.5);
-      sun2.position.set(0, 70, 100).normalize();
+      const sun2 = new THREE.DirectionalLight(0xffffff, 0.7);
+      sun2.position.set(-40, 50, 80).normalize();
       scene.add(sun2);
       sceneRef.current = scene;
 
@@ -158,6 +330,10 @@ export function BuildingOverlay({ map, projects, visible, readOnly = false, onBu
           });
           r.autoClear = false;
           r.outputColorSpace = THREE.SRGBColorSpace;
+          // No tone mapping — ACES washes Blender base colors on the map.
+          // Keep linear→sRGB output only so exported GLB colors stay faithful.
+          r.toneMapping = THREE.NoToneMapping;
+          r.toneMappingExposure = 1;
           rendererRef.current = r;
         },
 
@@ -166,22 +342,38 @@ export function BuildingOverlay({ map, projects, visible, readOnly = false, onBu
           const scene = sceneRef.current;
           if (!renderer || !scene) return;
 
-          const mainMatrix: number[] =
-            args.defaultProjectionData?.mainMatrix ??
-            args.modelViewProjectionMatrix;
+          const mainMatrix: ArrayLike<number> | undefined =
+            args?.defaultProjectionData?.mainMatrix ??
+            args?.modelViewProjectionMatrix;
           if (!mainMatrix) return;
 
-          // Reuse pre-allocated matrix — no GC
-          _mapMatrix.current.fromArray(mainMatrix);
+          for (let i = 0; i < 16; i++) _vp64.current[i] = Number(mainMatrix[i]);
+          _mapMatrix.current.fromArray(_vp64.current as unknown as number[]);
           lastMapMatrixRef.current = _mapMatrix.current;
           lastRenderArgsRef.current = args;
 
           const states = statesRef.current;
           if (states.length === 0) return;
 
-          const selIdx = selectedIdxRef.current;
+          // Relative-to-eye: re-center VP around camera mercator so Float32
+          // doesn't swim when panning/rotating/zooming.
+          const cam = map.getCenter();
+          const camMerc = maplibregl.MercatorCoordinate.fromLngLat(
+            { lng: cam.lng, lat: cam.lat },
+            0,
+          );
+          _camT64.current.set([
+            1, 0, 0, 0,
+            0, 1, 0, 0,
+            0, 0, 1, 0,
+            camMerc.x, camMerc.y, camMerc.z || 0, 1,
+          ]);
+          mulMat4Float64(_vp64.current, _camT64.current, _vpCentered.current);
 
-          // Only update emissive materials when selection changes — not every frame
+          const selIdx = selectedIdxRef.current;
+          const blockOpacity = Math.max(0, Math.min(1, opacityRef.current));
+
+          // Selection emissive — only when selection changes
           if (selIdx !== lastSelIdxRef.current) {
             lastSelIdxRef.current = selIdx;
             for (let i = 0; i < states.length; i++) {
@@ -194,11 +386,11 @@ export function BuildingOverlay({ map, projects, visible, readOnly = false, onBu
                 mats.forEach((mat) => {
                   if (mat instanceof THREE.MeshStandardMaterial || mat instanceof THREE.MeshPhysicalMaterial) {
                     if (isSelected) {
-                      mat.emissive.set(0xffdd44);
-                      mat.emissiveIntensity = 1.2;
+                      mat.emissive.set(0x245c3a);
+                      mat.emissiveIntensity = 0.15;
                     } else {
-                      mat.emissive.copy(statusColor(t.status));
-                      mat.emissiveIntensity = 0.4;
+                      mat.emissive.set(0x000000);
+                      mat.emissiveIntensity = 0;
                     }
                   }
                 });
@@ -206,42 +398,76 @@ export function BuildingOverlay({ map, projects, visible, readOnly = false, onBu
             }
           }
 
-          renderer.resetState();
+          // Opacity — only when slider changes
+          if (blockOpacity !== lastAppliedOpacityRef.current) {
+            lastAppliedOpacityRef.current = blockOpacity;
+            for (const t of states) {
+              t.scene.traverse((obj) => {
+                const mesh = obj as THREE.Mesh;
+                if (!mesh.isMesh) return;
+                const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+                for (const mat of mats) {
+                  if (!mat) continue;
+                  applyGlobalMaterialOpacity(mat, blockOpacity);
+                }
+              });
+            }
+          }
 
+          renderer.resetState();
+          // Clear map depth so GLBs never z-fight OSM fill-extrusions (white↔cream flash)
+          renderer.clearDepth();
+
+          const camera = cameraRef.current;
+          camera.matrixAutoUpdate = false;
+
+          // MapLibre pattern: bake each model's mercator transform into the
+          // camera projection and render one model at a time.
           for (let i = 0; i < states.length; i++) {
             const t = states[i];
 
             for (const other of states) other.scene.visible = false;
             t.scene.visible = true;
+            t.scene.matrixAutoUpdate = false;
+            t.scene.matrix.identity();
+            t.scene.updateMatrixWorld(true);
+
+            const altitude = queryGroundAltitude(map, t.lng, t.lat);
+            const mc = maplibregl.MercatorCoordinate.fromLngLat(
+              { lng: t.lng, lat: t.lat },
+              altitude,
+            );
+            const manual = manuallyMovedRef.current.has(t.projectId);
+            const tx = manual ? t.translateX : mc.x;
+            const ty = manual ? t.translateY : mc.y;
+            const tz = mc.z ?? 0;
+            if (!manual) {
+              t.translateX = tx;
+              t.translateY = ty;
+            }
+            t.translateZ = tz;
 
             const finalScale = t.baseScale * t.scaleMultiplier;
+            const dx = tx - camMerc.x;
+            const dy = ty - camMerc.y;
+            const dz = tz - (camMerc.z || 0);
 
-            // Reuse pre-allocated matrices — zero GC per frame
-            _rotX.current.makeRotationAxis(_axisX, Math.PI / 2);
-            _rotHeading.current.makeRotationAxis(_axisY, t.rotateZ);
-            _scaleVec.current.set(finalScale, -finalScale, finalScale);
+            writeTranslationScaleRotation(
+              _model64.current,
+              dx,
+              dy,
+              dz,
+              finalScale,
+              t.rotateZ,
+            );
+            mulMat4Float64(_vpCentered.current, _model64.current, _result64.current);
+            camera.projectionMatrix.fromArray(_result64.current as unknown as number[]);
+            camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
 
-            _localMatrix.current
-              .makeTranslation(t.translateX, t.translateY, t.translateZ)
-              .scale(_scaleVec.current)
-              .multiply(_rotX.current)
-              .multiply(_rotHeading.current);
-
-            cameraRef.current.projectionMatrix
-              .copy(_mapMatrix.current)
-              .multiply(_localMatrix.current);
-            cameraRef.current.projectionMatrixInverse
-              .copy(cameraRef.current.projectionMatrix)
-              .invert();
-
-            renderer.render(scene, cameraRef.current);
-            t.scene.visible = true;
+            renderer.render(scene, camera);
           }
 
           for (const t of states) t.scene.visible = true;
-          // NOTE: do NOT call map.triggerRepaint() here — it creates an
-          // infinite render loop. MapLibre will call render() again when
-          // the camera moves or state changes.
         },
       };
 
@@ -300,7 +526,11 @@ export function BuildingOverlay({ map, projects, visible, readOnly = false, onBu
         
         loader.load(
           modelPath,
-          (gltf) => { gltfCache.current.set(glb, gltf.scene); resolve(); },
+          (gltf) => {
+            normalizeModelOrigin(gltf.scene);
+            gltfCache.current.set(glb, gltf.scene);
+            resolve();
+          },
           undefined,
           (err) => { console.warn(`[BuildingOverlay] Failed to load ${glb}:`, err); resolve(); }
         );
@@ -311,12 +541,12 @@ export function BuildingOverlay({ map, projects, visible, readOnly = false, onBu
       // Ensure scene exists (may not if layer hasn't been added yet)
       if (!sceneRef.current) {
         const scene = new THREE.Scene();
-        scene.add(new THREE.AmbientLight(0xffffff, 2.5));
-        const sun = new THREE.DirectionalLight(0xfff4e0, 3.0);
-        sun.position.set(0, -70, 100).normalize();
+        scene.add(new THREE.AmbientLight(0xffffff, 1.1));
+        const sun = new THREE.DirectionalLight(0xfff4e0, 1.6);
+        sun.position.set(50, -70, 100).normalize();
         scene.add(sun);
-        const sun2 = new THREE.DirectionalLight(0xffffff, 1.5);
-        sun2.position.set(0, 70, 100).normalize();
+        const sun2 = new THREE.DirectionalLight(0xffffff, 0.7);
+        sun2.position.set(-40, 50, 80).normalize();
         scene.add(sun2);
         sceneRef.current = scene;
       }
@@ -351,36 +581,81 @@ export function BuildingOverlay({ map, projects, visible, readOnly = false, onBu
         const targetHeightM = cat?.scale ?? 60;
 
         let model: THREE.Group;
+        let localBBox: THREE.Box3;
+
         if (existing) {
           // Reuse existing Three.js object — preserves user edits
           model = existing.scene;
+          localBBox = normalizeModelOrigin(model);
         } else {
           // New project — clone from cache and add to scene
           model = proto.clone(true);
           model.position.set(0, 0, 0);
           model.rotation.set(0, 0, 0);
           model.scale.set(1, 1, 1);
+          model.matrix.identity();
+          model.matrixAutoUpdate = false;
+          // Clone materials so selection emissive/opacity don't leak across
+          // instances — but keep the GLB's original colors untouched.
+          model.traverse((obj) => {
+            const mesh = obj as THREE.Mesh;
+            if (!mesh.isMesh) return;
+            if (Array.isArray(mesh.material)) {
+              mesh.material = mesh.material.map((m) => m.clone());
+            } else if (mesh.material) {
+              mesh.material = mesh.material.clone();
+            }
+            const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+            for (const material of mats) {
+              if (!material) continue;
+              // Recover color from hex material names (e.g. "#FDFBD4FF") when
+              // Blender exported an empty/white material with no baseColorFactor.
+              if (
+                (material instanceof THREE.MeshStandardMaterial ||
+                  material instanceof THREE.MeshPhysicalMaterial) &&
+                !material.map
+              ) {
+                const hexMatch = /^#([0-9A-Fa-f]{6})/.exec(material.name.trim());
+                if (hexMatch) {
+                  const isWhite =
+                    material.color.r > 0.95 &&
+                    material.color.g > 0.95 &&
+                    material.color.b > 0.95;
+                  if (isWhite) material.color.set(`#${hexMatch[1]}`);
+                }
+              }
+              rememberMaterialAppearance(material);
+            }
+          });
+          localBBox = normalizeModelOrigin(model);
           scene.add(model);
         }
 
-        const bbox = new THREE.Box3().setFromObject(model);
         const size = new THREE.Vector3();
-        bbox.getSize(size);
-        const modelNativeHeight = Math.max(size.x, size.y, size.z, 0.001);
+        localBBox.getSize(size);
+        // Prefer vertical extent (GLTF Y-up) for target building height.
+        const modelNativeHeight = Math.max(size.y, size.x * 0.5, size.z * 0.5, 0.001);
+
+        const altitude = queryGroundAltitude(map, p.location.lon, p.location.lat);
+        const mcGround = maplibregl.MercatorCoordinate.fromLngLat(
+          { lng: p.location.lon, lat: p.location.lat },
+          altitude,
+        );
 
         newStates.push({
           scene: model,
-          translateX: manualPos?.x ?? mc.x,
-          translateY: manualPos?.y ?? mc.y,
-          translateZ: mc.z ?? 0,
+          translateX: manualPos?.x ?? mcGround.x,
+          translateY: manualPos?.y ?? mcGround.y,
+          translateZ: mcGround.z ?? 0,
           lng: p.location.lon,
           lat: p.location.lat,
           baseScale: (targetHeightM / modelNativeHeight) * metersPerUnit,
-          scaleMultiplier: existing?.scaleMultiplier ?? 1,
+          scaleMultiplier: existing?.scaleMultiplier ?? p.modelScale ?? 1,
           rotateZ: existing?.rotateZ ?? THREE.MathUtils.degToRad(p.rotation ?? 0),
           projectId: p.id,
           projectName: p.name,
           status: p.status,
+          localBBox,
         });
       }
 
@@ -393,6 +668,7 @@ export function BuildingOverlay({ map, projects, visible, readOnly = false, onBu
       }
 
       statesRef.current = newStates;
+      lastAppliedOpacityRef.current = -1; // re-apply opacity to new materials
       map.triggerRepaint();
     });
   }, [projects, visible]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -434,16 +710,16 @@ export function BuildingOverlay({ map, projects, visible, readOnly = false, onBu
       for (let i = 0; i < states.length; i++) {
         const t = states[i];
         const finalScale = t.baseScale * t.scaleMultiplier;
-
-        const rotX = new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(1, 0, 0), Math.PI / 2);
-        const rotHeading = new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(0, 1, 0), t.rotateZ);
-
-        const l = new THREE.Matrix4()
-          .makeTranslation(t.translateX, t.translateY, t.translateZ)
-          .scale(new THREE.Vector3(finalScale, -finalScale, finalScale))
-          .multiply(rotX)
-          .multiply(rotHeading);
-
+        const modelMat = new Float64Array(16);
+        writeTranslationScaleRotation(
+          modelMat,
+          t.translateX,
+          t.translateY,
+          t.translateZ,
+          finalScale,
+          t.rotateZ,
+        );
+        const l = new THREE.Matrix4().fromArray(modelMat as unknown as number[]);
         const combinedMatrix = new THREE.Matrix4().copy(mat).multiply(l);
         const combinedInverse = combinedMatrix.clone().invert();
 
@@ -452,7 +728,7 @@ export function BuildingOverlay({ map, projects, visible, readOnly = false, onBu
         const rayDir = farLocal.clone().sub(nearLocal).normalize();
         const ray = new THREE.Ray(nearLocal, rayDir);
 
-        const bbox = new THREE.Box3().setFromObject(t.scene);
+        const bbox = t.localBBox;
         const hitPoint = new THREE.Vector3();
         if (ray.intersectBox(bbox, hitPoint)) {
           const dist = nearLocal.distanceTo(hitPoint);
@@ -468,15 +744,28 @@ export function BuildingOverlay({ map, projects, visible, readOnly = false, onBu
 
     let isDragging = false;
     let dragLastX = 0;
+    let dragLastY = 0;
     let isMoving = false;
     let moveDragLastX = 0;
     let moveDragLastY = 0;
     let didMove = false;
 
+    /**
+     * Convert a screen-pixel drag into Mercator deltas aligned to the current
+     * map bearing so “drag left” always moves toward the left edge of the view.
+     * Screen +x = right, +y = down.
+     */
     function screenDeltaToMercator(dxPx: number, dyPx: number) {
       const zoom = map.getZoom();
       const worldPx = 512 * Math.pow(2, zoom);
-      return { dx: dxPx / worldPx, dy: dyPx / worldPx };
+      // MapLibre: +x east, +y south; bearing = direction that is “up” (clockwise from north).
+      const bearing = (map.getBearing() * Math.PI) / 180;
+      const cosB = Math.cos(bearing);
+      const sinB = Math.sin(bearing);
+      // screenRight = (cosB, sinB), screenDown = (−sinB, cosB) in mercator XY
+      const mx = (dxPx * cosB - dyPx * sinB) / worldPx;
+      const my = (dxPx * sinB + dyPx * cosB) / worldPx;
+      return { dx: mx, dy: my };
     }
 
     const onMouseDown = (e: MouseEvent) => {
@@ -500,6 +789,9 @@ export function BuildingOverlay({ map, projects, visible, readOnly = false, onBu
       } else if (e.button === 2 && hit === idx) {
         isDragging = true;
         dragLastX = e.clientX;
+        dragLastY = e.clientY;
+        map.dragRotate.disable();
+        map.touchPitch?.disable?.();
         e.preventDefault();
         e.stopPropagation();
       }
@@ -519,6 +811,8 @@ export function BuildingOverlay({ map, projects, visible, readOnly = false, onBu
       const px = (e.clientX - rect.left) * dpr;
       const py = (e.clientY - rect.top) * dpr;
       const hit = hitTest(px, py);
+      setTransformDirty(false);
+      setTransformMessage(null);
       setSelectedIdx(hit);
       selectedIdxRef.current = hit;
       
@@ -567,11 +861,28 @@ export function BuildingOverlay({ map, projects, visible, readOnly = false, onBu
         s.translateX += dx;
         s.translateY += dy;
         // Convert updated Mercator back to lng/lat for getMatrixForModel (terrain support)
-        const lngLat = new maplibregl.MercatorCoordinate(s.translateX, s.translateY, s.translateZ).toLngLat();
+        let lngLat = new maplibregl.MercatorCoordinate(s.translateX, s.translateY, s.translateZ).toLngLat();
         s.lng = lngLat.lng;
         s.lat = lngLat.lat;
+
+        if (snapToRoadRef.current) {
+          const snap = snapLngLatToRoad(map, s.lng, s.lat);
+          if (snap.snapped) {
+            s.lng = snap.lng;
+            s.lat = snap.lat;
+            const elev = map.queryTerrainElevation({ lng: snap.lng, lat: snap.lat }) ?? 0;
+            const mc = maplibregl.MercatorCoordinate.fromLngLat({ lng: snap.lng, lat: snap.lat }, elev);
+            s.translateX = mc.x;
+            s.translateY = mc.y;
+            s.translateZ = mc.z;
+            s.rotateZ = THREE.MathUtils.degToRad(snap.bearingDeg);
+          }
+        }
+
         manuallyMovedRef.current.set(s.projectId, { x: s.translateX, y: s.translateY });
         didMove = true;
+        setTransformDirty(true);
+        setTransformMessage(null);
         map.triggerRepaint();
         e.preventDefault();
         e.stopPropagation();
@@ -581,8 +892,20 @@ export function BuildingOverlay({ map, projects, visible, readOnly = false, onBu
         const idx = selectedIdxRef.current;
         if (idx < 0) { isDragging = false; return; }
         const dx = e.clientX - dragLastX;
+        const dy = e.clientY - dragLastY;
         dragLastX = e.clientX;
-        statesRef.current[idx].rotateZ += THREE.MathUtils.degToRad(dx * 0.5);
+        dragLastY = e.clientY;
+        // Invert screen X: with mercator Y-flip in the model matrix, raw +=dx
+        // made drag-left turn the model right. Subtract so left = CCW on screen.
+        // Horizontal drag = yaw about ground-up. Ignore vertical for yaw so
+        // map pitch gestures don't fight the model heading.
+        const s = statesRef.current[idx];
+        s.rotateZ -= THREE.MathUtils.degToRad(dx * 0.5);
+        // Soft clamp unused dy so accidental vertical right-drags don't feel like
+        // an inverted "tilt" via map pitch stealing the gesture.
+        void dy;
+        setTransformDirty(true);
+        setTransformMessage(null);
         map.triggerRepaint();
         e.preventDefault();
         e.stopPropagation();
@@ -591,7 +914,11 @@ export function BuildingOverlay({ map, projects, visible, readOnly = false, onBu
 
     const onMouseUp = (e: MouseEvent) => {
       if (e.button === 0 && isMoving) { isMoving = false; map.dragPan.enable(); }
-      if (e.button === 2) isDragging = false;
+      if (e.button === 2) {
+        isDragging = false;
+        map.dragRotate.enable();
+        map.touchPitch?.enable?.();
+      }
     };
 
     const onWheel = (e: WheelEvent) => {
@@ -608,6 +935,8 @@ export function BuildingOverlay({ map, projects, visible, readOnly = false, onBu
       if (!sc) return;
       if ((sc.x - px) ** 2 + (sc.y - py) ** 2 > (HIT_RADIUS_PX * 4) ** 2) return;
       s.scaleMultiplier = Math.max(0.1, Math.min(20, s.scaleMultiplier * (e.deltaY < 0 ? 1.08 : 0.93)));
+      setTransformDirty(true);
+      setTransformMessage(null);
       map.triggerRepaint();
       e.preventDefault();
       e.stopPropagation();
@@ -631,6 +960,8 @@ export function BuildingOverlay({ map, projects, visible, readOnly = false, onBu
 
     return () => {
       map.dragPan.enable();
+      map.dragRotate.enable();
+      map.touchPitch?.enable?.();
       canvas.removeEventListener("mousedown", onMouseDown);
       canvas.removeEventListener("click", onClick, true);
       canvas.removeEventListener("mousemove", onMouseMove);
@@ -684,6 +1015,43 @@ export function BuildingOverlay({ map, projects, visible, readOnly = false, onBu
       console.error("Failed to save project:", err);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleSaveTransform() {
+    const idx = selectedIdxRef.current;
+    const state = statesRef.current[idx];
+    if (!state || transformSaving) return;
+
+    const rotation = THREE.MathUtils.radToDeg(state.rotateZ);
+    const patch: Partial<Project> = {
+      location: { lat: state.lat, lon: state.lng },
+      rotation,
+      modelScale: state.scaleMultiplier,
+    };
+
+    setTransformSaving(true);
+    setTransformMessage(null);
+    try {
+      try {
+        await patchProject(state.projectId, patch);
+      } catch (backendError) {
+        // Placements can fall back to Firestore when the local API is offline.
+        try {
+          await updateProjectInFirestore(state.projectId, patch);
+        } catch {
+          throw backendError;
+        }
+      }
+
+      setTransformDirty(false);
+      setTransformMessage("Position saved");
+      window.setTimeout(() => setTransformMessage(null), 2200);
+    } catch (err) {
+      console.error("Failed to save 3D model transform:", err);
+      setTransformMessage("Save failed");
+    } finally {
+      setTransformSaving(false);
     }
   }
 
@@ -1103,12 +1471,36 @@ export function BuildingOverlay({ map, projects, visible, readOnly = false, onBu
             <span>Left-drag: Move</span>
             <span>Right-drag: Rotate</span>
             <span>Scroll: Scale</span>
+            {snapToRoad && <span style={{ color: "#00c8d4" }}>Snap to road</span>}
           </div>
           )}
 
           {/* Action row */}
           {!readOnly && (
           <div style={{ display: "flex", gap: 8, width: "100%", paddingTop: 2 }}>
+            <button
+              type="button"
+              onClick={handleSaveTransform}
+              disabled={transformSaving || !transformDirty}
+              style={{
+                cursor: transformSaving || !transformDirty ? "default" : "pointer",
+                flex: 1,
+                padding: "8px 10px",
+                borderRadius: 0,
+                background: transformDirty ? "var(--seed)" : "var(--cream-deep)",
+                border: "2px solid var(--ink)",
+                color: "var(--ink)",
+                fontSize: 12,
+                fontWeight: 700,
+                opacity: transformSaving || !transformDirty ? 0.65 : 1,
+              }}
+              title="Save map position, rotation, and scale"
+            >
+              {transformSaving
+                ? "Saving…"
+                : transformMessage ??
+                  (transformDirty ? "Save Position" : "Saved")}
+            </button>
             {!confirmDelete ? (
               <button
                 onClick={() => setConfirmDelete(true)}

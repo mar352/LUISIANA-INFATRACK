@@ -7,6 +7,7 @@ type Events = {
   "risk:update": (z: { zones: RiskZones; generatedAt: string }) => void;
   "projects:update": (p: { projects: Project[]; generatedAt: string }) => void;
   "alerts:new": (a: AlertItem) => void;
+  "planning:update": (p: { kind?: string; at?: string }) => void;
 };
 
 export function connectRealtime(baseUrl: string) {

@@ -10,6 +10,29 @@ import {
 import { db, projectsCollection } from "../firebase";
 import type { Project } from "../types";
 
+/** Firestore rejects `undefined`; omit those fields and normalize optionals. */
+function sanitizeProjectForFirestore(project: Partial<Project> & { id: string }) {
+  const base: Record<string, unknown> = {
+    ...project,
+    barangay: project.barangay ?? "",
+    fundingSource: project.fundingSource ?? "",
+    contractor: project.contractor ?? "",
+    lifecyclePhase: project.lifecyclePhase ?? "Planning",
+    archivedAt: project.archivedAt ?? null,
+    milestones: project.milestones ?? [],
+    issues: project.issues ?? [],
+    photos: project.photos ?? [],
+    activityLog: project.activityLog ?? [],
+    updatedAt: project.updatedAt ?? new Date().toISOString(),
+  };
+
+  const cleaned: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(base)) {
+    if (value !== undefined) cleaned[key] = value;
+  }
+  return cleaned;
+}
+
 export function subscribeToProjects(
   callback: (projects: Project[]) => void,
 ) {
@@ -56,14 +79,7 @@ export function subscribeToArchivedProjects(
 
 export async function addProjectToFirestore(project: Project) {
   const ref = doc(projectsCollection, project.id);
-  await setDoc(ref, {
-    ...project,
-    barangay: project.barangay || "",
-    fundingSource: project.fundingSource || "",
-    contractor: project.contractor || "",
-    lifecyclePhase: project.lifecyclePhase || "Planning",
-    archivedAt: project.archivedAt ?? null,
-  });
+  await setDoc(ref, sanitizeProjectForFirestore(project));
 }
 
 export async function updateProjectInFirestore(
@@ -71,10 +87,15 @@ export async function updateProjectInFirestore(
   patch: Partial<Project>,
 ) {
   const ref = doc(db, "projects", id);
-  await updateDoc(ref, {
+  const data: Record<string, unknown> = {
     ...patch,
     updatedAt: new Date().toISOString(),
-  });
+  };
+  const cleaned: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (value !== undefined) cleaned[key] = value;
+  }
+  await updateDoc(ref, cleaned);
 }
 
 export async function archiveProject(id: string) {
@@ -100,14 +121,7 @@ export async function seedFirestoreFromBackend(projects: Project[]) {
     const batch = writeBatch(db);
     for (const p of projects) {
       const ref = doc(projectsCollection, p.id);
-      batch.set(ref, {
-        ...p,
-        barangay: p.barangay || "",
-        fundingSource: p.fundingSource || "",
-        contractor: p.contractor || "",
-        lifecyclePhase: p.lifecyclePhase || "Planning",
-        archivedAt: p.archivedAt ?? null,
-      });
+      batch.set(ref, sanitizeProjectForFirestore(p));
     }
     await batch.commit();
     return true;

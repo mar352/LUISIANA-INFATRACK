@@ -153,7 +153,6 @@ export function createHillshadeLayer(intensity: number = 0.35) {
       "hillshade-accent-color": "rgba(255, 255, 255, 0.2)",
       "hillshade-illumination-direction": 315, // Northwest
       "hillshade-illumination-anchor": "viewport",
-      "hillshade-shadow-blur": 2,
     },
   };
 }

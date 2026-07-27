@@ -1,23 +1,22 @@
-﻿import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import maplibregl, { Map as MapLibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { DeckGLOverlay } from "./DeckOverlay";
 import { BuildingOverlay } from "./BuildingOverlay";
 import InventoryPage from "./InventoryPage";
+import PlanningPage from "./PlanningPage";
 import { addProjectToFirestore } from "../services/firestore-projects";
 import type { AlertItem, HeatPoint, Project, RiskZones, WeatherSnapshot, ProjectStatus } from "../types";
 import { MODEL_CATALOG, type ModelType, PROJECT_STATUS_COLORS } from "../types";
 import { connectRealtime } from "../lib/realtime";
 import { BACKEND_URL, backendUrl } from "../lib/api";
 import { buildHeatmapPoints, type BBox, type HeatmapMetric } from "../lib/heatmap";
-import { fetchRadarFrames, radarTileUrl, formatRadarTime, type RadarColorScheme, type RadarFrame, RADAR_COLOR_SCHEMES } from "../lib/radar";
 import { formatGibsDate, gibsWmtsTileUrl, type GibsLayerId } from "../lib/gibs";
 import { getCurrentSolarHour } from "../lib/solar";
 import { 
   getTerrainSource, 
   getSatelliteSource, 
   createHillshadeLayer, 
-  createSkyLayer,
   applyWebGLOptimizations,
   calculateTerrainExaggeration,
   type TerrainSource,
@@ -39,10 +38,24 @@ import {
   getRiskDescription,
   type RiskPrediction 
 } from "../lib/ml-risk";
+import {
+  ensureEditStreetLayers,
+  setEditStreetVisible,
+  startEditStreetPulse,
+  stopEditStreetPulse,
+  teardownEditStreetOverlay,
+} from "../lib/street-edit-overlay";
+import { snapLngLatToRoad } from "../lib/snap-to-road";
 import { LandingPage, LoginScreen, ROLE_CONFIGS, type UserRole } from "./Landing";
 import { ProjectMonitoringPanel } from "./ProjectMonitoringPanel";
 import { ThemeToggle } from "./ThemeToggle";
-import { seedAccounts, getSessionFromCookie, clearSessionCookie } from "../services/auth";
+import {
+  seedAccounts,
+  getSessionFromCookie,
+  clearSessionCookie,
+  sessionForRole,
+  type SessionUser,
+} from "../services/auth";
 
 // ── Dashboard icons ────────────────────────────────────────────────────────────
 const IconClipboard = () => (
@@ -60,16 +73,6 @@ const IconCheck = () => (
 const IconClock = () => (
   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-  </svg>
-);
-const IconPause = () => (
-  <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
-    <rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/>
-  </svg>
-);
-const IconPlay = () => (
-  <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
-    <polygon points="5 3 19 12 5 21 5 3"/>
   </svg>
 );
 const IconWarn = () => (
@@ -151,7 +154,6 @@ type LayerToggles = {
   terrain: boolean;
   heatmap: boolean;
   weather: boolean;
-  radar: boolean;
   gibsPrecip: boolean;
   risk: boolean;
   projects: boolean;
@@ -164,13 +166,65 @@ const DEFAULT_TOGGLES: LayerToggles = {
   terrain: false,
   heatmap: false,
   weather: false,
-  radar: true,
   gibsPrecip: false,
-  risk: true,
+  risk: false,
   projects: true,
   stormTrack: false,
 };
 
+const BUILDING_EXTRUSION_OPACITY_DEFAULT = 0.9;
+
+/**
+ * The REAL 3D blocks on this app:
+ *   layer id:     "3d-buildings"
+ *   type:         fill-extrusion
+ *   source:       "openmaptiles"  (OpenFreeMap Liberty vector tiles)
+ *   source-layer: "building"
+ *
+ * Do NOT confuse with:
+ *   - "project-labels" (circle highlight markers)
+ *   - "glb-buildings"  (Three.js custom layer for project GLBs)
+ */
+const BUILDING_EXTRUSION_LAYER = "3d-buildings";
+const BUILDING_VECTOR_SOURCE = "openmaptiles";
+const BUILDING_SOURCE_LAYER = "building";
+
+/** Set opacity/visibility on our extrusion and base-style building extrusions. */
+function applyBuildingExtrusionOpacity(map: MapLibreMap, opacity: number) {
+  const value = Math.max(0, Math.min(1, opacity));
+  const hidden = value <= 0.001;
+  const knownBuildingLayerIds = new Set([
+    BUILDING_EXTRUSION_LAYER,
+    "building",
+    "building-top",
+    "buildings",
+    "building-3d",
+    "3d-building",
+    "3d-buildings",
+  ]);
+
+  // Update our extrusion and any building extrusion supplied by the base style.
+  // This remains resilient if a style reload restores its original building layer.
+  for (const layer of map.getStyle()?.layers ?? []) {
+    const sourceLayer = (layer as any)["source-layer"];
+    const isBuildingExtrusion =
+      layer.type === "fill-extrusion" &&
+      (knownBuildingLayerIds.has(layer.id) ||
+        sourceLayer === BUILDING_SOURCE_LAYER ||
+        /(^|[-_])buildings?($|[-_])/i.test(layer.id));
+
+    if (!isBuildingExtrusion) continue;
+
+    try {
+      map.setLayoutProperty(layer.id, "visibility", hidden ? "none" : "visible");
+      map.setPaintProperty(layer.id, "fill-extrusion-opacity", hidden ? 0 : value);
+    } catch (err) {
+      console.warn(`[Map] failed to update ${layer.id} opacity:`, err);
+    }
+  }
+
+  map.triggerRepaint();
+}
 
 const CENTER = { lat: 14.19, lon: 121.51, zoom: 11.4 };
 
@@ -188,67 +242,15 @@ function formatAgo(iso: string) {
   return `${m}m ago`;
 }
 
-function footprintSquare(lon: number, lat: number, halfSizeMeters: number) {
-  const dLat = halfSizeMeters / 111320;
-  const dLon = halfSizeMeters / (111320 * Math.max(0.2, Math.cos((lat * Math.PI) / 180)));
-  return [
-    [lon - dLon, lat - dLat],
-    [lon + dLon, lat - dLat],
-    [lon + dLon, lat + dLat],
-    [lon - dLon, lat + dLat],
-    [lon - dLon, lat - dLat],
-  ];
-}
-
-function buildRadarLayers(
-  map: MapLibreMap,
-  radarHost: string,
-  frames: RadarFrame[],
-  colorScheme: RadarColorScheme,
-  frameIdx: number,
-  visible: boolean,
-  opacity: number
-) {
-  // Tear down any existing radar layers/sources first.
-  for (let i = 0; i < 20; i++) {
-    if (map.getLayer(`radar-${i}`)) map.removeLayer(`radar-${i}`);
-    if (map.getSource(`radar-src-${i}`)) map.removeSource(`radar-src-${i}`);
-  }
-
-  const beforeLayer = map.getLayer("gibs-imerg-layer") ? "gibs-imerg-layer" : (map.getLayer("risk-fill") ? "risk-fill" : undefined);
-
-  for (let i = 0; i < frames.length; i++) {
-    const tileUrl = radarTileUrl(radarHost, frames[i].path, colorScheme);
-    map.addSource(`radar-src-${i}`, {
-      type: "raster",
-      tiles: [tileUrl],
-      tileSize: 256,
-      minzoom: 0,
-      maxzoom: 12,
-    } as any);
-    map.addLayer(
-      {
-        id: `radar-${i}`,
-        type: "raster",
-        source: `radar-src-${i}`,
-        paint: {
-          "raster-opacity": visible && i === frameIdx ? opacity : 0,
-          "raster-resampling": "linear",
-        },
-      } as any,
-      beforeLayer
-    );
-  }
-}
-
 export default function App() {
   const mapRef = useRef<MapLibreMap | null>(null);
   const mapDivRef = useRef<HTMLDivElement | null>(null);
   // Separate state so React re-renders overlays when the map instance is ready
   const [mapInstance, setMapInstance] = useState<MapLibreMap | null>(null);
 
-  const [currentRole, setCurrentRole] = useState<UserRole | null>(null);
-  const [screen, setScreen] = useState<"landing" | "login" | "app" | "inventory">("landing");
+  const [currentSession, setCurrentSession] = useState<SessionUser | null>(null);
+  const currentRole = currentSession?.role ?? null;
+  const [screen, setScreen] = useState<"landing" | "login" | "app" | "inventory" | "planning">("landing");
   const roleConfig = currentRole ? ROLE_CONFIGS[currentRole] : null;
 
   const [cookieConsent, setCookieConsent] = useState<"pending" | "accepted" | "declined">(() => {
@@ -260,9 +262,9 @@ export default function App() {
     seedAccounts().catch((err) => console.warn("[Auth] Seed accounts failed:", err));
 
     if (cookieConsent === "accepted") {
-      const savedRole = getSessionFromCookie();
-      if (savedRole) {
-        setCurrentRole(savedRole);
+      const saved = getSessionFromCookie();
+      if (saved) {
+        setCurrentSession(saved);
         setScreen("app");
       }
     }
@@ -285,12 +287,14 @@ export default function App() {
   const [riskZones, setRiskZones] = useState<RiskZones | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [placementMode, setPlacementMode] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [snapToRoad, setSnapToRoad] = useState(true);
   const [selectedModel, setSelectedModel] = useState<ModelType>("office");
   const [placementRotation, setPlacementRotation] = useState(0);
   const [placingName, setPlacingName] = useState("");
   const [customModelFile, setCustomModelFile] = useState<File | null>(null);
   const [customModelPreview, setCustomModelPreview] = useState<string | null>(null);
-  const [sidebarTab, setSidebarTab] = useState<"layers" | "radar" | "risk" | "projects" | "climate" | "events" | "ai-risk">("climate");
+  const [sidebarTab, setSidebarTab] = useState<"layers" | "risk" | "projects" | "climate" | "events" | "ai-risk">("climate");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
     typeof window !== "undefined" && window.matchMedia("(max-width: 1024px)").matches
   );
@@ -329,12 +333,6 @@ export default function App() {
   }, [sidebarCollapsed]);
   const [heatMetric, setHeatMetric] = useState<HeatmapMetric>("combined");
   const [viewport, setViewport] = useState<{ bbox: BBox; zoom: number } | null>(null);
-  const [radarHost, setRadarHost] = useState<string | null>(null);
-  const [radarFrames, setRadarFrames] = useState<RadarFrame[]>([]);
-  const [radarFrameIdx, setRadarFrameIdx] = useState(0);
-  const [radarPlaying, setRadarPlaying] = useState(true);
-  const [radarColorScheme, setRadarColorScheme] = useState<RadarColorScheme>(6);
-  const [radarOpacity, setRadarOpacity] = useState(0.9);
   const [gibsLayer, setGibsLayer] = useState<GibsLayerId>("IMERG_Precipitation_Rate");
   const [gibsDate, setGibsDate] = useState(() => {
     // GIBS layers often lag “today” availability. Default to yesterday (UTC) to avoid 404 tiles.
@@ -343,6 +341,8 @@ export default function App() {
     return formatGibsDate(d);
   });
   const [gibsOpacity, setGibsOpacity] = useState(0.62);
+  const [buildingExtrusionOpacity, setBuildingExtrusionOpacity] = useState(BUILDING_EXTRUSION_OPACITY_DEFAULT);
+  const [glbModelsOpacity, setGlbModelsOpacity] = useState(1);
   const [gibsStatus, setGibsStatus] = useState<"loading" | "ok" | "unavailable">("loading");
 
   // NASA EONET Natural Events
@@ -516,8 +516,6 @@ export default function App() {
     return { level: "LOW" as const, count: feats.length ? feats.length : 0 };
   }, [riskZones]);
 
-  const radarStateRef = useRef<{ host: string; frames: RadarFrame[]; colorScheme: RadarColorScheme } | null>(null);
-
   // Clear map when leaving the app screen
   useEffect(() => {
     if (screen !== "app" && mapRef.current) {
@@ -556,31 +554,24 @@ export default function App() {
     map.on("load", () => {
       pushViewport();
 
-      // ── 3D Buildings (Apple Maps style) ──────────────────────────────────
-      // OpenFreeMap Liberty already has a "building" source layer with
-      // render_height and render_min_height. We add our own fill-extrusion
-      // on top with warm beige colors.
+      // ── Context OSM buildings (muted) + project 3D blocks ─────────────────
+      // Project blocks = status-colored fill-extrusion (height from progress).
+      // GLB models are rendered separately by BuildingOverlay.
 
-      // Remove the default flat building fill from Liberty style if present
+      // Remove Liberty's flat building fills; we use our own 3D extrusions.
       if (map.getLayer("building")) map.removeLayer("building");
       if (map.getLayer("building-top")) map.removeLayer("building-top");
 
-      // All OSM buildings — warm beige like Apple Maps
+      // Context OSM buildings — always visible; opacity slider does NOT touch these.
+      // Z-fight with GLBs is handled by clearDepth in BuildingOverlay + hole filter.
       map.addLayer({
-        id: "3d-buildings",
+        id: BUILDING_EXTRUSION_LAYER,
         type: "fill-extrusion",
-        source: "openmaptiles",
-        "source-layer": "building",
+        source: BUILDING_VECTOR_SOURCE,
+        "source-layer": BUILDING_SOURCE_LAYER,
         minzoom: 12,
         paint: {
-          "fill-extrusion-color": [
-            "interpolate", ["linear"], ["coalesce", ["get", "render_height"], 0],
-            0,   "#e8dcc8",
-            10,  "#ddd0b8",
-            30,  "#d4c8ae",
-            80,  "#c8bca0",
-            200, "#b8ac90",
-          ],
+          "fill-extrusion-color": "#a8b0b8",
           "fill-extrusion-height": [
             "interpolate", ["linear"], ["zoom"],
             12, 0,
@@ -589,11 +580,12 @@ export default function App() {
           "fill-extrusion-base": [
             "coalesce", ["get", "render_min_height"], 0,
           ],
-          "fill-extrusion-opacity": 0.92,
+          "fill-extrusion-opacity": BUILDING_EXTRUSION_OPACITY_DEFAULT,
+          "fill-extrusion-vertical-gradient": false,
         },
       } as any);
 
-      // Project location dots — simple markers, GLB models rendered by BuildingOverlay
+      // Project location dots — GLB models rendered by BuildingOverlay
       map.addSource("project-footprints", {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] },
@@ -621,92 +613,110 @@ export default function App() {
       });
 
       // ── OSM Street Map raster source ──
-      map.addSource("osm-street", {
-        type: "raster",
-        tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
-        tileSize: 256,
-        maxzoom: 19,
-        attribution: "© OpenStreetMap contributors",
-      } as any);
+      // Guard every addSource: the terrain/satellite/street toggle effects run on
+      // "style.load" (fires before "load") and may have created these already.
+      // An unguarded duplicate addSource throws and kills the rest of this handler.
+      if (!map.getSource("osm-street")) {
+        map.addSource("osm-street", {
+          type: "raster",
+          tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+          tileSize: 256,
+          maxzoom: 19,
+          attribution: "© OpenStreetMap contributors",
+        } as any);
+      }
 
       // ── Satellite imagery source (Enhanced WebGL with multiple providers) ──
-      const satelliteSource = getSatelliteSource("esri");
-      map.addSource("satellite", {
-        type: "raster",
-        tiles: satelliteSource.tiles,
-        tileSize: satelliteSource.tileSize,
-        maxzoom: satelliteSource.maxzoom,
-        attribution: satelliteSource.attribution,
-      });
+      if (!map.getSource("satellite")) {
+        const satelliteSource = getSatelliteSource("esri");
+        map.addSource("satellite", {
+          type: "raster",
+          tiles: Array.from(satelliteSource.tiles) as string[],
+          tileSize: satelliteSource.tileSize,
+          maxzoom: satelliteSource.maxzoom,
+          attribution: satelliteSource.attribution,
+        });
+      }
 
       // ── Terrain DEM (WebGL-optimized with Terrarium encoding) ──
-      const terrainSource = getTerrainSource("terrarium");
-      map.addSource("terrain-dem", {
-        type: "raster-dem",
-        tiles: terrainSource.tiles,
-        tileSize: terrainSource.tileSize,
-        encoding: terrainSource.encoding as any,
-        maxzoom: terrainSource.maxzoom,
-      } as any);
+      if (!map.getSource("terrain-dem")) {
+        const terrainSource = getTerrainSource("terrarium");
+        map.addSource("terrain-dem", {
+          type: "raster-dem",
+          tiles: terrainSource.tiles,
+          tileSize: terrainSource.tileSize,
+          encoding: terrainSource.encoding as any,
+          maxzoom: terrainSource.maxzoom,
+        } as any);
+      }
 
       // ── Apply WebGL optimizations for better performance ──
       applyWebGLOptimizations(map, "balanced");
 
-      // ── Add Sky layer for atmospheric effect ──
-      try {
-        const skyLayer = createSkyLayer();
-        map.addLayer(skyLayer as any);
-      } catch (e) {
-        console.warn("Sky layer not supported:", e);
-      }
+      // ── Sky: MapLibre OSS does not support type "sky" (Mapbox-only) — skip ──
 
       // ── Add Hillshade layer for terrain depth ──
       try {
         const hillshadeLayer = createHillshadeLayer(0.35);
-        map.addLayer(hillshadeLayer as any, "3d-buildings");
+        if (map.getLayer(BUILDING_EXTRUSION_LAYER)) {
+          map.addLayer(hillshadeLayer as any, BUILDING_EXTRUSION_LAYER);
+        } else {
+          map.addLayer(hillshadeLayer as any);
+        }
       } catch (e) {
         console.warn("Hillshade layer not supported:", e);
       }
 
       // ── GIBS precipitation (added before satellite so satellite sits on top) ──
-      map.addSource("gibs-imerg", {
-        type: "raster",
-        tiles: [gibsWmtsTileUrl({ layer: gibsLayer, date: gibsDate })],
-        tileSize: 256,
-        minzoom: 0,
-        maxzoom: 6,
-      } as any);
-      map.addLayer({
-        id: "gibs-imerg-layer",
-        type: "raster",
-        source: "gibs-imerg",
-        paint: {
-          "raster-opacity": DEFAULT_TOGGLES.gibsPrecip ? gibsOpacity : 0,
-          "raster-resampling": "linear",
-        },
-      } as any);
-
-      // OSM Street layer goes above GIBS, below satellite
-      map.addLayer(
-        {
-          id: "osm-street-layer",
+      if (!map.getSource("gibs-imerg")) {
+        map.addSource("gibs-imerg", {
           type: "raster",
-          source: "osm-street",
-          paint: { "raster-opacity": 0 },
-        } as any,
-        "3d-buildings"
-      );
-
-      // Satellite goes above OSM street, below 3d buildings
-      map.addLayer(
-        {
-          id: "satellite-layer",
+          tiles: [gibsWmtsTileUrl({ layer: gibsLayer, date: gibsDate })],
+          tileSize: 256,
+          minzoom: 0,
+          maxzoom: 6,
+        } as any);
+      }
+      if (!map.getLayer("gibs-imerg-layer")) {
+        map.addLayer({
+          id: "gibs-imerg-layer",
           type: "raster",
-          source: "satellite",
-          paint: { "raster-opacity": DEFAULT_TOGGLES.satellite ? 1 : 0 },
-        } as any,
-        "3d-buildings"
-      );
+          source: "gibs-imerg",
+          paint: {
+            "raster-opacity": DEFAULT_TOGGLES.gibsPrecip ? gibsOpacity : 0,
+            "raster-resampling": "linear",
+          },
+        } as any);
+      }
+
+      // OSM Street / Satellite — insert before 3d-buildings when that layer exists
+      const beforeBuildings = map.getLayer(BUILDING_EXTRUSION_LAYER)
+        ? BUILDING_EXTRUSION_LAYER
+        : undefined;
+
+      if (!map.getLayer("osm-street-layer")) {
+        map.addLayer(
+          {
+            id: "osm-street-layer",
+            type: "raster",
+            source: "osm-street",
+            paint: { "raster-opacity": 0 },
+          } as any,
+          beforeBuildings
+        );
+      }
+
+      if (!map.getLayer("satellite-layer")) {
+        map.addLayer(
+          {
+            id: "satellite-layer",
+            type: "raster",
+            source: "satellite",
+            paint: { "raster-opacity": DEFAULT_TOGGLES.satellite ? 1 : 0 },
+          } as any,
+          beforeBuildings
+        );
+      }
 
       // Risk zones
       map.addSource("riskZones", {
@@ -717,6 +727,9 @@ export default function App() {
         id: "risk-fill",
         type: "fill",
         source: "riskZones",
+        layout: {
+          visibility: "none",
+        },
         paint: {
           "fill-color": [
             "match", ["get", "level"],
@@ -751,79 +764,96 @@ export default function App() {
         data: { type: "FeatureCollection", features: [] },
       });
 
-      if (radarStateRef.current) {
-        buildRadarLayers(map, radarStateRef.current.host, radarStateRef.current.frames, radarStateRef.current.colorScheme, 0, DEFAULT_TOGGLES.radar, 0.9);
-      }
-
-      // ── OSM Building hover highlight ──────────────────────────────────────
-      // Add a separate highlight layer that lights up on hover
-      map.addLayer({
-        id: "3d-buildings-hover",
-        type: "fill-extrusion",
-        source: "openmaptiles",
-        "source-layer": "building",
-        minzoom: 12,
-        paint: {
-          "fill-extrusion-color": "rgba(255, 220, 80, 0.0)",
-          "fill-extrusion-height": [
-            "interpolate", ["linear"], ["zoom"],
-            12, 0,
-            13, ["coalesce", ["get", "render_height"], 6],
+      // ── Municipal Office label ─────────────────────────────────────────────
+      // Marks the Luisiana Municipal Hall with a pin dot + label (no highlight).
+      const MUNICIPAL_OFFICE = { lat: 14.185435, lon: 121.509513 };
+      map.addSource("municipal-office", {
+        type: "geojson",
+        data: {
+          type: "FeatureCollection",
+          features: [
+            {
+              type: "Feature",
+              geometry: { type: "Point", coordinates: [MUNICIPAL_OFFICE.lon, MUNICIPAL_OFFICE.lat] },
+              properties: {},
+            },
           ],
-          "fill-extrusion-base": ["coalesce", ["get", "render_min_height"], 0],
-          "fill-extrusion-opacity": 0.0,
         },
-        filter: ["==", ["id"], ""],
+      });
+      map.addLayer({
+        id: "municipal-office-dot",
+        type: "circle",
+        source: "municipal-office",
+        minzoom: 10,
+        paint: {
+          "circle-radius": 5,
+          "circle-color": "#245C3A",
+          "circle-stroke-width": 2,
+          "circle-stroke-color": "#ffffff",
+        },
+      } as any);
+      map.addLayer({
+        id: "municipal-office-label",
+        type: "symbol",
+        source: "municipal-office",
+        minzoom: 10,
+        layout: {
+          "text-field": "Municipal Office",
+          "text-font": ["Noto Sans Regular"],
+          "text-size": 13,
+          "text-anchor": "bottom",
+          "text-offset": [0, -0.7],
+          "text-allow-overlap": true,
+        },
+        paint: {
+          "text-color": "#245C3A",
+          "text-halo-color": "#ffffff",
+          "text-halo-width": 1.8,
+        },
       } as any);
 
-      let hoveredBuildingId: string | number | null = null;
-      const buildingPopup = new maplibregl.Popup({
-        closeButton: false,
-        closeOnClick: false,
-        className: "building-popup",
-        maxWidth: "220px",
-      });
+      // Hide Liberty POI labels like "Luisiana Municipal Hall".
+      // Cream OSM building holes under projects are handled in a separate effect.
+      {
+        const hideMunicipalPoiLabels = () => {
+          const nameHide: any = [
+            "!",
+            [
+              "in",
+              ["downcase", ["to-string", ["coalesce", ["get", "name"], ["get", "name_en"], ""]]],
+              [
+                "literal",
+                [
+                  "luisiana municipal hall",
+                  "municipal hall",
+                  "municipal office",
+                  "luisiana municipal office",
+                  "luisiana mdrrimo command center",
+                  "luisiana mdrrmo command center",
+                  "mdrrimo command center",
+                  "mdrrmo command center",
+                ],
+              ],
+            ],
+          ];
+          for (const layer of map.getStyle()?.layers ?? []) {
+            if (layer.type !== "symbol") continue;
+            const id = layer.id;
+            if (!/poi|place|label/i.test(id)) continue;
+            try {
+              // Replace filter (don't nest on every call)
+              const prev = map.getFilter(id);
+              const base = Array.isArray(prev) && prev[0] === "all"
+                ? prev.filter((clause: any) => !(Array.isArray(clause) && clause[0] === "!" && JSON.stringify(clause).includes("municipal")))
+                : prev;
+              map.setFilter(id, base ? (["all", base, nameHide] as any) : nameHide);
+            } catch { /* ignore */ }
+          }
+        };
 
-      map.on("mousemove", "3d-buildings", (e) => {
-        if (!e.features || e.features.length === 0) return;
-        map.getCanvas().style.cursor = "pointer";
-        const feat = e.features[0];
-        const fid = feat.id;
-
-        if (hoveredBuildingId !== null && hoveredBuildingId !== fid) {
-          map.setFilter("3d-buildings-hover", ["==", ["id"], ""]);
-        }
-        hoveredBuildingId = fid ?? null;
-        if (fid !== undefined) {
-          map.setFilter("3d-buildings-hover", ["==", ["id"], fid]);
-          map.setPaintProperty("3d-buildings-hover", "fill-extrusion-color", "rgba(255,220,80,0.55)");
-          map.setPaintProperty("3d-buildings-hover", "fill-extrusion-opacity", 0.85);
-        }
-
-        const props = feat.properties as Record<string, any>;
-        const name = props?.name || props?.["name:en"] || "Building";
-        const height = props?.render_height ? `${Math.round(props.render_height)}m` : "—";
-        const type = props?.building || props?.amenity || props?.shop || "—";
-
-        buildingPopup
-          .setLngLat(e.lngLat)
-          .setHTML(`
-            <div style="font-family:'Chakra Petch',sans-serif;font-size:12px;color:var(--ink);line-height:1.5">
-              <div style="font-weight:700;font-size:13px;margin-bottom:4px;color:var(--ink)">${name}</div>
-              <div style="color:var(--muted)">Type: <span style="color:var(--seed)">${type}</span></div>
-              <div style="color:var(--muted)">Height: <span style="color:var(--seed)">${height}</span></div>
-            </div>
-          `)
-          .addTo(map);
-      });
-
-      map.on("mouseleave", "3d-buildings", () => {
-        map.getCanvas().style.cursor = "";
-        hoveredBuildingId = null;
-        map.setFilter("3d-buildings-hover", ["==", ["id"], ""]);
-        map.setPaintProperty("3d-buildings-hover", "fill-extrusion-opacity", 0.0);
-        buildingPopup.remove();
-      });
+        hideMunicipalPoiLabels();
+        map.on("style.load", hideMunicipalPoiLabels);
+      }
 
       // ── Double-click to smooth zoom in ───────────────────────────────────
       map.on("dblclick", (e) => {
@@ -859,6 +889,7 @@ export default function App() {
 
   // ── Placement mode: click on map to place a model ──────────────────────────
   const placementModeRef = useRef(false);
+  const snapToRoadRef = useRef(true);
   const selectedModelRef = useRef<ModelType>("office");
   const placementRotationRef = useRef(0);
   const placingNameRef = useRef("");
@@ -880,10 +911,64 @@ export default function App() {
   const [modalBudgetTotal, setModalBudgetTotal] = useState("");
 
   useEffect(() => { placementModeRef.current = placementMode; }, [placementMode]);
+  useEffect(() => { snapToRoadRef.current = snapToRoad; }, [snapToRoad]);
   useEffect(() => { selectedModelRef.current = selectedModel; }, [selectedModel]);
   useEffect(() => { placementRotationRef.current = placementRotation; }, [placementRotation]);
   useEffect(() => { placingNameRef.current = placingName; }, [placingName]);
   useEffect(() => { customModelFileRef.current = customModelFile; }, [customModelFile]);
+
+  // Edit Mode: neon street overlay + pulse
+  useEffect(() => {
+    const map = mapInstance;
+    if (!map) return;
+
+    const apply = () => {
+      ensureEditStreetLayers(map);
+      if (editMode) {
+        setEditStreetVisible(map, true);
+        startEditStreetPulse(map);
+      } else {
+        stopEditStreetPulse(map);
+        setEditStreetVisible(map, false);
+      }
+    };
+
+    if (map.isStyleLoaded()) apply();
+    else map.once("load", apply);
+
+    const onStyleData = () => {
+      if (!editMode) return;
+      ensureEditStreetLayers(map);
+      setEditStreetVisible(map, true);
+      startEditStreetPulse(map);
+    };
+    map.on("styledata", onStyleData);
+
+    return () => {
+      map.off("styledata", onStyleData);
+      stopEditStreetPulse(map);
+      if (map.getStyle()) {
+        try {
+          setEditStreetVisible(map, false);
+        } catch {
+          /* style may already be gone */
+        }
+      }
+    };
+  }, [mapInstance, editMode]);
+
+  // Tear down street overlay when map instance is disposed
+  useEffect(() => {
+    const map = mapInstance;
+    if (!map) return;
+    return () => {
+      try {
+        teardownEditStreetOverlay(map);
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [mapInstance]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -893,9 +978,19 @@ export default function App() {
       if (!placementModeRef.current) return;
       // If BuildingOverlay consumed this click (building was hit), skip placement
       if (buildingHitRef.current) { buildingHitRef.current = false; return; }
-      
-      const { lng, lat } = e.lngLat;
-      
+
+      let { lng, lat } = e.lngLat;
+      if (snapToRoadRef.current) {
+        const snap = snapLngLatToRoad(map, lng, lat);
+        if (snap.snapped) {
+          lng = snap.lng;
+          lat = snap.lat;
+          const deg = Math.round(snap.bearingDeg);
+          placementRotationRef.current = deg;
+          setPlacementRotation(deg);
+        }
+      }
+
       // Show modal to enter building details
       setPendingPlacement({ lng, lat });
       const catalog = MODEL_CATALOG.find((m) => m.type === selectedModelRef.current);
@@ -921,14 +1016,46 @@ export default function App() {
     if (!pendingPlacement) return;
 
     const { lng, lat } = pendingPlacement;
+    const now = new Date().toISOString();
+    const fallbackProject: Project = {
+      id: typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `local-${Date.now()}`,
+      name: modalProjectName,
+      modelType: selectedModelRef.current,
+      type: modalProjectType,
+      department: modalDepartment,
+      status: modalStatus,
+      progress: modalProgress,
+      description: modalDescription || "",
+      startDate: modalStartDate || null,
+      targetEndDate: modalTargetEndDate || null,
+      budgetTotal: modalBudgetTotal ? Number(modalBudgetTotal) : null,
+      location: { lat, lon: lng },
+      rotation: placementRotationRef.current,
+      lifecyclePhase: "Planning",
+      archivedAt: null,
+      milestones: [],
+      issues: [],
+      photos: [],
+      activityLog: [{ at: now, message: "Project created from map placement." }],
+      updatedAt: now,
+    };
 
     try {
       // If custom model is selected and a file is provided, upload it first
       let customModelUrl: string | undefined;
       if (selectedModelRef.current === "custom" && customModelFileRef.current) {
+        const file = customModelFileRef.current;
+        const maxMb = 200;
+        if (file.size > maxMb * 1024 * 1024) {
+          alert(`Model is too large (${(file.size / (1024 * 1024)).toFixed(1)}MB). Maximum is ${maxMb}MB.`);
+          return;
+        }
+
         const formData = new FormData();
-        formData.append("model", customModelFileRef.current);
-        
+        formData.append("model", file);
+
         const uploadRes = await fetch(backendUrl("/api/upload-model"), {
           method: "POST",
           body: formData,
@@ -938,35 +1065,58 @@ export default function App() {
           const data = await uploadRes.json();
           customModelUrl = data.url;
         } else {
-          console.error("Failed to upload custom model");
-          alert("Failed to upload custom model. Please try again.");
+          let detail = "";
+          try {
+            const errBody = await uploadRes.json();
+            detail = errBody?.error ? `: ${errBody.error}` : "";
+          } catch {
+            detail = ` (HTTP ${uploadRes.status})`;
+          }
+          console.error("Failed to upload custom model", uploadRes.status, detail);
+          alert(`Failed to upload custom model${detail}`);
           return;
         }
       }
 
-      const res = await fetch(backendUrl("/api/projects"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: modalProjectName,
-          modelType: selectedModelRef.current,
-          type: modalProjectType,
-          department: modalDepartment,
-          status: modalStatus,
-          progress: modalProgress,
-          description: modalDescription,
-          startDate: modalStartDate || undefined,
-          targetEndDate: modalTargetEndDate || undefined,
-          budgetTotal: modalBudgetTotal ? Number(modalBudgetTotal) : undefined,
-          location: { lat, lon: lng },
-          rotation: placementRotationRef.current,
-          customModelUrl,
-        }),
-      });
+      try {
+        const res = await fetch(backendUrl("/api/projects"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: modalProjectName,
+            modelType: selectedModelRef.current,
+            type: modalProjectType,
+            department: modalDepartment,
+            status: modalStatus,
+            progress: modalProgress,
+            description: modalDescription,
+            startDate: modalStartDate || undefined,
+            targetEndDate: modalTargetEndDate || undefined,
+            budgetTotal: modalBudgetTotal ? Number(modalBudgetTotal) : undefined,
+            location: { lat, lon: lng },
+            rotation: placementRotationRef.current,
+            customModelUrl,
+          }),
+        });
 
-      if (res.ok) {
+        if (!res.ok) {
+          const errorText = await res.text();
+          throw new Error(`Backend save failed: ${res.status}${errorText ? ` - ${errorText}` : ""}`);
+        }
+
         const { project } = await res.json();
         addProjectToFirestore(project).catch((e) => console.warn("[Firestore] sync failed:", e));
+      } catch (backendErr) {
+        if (selectedModelRef.current === "custom") {
+          throw backendErr;
+        }
+
+        const localProject: Project = customModelUrl
+          ? { ...fallbackProject, customModelUrl }
+          : fallbackProject;
+        await addProjectToFirestore(localProject);
+        setProjects((prev) => [localProject, ...prev]);
+        console.warn("[Projects] Backend unavailable, saved placement directly to Firestore:", backendErr);
       }
       
       // Close modal and reset
@@ -978,7 +1128,11 @@ export default function App() {
       // Backend will emit projects:update via socket
     } catch (err) {
       console.error("Failed to place project:", err);
-      alert("Failed to place building. Please try again.");
+      const message =
+        err instanceof Error && /Failed to fetch|Backend save failed/i.test(err.message)
+          ? "Failed to reach the backend server on port 4000. Start the backend, or keep using standard models and the app will save directly to Firestore."
+          : "Failed to place building. Please try again.";
+      alert(message);
     }
   };
 
@@ -1106,59 +1260,6 @@ export default function App() {
     };
   }, []);
 
-  // Load radar frames from RainViewer API.
-  useEffect(() => {
-    let cancelled = false;
-    fetchRadarFrames()
-      .then(({ host, frames }) => {
-        if (cancelled) return;
-        setRadarHost(host);
-        setRadarFrames(frames);
-        // Store in ref so the map load handler can access it if map loads after fetch.
-        radarStateRef.current = { host, frames, colorScheme: radarColorScheme };
-        // If map is already loaded, build layers now.
-        const map = mapRef.current;
-        if (map && map.isStyleLoaded()) {
-          buildRadarLayers(map, host, frames, radarColorScheme, 0, DEFAULT_TOGGLES.radar, 0.9);
-        }
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setRadarHost(null);
-        setRadarFrames([]);
-      });
-    return () => { cancelled = true; };
-  }, []);
-
-  // Animate radar by cycling frame index.
-  useEffect(() => {
-    if (!toggles.radar || !radarPlaying) return;
-    if (!radarFrames.length) return;
-    const t = setInterval(() => {
-      setRadarFrameIdx((i) => (i + 1) % radarFrames.length);
-    }, 650);
-    return () => clearInterval(t);
-  }, [toggles.radar, radarPlaying, radarFrames.length]);
-
-  // Rebuild radar layers when color scheme changes.
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
-    if (!radarHost || !radarFrames.length) return;
-    radarStateRef.current = { host: radarHost, frames: radarFrames, colorScheme: radarColorScheme };
-    buildRadarLayers(map, radarHost, radarFrames, radarColorScheme, radarFrameIdx, toggles.radar, radarOpacity);
-  }, [radarColorScheme]);
-
-  // Update frame visibility (fast path — no layer rebuild).
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
-    for (let i = 0; i < radarFrames.length; i++) {
-      if (!map.getLayer(`radar-${i}`)) continue;
-      map.setPaintProperty(`radar-${i}`, "raster-opacity", toggles.radar && i === radarFrameIdx ? radarOpacity : 0);
-    }
-  }, [radarFrameIdx, toggles.radar, radarOpacity, radarFrames.length]);
-
   // Heatmap engine (Zoom Earth feel): regenerate points from live signals + viewport.
   useEffect(() => {
     if (!viewport) return;
@@ -1242,8 +1343,11 @@ export default function App() {
               source: "satellite",
               paint: { "raster-opacity": 0 },
             } as any,
-            // keep satellite below 3D buildings when possible
-            map.getLayer("3d-buildings") ? "3d-buildings" : undefined
+            map.getLayer("3d-buildings")
+              ? "3d-buildings"
+              : map.getLayer("project-labels")
+                ? "project-labels"
+                : undefined
           );
         } catch {
           // ignore: layer may already exist or style is mid-reload
@@ -1255,15 +1359,37 @@ export default function App() {
         map.setPaintProperty("satellite-layer", "raster-opacity", toggles.satellite ? 1 : 0);
       }
 
-      // When satellite is on, dim the 3D buildings slightly so imagery shows through
-      if (map.getLayer("3d-buildings")) {
-        map.setPaintProperty("3d-buildings", "fill-extrusion-opacity", toggles.satellite ? 0.55 : 0.92);
-      }
+      const opacity = toggles.satellite
+        ? Math.min(buildingExtrusionOpacity, 0.4)
+        : buildingExtrusionOpacity;
+      applyBuildingExtrusionOpacity(map, opacity);
     };
 
     if (map.isStyleLoaded()) applySatellite();
     else map.once("style.load", applySatellite);
-  }, [toggles.satellite]);
+  }, [toggles.satellite, buildingExtrusionOpacity, mapInstance]);
+
+  // Keep fill-extrusion opacity synced with the slider (and after style reload).
+  useEffect(() => {
+    const map = mapInstance ?? mapRef.current;
+    if (!map) return;
+
+    const apply = () => {
+      const opacity = toggles.satellite
+        ? Math.min(buildingExtrusionOpacity, 0.4)
+        : buildingExtrusionOpacity;
+      applyBuildingExtrusionOpacity(map, opacity);
+    };
+
+    if (map.isStyleLoaded()) apply();
+    map.on("load", apply);
+    map.on("style.load", apply);
+
+    return () => {
+      map.off("load", apply);
+      map.off("style.load", apply);
+    };
+  }, [mapInstance, buildingExtrusionOpacity, toggles.satellite]);
 
   // OSM Street Map toggle
   useEffect(() => {
@@ -1294,7 +1420,11 @@ export default function App() {
               source: "osm-street",
               paint: { "raster-opacity": 0 },
             } as any,
-            map.getLayer("satellite-layer") ? "satellite-layer" : (map.getLayer("3d-buildings") ? "3d-buildings" : undefined)
+            map.getLayer("satellite-layer")
+              ? "satellite-layer"
+              : map.getLayer("3d-buildings")
+                ? "3d-buildings"
+                : undefined
           );
         } catch {
           // layer may already exist
@@ -1308,7 +1438,7 @@ export default function App() {
 
     if (map.isStyleLoaded()) applyStreet();
     else map.once("style.load", applyStreet);
-  }, [toggles.streetMap]);
+  }, [toggles.streetMap, mapInstance]);
 
   // Google Street View mode — click map to open GSV in new tab
   const streetViewModeRef = useRef(false);
@@ -1413,15 +1543,86 @@ export default function App() {
     };
   }, [toggles.terrain, mapInstance]);
 
-  // Push project footprints to the 3D highlighted buildings layer
+  // Keep project/municipal holes in the basemap building extrusion layer.
+  useEffect(() => {
+    const map = mapRef.current ?? mapInstance;
+    if (!map) return;
+
+    const OFFICE = { lat: 14.185435, lon: 121.509513 };
+
+    const applyHoles = () => {
+      if (!map.getLayer(BUILDING_EXTRUSION_LAYER)) return;
+
+      const points = [
+        OFFICE,
+        ...(toggles.projects ? projects : [])
+          .filter((p) => p?.location?.lon && p?.location?.lat)
+          .map((p) => ({ lat: p.location.lat, lon: p.location.lon })),
+      ];
+
+      const halfM = 55;
+      const rings = points.map(({ lat, lon }) => {
+        const dLat = halfM / 111320;
+        const dLon = halfM / (111320 * Math.max(0.2, Math.cos((lat * Math.PI) / 180)));
+        return [
+          [lon - dLon, lat - dLat],
+          [lon + dLon, lat - dLat],
+          [lon + dLon, lat + dLat],
+          [lon - dLon, lat + dLat],
+          [lon - dLon, lat - dLat],
+        ];
+      });
+
+      const exclusion = {
+        type: "MultiPolygon" as const,
+        coordinates: rings.map((ring) => [ring]),
+      };
+
+      const filter: any[] = [
+        "all",
+        ["!", ["within", exclusion]],
+        [
+          "!",
+          [
+            "in",
+            ["downcase", ["to-string", ["coalesce", ["get", "name"], ""]]],
+            [
+              "literal",
+              [
+                "luisiana municipal hall",
+                "municipal hall",
+                "municipal office",
+                "luisiana municipal office",
+              ],
+            ],
+          ],
+        ],
+      ];
+
+      try {
+        map.setFilter(BUILDING_EXTRUSION_LAYER, filter as any);
+      } catch (err) {
+        console.warn("[Map] 3d-buildings hole filter failed:", err);
+      }
+    };
+
+    if (map.isStyleLoaded()) applyHoles();
+    map.on("style.load", applyHoles);
+    return () => {
+      map.off("style.load", applyHoles);
+    };
+  }, [projects, toggles.projects, mapInstance]);
+
+  // Push project footprint dots.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded()) return;
-    const src = map.getSource("project-footprints") as maplibregl.GeoJSONSource | undefined;
-    if (!src) return;
 
-    // Just update dot positions — GLB models are rendered by BuildingOverlay
-    const features = (toggles.projects ? projects : []).map((p) => ({
+    const points = (toggles.projects ? projects : []).filter(
+      (p) => p?.location?.lon && p?.location?.lat
+    );
+
+    const pointFeatures = points.map((p) => ({
       type: "Feature" as const,
       properties: { id: p.id, name: p.name, status: p.status },
       geometry: {
@@ -1430,10 +1631,13 @@ export default function App() {
       },
     }));
 
-    src.setData({ type: "FeatureCollection", features } as any);
-    if (map.getLayer("project-labels"))
+    const dots = map.getSource("project-footprints") as maplibregl.GeoJSONSource | undefined;
+    dots?.setData({ type: "FeatureCollection", features: pointFeatures } as any);
+
+    if (map.getLayer("project-labels")) {
       map.setLayoutProperty("project-labels", "visibility", toggles.projects ? "visible" : "none");
-  }, [projects, toggles.projects]);
+    }
+  }, [projects, toggles.projects, mapInstance]);
 
   const riskSummary = useMemo(() => {
     const feats = riskZones?.features || [];
@@ -1444,19 +1648,29 @@ export default function App() {
   }, [riskZones]);
 
   return (
-    <div className={`appShell${sidebarCollapsed ? " sidebar-collapsed" : ""}`}>
+    <div
+      className={`appShell${
+        sidebarCollapsed || screen !== "app" ? " sidebar-collapsed" : ""
+      }${screen !== "app" ? " appShell--fullpage" : ""}`}
+    >
       {/* Landing page */}
       {screen === "landing" && (
         <LandingPage
           onEnter={() => setScreen("login")}
-          onViewMap={() => { setCurrentRole("Viewer"); setScreen("app"); }}
+          onViewMap={() => {
+            setCurrentSession(sessionForRole("Viewer"));
+            setScreen("app");
+          }}
         />
       )}
 
       {/* Login screen */}
       {screen === "login" && (
         <LoginScreen
-          onLogin={(role) => { setCurrentRole(role); setScreen("app"); }}
+          onLogin={(session) => {
+            setCurrentSession(session);
+            setScreen("app");
+          }}
           onBack={() => setScreen("landing")}
         />
       )}
@@ -1468,6 +1682,10 @@ export default function App() {
           backendProjects={projects}
           currentRole={currentRole}
         />
+      )}
+
+      {screen === "planning" && (
+        <PlanningPage onBack={() => setScreen("app")} session={currentSession} />
       )}
 
       {/* Main app - only render when logged in */}
@@ -1493,7 +1711,9 @@ export default function App() {
           map={mapInstance}
           projects={projects}
           visible={toggles.projects}
+          opacity={glbModelsOpacity}
           readOnly={currentRole === "Viewer"}
+          snapToRoad={snapToRoad && (editMode || placementMode)}
           onBuildingClick={(hit) => { buildingHitRef.current = hit; }}
           onDeleteBuilding={currentRole === "Viewer" ? undefined : async (projectId) => {
             try {
@@ -1576,7 +1796,26 @@ export default function App() {
             <div className="chip chip-updates topBar-hide-mobile">Updates: 5s</div>
           </div>
           <div className="topBar-actions-primary">
-            {currentRole !== "Negosyo Center" && (
+            {roleConfig?.canSeePlanning && (
+              <button
+                type="button"
+                className="topBar-exit"
+                style={{
+                  background: "linear-gradient(135deg, rgba(36,92,58,0.22), rgba(61,155,95,0.18))",
+                  borderColor: "rgba(36,92,58,0.45)",
+                }}
+                onClick={() => setScreen("planning")}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
+                  <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+                  <rect x="8" y="2" width="8" height="4" rx="1" />
+                  <path d="M9 12h6M9 16h4" />
+                </svg>
+                <span className="topBar-exit-full">Planning</span>
+                <span className="topBar-exit-short">Plan</span>
+              </button>
+            )}
+            {currentRole !== "Negosyo Center" && currentRole !== "Viewer" && (
               <button
                 type="button"
                 className="topBar-exit"
@@ -1593,7 +1832,11 @@ export default function App() {
               <button
                 type="button"
                 className="topBar-exit"
-                onClick={() => { clearSessionCookie(); setCurrentRole(null); setScreen("landing"); }}
+                onClick={() => {
+                  clearSessionCookie();
+                  setCurrentSession(null);
+                  setScreen("landing");
+                }}
               >
                 <span className="topBar-exit-full">{currentRole === "Viewer" ? "Exit Map" : "Sign Out"}</span>
                 <span className="topBar-exit-short">{currentRole === "Viewer" ? "Exit" : "Out"}</span>
@@ -1706,9 +1949,6 @@ export default function App() {
           {roleConfig?.canSeeLayers && (
             <button type="button" className={`sidebar-tab${sidebarTab === "layers" ? " active" : ""}`} onClick={() => setSidebarTab("layers")}>Layers</button>
           )}
-          {roleConfig?.canSeeRadar && toggles.radar && (
-            <button type="button" className={`sidebar-tab${sidebarTab === "radar" ? " active" : ""}`} onClick={() => setSidebarTab("radar")}>Radar</button>
-          )}
           {roleConfig?.canSeeRisk && (
             <button type="button" className={`sidebar-tab${sidebarTab === "risk" ? " active" : ""}`} onClick={() => setSidebarTab("risk")}>Risk</button>
           )}
@@ -1799,9 +2039,8 @@ export default function App() {
                 hint: "Animated intensity (Blue→Yellow→Red)",
               },
               { k: "weather", title: "Weather Overlay", hint: "Cloud field + rainfall feel" },
-              { k: "risk", title: "Landslide Risk Zones", hint: "Green/Yellow/Red polygons" },
               { k: "stormTrack", title: "Storm Tracking", hint: "Drift line based on wind" },
-              { k: "projects", title: "Infrastructure Projects", hint: "Markers with progress" },
+              { k: "projects", title: "Infrastructure Projects", hint: "GLB models on map" },
             ] as const
           ).map((row) => (
             <div key={row.k} className="toggleRow">
@@ -1818,19 +2057,69 @@ export default function App() {
             </div>
           ))}
 
-          {/* Radar and GIBS are mutually exclusive precipitation layers */}
-          <div className="toggleRow">
-            <div>
-              <label>Precipitation Radar</label>
-              <div className="hint">Live animated radar — RainViewer (Windy-style)</div>
-            </div>
-            <div
-              className={`switch ${toggles.radar ? "on" : ""}`}
-              role="switch"
-              aria-checked={toggles.radar}
-              onClick={() => setToggles((t) => ({ ...t, radar: !t.radar, gibsPrecip: t.radar ? t.gibsPrecip : false }))}
+          <div
+            className="extrusion-opacity-control"
+            style={{
+              display: "flex",
+              gap: 10,
+              alignItems: "center",
+              marginTop: 4,
+              marginBottom: 10,
+              paddingLeft: 2,
+            }}
+          >
+            <span className="pill">3D Blocks</span>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={buildingExtrusionOpacity}
+              aria-label="Basemap 3D building extrusion opacity"
+              onChange={(e) => {
+                const next = Number(e.target.value);
+                setBuildingExtrusionOpacity(next);
+                const map = mapRef.current ?? mapInstance;
+                if (map) {
+                  const opacity = toggles.satellite ? Math.min(next, 0.4) : next;
+                  applyBuildingExtrusionOpacity(map, opacity);
+                }
+              }}
+              style={{ flex: 1 }}
             />
+            <span style={{ fontSize: 11, color: "var(--muted)", minWidth: 35 }}>
+              {Math.round(buildingExtrusionOpacity * 100)}%
+            </span>
           </div>
+
+          <div
+            className="extrusion-opacity-control"
+            style={{
+              display: "flex",
+              gap: 10,
+              alignItems: "center",
+              marginBottom: 10,
+              paddingLeft: 2,
+            }}
+          >
+            <span className="pill">GLB Models</span>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={glbModelsOpacity}
+              aria-label="Project GLB model opacity"
+              onChange={(e) => {
+                setGlbModelsOpacity(Number(e.target.value));
+              }}
+              style={{ flex: 1 }}
+            />
+            <span style={{ fontSize: 11, color: "var(--muted)", minWidth: 35 }}>
+              {Math.round(glbModelsOpacity * 100)}%
+            </span>
+          </div>
+
           <div className="toggleRow">
             <div>
               <label>NASA GIBS Precip</label>
@@ -1840,7 +2129,7 @@ export default function App() {
               className={`switch ${toggles.gibsPrecip ? "on" : ""}`}
               role="switch"
               aria-checked={toggles.gibsPrecip}
-              onClick={() => setToggles((t) => ({ ...t, gibsPrecip: !t.gibsPrecip, radar: t.gibsPrecip ? t.radar : false }))}
+              onClick={() => setToggles((t) => ({ ...t, gibsPrecip: !t.gibsPrecip }))}
             />
           </div>
 
@@ -1961,77 +2250,6 @@ export default function App() {
         </div>
         )}
 
-        {/* ── Radar Tab ── */}
-        {sidebarTab === "radar" && roleConfig?.canSeeRadar && toggles.radar && (
-          <div className="card" style={{ marginBottom: 12 }}>
-            <div className="sectionTitle" style={{ marginBottom: 8 }}>
-              Radar Controls
-            </div>
-            {radarFrames.length === 0 ? (
-              <div style={{ color: "var(--muted)", fontSize: 12 }}>Loading radar frames...</div>
-            ) : (
-              <>
-                {/* Playback row */}
-                <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
-                  <button onClick={() => setRadarPlaying(!radarPlaying)} style={{
-                    cursor: "pointer", borderRadius: 2, padding: "6px 14px", fontSize: 13,
-                    fontWeight: 600, border: "1px solid var(--stroke)",
-                    background: radarPlaying ? "rgba(61,155,95,0.20)" : "rgba(61,155,95,0.16)",
-                    color: "var(--ink)", letterSpacing: "0.02em",
-                  }}>
-                    {radarPlaying ? <><IconPause /> Pause</> : <><IconPlay /> Play</>}
-                  </button>
-                  <div style={{ flex: 1, textAlign: "right" }}>
-                    <span className="pill" style={{ fontSize: 12 }}>
-                      {formatRadarTime(radarFrames[radarFrameIdx]?.time ?? 0)}
-                    </span>
-                    <div style={{ fontSize: 11, color: "var(--muted2)", marginTop: 3 }}>
-                      Frame {radarFrameIdx + 1} / {radarFrames.length}
-                      {radarFrameIdx >= radarFrames.length - 3 ? " · Nowcast" : " · Past"}
-                    </div>
-                  </div>
-                </div>
-                {/* Seek */}
-                <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
-                  <span className="pill" style={{ minWidth: 36 }}>Seek</span>
-                  <input type="range" min={0} max={radarFrames.length - 1} value={radarFrameIdx}
-                    onChange={(e) => { setRadarPlaying(false); setRadarFrameIdx(Number(e.target.value)); }}
-                    style={{ width: "100%" }} />
-                </div>
-                {/* Opacity */}
-                <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
-                  <span className="pill" style={{ minWidth: 52 }}>Opacity</span>
-                  <input type="range" min={0.2} max={1.0} step={0.05} value={radarOpacity}
-                    onChange={(e) => setRadarOpacity(Number(e.target.value))} style={{ width: "100%" }} />
-                  <span style={{ fontSize: 11, color: "var(--muted2)", minWidth: 28, textAlign: "right" }}>
-                    {Math.round(radarOpacity * 100)}%
-                  </span>
-                </div>
-                {/* Color scheme */}
-                <div style={{ marginBottom: 8 }}>
-                  <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>Color Scheme</div>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    {RADAR_COLOR_SCHEMES.map(({ value, label }) => (
-                      <button key={value} onClick={() => setRadarColorScheme(value)} style={{
-                        cursor: "pointer", borderRadius: 2, padding: "5px 10px", fontSize: 11,
-                        border: "1px solid var(--stroke)",
-                        background: radarColorScheme === value ? "rgba(255,140,60,0.22)" : "var(--cream-ink)",
-                        color: radarColorScheme === value ? "var(--seed)" : "var(--muted)",
-                        fontWeight: radarColorScheme === value ? 600 : 400,
-                      }}>{label}</button>
-                    ))}
-                  </div>
-                </div>
-                {/* Legend */}
-                <div style={{ height: 8, borderRadius: 4, background: "linear-gradient(to right, #00aa00, #00ff00, #ffff00, #ff8800, #ff0000, #cc00cc)", marginBottom: 4 }} />
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--muted2)" }}>
-                  <span>Light</span><span>Moderate</span><span>Heavy</span>
-                </div>
-              </>
-            )}
-          </div>
-        )}
-
         {/* ── Risk Tab ── */}
         {sidebarTab === "risk" && roleConfig?.canSeeRisk && (
           <>
@@ -2130,6 +2348,50 @@ export default function App() {
               )}
             </button>
 
+            {/* Edit Mode — glowing streets */}
+            <button
+              type="button"
+              onClick={() => {
+                setEditMode((v) => {
+                  const next = !v;
+                  if (next) setSnapToRoad(true);
+                  return next;
+                });
+              }}
+              style={{
+                width: "100%", cursor: "pointer", padding: "10px 0",
+                borderRadius: 2, fontWeight: 700, fontSize: 13,
+                border: editMode ? "1px solid rgba(0,243,255,0.7)" : "1px solid var(--stroke)",
+                background: editMode ? "rgba(0,243,255,0.12)" : "var(--cream-deep)",
+                color: editMode ? "#00c8d4" : "var(--muted)",
+                marginBottom: 10,
+              }}
+            >
+              {editMode ? "Edit Mode ON — Streets highlighted" : "Enable Edit Mode"}
+            </button>
+
+            {/* Snap to Road */}
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                marginBottom: 12,
+                fontSize: 12,
+                color: (editMode || placementMode) ? "var(--ink-soft)" : "var(--muted2)",
+                cursor: (editMode || placementMode) ? "pointer" : "not-allowed",
+                opacity: (editMode || placementMode) ? 1 : 0.55,
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={snapToRoad}
+                disabled={!editMode && !placementMode}
+                onChange={(e) => setSnapToRoad(e.target.checked)}
+              />
+              Snap to Road (magnet + align yaw)
+            </label>
+
             {/* Name input */}
             <div style={{ marginBottom: 10 }}>
               <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>Project Name (optional)</div>
@@ -2205,6 +2467,11 @@ export default function App() {
               }}>
                 <div style={{ fontSize: 11, color: "var(--seed)", fontWeight: 600, marginBottom: 8 }}>
                   Upload Custom GLB Model
+                </div>
+                <div style={{ fontSize: 10, color: "var(--muted)", lineHeight: 1.45, marginBottom: 8 }}>
+                  Colors must be on Principled BSDF Base Color (or image textures), not Viewport Display only.
+                  SVG materials often export white — run scripts/blender_fix_materials_for_gltf.py in Blender before export.
+                  Max file size: 200MB (.glb / .gltf).
                 </div>
                 <input
                   type="file"

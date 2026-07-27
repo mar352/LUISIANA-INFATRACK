@@ -1,0 +1,540 @@
+.planning-page {
+  min-height: 100vh;
+  background:
+    radial-gradient(ellipse 80% 50% at 10% -10%, rgba(61, 155, 95, 0.12), transparent),
+    linear-gradient(180deg, var(--cream, #f3efe6) 0%, var(--cream-deep, #e8e0d2) 100%);
+  color: var(--ink, #1a1a1a);
+  display: flex;
+  flex-direction: column;
+}
+
+.planning-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--stroke, rgba(0, 0, 0, 0.12));
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(8px);
+}
+
+.planning-top-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.planning-brand {
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: 0.02em;
+}
+
+.planning-sub {
+  font-size: 0.75rem;
+  color: var(--muted, #666);
+}
+
+.planning-back,
+.planning-btn {
+  border: 1px solid var(--stroke, rgba(0, 0, 0, 0.18));
+  background: var(--cream-deep, #e8e0d2);
+  color: var(--ink, #1a1a1a);
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 0;
+}
+
+.planning-btn.primary {
+  background: var(--seed, #245c3a);
+  color: #f7f3ea;
+  border-color: var(--seed, #245c3a);
+}
+
+.planning-btn.danger {
+  color: #a32020;
+  border-color: rgba(163, 32, 32, 0.35);
+}
+
+.planning-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.planning-tabs {
+  display: flex;
+  gap: 0;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--stroke, rgba(0, 0, 0, 0.1));
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.planning-tabs button {
+  border: none;
+  background: transparent;
+  padding: 12px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted, #666);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+
+.planning-tabs button.active {
+  color: var(--seed, #245c3a);
+  border-bottom-color: var(--seed, #245c3a);
+}
+
+.planning-banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 12px 20px 0;
+  padding: 10px 14px;
+  background: rgba(61, 155, 95, 0.12);
+  border: 1px solid rgba(61, 155, 95, 0.35);
+  font-size: 13px;
+}
+
+.planning-banner-warn {
+  background: rgba(212, 160, 23, 0.16);
+  border-color: rgba(212, 160, 23, 0.45);
+}
+
+.planning-banner code {
+  font-size: 11px;
+}
+
+.planning-banner button {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.planning-board-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+
+.planning-board-layout.has-detail {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+}
+
+.planning-board-main {
+  padding: 16px 20px 24px;
+  overflow: auto;
+  min-width: 0;
+}
+
+.planning-board-hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--muted, #666);
+}
+
+.planning-detail {
+  border-left: 1px solid var(--stroke, rgba(0, 0, 0, 0.1));
+  background: rgba(255, 255, 255, 0.5);
+  padding: 18px 18px 28px;
+  overflow: auto;
+  min-width: 0;
+}
+
+.planning-detail-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.planning-detail-top h2 {
+  margin: 0;
+  font-size: 1.2rem;
+  flex: 1;
+  min-width: 0;
+  text-wrap: balance;
+}
+
+.planning-detail-close {
+  border: 1px solid var(--stroke, rgba(0, 0, 0, 0.18));
+  background: transparent;
+  color: var(--ink, #1a1a1a);
+  width: 32px;
+  height: 32px;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.planning-detail h2 {
+  margin: 0 0 8px;
+  font-size: 1.2rem;
+}
+
+.planning-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.planning-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--stroke, rgba(0, 0, 0, 0.18));
+  background: rgba(255, 255, 255, 0.75);
+  color: var(--ink, #1a1a1a);
+  padding: 8px 10px;
+  font-size: 13px;
+  border-radius: 0;
+}
+
+.planning-toolbar .planning-input {
+  width: auto;
+  min-width: 140px;
+  flex: 1;
+}
+
+.planning-columns {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  align-items: stretch;
+  width: 100%;
+}
+
+.planning-column {
+  flex: 1 1 0;
+  min-width: 160px;
+  background: rgba(0, 0, 0, 0.03);
+  border: 1px solid var(--stroke, rgba(0, 0, 0, 0.08));
+}
+
+.planning-column-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--stroke, rgba(0, 0, 0, 0.08));
+}
+
+.planning-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.planning-count {
+  margin-left: auto;
+  opacity: 0.65;
+}
+
+.planning-column-body {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: calc(100vh - 220px);
+  overflow: auto;
+}
+
+.planning-card {
+  text-align: left;
+  border: 1px solid var(--stroke, rgba(0, 0, 0, 0.12));
+  background: #fffdf8;
+  padding: 10px;
+  cursor: pointer;
+  color: inherit;
+}
+
+.planning-card.selected {
+  border-color: var(--seed, #245c3a);
+  box-shadow: inset 3px 0 0 var(--seed, #245c3a);
+}
+
+.planning-card-title {
+  font-weight: 700;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.planning-card-meta,
+.planning-card-foot {
+  font-size: 11px;
+  color: var(--muted, #666);
+}
+
+.planning-card-foot {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+}
+
+.planning-column-empty,
+.planning-empty {
+  font-size: 13px;
+  color: var(--muted, #666);
+  padding: 16px 8px;
+}
+
+.planning-detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: var(--muted, #666);
+}
+
+.planning-pill {
+  border: 1px solid;
+  padding: 2px 8px;
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.planning-summary {
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0 0 16px;
+}
+
+.planning-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+
+.planning-detail-grid label,
+.planning-actions label,
+.planning-approvals label,
+.planning-comments label,
+.planning-meeting-block label,
+.planning-modal label {
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted, #666);
+  margin-bottom: 4px;
+  font-weight: 700;
+}
+
+.planning-actions,
+.planning-approvals,
+.planning-comments {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--stroke, rgba(0, 0, 0, 0.08));
+}
+
+.planning-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.planning-approvals ul,
+.planning-meeting-block ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.planning-comment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 240px;
+  overflow: auto;
+  margin-bottom: 10px;
+}
+
+.planning-comment {
+  background: rgba(0, 0, 0, 0.03);
+  border: 1px solid var(--stroke, rgba(0, 0, 0, 0.08));
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.planning-comment-head {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--muted, #666);
+  margin-bottom: 4px;
+}
+
+.planning-comment-compose {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.planning-panel {
+  padding: 16px 20px 32px;
+  overflow: auto;
+}
+
+.planning-event-list,
+.planning-meeting-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.planning-event-card,
+.planning-meeting-card {
+  border: 1px solid var(--stroke, rgba(0, 0, 0, 0.12));
+  background: rgba(255, 255, 255, 0.65);
+  padding: 14px;
+}
+
+.planning-event-type {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  color: var(--seed, #245c3a);
+  margin-bottom: 6px;
+}
+
+.planning-upcoming {
+  margin-top: 24px;
+}
+
+.planning-upcoming h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.planning-upcoming-row {
+  display: grid;
+  grid-template-columns: 140px 1fr 100px;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--stroke, rgba(0, 0, 0, 0.08));
+  font-size: 13px;
+}
+
+.planning-meeting-card header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+
+.planning-meeting-card h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.planning-meeting-block {
+  margin-top: 10px;
+}
+
+.planning-meeting-block p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.planning-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 20, 20, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 80;
+  padding: 20px;
+}
+
+.planning-modal {
+  width: min(520px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  background: var(--cream, #f3efe6);
+  border: 2px solid var(--ink, #1a1a1a);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.planning-modal h2 {
+  margin: 0 0 8px;
+  font-size: 1.1rem;
+}
+
+@media (max-width: 960px) {
+  .planning-board-layout.has-detail {
+    grid-template-columns: 1fr;
+  }
+
+  .planning-detail {
+    border-left: none;
+    border-top: 1px solid var(--stroke, rgba(0, 0, 0, 0.1));
+    max-height: 50vh;
+  }
+
+  .planning-column {
+    flex: 0 0 180px;
+    min-width: 180px;
+  }
+
+  .planning-upcoming-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Dark theme hooks if app uses data-theme */
+[data-theme="dark"] .planning-page {
+  background:
+    radial-gradient(ellipse 80% 50% at 10% -10%, rgba(61, 155, 95, 0.18), transparent),
+    linear-gradient(180deg, #1a1f1c 0%, #121612 100%);
+  color: #e8e4da;
+}
+
+[data-theme="dark"] .planning-top,
+[data-theme="dark"] .planning-tabs,
+[data-theme="dark"] .planning-detail,
+[data-theme="dark"] .planning-card,
+[data-theme="dark"] .planning-event-card,
+[data-theme="dark"] .planning-meeting-card,
+[data-theme="dark"] .planning-modal {
+  background: rgba(30, 36, 32, 0.92);
+  color: #e8e4da;
+}
+
+[data-theme="dark"] .planning-input {
+  background: rgba(0, 0, 0, 0.35);
+  color: #e8e4da;
+  border-color: rgba(255, 255, 255, 0.15);
+}

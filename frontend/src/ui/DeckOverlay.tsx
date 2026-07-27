@@ -267,52 +267,8 @@ export function DeckGLOverlay({
   ] as any, []);
 
   useEffect(() => {
-    if (!map) return;
-
-    const syncDeckBuildings = () => {
-      if (!map.isStyleLoaded?.()) return;
-
-      let srcFeatures: any[] = [];
-      try {
-        srcFeatures = map.querySourceFeatures("openmaptiles", { sourceLayer: "building" }) || [];
-      } catch {
-        setDeckBuildings([]);
-        return;
-      }
-
-      const next: DeckBuilding[] = [];
-      for (const feat of srcFeatures) {
-        if (next.length >= MAX_BUILDINGS) break;
-        const ring = firstRingFromGeometry(feat?.geometry);
-        if (!ring || ring.length < 4) continue;
-        const [lon, lat] = ring[0] ?? [];
-        if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
-        if (!insideLuisianaBounds(lon, lat)) continue;
-
-        const rawHeight = Number(feat?.properties?.render_height ?? feat?.properties?.height ?? 8);
-        const rawBase = Number(feat?.properties?.render_min_height ?? feat?.properties?.min_height ?? 0);
-        next.push({
-          polygon: ring,
-          height: Number.isFinite(rawHeight) ? Math.max(2, Math.min(260, rawHeight)) : 8,
-          base: Number.isFinite(rawBase) ? Math.max(0, Math.min(120, rawBase)) : 0,
-        });
-      }
-
-      setDeckBuildings(next);
-    };
-
-    if (map.isStyleLoaded?.()) syncDeckBuildings();
-    else map.once("style.load", syncDeckBuildings);
-
-    map.on("moveend", syncDeckBuildings);
-    map.on("zoomend", syncDeckBuildings);
-    map.on("style.load", syncDeckBuildings);
-
-    return () => {
-      map.off("moveend", syncDeckBuildings);
-      map.off("zoomend", syncDeckBuildings);
-      map.off("style.load", syncDeckBuildings);
-    };
+    // OSM building extrusions via deck.gl are disabled — custom GLB models only.
+    setDeckBuildings([]);
   }, [map]);
 
   const lightingEffect = useMemo(() => {

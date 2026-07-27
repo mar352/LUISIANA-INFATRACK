@@ -20,12 +20,27 @@ export interface Account {
   department: string;
 }
 
+/** Persisted identity for comments / approvals (beyond role-only). */
+export type SessionUser = {
+  role: UserRole;
+  username: string;
+  department: string;
+};
+
 const DEFAULT_ACCOUNTS: Account[] = [
   { username: "mpdc",        password: "impact2024", role: "MPDC",           label: "MPDC",           department: "Municipal Planning & Development Coordinator" },
   { username: "engineer",    password: "impact2024", role: "Engineer",       label: "Engineer",       department: "Infrastructure & Engineering Office" },
   { username: "agriculture", password: "impact2024", role: "Agriculture",    label: "Agriculture",    department: "Municipal Agriculture Office" },
   { username: "negosyo",     password: "impact2024", role: "Negosyo Center", label: "Negosyo Center", department: "Business Permit & Licensing Office" },
 ];
+
+const ROLE_DEPARTMENT: Record<UserRole, string> = {
+  MPDC: "Municipal Planning & Development Coordinator",
+  Engineer: "Infrastructure & Engineering Office",
+  Agriculture: "Municipal Agriculture Office",
+  "Negosyo Center": "Business Permit & Licensing Office",
+  Viewer: "Public",
+};
 
 export async function seedAccounts(): Promise<void> {
   const snap = await getDocs(collection(db, ACCOUNTS_COLLECTION));
@@ -40,7 +55,7 @@ export async function seedAccounts(): Promise<void> {
 export async function authenticateUser(
   username: string,
   password: string,
-): Promise<UserRole | null> {
+): Promise<SessionUser | null> {
   const key = username.toLowerCase().trim();
   const ref = doc(db, ACCOUNTS_COLLECTION, key);
   const snap = await getDoc(ref);
@@ -50,31 +65,80 @@ export async function authenticateUser(
   const account = snap.data() as Account;
   if (account.password !== password) return null;
 
+  const session: SessionUser = {
+    role: account.role,
+    username: account.username,
+    department: account.department || ROLE_DEPARTMENT[account.role],
+  };
+
   if (hasCookieConsent()) {
-    setSessionCookie(account.role);
+    setSessionCookie(session);
   }
-  return account.role;
+  return session;
+}
+
+/** Build a session for Viewer / credential fallback without Firestore. */
+export function sessionForRole(
+  role: UserRole,
+  username?: string,
+): SessionUser {
+  const user =
+    username ||
+    (role === "Viewer"
+      ? "viewer"
+      : role === "Negosyo Center"
+        ? "negosyo"
+        : role.toLowerCase());
+  return {
+    role,
+    username: user,
+    department: ROLE_DEPARTMENT[role],
+  };
 }
 
 function hasCookieConsent(): boolean {
   return localStorage.getItem("infatrack_cookie_consent") === "accepted";
 }
 
-function setSessionCookie(role: UserRole): void {
+export function setSessionCookie(session: SessionUser): void {
   const expires = new Date();
   expires.setDate(expires.getDate() + SESSION_EXPIRY_DAYS);
-  document.cookie = `${SESSION_COOKIE}=${encodeURIComponent(role)}; expires=${expires.toUTCString()}; path=/; SameSite=Lax`;
+  const payload = encodeURIComponent(JSON.stringify(session));
+  document.cookie = `${SESSION_COOKIE}=${payload}; expires=${expires.toUTCString()}; path=/; SameSite=Lax`;
 }
 
-export function getSessionFromCookie(): UserRole | null {
+export function getSessionFromCookie(): SessionUser | null {
   const match = document.cookie
     .split("; ")
     .find((row) => row.startsWith(`${SESSION_COOKIE}=`));
   if (!match) return null;
 
-  const value = decodeURIComponent(match.split("=")[1]) as UserRole;
+  const raw = decodeURIComponent(match.split("=").slice(1).join("="));
   const validRoles: UserRole[] = ["MPDC", "Engineer", "Agriculture", "Negosyo Center", "Viewer"];
-  return validRoles.includes(value) ? value : null;
+
+  // Legacy cookie: role string only
+  if (validRoles.includes(raw as UserRole)) {
+    return sessionForRole(raw as UserRole);
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as SessionUser;
+    if (parsed?.role && validRoles.includes(parsed.role)) {
+      return {
+        role: parsed.role,
+        username: parsed.username || sessionForRole(parsed.role).username,
+        department: parsed.department || ROLE_DEPARTMENT[parsed.role],
+      };
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+/** @deprecated Prefer getSessionFromCookie(); kept for call sites that only need role. */
+export function getRoleFromCookie(): UserRole | null {
+  return getSessionFromCookie()?.role ?? null;
 }
 
 export function clearSessionCookie(): void {

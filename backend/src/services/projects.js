@@ -53,6 +53,8 @@ function ensureProjectShape(p) {
     description: p.description ?? "",
     startDate: p.startDate ?? null,
     targetEndDate: p.targetEndDate ?? null,
+    rotation: Number.isFinite(Number(p.rotation)) ? Number(p.rotation) : 0,
+    modelScale: Number.isFinite(Number(p.modelScale)) ? Number(p.modelScale) : 1,
   };
 }
 
@@ -327,6 +329,31 @@ export function updateProject(id, patch) {
   if (patch.budgetSpent !== undefined) {
     project.budgetSpent = Number(patch.budgetSpent) || 0;
     logActivity(project, "Budget spent updated.");
+  }
+
+  if (patch.location !== undefined) {
+    const lat = Number(patch.location?.lat);
+    const lon = Number(patch.location?.lon);
+    if (Number.isFinite(lat) && Number.isFinite(lon)) {
+      project.location = { lat, lon };
+    }
+  }
+  if (patch.rotation !== undefined) {
+    const rotation = Number(patch.rotation);
+    if (Number.isFinite(rotation)) project.rotation = rotation;
+  }
+  if (patch.modelScale !== undefined) {
+    const scale = Number(patch.modelScale);
+    if (Number.isFinite(scale)) {
+      project.modelScale = Math.max(0.1, Math.min(20, scale));
+    }
+  }
+  if (
+    patch.location !== undefined ||
+    patch.rotation !== undefined ||
+    patch.modelScale !== undefined
+  ) {
+    logActivity(project, "3D model position, rotation, or scale updated.");
   }
 
   project.updatedAt = new Date().toISOString();

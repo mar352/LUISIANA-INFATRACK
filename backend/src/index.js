@@ -43,20 +43,24 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
+const MODEL_UPLOAD_MAX_BYTES = 200 * 1024 * 1024; // 200MB — Blender GLBs with textures are often >50MB
+const PHOTO_UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
+
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
+  destination: (_req, _file, cb) => {
     cb(null, uploadsDir);
   },
-  filename: (req, file, cb) => {
+  filename: (_req, file, cb) => {
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, "model-" + uniqueSuffix + path.extname(file.originalname));
+    const ext = path.extname(file.originalname).toLowerCase() || ".glb";
+    cb(null, "model-" + uniqueSuffix + ext);
   },
 });
 
 const upload = multer({
   storage,
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
-  fileFilter: (req, file, cb) => {
+  limits: { fileSize: MODEL_UPLOAD_MAX_BYTES },
+  fileFilter: (_req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
     if (ext === ".glb" || ext === ".gltf") {
       cb(null, true);
@@ -76,7 +80,7 @@ const photoStorage = multer.diskStorage({
 
 const uploadPhoto = multer({
   storage: photoStorage,
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: PHOTO_UPLOAD_MAX_BYTES },
   fileFilter: (_req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
     if ([".jpg", ".jpeg", ".png", ".webp"].includes(ext)) {
@@ -86,6 +90,25 @@ const uploadPhoto = multer({
     }
   },
 });
+
+/** Turn multer LIMIT_FILE_SIZE / filter errors into clear JSON instead of bare 500. */
+function multerErrorHandler(err, _req, res, next) {
+  if (!err) return next();
+  if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      const isPhoto = err.field === "photo";
+      const maxMb = Math.round(
+        (isPhoto ? PHOTO_UPLOAD_MAX_BYTES : MODEL_UPLOAD_MAX_BYTES) / (1024 * 1024),
+      );
+      return res.status(413).json({
+        error: `File too large. Maximum upload size is ${maxMb}MB.`,
+        code: err.code,
+      });
+    }
+    return res.status(400).json({ error: err.message, code: err.code });
+  }
+  return res.status(400).json({ error: err.message || "Upload failed" });
+}
 
 const app = express();
 app.use(express.json({ limit: "2mb" }));
@@ -239,19 +262,22 @@ app.get("/api/projects/:id/report", (req, res) => {
   res.json({ report });
 });
 
-app.post("/api/projects/:id/photos", uploadPhoto.single("photo"), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: "No photo uploaded" });
-  }
-  const url = `/uploads/${req.file.filename}`;
-  const photo = addProjectPhoto(req.params.id, {
-    url,
-    caption: req.body?.caption,
-    milestoneId: req.body?.milestoneId || null,
+app.post("/api/projects/:id/photos", (req, res, next) => {
+  uploadPhoto.single("photo")(req, res, (err) => {
+    if (err) return multerErrorHandler(err, req, res, next);
+    if (!req.file) {
+      return res.status(400).json({ error: "No photo uploaded" });
+    }
+    const url = `/uploads/${req.file.filename}`;
+    const photo = addProjectPhoto(req.params.id, {
+      url,
+      caption: req.body?.caption,
+      milestoneId: req.body?.milestoneId || null,
+    });
+    if (!photo) return res.status(404).json({ error: "Project not found" });
+    io.emit("projects:update", emitProjectsPayload());
+    res.json({ photo });
   });
-  if (!photo) return res.status(404).json({ error: "Project not found" });
-  io.emit("projects:update", emitProjectsPayload());
-  res.json({ photo });
 });
 
 app.delete("/api/projects/:id/photos/:photoId", (req, res) => {
@@ -261,18 +287,34 @@ app.delete("/api/projects/:id/photos/:photoId", (req, res) => {
   res.json({ ok: true });
 });
 
-app.post("/api/upload-model", upload.single("model"), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: "No file uploaded" });
-  }
-  
-  // Return the URL path that the frontend can use
-  const url = `/uploads/${req.file.filename}`;
-  res.json({ 
-    url, 
-    filename: req.file.filename,
-    originalName: req.file.originalname,
-    size: req.file.size 
+app.post("/api/upload-model", (req, res, next) => {
+  upload.single("model")(req, res, (err) => {
+    if (err) return multerErrorHandler(err, req, res, next);
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    // Also mirror into frontend/dist/uploads when present (vite preview / static builds).
+    try {
+      const distUploads = path.join(__dirname, "../../frontend/dist/uploads");
+      if (fs.existsSync(path.dirname(distUploads))) {
+        fs.mkdirSync(distUploads, { recursive: true });
+        fs.copyFileSync(
+          path.join(uploadsDir, req.file.filename),
+          path.join(distUploads, req.file.filename),
+        );
+      }
+    } catch (copyErr) {
+      console.warn("[upload-model] dist mirror skipped:", copyErr?.message || copyErr);
+    }
+
+    const url = `/uploads/${req.file.filename}`;
+    res.json({
+      url,
+      filename: req.file.filename,
+      originalName: req.file.originalname,
+      size: req.file.size,
+    });
   });
 });
 
@@ -280,6 +322,14 @@ app.delete("/api/projects/:id", (req, res) => {
   const removed = removeProject(req.params.id);
   if (!removed) return res.status(404).json({ error: "Project not found" });
   io.emit("projects:update", emitProjectsPayload());
+  res.json({ ok: true });
+});
+
+app.post("/api/planning/notify", (req, res) => {
+  io.emit("planning:update", {
+    kind: req.body?.kind || "update",
+    at: req.body?.at || new Date().toISOString(),
+  });
   res.json({ ok: true });
 });
 
@@ -348,6 +398,10 @@ setInterval(async () => {
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`[INFA-TRACK] backend listening on http://0.0.0.0:${PORT}`);
+  // Large GLB uploads can take a while on slow disks / Wi‑Fi.
+  server.timeout = 10 * 60 * 1000;
+  server.headersTimeout = 11 * 60 * 1000;
+  server.requestTimeout = 10 * 60 * 1000;
   console.log(`[INFA-TRACK] allowed client origin: ${CLIENT_ORIGIN}`);
   console.log(`[INFA-TRACK] uploads dir: ${uploadsDir}`);
 

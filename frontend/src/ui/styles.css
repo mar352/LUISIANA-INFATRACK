@@ -227,6 +227,17 @@ input[type="range"] {
   grid-template-columns: 1fr 0px;
 }
 
+/* Landing / login / inventory / planning — no Live Situation rail */
+.appShell.appShell--fullpage {
+  grid-template-columns: 1fr;
+}
+
+.appShell.appShell--fullpage > * {
+  grid-column: 1 / -1;
+  min-width: 0;
+  width: 100%;
+}
+
 @media (max-width: 1024px) {
   .appShell,
   .appShell.sidebar-collapsed { grid-template-columns: 1fr; }
@@ -823,22 +834,6 @@ input[type="range"] {
 .mapboxgl-ctrl-bottom-left,
 .maplibregl-ctrl-bottom-right,
 .maplibregl-ctrl-bottom-left { display: none; }
-
-/* ── Building popup ─────────────────────────────────────────────────────── */
-.building-popup .maplibregl-popup-content {
-  background: var(--cream) !important;
-  border: 2px solid var(--burnt) !important;
-  border-radius: 0 !important;
-  padding: 10px 13px !important;
-  box-shadow: 6px 6px 0 var(--burnt);
-  color: var(--ink);
-  font-family: var(--font);
-  pointer-events: none;
-}
-
-.building-popup .maplibregl-popup-tip {
-  border-top-color: var(--burnt) !important;
-}
 
 /* ── Map controls ───────────────────────────────────────────────────────── */
 .map-controls {

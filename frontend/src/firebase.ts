@@ -14,3 +14,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const projectsCollection = collection(db, "projects");
+export const proposalsCollection = collection(db, "proposals");
+export const planningEventsCollection = collection(db, "planningEvents");
+export const planningMeetingsCollection = collection(db, "planningMeetings");
