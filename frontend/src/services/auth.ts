@@ -52,6 +52,31 @@ export async function seedAccounts(): Promise<void> {
   console.log("[Auth] Seeded", DEFAULT_ACCOUNTS.length, "accounts to Firestore");
 }
 
+/** Account fields safe for UI (no password). */
+export type PublicAccount = Omit<Account, "password">;
+
+/** List accounts for assignee pickers. Falls back to seed defaults if empty. */
+export async function listAccounts(): Promise<PublicAccount[]> {
+  try {
+    const snap = await getDocs(collection(db, ACCOUNTS_COLLECTION));
+    if (snap.empty) {
+      return DEFAULT_ACCOUNTS.map(({ password: _pw, ...rest }) => rest);
+    }
+    return snap.docs.map((d) => {
+      const data = d.data() as Account;
+      return {
+        username: data.username || d.id,
+        role: data.role,
+        label: data.label || data.username || d.id,
+        department: data.department || ROLE_DEPARTMENT[data.role] || "",
+      };
+    });
+  } catch (err) {
+    console.warn("[Auth] listAccounts failed, using defaults:", err);
+    return DEFAULT_ACCOUNTS.map(({ password: _pw, ...rest }) => rest);
+  }
+}
+
 export async function authenticateUser(
   username: string,
   password: string,

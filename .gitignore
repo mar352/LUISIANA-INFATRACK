@@ -52,3 +52,6 @@ backend/data/projects.json
 .impeccable/live/deferred-svelte-component-accepts.json
 .impeccable/live/*.png
 # impeccable-ignore-end
+
+# Too large for GitHub (>100MB)
+frontend/public/models/municipal-office.glb

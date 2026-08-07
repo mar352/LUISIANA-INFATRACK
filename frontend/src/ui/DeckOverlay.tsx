@@ -275,15 +275,16 @@ export function DeckGLOverlay({
     if (!shadowsEnabled) return undefined;
     const [sx, sy, sz] = sunLightPosition ?? [0, -70, 100];
     const ambient = new AmbientLight({ color: [255, 255, 255], intensity: 0.45 });
+    const hasCasters = deckBuildings.length > 0;
+    // Depth-only shadow maps only when casters exist — skips empty cascade passes.
     const sun = new DirectionalLight({
       color: [255, 244, 224],
       intensity: 1.8,
       direction: [-sx, -sy, -Math.max(15, sz)],
-      // deck.gl shadow-map pass for non-raytraced dynamic shadows
-      _shadow: true,
+      _shadow: hasCasters,
     } as any);
     return new LightingEffect({ ambientLight: ambient, sunlight: sun });
-  }, [sunLightPosition, shadowsEnabled]);
+  }, [sunLightPosition, shadowsEnabled, deckBuildings.length]);
 
   const buildingMaterial = useMemo(
     () => ({
@@ -479,7 +480,9 @@ export function DeckGLOverlay({
       );
     }
 
-    if (shadowsEnabled) {
+    // Shadow receiver only when we actually cast (extruded deck buildings).
+    // Avoids a full-municipality shadow-map draw with zero casters.
+    if (shadowsEnabled && deckBuildings.length > 0) {
       out.push(
         new PolygonLayer<{ polygon: [number, number][] }>({
           id: "luisiana-shadow-receiver",
@@ -490,7 +493,6 @@ export function DeckGLOverlay({
           extruded: false,
           wireframe: false,
           getPolygon: (d) => d.polygon,
-          // Extremely subtle receiver so basemap stays visible.
           getFillColor: [255, 255, 255, 16],
           material: {
             ambient: 0.65,

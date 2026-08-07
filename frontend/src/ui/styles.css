@@ -166,7 +166,9 @@ html {
 
 html, body, #root {
   height: 100%;
+  max-width: 100vw;
   margin: 0;
+  overflow-x: hidden;
   background: var(--bg);
   color: var(--text);
   font-family: var(--font);
@@ -216,15 +218,14 @@ input[type="range"] {
 
 /* ── App shell — editorial map + rail ───────────────────────────────────── */
 .appShell {
+  /* Map stays full-bleed; the Live Situation panel overlays and the camera
+     uses easeTo padding so GLB models never desync from a canvas resize. */
   height: 100%;
   display: grid;
-  grid-template-columns: 1fr minmax(320px, 22rem);
+  grid-template-columns: 1fr;
+  position: relative;
   background: var(--cream);
-  transition: grid-template-columns 0.28s ease;
-}
-
-.appShell.sidebar-collapsed {
-  grid-template-columns: 1fr 0px;
+  --situation-panel-width: min(22rem, 100%);
 }
 
 /* Landing / login / inventory / planning — no Live Situation rail */
@@ -239,8 +240,9 @@ input[type="range"] {
 }
 
 @media (max-width: 1024px) {
-  .appShell,
-  .appShell.sidebar-collapsed { grid-template-columns: 1fr; }
+  .appShell.appShell--fullpage {
+    grid-template-columns: 1fr;
+  }
 }
 
 .mapWrap { position: relative; height: 100%; min-height: 0; }
@@ -447,9 +449,15 @@ input[type="range"] {
 }
 
 .sidePanel {
-  position: relative;
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: calc(var(--z-sticky) + 1);
+  width: var(--situation-panel-width);
+  min-width: 320px;
+  max-width: 100%;
   height: 100%;
-  min-width: 0;
   border-left: 3px solid var(--burnt);
   background: var(--cream);
   padding: 0;
@@ -457,13 +465,31 @@ input[type="range"] {
   overflow-y: hidden;
   display: flex;
   flex-direction: column;
+  transform: translateX(0);
+  opacity: 1;
   transition: opacity 0.22s ease, transform 0.28s ease;
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.08);
 }
 
 .sidePanel.is-collapsed {
   opacity: 0;
   pointer-events: none;
   border-left-width: 0;
+  transform: translateX(100%);
+  box-shadow: none;
+}
+
+/* Keep chrome clear of the overlay panel (map canvas stays full-bleed). */
+.appShell:not(.sidebar-collapsed):not(.appShell--fullpage) .topBar {
+  right: max(320px, var(--situation-panel-width));
+  transition: right 0.28s ease;
+}
+
+.appShell:not(.sidebar-collapsed):not(.appShell--fullpage) .map-controls,
+.appShell:not(.sidebar-collapsed):not(.appShell--fullpage) .camera-compass,
+.appShell:not(.sidebar-collapsed):not(.appShell--fullpage) .solar-map-slider {
+  right: calc(max(320px, var(--situation-panel-width)) + 14px);
+  transition: right 0.28s ease;
 }
 
 .sidePanel-head {
@@ -598,6 +624,16 @@ input[type="range"] {
 }
 
 @media (max-width: 1024px) {
+  .appShell:not(.sidebar-collapsed):not(.appShell--fullpage) .topBar {
+    right: 0;
+  }
+
+  .appShell:not(.sidebar-collapsed):not(.appShell--fullpage) .map-controls,
+  .appShell:not(.sidebar-collapsed):not(.appShell--fullpage) .camera-compass,
+  .appShell:not(.sidebar-collapsed):not(.appShell--fullpage) .solar-map-slider {
+    right: max(10px, env(safe-area-inset-right, 0px));
+  }
+
   .sidePanel {
     position: fixed;
     left: 0;
@@ -605,6 +641,7 @@ input[type="range"] {
     bottom: 0;
     top: auto;
     width: 100%;
+    min-width: 0;
     height: auto;
     max-height: min(58dvh, calc(100dvh - 52px));
     border-left: none;
@@ -641,6 +678,18 @@ input[type="range"] {
 
   .map-controls {
     top: calc(56px + env(safe-area-inset-top, 0px));
+    bottom: auto;
+    right: max(10px, env(safe-area-inset-right, 0px));
+  }
+
+  .camera-compass {
+    top: calc(56px + env(safe-area-inset-top, 0px) + 148px);
+    bottom: auto;
+    right: max(10px, env(safe-area-inset-right, 0px));
+  }
+
+  .solar-map-slider {
+    top: calc(56px + env(safe-area-inset-top, 0px) + 268px);
     bottom: auto;
     right: max(10px, env(safe-area-inset-right, 0px));
   }
@@ -834,6 +883,147 @@ input[type="range"] {
 .mapboxgl-ctrl-bottom-left,
 .maplibregl-ctrl-bottom-right,
 .maplibregl-ctrl-bottom-left { display: none; }
+
+/* ── Camera compass (Shadowmap-style FOV cone) ──────────────────────────── */
+.camera-compass {
+  position: absolute;
+  right: 14px;
+  bottom: 210px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 6px 4px;
+  border: 2px solid var(--ink);
+  background: var(--cream);
+  cursor: pointer;
+  color: var(--ink);
+  font-family: var(--font);
+  transition: background 160ms var(--ease-out), border-color 160ms var(--ease-out);
+}
+
+.solar-map-slider {
+  position: absolute;
+  right: 14px;
+  bottom: 330px;
+  z-index: 10;
+  width: 120px;
+  padding: 8px 10px;
+  border: 2px solid var(--ink);
+  background: var(--cream);
+  font-family: var(--font);
+  color: var(--ink);
+}
+
+.solar-map-slider-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+  color: var(--muted);
+}
+
+.solar-map-slider-time {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.solar-map-slider input[type="range"] {
+  width: 100%;
+  accent-color: var(--burnt);
+  cursor: pointer;
+}
+
+.camera-compass:hover {
+  background: color-mix(in srgb, var(--amber) 35%, var(--cream));
+}
+
+.camera-compass:active {
+  transform: scale(0.98);
+}
+
+.camera-compass-svg {
+  display: block;
+  overflow: visible;
+}
+
+.camera-compass-disc {
+  fill: color-mix(in srgb, var(--cream) 88%, var(--ink));
+}
+
+.camera-compass-ring {
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+
+.camera-compass-tick {
+  stroke: var(--muted2);
+  stroke-width: 1.25;
+}
+
+.camera-compass-tick-n {
+  stroke: #c43c3c;
+  stroke-width: 2;
+}
+
+.camera-compass-n {
+  fill: #c43c3c;
+  font-size: 9px;
+  font-weight: 800;
+  font-family: var(--font);
+  letter-spacing: 0.02em;
+  pointer-events: none;
+}
+
+.camera-compass-cone {
+  fill: color-mix(in srgb, var(--amber) 55%, transparent);
+  stroke: none;
+}
+
+.camera-compass-cone-stroke {
+  stroke: var(--burnt);
+  stroke-width: 1.25;
+  stroke-linejoin: round;
+}
+
+.camera-compass-axis {
+  stroke: var(--ink);
+  stroke-width: 1;
+  stroke-opacity: 0.45;
+  stroke-dasharray: 2 2;
+}
+
+.camera-compass-cam {
+  fill: var(--cream);
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+
+.camera-compass-cam-dot {
+  fill: var(--ink);
+}
+
+.camera-compass-pitch-fill {
+  fill: color-mix(in srgb, var(--burnt) 70%, transparent);
+  stroke: var(--ink);
+  stroke-width: 0.75;
+}
+
+.camera-compass-readout {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  line-height: 1;
+  white-space: nowrap;
+}
 
 /* ── Map controls ───────────────────────────────────────────────────────── */
 .map-controls {

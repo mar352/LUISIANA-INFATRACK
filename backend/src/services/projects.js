@@ -55,6 +55,7 @@ function ensureProjectShape(p) {
     targetEndDate: p.targetEndDate ?? null,
     rotation: Number.isFinite(Number(p.rotation)) ? Number(p.rotation) : 0,
     modelScale: Number.isFinite(Number(p.modelScale)) ? Number(p.modelScale) : 1,
+    modelLocked: Boolean(p.modelLocked),
   };
 }
 
@@ -276,6 +277,7 @@ export function addProject({
     location,
     rotation,
     customModelUrl,
+    modelLocked: false,
     description: description || "",
     startDate: startDate || null,
     targetEndDate: targetEndDate || null,
@@ -321,6 +323,19 @@ export function updateProject(id, patch) {
   if (patch.description !== undefined) project.description = String(patch.description);
   if (patch.startDate !== undefined) project.startDate = patch.startDate || null;
   if (patch.targetEndDate !== undefined) project.targetEndDate = patch.targetEndDate || null;
+  if (patch.name !== undefined) {
+    const next = String(patch.name).trim();
+    if (next) project.name = next;
+  }
+  if (patch.customModelUrl !== undefined) {
+    project.customModelUrl = patch.customModelUrl ? String(patch.customModelUrl) : undefined;
+  }
+  if (patch.modelType !== undefined) {
+    project.modelType = String(patch.modelType);
+  }
+  if (patch.department !== undefined) {
+    project.department = String(patch.department);
+  }
 
   if (patch.budgetTotal !== undefined) {
     project.budgetTotal = patch.budgetTotal == null ? null : Number(patch.budgetTotal);
@@ -329,6 +344,28 @@ export function updateProject(id, patch) {
   if (patch.budgetSpent !== undefined) {
     project.budgetSpent = Number(patch.budgetSpent) || 0;
     logActivity(project, "Budget spent updated.");
+  }
+
+  if (patch.modelLocked !== undefined) {
+    const next = Boolean(patch.modelLocked);
+    if (project.modelLocked !== next) {
+      project.modelLocked = next;
+      logActivity(project, next ? "3D model locked on map." : "3D model unlocked on map.");
+    }
+  }
+
+  if (project.modelLocked) {
+    // Locked models keep position/rotation/scale fixed until unlocked
+    if (
+      patch.location !== undefined ||
+      patch.rotation !== undefined ||
+      patch.modelScale !== undefined
+    ) {
+      // strip transform changes when locked (modelLocked toggle above still applies)
+      delete patch.location;
+      delete patch.rotation;
+      delete patch.modelScale;
+    }
   }
 
   if (patch.location !== undefined) {

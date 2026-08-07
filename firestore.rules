@@ -16,5 +16,9 @@ service cloud.firestore {
     match /planningMeetings/{document=**} {
       allow read, write: if true;
     }
+    // Document Management System catalog (PDF/image metadata + version history)
+    match /documents/{document=**} {
+      allow read, write: if true;
+    }
   }
 }

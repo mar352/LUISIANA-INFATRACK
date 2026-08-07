@@ -3,8 +3,13 @@ import maplibregl, { Map as MapLibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { DeckGLOverlay } from "./DeckOverlay";
 import { BuildingOverlay } from "./BuildingOverlay";
+import { TreeOverlay } from "./TreeOverlay";
+import { CameraCompass } from "./CameraCompass";
+import { SunOverlay } from "./SunOverlay";
 import InventoryPage from "./InventoryPage";
 import PlanningPage from "./PlanningPage";
+import DocumentsPage from "./DocumentsPage";
+import AnalyticsPage from "./AnalyticsPage";
 import { addProjectToFirestore } from "../services/firestore-projects";
 import type { AlertItem, HeatPoint, Project, RiskZones, WeatherSnapshot, ProjectStatus } from "../types";
 import { MODEL_CATALOG, type ModelType, PROJECT_STATUS_COLORS } from "../types";
@@ -12,7 +17,19 @@ import { connectRealtime } from "../lib/realtime";
 import { BACKEND_URL, backendUrl } from "../lib/api";
 import { buildHeatmapPoints, type BBox, type HeatmapMetric } from "../lib/heatmap";
 import { formatGibsDate, gibsWmtsTileUrl, type GibsLayerId } from "../lib/gibs";
-import { getCurrentSolarHour } from "../lib/solar";
+import {
+  applyMapSunLighting,
+  dateFromSolarHour,
+  formatSolarHour,
+  getCurrentSolarHour,
+  getSunLightPosition,
+  getSunPosition,
+  shadowGroundOffset,
+  shadowStretchFromAltitude,
+  daylightRasterScale,
+  ensureNightVeilLayer,
+  LUISIANA_CENTER,
+} from "../lib/solar";
 import { 
   getTerrainSource, 
   getSatelliteSource, 
@@ -31,6 +48,7 @@ import {
   EONET_CATEGORIES,
   type EONETEvent 
 } from "../lib/eonet";
+import { detectOpenMapTilesSourceId, stadiaStyleUrl } from "../lib/stadia";
 import { 
   TerrainRiskModel, 
   generateSyntheticTrainingData,
@@ -49,6 +67,7 @@ import { snapLngLatToRoad } from "../lib/snap-to-road";
 import { LandingPage, LoginScreen, ROLE_CONFIGS, type UserRole } from "./Landing";
 import { ProjectMonitoringPanel } from "./ProjectMonitoringPanel";
 import { ThemeToggle } from "./ThemeToggle";
+import { ProjectChat } from "./ProjectChat";
 import {
   seedAccounts,
   getSessionFromCookie,
@@ -144,9 +163,8 @@ const ModelIcons: Record<string, React.FC<{ size?: number; color?: string }>> = 
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined;
 
-// OpenFreeMap Liberty — free vector tiles with OSM building footprints + heights.
-// No API key needed. Buildings have render_height / render_min_height properties.
-const VECTOR_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
+// Stadia Maps Outdoors — OpenMapTiles schema (buildings + landcover). API key optional on localhost.
+const VECTOR_STYLE_URL = stadiaStyleUrl();
 
 type LayerToggles = {
   satellite: boolean;
@@ -157,6 +175,7 @@ type LayerToggles = {
   gibsPrecip: boolean;
   risk: boolean;
   projects: boolean;
+  trees: boolean;
   stormTrack: boolean;
 };
 
@@ -169,6 +188,7 @@ const DEFAULT_TOGGLES: LayerToggles = {
   gibsPrecip: false,
   risk: false,
   projects: true,
+  trees: true,
   stormTrack: false,
 };
 
@@ -178,7 +198,7 @@ const BUILDING_EXTRUSION_OPACITY_DEFAULT = 0.9;
  * The REAL 3D blocks on this app:
  *   layer id:     "3d-buildings"
  *   type:         fill-extrusion
- *   source:       "openmaptiles"  (OpenFreeMap Liberty vector tiles)
+ *   source:       OpenMapTiles vector (usually "openmaptiles" — Stadia / OMT)
  *   source-layer: "building"
  *
  * Do NOT confuse with:
@@ -186,8 +206,17 @@ const BUILDING_EXTRUSION_OPACITY_DEFAULT = 0.9;
  *   - "glb-buildings"  (Three.js custom layer for project GLBs)
  */
 const BUILDING_EXTRUSION_LAYER = "3d-buildings";
-const BUILDING_VECTOR_SOURCE = "openmaptiles";
 const BUILDING_SOURCE_LAYER = "building";
+
+/** Flat / style-provided building layers to strip before our extrusion (Stadia, Liberty, …). */
+const FLAT_BUILDING_LAYER_IDS = [
+  "building",
+  "building-top",
+  "building-3d",
+  "buildings",
+  "building-street",
+  "building-number",
+];
 
 /** Set opacity/visibility on our extrusion and base-style building extrusions. */
 function applyBuildingExtrusionOpacity(map: MapLibreMap, opacity: number) {
@@ -250,7 +279,7 @@ export default function App() {
 
   const [currentSession, setCurrentSession] = useState<SessionUser | null>(null);
   const currentRole = currentSession?.role ?? null;
-  const [screen, setScreen] = useState<"landing" | "login" | "app" | "inventory" | "planning">("landing");
+  const [screen, setScreen] = useState<"landing" | "login" | "app" | "inventory" | "planning" | "documents" | "analytics">("landing");
   const roleConfig = currentRole ? ROLE_CONFIGS[currentRole] : null;
 
   const [cookieConsent, setCookieConsent] = useState<"pending" | "accepted" | "declined">(() => {
@@ -282,6 +311,40 @@ export default function App() {
 
   const [connected, setConnected] = useState(false);
   const [toggles, setToggles] = useState<LayerToggles>(DEFAULT_TOGGLES);
+  const [solarHour, setSolarHour] = useState(() => getCurrentSolarHour());
+  const sunLighting = useMemo(() => {
+    const date = dateFromSolarHour(solarHour);
+    const pos = getSunPosition(LUISIANA_CENTER.lat, LUISIANA_CENTER.lon, date);
+    return {
+      pos,
+      lightPosition: getSunLightPosition(LUISIANA_CENTER.lat, LUISIANA_CENTER.lon, solarHour),
+      altitudeRad: pos.altitudeRad,
+      azimuthRad: pos.azimuthRad,
+      isDaylight: pos.isDaylight,
+      stretch: shadowStretchFromAltitude(pos.altitudeRad),
+      groundOffset: shadowGroundOffset(pos),
+    };
+  }, [solarHour]);
+
+  // Drive MapLibre basemap light + hillshade + night veil from SunCalc
+  useEffect(() => {
+    const map = mapInstance ?? mapRef.current;
+    if (!map) return;
+    const apply = () => {
+      applyMapSunLighting(map as any, sunLighting.pos, {
+        showHillshade: true,
+        beforeVeilId: BUILDING_EXTRUSION_LAYER,
+        satelliteOn: toggles.satellite,
+        streetMapOn: toggles.streetMap,
+      });
+    };
+    if (map.isStyleLoaded()) apply();
+    else map.once("style.load", apply);
+    map.on("style.load", apply);
+    return () => {
+      map.off("style.load", apply);
+    };
+  }, [mapInstance, sunLighting, toggles.satellite, toggles.streetMap]);
   const [weather, setWeather] = useState<WeatherSnapshot | null>(null);
   const [heatPoints, setHeatPoints] = useState<HeatPoint[]>([]);
   const [riskZones, setRiskZones] = useState<RiskZones | null>(null);
@@ -320,17 +383,62 @@ export default function App() {
     return () => mq.removeEventListener("change", onChange);
   }, []);
 
-  // MapLibre needs a resize after the panel width animates
+  // Overlay panel: keep the map canvas size fixed and ease camera padding so
+  // custom 3D models stay locked to lat/lng/altitude (no mid-animation resize).
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    const timers = [50, 280, 420].map((ms) =>
-      window.setTimeout(() => {
-        try { map.resize(); } catch { /* map may be gone */ }
-      }, ms)
-    );
-    return () => timers.forEach(clearTimeout);
-  }, [sidebarCollapsed]);
+    const map = mapRef.current ?? mapInstance;
+    if (!map || screen !== "app") return;
+
+    const durationMs = 280;
+    const isNarrow = window.matchMedia("(max-width: 1024px)").matches;
+    const panelEl = document.querySelector(".sidePanel") as HTMLElement | null;
+    const rect = panelEl?.getBoundingClientRect();
+    const measuredW = rect && rect.width > 0 ? Math.round(rect.width) : Math.max(320, Math.min(352, Math.round(window.innerWidth * 0.22)));
+    const measuredH = rect && rect.height > 0
+      ? Math.round(rect.height)
+      : Math.min(Math.round(window.innerHeight * 0.58), Math.max(0, window.innerHeight - 52));
+
+    const padding = sidebarCollapsed
+      ? { top: 0, bottom: 0, left: 0, right: 0 }
+      : isNarrow
+        ? { top: 0, bottom: measuredH, left: 0, right: 0 }
+        : { top: 0, bottom: 0, left: 0, right: measuredW };
+
+    try {
+      map.easeTo({
+        padding,
+        duration: durationMs,
+        essential: true,
+      });
+    } catch {
+      /* map may not be ready */
+    }
+
+    // Keep projection matrices fresh while padding eases.
+    // Custom layer re-reads map matrix each frame via getProjectionDataForCustomLayer.
+    const start = performance.now();
+    let raf = 0;
+    const tick = (now: number) => {
+      try {
+        map.triggerRepaint();
+      } catch {
+        /* map may be gone */
+      }
+      if (now - start < durationMs + 80) {
+        raf = window.requestAnimationFrame(tick);
+      } else {
+        try {
+          map.resize();
+          map.triggerRepaint();
+        } catch {
+          /* ignore */
+        }
+      }
+    };
+    raf = window.requestAnimationFrame(tick);
+
+    return () => window.cancelAnimationFrame(raf);
+  }, [sidebarCollapsed, screen, mapInstance]);
   const [heatMetric, setHeatMetric] = useState<HeatmapMetric>("combined");
   const [viewport, setViewport] = useState<{ bbox: BBox; zoom: number } | null>(null);
   const [gibsLayer, setGibsLayer] = useState<GibsLayerId>("IMERG_Precipitation_Rate");
@@ -409,8 +517,7 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [screen, aiRiskAutoTraining, aiRiskTrained]);
 
-  // Map bearing for compass display
-  const [mapBearing, setMapBearing] = useState(-15);
+  // Map bearing tracked by CameraCompass (live rotate/pitch sync)
 
   // Keyboard shortcuts: +/- zoom, N = reset north, H = fly home
   useEffect(() => {
@@ -421,8 +528,8 @@ export default function App() {
       if ((e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "TEXTAREA") return;
       if (e.key === "=" || e.key === "+") m.zoomIn({ duration: 300 });
       if (e.key === "-" || e.key === "_") m.zoomOut({ duration: 300 });
-      if (e.key === "n" || e.key === "N") m.easeTo({ bearing: 0, pitch: 62, duration: 500 });
-      if (e.key === "h" || e.key === "H") m.flyTo({ center: [CENTER.lon, CENTER.lat], zoom: CENTER.zoom, pitch: toggles.terrain ? 62 : 30, bearing: -15, duration: 1200, essential: true });
+      if (e.key === "n" || e.key === "N") m.easeTo({ bearing: 0, pitch: 75, duration: 500 });
+      if (e.key === "h" || e.key === "H") m.flyTo({ center: [CENTER.lon, CENTER.lat], zoom: CENTER.zoom, pitch: toggles.terrain ? 75 : 30, bearing: -15, duration: 1200, essential: true });
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -535,7 +642,10 @@ export default function App() {
       zoom: CENTER.zoom,
       pitch: 30,
       bearing: -15,
-      attributionControl: false,
+      // Shadowmap-style near-horizon tilt (MapLibre default clamp is 60°)
+      maxPitch: 85,
+      // Keep Stadia / OpenMapTiles / OSM attribution visible (required by tile providers)
+      attributionControl: { compact: true },
       canvasContextAttributes: { antialias: true }, // required for three.js custom layers
     });
 
@@ -548,7 +658,6 @@ export default function App() {
         bbox: { west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth() },
         zoom: map.getZoom(),
       });
-      setMapBearing(map.getBearing());
     };
 
     map.on("load", () => {
@@ -558,32 +667,50 @@ export default function App() {
       // Project blocks = status-colored fill-extrusion (height from progress).
       // GLB models are rendered separately by BuildingOverlay.
 
-      // Remove Liberty's flat building fills; we use our own 3D extrusions.
-      if (map.getLayer("building")) map.removeLayer("building");
-      if (map.getLayer("building-top")) map.removeLayer("building-top");
+      const buildingVectorSource = detectOpenMapTilesSourceId(map);
+
+      // Remove flat style building fills (Stadia Outdoors / Liberty names); we use 3D extrusions.
+      for (const id of FLAT_BUILDING_LAYER_IDS) {
+        if (map.getLayer(id)) map.removeLayer(id);
+      }
+      for (const layer of [...(map.getStyle()?.layers ?? [])].reverse()) {
+        if (layer.id === BUILDING_EXTRUSION_LAYER) continue;
+        const sourceLayer = (layer as any)["source-layer"];
+        if (
+          sourceLayer === BUILDING_SOURCE_LAYER &&
+          (layer.type === "fill" || layer.type === "fill-extrusion") &&
+          map.getLayer(layer.id)
+        ) {
+          map.removeLayer(layer.id);
+        }
+      }
 
       // Context OSM buildings — always visible; opacity slider does NOT touch these.
       // Z-fight with GLBs is handled by clearDepth in BuildingOverlay + hole filter.
-      map.addLayer({
-        id: BUILDING_EXTRUSION_LAYER,
-        type: "fill-extrusion",
-        source: BUILDING_VECTOR_SOURCE,
-        "source-layer": BUILDING_SOURCE_LAYER,
-        minzoom: 12,
-        paint: {
-          "fill-extrusion-color": "#a8b0b8",
-          "fill-extrusion-height": [
-            "interpolate", ["linear"], ["zoom"],
-            12, 0,
-            13, ["coalesce", ["get", "render_height"], 6],
-          ],
-          "fill-extrusion-base": [
-            "coalesce", ["get", "render_min_height"], 0,
-          ],
-          "fill-extrusion-opacity": BUILDING_EXTRUSION_OPACITY_DEFAULT,
-          "fill-extrusion-vertical-gradient": false,
-        },
-      } as any);
+      if (map.getSource(buildingVectorSource) && !map.getLayer(BUILDING_EXTRUSION_LAYER)) {
+        map.addLayer({
+          id: BUILDING_EXTRUSION_LAYER,
+          type: "fill-extrusion",
+          source: buildingVectorSource,
+          "source-layer": BUILDING_SOURCE_LAYER,
+          minzoom: 12,
+          paint: {
+            "fill-extrusion-color": "#a8b0b8",
+            "fill-extrusion-height": [
+              "interpolate", ["linear"], ["zoom"],
+              12, 0,
+              13, ["coalesce", ["get", "render_height"], 6],
+            ],
+            "fill-extrusion-base": [
+              "coalesce", ["get", "render_min_height"], 0,
+            ],
+            "fill-extrusion-opacity": BUILDING_EXTRUSION_OPACITY_DEFAULT,
+            "fill-extrusion-vertical-gradient": false,
+          },
+        } as any);
+      } else if (!map.getSource(buildingVectorSource)) {
+        console.warn("[Map] OpenMapTiles vector source missing; 3d-buildings skipped");
+      }
 
       // Project location dots — GLB models rendered by BuildingOverlay
       map.addSource("project-footprints", {
@@ -651,7 +778,7 @@ export default function App() {
       }
 
       // ── Apply WebGL optimizations for better performance ──
-      applyWebGLOptimizations(map, "balanced");
+      applyWebGLOptimizations(map, "performance");
 
       // ── Sky: MapLibre OSS does not support type "sky" (Mapbox-only) — skip ──
 
@@ -666,6 +793,9 @@ export default function App() {
       } catch (e) {
         console.warn("Hillshade layer not supported:", e);
       }
+
+      // Night veil — above rasters/hillshade, below 3d-buildings (opacity driven by sun)
+      ensureNightVeilLayer(map as any, BUILDING_EXTRUSION_LAYER);
 
       // ── GIBS precipitation (added before satellite so satellite sits on top) ──
       if (!map.getSource("gibs-imerg")) {
@@ -1047,7 +1177,7 @@ export default function App() {
       let customModelUrl: string | undefined;
       if (selectedModelRef.current === "custom" && customModelFileRef.current) {
         const file = customModelFileRef.current;
-        const maxMb = 200;
+        const maxMb = 500;
         if (file.size > maxMb * 1024 * 1024) {
           alert(`Model is too large (${(file.size / (1024 * 1024)).toFixed(1)}MB). Maximum is ${maxMb}MB.`);
           return;
@@ -1355,8 +1485,12 @@ export default function App() {
       }
 
       if (map.getLayer("satellite-layer")) {
-        // Fade in/out via opacity so the transition is smooth
-        map.setPaintProperty("satellite-layer", "raster-opacity", toggles.satellite ? 1 : 0);
+        // Fade in/out via opacity; night dims via daylightRasterScale
+        map.setPaintProperty(
+          "satellite-layer",
+          "raster-opacity",
+          toggles.satellite ? daylightRasterScale(sunLighting.pos) : 0,
+        );
       }
 
       const opacity = toggles.satellite
@@ -1367,7 +1501,7 @@ export default function App() {
 
     if (map.isStyleLoaded()) applySatellite();
     else map.once("style.load", applySatellite);
-  }, [toggles.satellite, buildingExtrusionOpacity, mapInstance]);
+  }, [toggles.satellite, buildingExtrusionOpacity, mapInstance, sunLighting.pos]);
 
   // Keep fill-extrusion opacity synced with the slider (and after style reload).
   useEffect(() => {
@@ -1432,13 +1566,17 @@ export default function App() {
       }
 
       if (map.getLayer("osm-street-layer")) {
-        map.setPaintProperty("osm-street-layer", "raster-opacity", toggles.streetMap ? 1 : 0);
+        map.setPaintProperty(
+          "osm-street-layer",
+          "raster-opacity",
+          toggles.streetMap ? daylightRasterScale(sunLighting.pos) : 0,
+        );
       }
     };
 
     if (map.isStyleLoaded()) applyStreet();
     else map.once("style.load", applyStreet);
-  }, [toggles.streetMap, mapInstance]);
+  }, [toggles.streetMap, mapInstance, sunLighting.pos]);
 
   // Google Street View mode — click map to open GSV in new tab
   const streetViewModeRef = useRef(false);
@@ -1499,7 +1637,7 @@ export default function App() {
             source: "terrain-dem", 
             exaggeration: exaggeration 
           });
-          map.easeTo({ pitch: 62, duration: 600 });
+          map.easeTo({ pitch: 75, duration: 600 });
           
           // Show hillshade when terrain is enabled
           if (map.getLayer("hillshade")) {
@@ -1509,9 +1647,10 @@ export default function App() {
           (map as any).setTerrain(null);
           map.easeTo({ pitch: 30, duration: 600 });
           
-          // Hide hillshade when terrain is disabled
+          // Keep hillshade visible — solar time drives illumination on the DEM
+          // even when the 3D terrain mesh is off
           if (map.getLayer("hillshade")) {
-            map.setLayoutProperty("hillshade", "visibility", "none");
+            map.setLayoutProperty("hillshade", "visibility", "visible");
           }
         }
       } catch {
@@ -1688,6 +1827,14 @@ export default function App() {
         <PlanningPage onBack={() => setScreen("app")} session={currentSession} />
       )}
 
+      {screen === "documents" && (
+        <DocumentsPage onBack={() => setScreen("app")} session={currentSession} />
+      )}
+
+      {screen === "analytics" && (
+        <AnalyticsPage onBack={() => setScreen("app")} projects={projects} />
+      )}
+
       {/* Main app - only render when logged in */}
       {screen === "app" && <>
       <div className="mapWrap">
@@ -1700,7 +1847,8 @@ export default function App() {
           enabledWeather={toggles.weather}
           weather={weather}
           shadowsEnabled={toggles.terrain}
-          sunLightPosition={[0, -70, 100]}
+          sunLightPosition={sunLighting.lightPosition}
+          solarHour={solarHour}
           enabledEONET={eonetEnabled}
           eonetEvents={eonetEvents}
           enabledAIRisk={aiRiskEnabled}
@@ -1712,7 +1860,10 @@ export default function App() {
           projects={projects}
           visible={toggles.projects}
           opacity={glbModelsOpacity}
+          sunLightPosition={sunLighting.lightPosition}
+          sunIsDaylight={sunLighting.isDaylight}
           readOnly={currentRole === "Viewer"}
+          canAddPhotos={currentRole === "MPDC" || currentRole === "Engineer"}
           snapToRoad={snapToRoad && (editMode || placementMode)}
           onBuildingClick={(hit) => { buildingHitRef.current = hit; }}
           onDeleteBuilding={currentRole === "Viewer" ? undefined : async (projectId) => {
@@ -1723,6 +1874,23 @@ export default function App() {
             }
           }}
         />
+
+        <TreeOverlay
+          map={mapInstance}
+          visible={toggles.trees}
+          sunLightPosition={sunLighting.lightPosition}
+          sunIsDaylight={sunLighting.isDaylight}
+        />
+
+        {/* 3D sun disc+ring in the sky — SunCalc direction, not an HTML overlay */}
+        <SunOverlay
+          map={mapInstance}
+          sunLightPosition={sunLighting.lightPosition}
+          isDaylight={sunLighting.isDaylight}
+          visible
+        />
+
+        <ProjectChat />
 
         {/* Google Street View mode indicator */}
         {streetViewMode && (
@@ -1815,6 +1983,46 @@ export default function App() {
                 <span className="topBar-exit-short">Plan</span>
               </button>
             )}
+            {currentRole && (
+              <button
+                type="button"
+                className="topBar-exit"
+                style={{
+                  background: "linear-gradient(135deg, rgba(120,90,40,0.2), rgba(180,140,60,0.15))",
+                  borderColor: "rgba(140,110,50,0.45)",
+                }}
+                onClick={() => setScreen("documents")}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                  <line x1="16" y1="13" x2="8" y2="13" />
+                  <line x1="16" y1="17" x2="8" y2="17" />
+                  <polyline points="10 9 9 9 8 9" />
+                </svg>
+                <span className="topBar-exit-full">Documents</span>
+                <span className="topBar-exit-short">Docs</span>
+              </button>
+            )}
+            {currentRole && (
+              <button
+                type="button"
+                className="topBar-exit"
+                style={{
+                  background: "linear-gradient(135deg, rgba(36,92,58,0.18), rgba(108,142,191,0.2))",
+                  borderColor: "rgba(60,100,80,0.45)",
+                }}
+                onClick={() => setScreen("analytics")}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
+                  <line x1="18" y1="20" x2="18" y2="10" />
+                  <line x1="12" y1="20" x2="12" y2="4" />
+                  <line x1="6" y1="20" x2="6" y2="14" />
+                </svg>
+                <span className="topBar-exit-full">Analytics</span>
+                <span className="topBar-exit-short">Stats</span>
+              </button>
+            )}
             {currentRole !== "Negosyo Center" && currentRole !== "Viewer" && (
               <button
                 type="button"
@@ -1845,33 +2053,32 @@ export default function App() {
           </div>
         </div>
 
+        {/* Shadowmap-style FOV cone — syncs bearing / pitch / FOV */}
+        <CameraCompass map={mapInstance} />
+
+        {/* Solar time slider — real SunCalc position for Luisiana */}
+        <div className="solar-map-slider" title="Sun time of day (Luisiana)">
+          <div className="solar-map-slider-label">
+            <span>Sun</span>
+            <span className="solar-map-slider-time">{formatSolarHour(solarHour)}</span>
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={24}
+            step={0.25}
+            value={solarHour}
+            aria-label="Solar time of day"
+            onChange={(e) => setSolarHour(Number(e.target.value))}
+          />
+        </div>
+
         {/* ── Map Controls ── */}
         <div className="map-controls">
           {/* Zoom in */}
           <button className="map-ctrl-btn" title="Zoom In (=)" onClick={() => mapRef.current?.zoomIn({ duration: 300 })}>+</button>
           {/* Zoom out */}
           <button className="map-ctrl-btn" title="Zoom Out (-)" onClick={() => mapRef.current?.zoomOut({ duration: 300 })}>−</button>
-          <div className="map-ctrl-divider" />
-          {/* Compass — rotates to show current bearing, click to reset north */}
-          <button
-            className="map-ctrl-btn"
-            title="Reset North"
-            onClick={() => mapRef.current?.easeTo({ bearing: 0, pitch: 62, duration: 500 })}
-            style={{ fontSize: 18 }}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M12 2 L14.5 9 L12 8 L9.5 9 Z"
-                fill="#ff4d4f"
-                transform={`rotate(${mapBearing}, 12, 12)`}
-              />
-              <path
-                d="M12 22 L9.5 15 L12 16 L14.5 15 Z"
-                fill="var(--muted2)"
-                transform={`rotate(${mapBearing}, 12, 12)`}
-              />
-            </svg>
-          </button>
           <div className="map-ctrl-divider" />
           {/* Fly home */}
           <button
@@ -1880,7 +2087,7 @@ export default function App() {
             onClick={() => mapRef.current?.flyTo({
               center: [CENTER.lon, CENTER.lat],
               zoom: CENTER.zoom,
-              pitch: 62,
+              pitch: 75,
               bearing: -15,
               duration: 1200,
               essential: true,
@@ -1899,7 +2106,7 @@ export default function App() {
               const m = mapRef.current;
               if (!m) return;
               const p = m.getPitch();
-              m.easeTo({ pitch: p > 10 ? 0 : 62, duration: 500 });
+              m.easeTo({ pitch: p > 10 ? 0 : 85, duration: 500 });
             }}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -2041,6 +2248,7 @@ export default function App() {
               { k: "weather", title: "Weather Overlay", hint: "Cloud field + rainfall feel" },
               { k: "stormTrack", title: "Storm Tracking", hint: "Drift line based on wind" },
               { k: "projects", title: "Infrastructure Projects", hint: "GLB models on map" },
+              { k: "trees", title: "3D Trees", hint: "Instanced trees on forest areas (Luisiana)" },
             ] as const
           ).map((row) => (
             <div key={row.k} className="toggleRow">
@@ -2118,6 +2326,30 @@ export default function App() {
             <span style={{ fontSize: 11, color: "var(--muted)", minWidth: 35 }}>
               {Math.round(glbModelsOpacity * 100)}%
             </span>
+          </div>
+
+          <div className="solar-time-control" style={{ marginBottom: 12, paddingLeft: 2 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+              <span className="pill">Sun Time</span>
+              <span style={{ fontSize: 11, color: "var(--muted)", fontVariantNumeric: "tabular-nums" }}>
+                {formatSolarHour(solarHour)}
+                {sunLighting.isDaylight ? "" : " · night"}
+              </span>
+            </div>
+            <input
+              type="range"
+              className="solar-hour-slider"
+              min={0}
+              max={24}
+              step={0.25}
+              value={solarHour}
+              aria-label="Time of day for solar lighting"
+              onChange={(e) => setSolarHour(Number(e.target.value))}
+              style={{ width: "100%" }}
+            />
+            <div className="hint" style={{ marginTop: 4 }}>
+              Real sun for Luisiana — shades the basemap (buildings + terrain) and model lighting
+            </div>
           </div>
 
           <div className="toggleRow">
@@ -2471,7 +2703,7 @@ export default function App() {
                 <div style={{ fontSize: 10, color: "var(--muted)", lineHeight: 1.45, marginBottom: 8 }}>
                   Colors must be on Principled BSDF Base Color (or image textures), not Viewport Display only.
                   SVG materials often export white — run scripts/blender_fix_materials_for_gltf.py in Blender before export.
-                  Max file size: 200MB (.glb / .gltf).
+                  Max file size: 500MB (.glb / .gltf).
                 </div>
                 <input
                   type="file"

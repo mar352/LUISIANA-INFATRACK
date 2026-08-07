@@ -28,12 +28,15 @@
     "maplibre-gl": "^5.24.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "recharts": "^2.15.0",
     "socket.io-client": "^4.8.1",
+    "suncalc": "^2.0.1",
     "three": "0.169.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.23",
     "@types/react-dom": "^18.3.7",
+    "@types/suncalc": "^1.9.2",
     "@vitejs/plugin-react": "^4.7.0",
     "typescript": "^5.9.2",
     "vite": "^7.1.3"

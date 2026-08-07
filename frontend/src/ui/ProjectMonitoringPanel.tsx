@@ -73,7 +73,7 @@ export function ProjectMonitoringPanel({ projects, currentRole, mapRef, readOnly
     mapRef.current?.flyTo({
       center: [p.location.lon, p.location.lat],
       zoom: 16,
-      pitch: 62,
+      pitch: 75,
       bearing: -15,
       duration: 1400,
       essential: true,

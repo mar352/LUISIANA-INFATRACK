@@ -331,7 +331,7 @@
 .planning-approvals label,
 .planning-comments label,
 .planning-meeting-block label,
-.planning-modal label {
+.planning-modal label:not(.planning-check):not(.planning-file-btn) {
   display: block;
   font-size: 10px;
   text-transform: uppercase;
@@ -465,6 +465,391 @@
   white-space: pre-wrap;
 }
 
+.planning-card-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 6px 0 2px;
+}
+
+.planning-card-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.planning-card-title-row .planning-card-title {
+  margin-bottom: 0;
+  flex: 1;
+}
+
+.planning-kind-badge {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border: 1px solid var(--stroke, rgba(0, 0, 0, 0.2));
+  white-space: nowrap;
+}
+
+.planning-kind-badge.brgy {
+  border-color: rgba(36, 92, 58, 0.45);
+  color: #1a4a2e;
+  background: rgba(36, 92, 58, 0.08);
+}
+
+.planning-kind-badge.office {
+  border-color: rgba(60, 80, 120, 0.35);
+  color: #3a4a6a;
+  background: rgba(60, 80, 120, 0.06);
+}
+
+.planning-chip-warn {
+  border-color: rgba(180, 110, 20, 0.45);
+  color: #8a5500;
+  background: rgba(255, 190, 60, 0.15);
+}
+
+.planning-route,
+.planning-recommend,
+.planning-needs,
+.planning-docs {
+  margin-bottom: 16px;
+}
+
+.planning-route > label,
+.planning-recommend > label,
+.planning-needs > label,
+.planning-docs > label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted, #666);
+  margin-bottom: 8px;
+}
+
+.planning-stepper {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 0;
+}
+
+.planning-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted, #888);
+  padding-right: 10px;
+  position: relative;
+}
+
+.planning-step:not(:last-child)::after {
+  content: "→";
+  margin-left: 4px;
+  opacity: 0.45;
+}
+
+.planning-step-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--stroke, #ccc);
+  flex-shrink: 0;
+}
+
+.planning-step.done {
+  color: var(--seed, #245c3a);
+}
+
+.planning-step.done .planning-step-dot {
+  background: var(--seed, #245c3a);
+}
+
+.planning-step.current {
+  color: inherit;
+  font-weight: 700;
+}
+
+.planning-step.current .planning-step-dot {
+  background: #c47a1a;
+  box-shadow: 0 0 0 3px rgba(196, 122, 26, 0.25);
+}
+
+.planning-next-actor {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--muted, #555);
+}
+
+.planning-recommend-score {
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1;
+  margin-bottom: 6px;
+}
+
+.planning-recommend-score span {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted, #666);
+  margin-left: 4px;
+}
+
+.planning-recommend-reasons {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--muted, #555);
+}
+
+.planning-needs-readonly {
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.planning-muted {
+  font-size: 11px;
+  color: var(--muted, #666);
+  margin: 8px 0 0;
+}
+
+.planning-file-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  border: 1px dashed var(--stroke, rgba(0, 0, 0, 0.25));
+  font-size: 12px;
+  cursor: pointer;
+  margin-top: 4px;
+}
+
+.planning-file-btn:hover {
+  border-color: var(--seed, #245c3a);
+  color: var(--seed, #245c3a);
+}
+
+.planning-chip {
+  font-size: 10px;
+  padding: 2px 6px;
+  border: 1px solid var(--stroke, rgba(0, 0, 0, 0.2));
+  background: rgba(255, 255, 255, 0.5);
+  color: var(--muted, #555);
+}
+
+.planning-chip-committee {
+  border-color: rgba(0, 200, 212, 0.45);
+  color: #0a7a82;
+  background: rgba(0, 243, 255, 0.1);
+}
+
+.planning-check-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 160px;
+  overflow: auto;
+  padding: 6px 0;
+}
+
+/* Four offices only — no nested scroller */
+.planning-check-list--offices {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+  max-height: none;
+  overflow: visible;
+  padding: 10px 12px;
+  margin: 0 0 4px;
+  border: 1px solid var(--stroke, rgba(0, 0, 0, 0.14));
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.planning-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.35;
+  cursor: pointer;
+  padding: 4px 0;
+  min-height: 28px;
+}
+
+.planning-check input {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.planning-check-user {
+  color: var(--muted, #666);
+  font-size: 12px;
+}
+
+@media (max-width: 560px) {
+  .planning-check-list--offices {
+    grid-template-columns: 1fr;
+  }
+}
+
+.planning-detail-span {
+  grid-column: 1 / -1;
+}
+
+.planning-anchor-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  padding: 2px 6px;
+  border: 1px solid rgba(61, 155, 95, 0.4);
+  color: var(--seed, #245c3a);
+  background: rgba(61, 155, 95, 0.1);
+}
+
+.planning-anchor-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.planning-anchor-row > label {
+  font-size: 11px;
+  color: var(--muted, #666);
+  margin: 0;
+}
+
+.planning-attach-list {
+  list-style: none;
+  margin: 6px 0 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.planning-attach-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 0;
+}
+
+.planning-attach-compose {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.planning-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.planning-cal-dow {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted, #666);
+  padding: 4px 0;
+}
+
+.planning-cal-cell {
+  min-height: 72px;
+  border: 1px solid var(--stroke, rgba(0, 0, 0, 0.12));
+  background: rgba(255, 255, 255, 0.45);
+  padding: 4px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font: inherit;
+  color: inherit;
+}
+
+.planning-cal-cell.empty {
+  background: transparent;
+  border-color: transparent;
+  cursor: default;
+  min-height: 0;
+}
+
+.planning-cal-cell.today {
+  border-color: var(--seed, #245c3a);
+}
+
+.planning-cal-cell.selected {
+  background: rgba(61, 155, 95, 0.18);
+  border-color: var(--seed, #245c3a);
+}
+
+.planning-cal-daynum {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.planning-cal-dots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  align-items: center;
+}
+
+.planning-cal-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--seed, #245c3a);
+}
+
+.planning-cal-dot.type-committee {
+  background: #0a7a82;
+}
+
+.planning-cal-dot.type-hearing {
+  background: #6c8ebf;
+}
+
+.planning-cal-dot.type-deadline {
+  background: #d4a017;
+}
+
+.planning-cal-dot.type-site {
+  background: #82b366;
+}
+
+.planning-cal-more {
+  font-size: 9px;
+  color: var(--muted, #666);
+}
+
+.planning-cal-title {
+  font-size: 10px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted, #555);
+}
+
 .planning-modal-backdrop {
   position: fixed;
   inset: 0;
@@ -473,24 +858,134 @@
   align-items: center;
   justify-content: center;
   z-index: 80;
-  padding: 20px;
+  padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+    max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  overflow: auto;
 }
 
 .planning-modal {
   width: min(520px, 100%);
-  max-height: 90vh;
-  overflow: auto;
+  max-height: min(90vh, 100%);
+  overflow: hidden;
   background: var(--cream, #f3efe6);
   border: 2px solid var(--ink, #1a1a1a);
-  padding: 18px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: auto;
+}
+
+.planning-modal--tall {
+  width: min(560px, 100%);
+  max-height: min(92vh, 100%);
+}
+
+.planning-modal-head {
+  flex: 0 0 auto;
+  padding: 16px 18px 10px;
+  border-bottom: 1px solid var(--stroke, rgba(0, 0, 0, 0.1));
+}
+
+.planning-modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  padding: 12px 18px 16px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(120, 120, 120, 0.55) transparent;
 }
 
-.planning-modal h2 {
-  margin: 0 0 8px;
+.planning-modal-body::-webkit-scrollbar {
+  width: 10px;
+}
+
+.planning-modal-body::-webkit-scrollbar-thumb {
+  background: rgba(120, 120, 120, 0.45);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 8px;
+}
+
+.planning-modal-foot {
+  flex: 0 0 auto;
+  padding: 12px 18px 16px;
+  border-top: 1px solid var(--stroke, rgba(0, 0, 0, 0.1));
+  background: inherit;
+}
+
+.planning-modal-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.planning-modal-row > div {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.planning-textarea {
+  resize: vertical;
+  min-height: 72px;
+  max-height: 160px;
+}
+
+.planning-modal h2,
+.planning-modal-head h2 {
+  margin: 0;
   font-size: 1.1rem;
+  text-wrap: balance;
+}
+
+/* Legacy single-column modals (events/meetings) without head/body/foot */
+.planning-modal:not(:has(.planning-modal-body)) {
+  overflow: auto;
+  padding: 18px;
+  gap: 8px;
+}
+
+.planning-modal:not(:has(.planning-modal-body)) h2 {
+  margin: 0 0 8px;
+}
+
+.planning-modal-foot .planning-action-row {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+@media (max-width: 560px) {
+  .planning-modal-backdrop {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .planning-modal,
+  .planning-modal--tall {
+    width: 100%;
+    max-height: min(94vh, 100%);
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+  }
+
+  .planning-modal-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-height: 700px) {
+  .planning-textarea {
+    max-height: 100px;
+  }
 }
 
 @media (max-width: 960px) {
@@ -528,9 +1023,24 @@
 [data-theme="dark"] .planning-card,
 [data-theme="dark"] .planning-event-card,
 [data-theme="dark"] .planning-meeting-card,
-[data-theme="dark"] .planning-modal {
+[data-theme="dark"] .planning-modal,
+[data-theme="dark"] .planning-cal-cell {
   background: rgba(30, 36, 32, 0.92);
   color: #e8e4da;
+}
+
+[data-theme="dark"] .planning-check-list--offices {
+  background: rgba(0, 0, 0, 0.28);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+[data-theme="dark"] .planning-modal-head,
+[data-theme="dark"] .planning-modal-foot {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .planning-check-user {
+  color: rgba(232, 228, 218, 0.65);
 }
 
 [data-theme="dark"] .planning-input {

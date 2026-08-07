@@ -27,6 +27,7 @@ import {
 } from "./services/projects.js";
 import { createAlertFromRisk } from "./services/alerts.js";
 import { buildSlopeCache } from "./services/dem.js";
+import { chatWithOllama, getChatConfig } from "./services/chat.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -34,6 +35,8 @@ const __dirname = path.dirname(__filename);
 const PORT = Number(process.env.PORT || 4000);
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "http://localhost:5173";
 const LOCALHOST_ORIGIN_RE = /^http:\/\/(localhost|127\.0\.0\.1):\d+$/;
+const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434";
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "llama3.2:1b";
 
 // Setup multer for file uploads
 // Local: frontend/public/uploads · Docker: UPLOADS_DIR=/app/uploads (shared volume)
@@ -43,7 +46,7 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-const MODEL_UPLOAD_MAX_BYTES = 200 * 1024 * 1024; // 200MB — Blender GLBs with textures are often >50MB
+const MODEL_UPLOAD_MAX_BYTES = 500 * 1024 * 1024; // 500MB — large textured Blender GLBs
 const PHOTO_UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
 
 const storage = multer.diskStorage({
@@ -91,12 +94,33 @@ const uploadPhoto = multer({
   },
 });
 
+const planningAttachStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, uploadsDir),
+  filename: (_req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, "plan-" + uniqueSuffix + path.extname(file.originalname).toLowerCase());
+  },
+});
+
+const uploadPlanningAttach = multer({
+  storage: planningAttachStorage,
+  limits: { fileSize: PHOTO_UPLOAD_MAX_BYTES },
+  fileFilter: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if ([".jpg", ".jpeg", ".png", ".webp", ".pdf", ".doc", ".docx"].includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Allowed: .jpg, .jpeg, .png, .webp, .pdf, .doc, .docx"));
+    }
+  },
+});
+
 /** Turn multer LIMIT_FILE_SIZE / filter errors into clear JSON instead of bare 500. */
 function multerErrorHandler(err, _req, res, next) {
   if (!err) return next();
   if (err instanceof multer.MulterError) {
     if (err.code === "LIMIT_FILE_SIZE") {
-      const isPhoto = err.field === "photo";
+      const isPhoto = err.field === "photo" || err.field === "file";
       const maxMb = Math.round(
         (isPhoto ? PHOTO_UPLOAD_MAX_BYTES : MODEL_UPLOAD_MAX_BYTES) / (1024 * 1024),
       );
@@ -333,6 +357,82 @@ app.post("/api/planning/notify", (req, res) => {
   res.json({ ok: true });
 });
 
+app.post("/api/planning/attachments", (req, res, next) => {
+  uploadPlanningAttach.single("file")(req, res, (err) => {
+    if (err) return multerErrorHandler(err, req, res, next);
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+    const url = `/uploads/${req.file.filename}`;
+    res.json({
+      url,
+      filename: req.file.filename,
+      originalName: req.file.originalname,
+      size: req.file.size,
+    });
+  });
+});
+
+const documentStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, uploadsDir),
+  filename: (_req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, "doc-" + uniqueSuffix + path.extname(file.originalname).toLowerCase());
+  },
+});
+
+const uploadDocument = multer({
+  storage: documentStorage,
+  limits: { fileSize: PHOTO_UPLOAD_MAX_BYTES },
+  fileFilter: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if ([".jpg", ".jpeg", ".png", ".webp", ".pdf", ".doc", ".docx"].includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Allowed: .jpg, .jpeg, .png, .webp, .pdf, .doc, .docx"));
+    }
+  },
+});
+
+app.post("/api/documents/upload", (req, res, next) => {
+  uploadDocument.single("file")(req, res, (err) => {
+    if (err) return multerErrorHandler(err, req, res, next);
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+    const url = `/uploads/${req.file.filename}`;
+    res.json({
+      url,
+      filename: req.file.filename,
+      originalName: req.file.originalname,
+      mimeType: req.file.mimetype || "application/octet-stream",
+      size: req.file.size,
+    });
+  });
+});
+
+app.get("/api/chat/health", (_req, res) => {
+  res.json({ ok: true, ...getChatConfig() });
+});
+
+app.post("/api/chat", async (req, res) => {
+  try {
+    const messages = req.body?.messages;
+    const result = await chatWithOllama(messages);
+    res.json(result);
+  } catch (err) {
+    const status = err.status || 500;
+    console.warn("[Chat]", err.message);
+    res.status(status).json({
+      error: err.message || "Chat failed",
+      hint:
+        status === 503
+          ? `Ensure Ollama is running and run: ollama pull ${process.env.OLLAMA_MODEL || "llama3.2:1b"}`
+          : undefined,
+    });
+  }
+});
+
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
@@ -404,6 +504,7 @@ server.listen(PORT, "0.0.0.0", () => {
   server.requestTimeout = 10 * 60 * 1000;
   console.log(`[INFA-TRACK] allowed client origin: ${CLIENT_ORIGIN}`);
   console.log(`[INFA-TRACK] uploads dir: ${uploadsDir}`);
+  console.log(`[INFA-TRACK] chat → Ollama ${OLLAMA_BASE_URL} model=${OLLAMA_MODEL}`);
 
   // Build real slope cache from AWS Terrarium DEM on startup
   // Runs in background — risk zones fall back to 0.4 until ready (~5-10s)

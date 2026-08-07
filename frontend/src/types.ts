@@ -173,6 +173,8 @@ export type Project = {
   rotation?: number;
   /** User-adjusted multiplier for the map GLB model. */
   modelScale?: number;
+  /** When true, model cannot be moved / rotated / scaled on the map. */
+  modelLocked?: boolean;
   customModelUrl?: string;
   description?: string;
   startDate?: string | null;
@@ -286,6 +288,17 @@ export type PlanningApproval = {
   at: string;
 };
 
+export type PlanningRequestKind = "barangay_request" | "office_proposal";
+
+export type PlanningNeedsAssessment = {
+  populationServed?: string;
+  hazardExposure?: string;
+  existingInfra?: string;
+  urgencyNote?: string;
+  assessedBy?: string;
+  assessedAt?: string;
+};
+
 export type PlanningProposal = {
   id: string;
   title: string;
@@ -300,6 +313,12 @@ export type PlanningProposal = {
   assignees: string[];
   committeeId?: string | null;
   approvals: PlanningApproval[];
+  /** Barangay infrastructure request vs office-originated proposal. */
+  requestKind?: PlanningRequestKind;
+  needsAssessment?: PlanningNeedsAssessment | null;
+  recommendationScore?: number | null;
+  recommendationReasons?: string[];
+  attachments?: string[];
   createdAt: string;
   updatedAt: string;
 };
@@ -359,4 +378,65 @@ export const PLANNING_STATUS_COLORS: Record<PlanningProposalStatus, string> = {
   returned: "#d4a017",
   rejected: "#e05252",
 };
+
+/** Municipal document categories for the Document Management System. */
+export type DocumentCategory =
+  | "CLUP"
+  | "CDP"
+  | "LDIP"
+  | "AIP"
+  | "infrastructure_plan"
+  | "engineering_drawing"
+  | "permit"
+  | "feasibility_study";
+
+export type DocumentVersionEntry = {
+  version: number;
+  fileUrl: string;
+  fileName: string;
+  mimeType: string;
+  uploadedBy: string;
+  uploadedAt: string;
+};
+
+export type MunicipalDocument = {
+  id: string;
+  title: string;
+  category: DocumentCategory;
+  description: string;
+  year: number;
+  barangay?: string;
+  tags: string[];
+  fileUrl: string;
+  fileName: string;
+  mimeType: string;
+  version: number;
+  previousVersions: DocumentVersionEntry[];
+  uploadedBy: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export const DOCUMENT_CATEGORY_LABELS: Record<DocumentCategory, string> = {
+  CLUP: "CLUP",
+  CDP: "CDP",
+  LDIP: "LDIP",
+  AIP: "AIP",
+  infrastructure_plan: "Infrastructure plan",
+  engineering_drawing: "Engineering drawing",
+  permit: "Permit",
+  feasibility_study: "Feasibility study",
+};
+
+export const DOCUMENT_CATEGORIES: DocumentCategory[] = [
+  "CLUP",
+  "CDP",
+  "LDIP",
+  "AIP",
+  "infrastructure_plan",
+  "engineering_drawing",
+  "permit",
+  "feasibility_study",
+];
+
 

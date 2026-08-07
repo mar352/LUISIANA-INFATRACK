@@ -81,3 +81,51 @@ export async function uploadProjectPhoto(
 export function deleteProjectPhoto(projectId: string, photoId: string) {
   return sendJson<{ ok: boolean }>(`/api/projects/${projectId}/photos/${photoId}`, "DELETE");
 }
+
+/** Upload a planning meeting attachment (pdf/images/docx). Returns public /uploads URL. */
+export async function uploadPlanningAttachment(file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(backendUrl("/api/planning/attachments"), {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`;
+    try {
+      const body = await res.json();
+      if (body?.error) detail = body.error;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail);
+  }
+  return (await res.json()) as { url: string; filename: string; originalName: string; size: number };
+}
+
+/** Upload a municipal DMS file (pdf/images/docx). */
+export async function uploadDocumentFile(file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(backendUrl("/api/documents/upload"), {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`;
+    try {
+      const body = await res.json();
+      if (body?.error) detail = body.error;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail);
+  }
+  return (await res.json()) as {
+    url: string;
+    filename: string;
+    originalName: string;
+    mimeType: string;
+    size: number;
+  };
+}

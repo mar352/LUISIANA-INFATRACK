@@ -1,4 +1,5 @@
 import type { FilterSpecification, Map as MapLibreMap } from "maplibre-gl";
+import { detectOpenMapTilesSourceId } from "./stadia";
 
 export const EDIT_STREETS_GLOW_ID = "edit-streets-glow";
 export const EDIT_STREETS_CORE_ID = "edit-streets-core";
@@ -31,18 +32,21 @@ type PulseState = {
 const pulseByMap = new WeakMap<MapLibreMap, PulseState>();
 
 function hasOpenMapTiles(map: MapLibreMap): boolean {
-  return Boolean(map.getSource("openmaptiles"));
+  const id = detectOpenMapTilesSourceId(map);
+  return Boolean(map.getSource(id));
 }
 
 /** Add glow + core line layers once (hidden by default). */
 export function ensureEditStreetLayers(map: MapLibreMap): void {
   if (!hasOpenMapTiles(map)) return;
 
+  const source = detectOpenMapTilesSourceId(map);
+
   if (!map.getLayer(EDIT_STREETS_GLOW_ID)) {
     map.addLayer({
       id: EDIT_STREETS_GLOW_ID,
       type: "line",
-      source: "openmaptiles",
+      source,
       "source-layer": "transportation",
       filter: ROAD_CLASS_FILTER,
       layout: {
@@ -63,7 +67,7 @@ export function ensureEditStreetLayers(map: MapLibreMap): void {
     map.addLayer({
       id: EDIT_STREETS_CORE_ID,
       type: "line",
-      source: "openmaptiles",
+      source,
       "source-layer": "transportation",
       filter: ROAD_CLASS_FILTER,
       layout: {

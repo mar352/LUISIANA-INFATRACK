@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import type {
   PlanningApprovalDecision,
+  PlanningComment,
   PlanningEvent,
   PlanningEventType,
   PlanningMeeting,
+  PlanningNeedsAssessment,
   PlanningProposal,
   PlanningProposalStatus,
+  PlanningRequestKind,
   Project,
 } from "../types";
 import {
@@ -13,7 +16,8 @@ import {
   PLANNING_STATUS_COLORS,
   PLANNING_STATUS_LABELS,
 } from "../types";
-import type { SessionUser } from "../services/auth";
+import type { PublicAccount, SessionUser } from "../services/auth";
+import { listAccounts } from "../services/auth";
 import {
   addComment,
   createPlanningEvent,
@@ -29,12 +33,25 @@ import {
   updateProposal,
 } from "../services/firestore-planning";
 import { addProjectToFirestore } from "../services/firestore-projects";
-import { backendUrl } from "../lib/api";
+import { BACKEND_URL, backendUrl, uploadPlanningAttachment } from "../lib/api";
 import {
   allowedStatusTransitions,
   departmentForRole,
   getPlanningPermissions,
 } from "../lib/planning-permissions";
+import {
+  PLANNING_COMMITTEES,
+  committeeLabel,
+  committeeShortLabel,
+} from "../lib/planning-committees";
+import {
+  computeRecommendation,
+  isNeedsAssessmentComplete,
+  nextActorHint,
+  requestKindLabel,
+  routingStepsForStatus,
+} from "../lib/planning-recommend";
+import { connectRealtime } from "../lib/realtime";
 import { ThemeToggle } from "./ThemeToggle";
 import "./PlanningPage.css";
 
@@ -44,6 +61,40 @@ type Props = {
   onBack: () => void;
   session: SessionUser | null;
 };
+
+type AnchorKind = "none" | "section" | "map";
+
+const SECTION_ANCHORS = ["Summary", "Location", "Priority", "Other"] as const;
+
+/** Office accounts shown in assignee pickers (no Viewer, no scroller needed). */
+const OFFICE_ASSIGNEE_ROLES = ["MPDC", "Engineer", "Agriculture", "Negosyo Center"] as const;
+
+const FALLBACK_OFFICE_ACCOUNTS: PublicAccount[] = [
+  {
+    username: "mpdc",
+    role: "MPDC",
+    label: "MPDC",
+    department: "Municipal Planning & Development Coordinator",
+  },
+  {
+    username: "engineer",
+    role: "Engineer",
+    label: "Engineer",
+    department: "Infrastructure & Engineering Office",
+  },
+  {
+    username: "agriculture",
+    role: "Agriculture",
+    label: "Agriculture",
+    department: "Municipal Agriculture Office",
+  },
+  {
+    username: "negosyo",
+    role: "Negosyo Center",
+    label: "Negosyo Center",
+    department: "Business Permit & Licensing Office",
+  },
+];
 
 const STATUS_COLUMNS: PlanningProposalStatus[] = [
   "draft",
@@ -78,6 +129,41 @@ function formatDay(iso: string) {
   }
 }
 
+function attachmentLabel(url: string) {
+  try {
+    const name = url.split("/").pop() || url;
+    return decodeURIComponent(name);
+  } catch {
+    return url;
+  }
+}
+
+function attachmentHref(url: string) {
+  if (url.startsWith("http")) return url;
+  return backendUrl(url);
+}
+
+function sameCalendarDay(iso: string, day: Date) {
+  const d = new Date(iso);
+  return (
+    d.getFullYear() === day.getFullYear() &&
+    d.getMonth() === day.getMonth() &&
+    d.getDate() === day.getDate()
+  );
+}
+
+function buildMonthGrid(monthStart: Date) {
+  const y = monthStart.getFullYear();
+  const m = monthStart.getMonth();
+  const firstDow = new Date(y, m, 1).getDay(); // 0 Sun
+  const daysInMonth = new Date(y, m + 1, 0).getDate();
+  const cells: (Date | null)[] = [];
+  for (let i = 0; i < firstDow; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(y, m, d));
+  while (cells.length % 7 !== 0) cells.push(null);
+  return cells;
+}
+
 export default function PlanningPage({ onBack, session }: Props) {
   const role = session?.role ?? null;
   const perms = getPlanningPermissions(role);
@@ -90,20 +176,34 @@ export default function PlanningPage({ onBack, session }: Props) {
 
   const [filterDept, setFilterDept] = useState("");
   const [filterStatus, setFilterStatus] = useState<PlanningProposalStatus | "">("");
+  const [filterBarangay, setFilterBarangay] = useState("");
+  const [filterKind, setFilterKind] = useState<PlanningRequestKind | "">("");
   const [search, setSearch] = useState("");
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [comments, setComments] = useState<{ id: string; author: string; role: string; body: string; createdAt: string }[]>([]);
+  const [comments, setComments] = useState<PlanningComment[]>([]);
   const [commentBody, setCommentBody] = useState("");
+  const [commentAnchorKind, setCommentAnchorKind] = useState<AnchorKind>("none");
+  const [commentSectionLabel, setCommentSectionLabel] = useState<string>("Summary");
+  const [commentOtherLabel, setCommentOtherLabel] = useState("");
   const [decisionNote, setDecisionNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+
+  const [accounts, setAccounts] = useState<PublicAccount[]>([]);
+  const [draftAssignees, setDraftAssignees] = useState<string[]>([]);
+  const [draftCommitteeId, setDraftCommitteeId] = useState("");
 
   const [showCreate, setShowCreate] = useState(false);
   const [draftTitle, setDraftTitle] = useState("");
   const [draftSummary, setDraftSummary] = useState("");
   const [draftBarangay, setDraftBarangay] = useState("");
   const [draftPriority, setDraftPriority] = useState<1 | 2 | 3 | 4 | 5>(3);
+  const [draftRequestKind, setDraftRequestKind] =
+    useState<PlanningRequestKind>("office_proposal");
+  const [draftAttachments, setDraftAttachments] = useState<string[]>([]);
+
+  const [needsDraft, setNeedsDraft] = useState<PlanningNeedsAssessment>({});
 
   const [showEventForm, setShowEventForm] = useState(false);
   const [eventTitle, setEventTitle] = useState("");
@@ -121,13 +221,34 @@ export default function PlanningPage({ onBack, session }: Props) {
   const [meetingMinutes, setMeetingMinutes] = useState("");
   const [meetingDecisions, setMeetingDecisions] = useState("");
   const [meetingProposalIds, setMeetingProposalIds] = useState("");
+  const [meetingAttachments, setMeetingAttachments] = useState<string[]>([]);
   const [editingMeetingId, setEditingMeetingId] = useState<string | null>(null);
 
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const d = new Date();
     return new Date(d.getFullYear(), d.getMonth(), 1);
   });
+  const [selectedCalDay, setSelectedCalDay] = useState<Date | null>(null);
   const [firestoreDenied, setFirestoreDenied] = useState(false);
+
+  useEffect(() => {
+    listAccounts()
+      .then(setAccounts)
+      .catch(() => setAccounts([]));
+  }, []);
+
+  useEffect(() => {
+    const socket = connectRealtime(BACKEND_URL);
+    const onPlanning = (payload: { kind?: string; at?: string }) => {
+      const kind = payload?.kind ? ` (${payload.kind})` : "";
+      setMessage(`Planning synced${kind}`);
+    };
+    socket.on("planning:update", onPlanning);
+    return () => {
+      socket.off("planning:update", onPlanning);
+      socket.disconnect();
+    };
+  }, []);
 
   useEffect(() => {
     const onPerm = (msg: string) => {
@@ -169,11 +290,21 @@ export default function PlanningPage({ onBack, session }: Props) {
     [proposals, selectedId],
   );
 
+  useEffect(() => {
+    if (!selected) {
+      setNeedsDraft({});
+      return;
+    }
+    setNeedsDraft({ ...(selected.needsAssessment || {}) });
+  }, [selectedId, selected?.needsAssessment?.assessedAt, selected?.updatedAt]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return proposals.filter((p) => {
       if (filterDept && p.department !== filterDept) return false;
       if (filterStatus && p.status !== filterStatus) return false;
+      if (filterBarangay && (p.barangay || "") !== filterBarangay) return false;
+      if (filterKind && (p.requestKind || "office_proposal") !== filterKind) return false;
       if (!q) return true;
       return (
         p.title.toLowerCase().includes(q) ||
@@ -181,7 +312,20 @@ export default function PlanningPage({ onBack, session }: Props) {
         (p.barangay || "").toLowerCase().includes(q)
       );
     });
-  }, [proposals, filterDept, filterStatus, search]);
+  }, [proposals, filterDept, filterStatus, filterBarangay, filterKind, search]);
+
+  async function patchProposal(
+    proposal: PlanningProposal,
+    patch: Partial<PlanningProposal>,
+  ) {
+    const merged = { ...proposal, ...patch };
+    const rec = computeRecommendation(merged);
+    await updateProposal(proposal.id, {
+      ...patch,
+      recommendationScore: rec.score,
+      recommendationReasons: rec.reasons,
+    });
+  }
 
   const byStatus = useMemo(() => {
     const map: Record<PlanningProposalStatus, PlanningProposal[]> = {
@@ -209,10 +353,40 @@ export default function PlanningPage({ onBack, session }: Props) {
     });
   }, [events, calendarMonth]);
 
+  const monthCells = useMemo(() => buildMonthGrid(calendarMonth), [calendarMonth]);
+
+  const officeAccounts = useMemo(() => {
+    const filtered = accounts.filter((a) =>
+      (OFFICE_ASSIGNEE_ROLES as readonly string[]).includes(a.role),
+    );
+    if (filtered.length === 0) return FALLBACK_OFFICE_ACCOUNTS;
+    // Prefer one account per office role, stable order
+    return OFFICE_ASSIGNEE_ROLES.map(
+      (role) =>
+        filtered.find((a) => a.role === role) ||
+        FALLBACK_OFFICE_ACCOUNTS.find((a) => a.role === role)!,
+    );
+  }, [accounts]);
+
+  const dayEvents = useMemo(() => {
+    if (!selectedCalDay) return monthEvents;
+    return events.filter((ev) => sameCalendarDay(ev.startsAt, selectedCalDay));
+  }, [events, selectedCalDay, monthEvents]);
+
+  function toggleAssignee(list: string[], username: string) {
+    return list.includes(username)
+      ? list.filter((u) => u !== username)
+      : [...list, username];
+  }
+
   async function handleCreateProposal(submit: boolean) {
     if (!session || !perms.canCreate) return;
     if (!draftTitle.trim()) {
       setMessage("Title is required.");
+      return;
+    }
+    if (draftRequestKind === "barangay_request" && !draftBarangay) {
+      setMessage("Barangay is required for barangay infrastructure requests.");
       return;
     }
     setBusy(true);
@@ -232,16 +406,23 @@ export default function PlanningPage({ onBack, session }: Props) {
           role: session.role,
           department: session.department,
         },
-        assignees: [],
-        committeeId: null,
+        assignees: draftAssignees,
+        committeeId: draftCommitteeId || null,
+        requestKind: draftRequestKind,
+        needsAssessment: null,
+        attachments: draftAttachments,
       });
       setShowCreate(false);
       setDraftTitle("");
       setDraftSummary("");
       setDraftBarangay("");
       setDraftPriority(3);
+      setDraftRequestKind("office_proposal");
+      setDraftAttachments([]);
+      setDraftAssignees([]);
+      setDraftCommitteeId("");
       setSelectedId(created.id);
-      setMessage(submit ? "Proposal submitted." : "Draft saved.");
+      setMessage(submit ? "Request / proposal submitted." : "Draft saved.");
       setFirestoreDenied(false);
     } catch (err) {
       console.error(err);
@@ -256,14 +437,98 @@ export default function PlanningPage({ onBack, session }: Props) {
     setBusy(false);
   }
 
+  async function handleAssigneesChange(proposal: PlanningProposal, next: string[]) {
+    if (!perms.canAssign) return;
+    setBusy(true);
+    try {
+      await patchProposal(proposal, { assignees: next });
+    } catch (err) {
+      console.error(err);
+      setMessage("Failed to update assignees.");
+    }
+    setBusy(false);
+  }
+
+  async function handleCommitteeChange(proposal: PlanningProposal, committeeId: string) {
+    if (!perms.canAssign) return;
+    setBusy(true);
+    try {
+      await patchProposal(proposal, { committeeId: committeeId || null });
+    } catch (err) {
+      console.error(err);
+      setMessage("Failed to update committee.");
+    }
+    setBusy(false);
+  }
+
   async function handlePriority(proposal: PlanningProposal, priority: 1 | 2 | 3 | 4 | 5) {
     if (!perms.canSetPriority) return;
     setBusy(true);
     try {
-      await updateProposal(proposal.id, { priority });
+      await patchProposal(proposal, { priority });
     } catch (err) {
       console.error(err);
       setMessage("Failed to update priority.");
+    }
+    setBusy(false);
+  }
+
+  async function handleSaveNeeds(proposal: PlanningProposal) {
+    if (!session || !(perms.canRecommend || perms.canAssign)) return;
+    setBusy(true);
+    try {
+      const needs: PlanningNeedsAssessment = {
+        ...needsDraft,
+        assessedBy: session.username,
+        assessedAt: new Date().toISOString(),
+      };
+      await patchProposal(proposal, { needsAssessment: needs });
+      setMessage("Needs assessment saved.");
+    } catch (err) {
+      console.error(err);
+      setMessage("Failed to save needs assessment.");
+    }
+    setBusy(false);
+  }
+
+  async function handleProposalFile(proposal: PlanningProposal, file: File | null) {
+    if (!file || (!perms.canComment && !perms.canCreate)) return;
+    setBusy(true);
+    try {
+      const result = await uploadPlanningAttachment(file);
+      const next = [...(proposal.attachments || []), result.url];
+      await patchProposal(proposal, { attachments: next });
+      setMessage(`Attached ${result.originalName}`);
+    } catch (err) {
+      console.error(err);
+      setMessage(err instanceof Error ? err.message : "Attachment upload failed.");
+    }
+    setBusy(false);
+  }
+
+  async function handleRemoveProposalAttachment(proposal: PlanningProposal, url: string) {
+    if (!perms.canComment && !perms.canCreate) return;
+    setBusy(true);
+    try {
+      const next = (proposal.attachments || []).filter((u) => u !== url);
+      await patchProposal(proposal, { attachments: next });
+    } catch (err) {
+      console.error(err);
+      setMessage("Failed to remove attachment.");
+    }
+    setBusy(false);
+  }
+
+  async function handleDraftFile(file: File | null) {
+    if (!file || !perms.canCreate) return;
+    setBusy(true);
+    try {
+      const result = await uploadPlanningAttachment(file);
+      setDraftAttachments((prev) => [...prev, result.url]);
+      setMessage(`Attached ${result.originalName}`);
+    } catch (err) {
+      console.error(err);
+      setMessage(err instanceof Error ? err.message : "Attachment upload failed.");
     }
     setBusy(false);
   }
@@ -408,12 +673,28 @@ export default function PlanningPage({ onBack, session }: Props) {
     if (!session || !perms.canComment || !selectedId || !commentBody.trim()) return;
     setBusy(true);
     try {
+      let anchor: PlanningComment["anchor"] = null;
+      if (commentAnchorKind === "section") {
+        const label =
+          commentSectionLabel === "Other"
+            ? commentOtherLabel.trim() || "Other"
+            : commentSectionLabel;
+        anchor = { kind: "section", label };
+      } else if (commentAnchorKind === "map" && selected?.location) {
+        anchor = {
+          kind: "map",
+          label: `${selected.location.lat.toFixed(5)}, ${selected.location.lon.toFixed(5)}`,
+        };
+      }
       await addComment(selectedId, {
         author: session.username,
         role: session.role,
         body: commentBody.trim(),
+        anchor,
       });
       setCommentBody("");
+      setCommentAnchorKind("none");
+      setCommentOtherLabel("");
     } catch (err) {
       console.error(err);
       setMessage("Failed to post comment.");
@@ -483,7 +764,7 @@ export default function PlanningPage({ onBack, session }: Props) {
           .split(",")
           .map((s) => s.trim())
           .filter(Boolean),
-        attachments: [] as string[],
+        attachments: meetingAttachments,
       };
       if (editingMeetingId) {
         await updatePlanningMeeting(editingMeetingId, payload);
@@ -501,9 +782,24 @@ export default function PlanningPage({ onBack, session }: Props) {
       setMeetingMinutes("");
       setMeetingDecisions("");
       setMeetingProposalIds("");
+      setMeetingAttachments([]);
     } catch (err) {
       console.error(err);
       setMessage("Failed to save meeting.");
+    }
+    setBusy(false);
+  }
+
+  async function handleMeetingFile(file: File | null) {
+    if (!file || !perms.canManageMeetings) return;
+    setBusy(true);
+    try {
+      const result = await uploadPlanningAttachment(file);
+      setMeetingAttachments((prev) => [...prev, result.url]);
+      setMessage(`Attached ${result.originalName}`);
+    } catch (err) {
+      console.error(err);
+      setMessage(err instanceof Error ? err.message : "Attachment upload failed.");
     }
     setBusy(false);
   }
@@ -517,6 +813,7 @@ export default function PlanningPage({ onBack, session }: Props) {
     setMeetingMinutes(m.minutes);
     setMeetingDecisions(m.decisions.join("\n"));
     setMeetingProposalIds(m.proposalIds.join(", "));
+    setMeetingAttachments(m.attachments || []);
     setShowMeetingForm(true);
   }
 
@@ -619,13 +916,36 @@ export default function PlanningPage({ onBack, session }: Props) {
                   </option>
                 ))}
               </select>
+              <select
+                className="planning-input"
+                value={filterBarangay}
+                onChange={(e) => setFilterBarangay(e.target.value)}
+              >
+                <option value="">All barangays</option>
+                {BARANGAY_LIST.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="planning-input"
+                value={filterKind}
+                onChange={(e) =>
+                  setFilterKind((e.target.value || "") as PlanningRequestKind | "")
+                }
+              >
+                <option value="">All kinds</option>
+                <option value="barangay_request">Barangay request</option>
+                <option value="office_proposal">Office proposal</option>
+              </select>
               {perms.canCreate && (
                 <button
                   type="button"
                   className="planning-btn primary"
                   onClick={() => setShowCreate(true)}
                 >
-                  + New proposal
+                  + New request
                 </button>
               )}
             </div>
@@ -658,14 +978,44 @@ export default function PlanningPage({ onBack, session }: Props) {
                           className={`planning-card ${selectedId === p.id ? "selected" : ""}`}
                           onClick={() => setSelectedId(p.id)}
                         >
-                          <div className="planning-card-title">{p.title}</div>
+                          <div className="planning-card-title-row">
+                            <div className="planning-card-title">{p.title}</div>
+                            <span
+                              className={`planning-kind-badge ${
+                                p.requestKind === "barangay_request" ? "brgy" : "office"
+                              }`}
+                            >
+                              {requestKindLabel(p.requestKind)}
+                            </span>
+                          </div>
                           <div className="planning-card-meta">
                             {p.department}
                             {p.barangay ? ` · ${p.barangay}` : ""}
                           </div>
+                          {(p.assignees?.length > 0 || p.committeeId) && (
+                            <div className="planning-card-chips">
+                              {p.committeeId && (
+                                <span className="planning-chip planning-chip-committee">
+                                  {committeeShortLabel(p.committeeId)}
+                                </span>
+                              )}
+                              {p.assignees?.slice(0, 3).map((u) => (
+                                <span key={u} className="planning-chip">
+                                  {u}
+                                </span>
+                              ))}
+                              {(p.assignees?.length ?? 0) > 3 && (
+                                <span className="planning-chip">+{p.assignees.length - 3}</span>
+                              )}
+                            </div>
+                          )}
                           <div className="planning-card-foot">
                             <span>P{p.priority}</span>
-                            <span>{p.submitter?.username}</span>
+                            <span>
+                              {p.recommendationScore != null
+                                ? `Score ${p.recommendationScore}`
+                                : p.submitter?.username}
+                            </span>
                           </div>
                         </button>
                       ))}
@@ -702,10 +1052,192 @@ export default function PlanningPage({ onBack, session }: Props) {
                   >
                     {PLANNING_STATUS_LABELS[selected.status]}
                   </span>
+                  <span
+                    className={`planning-kind-badge ${
+                      selected.requestKind === "barangay_request" ? "brgy" : "office"
+                    }`}
+                  >
+                    {requestKindLabel(selected.requestKind)}
+                  </span>
                   <span>{selected.department}</span>
                   {selected.barangay && <span>{selected.barangay}</span>}
+                  {!isNeedsAssessmentComplete(selected.needsAssessment) && (
+                    <span className="planning-chip planning-chip-warn">Assessment incomplete</span>
+                  )}
                 </div>
                 <p className="planning-summary">{selected.summary || "No summary."}</p>
+
+                <div className="planning-route">
+                  <label>Approval route</label>
+                  <ol className="planning-stepper">
+                    {routingStepsForStatus(selected.status).map((step) => (
+                      <li key={step.id} className={`planning-step ${step.state}`}>
+                        <span className="planning-step-dot" />
+                        <span>{step.label}</span>
+                      </li>
+                    ))}
+                  </ol>
+                  <p className="planning-next-actor">{nextActorHint(selected.status)}</p>
+                </div>
+
+                <div className="planning-recommend">
+                  <label>System suggestion</label>
+                  <div className="planning-recommend-score">
+                    {selected.recommendationScore ?? computeRecommendation(selected).score}
+                    <span>/ 100</span>
+                  </div>
+                  <ul className="planning-recommend-reasons">
+                    {(selected.recommendationReasons?.length
+                      ? selected.recommendationReasons
+                      : computeRecommendation(selected).reasons
+                    ).map((r) => (
+                      <li key={r}>{r}</li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="planning-needs">
+                  <label>Needs assessment</label>
+                  {(perms.canRecommend || perms.canAssign) ? (
+                    <>
+                      <div className="planning-detail-grid">
+                        <div>
+                          <label>Population served</label>
+                          <input
+                            className="planning-input"
+                            value={needsDraft.populationServed || ""}
+                            onChange={(e) =>
+                              setNeedsDraft((d) => ({
+                                ...d,
+                                populationServed: e.target.value,
+                              }))
+                            }
+                            placeholder="e.g. ~800 households"
+                          />
+                        </div>
+                        <div>
+                          <label>Hazard exposure *</label>
+                          <select
+                            className="planning-input"
+                            value={needsDraft.hazardExposure || ""}
+                            onChange={(e) =>
+                              setNeedsDraft((d) => ({
+                                ...d,
+                                hazardExposure: e.target.value,
+                              }))
+                            }
+                          >
+                            <option value="">— Select —</option>
+                            <option value="high">High</option>
+                            <option value="moderate">Moderate</option>
+                            <option value="low">Low</option>
+                            <option value="none">None</option>
+                          </select>
+                        </div>
+                        <div className="planning-detail-span">
+                          <label>Existing infrastructure</label>
+                          <input
+                            className="planning-input"
+                            value={needsDraft.existingInfra || ""}
+                            onChange={(e) =>
+                              setNeedsDraft((d) => ({
+                                ...d,
+                                existingInfra: e.target.value,
+                              }))
+                            }
+                            placeholder="What exists today?"
+                          />
+                        </div>
+                        <div className="planning-detail-span">
+                          <label>Urgency note *</label>
+                          <textarea
+                            className="planning-input"
+                            rows={2}
+                            value={needsDraft.urgencyNote || ""}
+                            onChange={(e) =>
+                              setNeedsDraft((d) => ({
+                                ...d,
+                                urgencyNote: e.target.value,
+                              }))
+                            }
+                            placeholder="Why this needs attention now"
+                          />
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="planning-btn primary"
+                        disabled={busy}
+                        onClick={() => handleSaveNeeds(selected)}
+                      >
+                        Save assessment
+                      </button>
+                      {selected.needsAssessment?.assessedAt && (
+                        <p className="planning-muted">
+                          Last assessed by {selected.needsAssessment.assessedBy} ·{" "}
+                          {formatWhen(selected.needsAssessment.assessedAt)}
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <div className="planning-needs-readonly">
+                      <div>
+                        Population: {selected.needsAssessment?.populationServed || "—"}
+                      </div>
+                      <div>
+                        Hazard: {selected.needsAssessment?.hazardExposure || "—"}
+                      </div>
+                      <div>
+                        Existing: {selected.needsAssessment?.existingInfra || "—"}
+                      </div>
+                      <div>
+                        Urgency: {selected.needsAssessment?.urgencyNote || "—"}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="planning-docs">
+                  <label>Supporting documents</label>
+                  {(selected.attachments?.length ?? 0) === 0 ? (
+                    <div className="planning-column-empty">No documents yet.</div>
+                  ) : (
+                    <ul className="planning-attach-list">
+                      {selected.attachments!.map((url) => (
+                        <li key={url}>
+                          <a href={attachmentHref(url)} target="_blank" rel="noreferrer">
+                            {attachmentLabel(url)}
+                          </a>
+                          {(perms.canComment || perms.canCreate) && (
+                            <button
+                              type="button"
+                              className="planning-btn"
+                              disabled={busy}
+                              onClick={() => handleRemoveProposalAttachment(selected, url)}
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {(perms.canComment || perms.canCreate) && (
+                    <label className="planning-file-btn">
+                      <input
+                        type="file"
+                        hidden
+                        disabled={busy}
+                        onChange={(e) => {
+                          void handleProposalFile(selected, e.target.files?.[0] ?? null);
+                          e.target.value = "";
+                        }}
+                      />
+                      Upload document
+                    </label>
+                  )}
+                </div>
+
                 <div className="planning-detail-grid">
                   <div>
                     <label>Priority</label>
@@ -745,13 +1277,65 @@ export default function PlanningPage({ onBack, session }: Props) {
                     <label>Updated</label>
                     <div>{formatWhen(selected.updatedAt)}</div>
                   </div>
+                  <div className="planning-detail-span">
+                    <label>Committee</label>
+                    {perms.canAssign ? (
+                      <select
+                        className="planning-input"
+                        value={selected.committeeId || ""}
+                        disabled={busy}
+                        onChange={(e) => handleCommitteeChange(selected, e.target.value)}
+                      >
+                        <option value="">— None —</option>
+                        {PLANNING_COMMITTEES.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div>{committeeLabel(selected.committeeId) || "—"}</div>
+                    )}
+                  </div>
+                  <div className="planning-detail-span">
+                    <label>Assignees</label>
+                    {perms.canAssign ? (
+                      <div className="planning-check-list planning-check-list--offices">
+                        {officeAccounts.map((acc) => (
+                          <label key={acc.username} className="planning-check">
+                            <input
+                              type="checkbox"
+                              checked={selected.assignees?.includes(acc.username) ?? false}
+                              disabled={busy}
+                              onChange={() =>
+                                handleAssigneesChange(
+                                  selected,
+                                  toggleAssignee(selected.assignees || [], acc.username),
+                                )
+                              }
+                            />
+                            <span>
+                              {acc.label}
+                              <span className="planning-check-user"> · {acc.role}</span>
+                            </span>
+                          </label>
+                        ))}
+                      </div>
+                    ) : (
+                      <div>
+                        {selected.assignees?.length
+                          ? selected.assignees.join(", ")
+                          : "—"}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {(transitions.length > 0 ||
                   (perms.canApprove &&
                     (selected.status === "recommended" || selected.status === "in_review"))) && (
                   <div className="planning-actions">
-                    <label>Workflow</label>
+                    <label>Evaluation</label>
                     <textarea
                       className="planning-input"
                       rows={2}
@@ -816,6 +1400,12 @@ export default function PlanningPage({ onBack, session }: Props) {
                           <span>{c.role}</span>
                           <span>{formatWhen(c.createdAt)}</span>
                         </div>
+                        {c.anchor && (
+                          <div className="planning-anchor-badge">
+                            {c.anchor.kind === "map" ? "Map" : "Section"}
+                            {c.anchor.label ? `: ${c.anchor.label}` : ""}
+                          </div>
+                        )}
                         <div>{c.body}</div>
                       </div>
                     ))}
@@ -829,6 +1419,48 @@ export default function PlanningPage({ onBack, session }: Props) {
                         value={commentBody}
                         onChange={(e) => setCommentBody(e.target.value)}
                       />
+                      <div className="planning-anchor-row">
+                        <label>Anchor</label>
+                        <select
+                          className="planning-input"
+                          value={commentAnchorKind}
+                          onChange={(e) =>
+                            setCommentAnchorKind(e.target.value as AnchorKind)
+                          }
+                        >
+                          <option value="none">None</option>
+                          <option value="section">Section</option>
+                          <option
+                            value="map"
+                            disabled={!selected.location}
+                          >
+                            Map{!selected.location ? " (no location)" : ""}
+                          </option>
+                        </select>
+                        {commentAnchorKind === "section" && (
+                          <>
+                            <select
+                              className="planning-input"
+                              value={commentSectionLabel}
+                              onChange={(e) => setCommentSectionLabel(e.target.value)}
+                            >
+                              {SECTION_ANCHORS.map((s) => (
+                                <option key={s} value={s}>
+                                  {s}
+                                </option>
+                              ))}
+                            </select>
+                            {commentSectionLabel === "Other" && (
+                              <input
+                                className="planning-input"
+                                placeholder="Section label"
+                                value={commentOtherLabel}
+                                onChange={(e) => setCommentOtherLabel(e.target.value)}
+                              />
+                            )}
+                          </>
+                        )}
+                      </div>
                       <button
                         type="button"
                         className="planning-btn primary"
@@ -851,11 +1483,12 @@ export default function PlanningPage({ onBack, session }: Props) {
             <button
               type="button"
               className="planning-btn"
-              onClick={() =>
+              onClick={() => {
                 setCalendarMonth(
                   new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1),
-                )
-              }
+                );
+                setSelectedCalDay(null);
+              }}
             >
               ←
             </button>
@@ -865,11 +1498,12 @@ export default function PlanningPage({ onBack, session }: Props) {
             <button
               type="button"
               className="planning-btn"
-              onClick={() =>
+              onClick={() => {
                 setCalendarMonth(
                   new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1),
-                )
-              }
+                );
+                setSelectedCalDay(null);
+              }}
             >
               →
             </button>
@@ -883,11 +1517,83 @@ export default function PlanningPage({ onBack, session }: Props) {
               </button>
             )}
           </div>
+
+          <div className="planning-cal-grid" role="grid" aria-label="Month calendar">
+            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
+              <div key={d} className="planning-cal-dow">
+                {d}
+              </div>
+            ))}
+            {monthCells.map((cell, idx) => {
+              if (!cell) {
+                return <div key={`empty-${idx}`} className="planning-cal-cell empty" />;
+              }
+              const dayEvs = monthEvents.filter((ev) => sameCalendarDay(ev.startsAt, cell));
+              const isSelected =
+                !!selectedCalDay &&
+                selectedCalDay.getFullYear() === cell.getFullYear() &&
+                selectedCalDay.getMonth() === cell.getMonth() &&
+                selectedCalDay.getDate() === cell.getDate();
+              const now = new Date();
+              const isToday =
+                now.getFullYear() === cell.getFullYear() &&
+                now.getMonth() === cell.getMonth() &&
+                now.getDate() === cell.getDate();
+              return (
+                <button
+                  key={cell.toISOString()}
+                  type="button"
+                  className={`planning-cal-cell${isSelected ? " selected" : ""}${isToday ? " today" : ""}`}
+                  onClick={() => setSelectedCalDay(cell)}
+                >
+                  <span className="planning-cal-daynum">{cell.getDate()}</span>
+                  <div className="planning-cal-dots">
+                    {dayEvs.slice(0, 3).map((ev) => (
+                      <span
+                        key={ev.id}
+                        className={`planning-cal-dot type-${ev.type}`}
+                        title={ev.title}
+                      />
+                    ))}
+                    {dayEvs.length > 3 && (
+                      <span className="planning-cal-more">+{dayEvs.length - 3}</span>
+                    )}
+                  </div>
+                  {dayEvs[0] && (
+                    <div className="planning-cal-title" title={dayEvs[0].title}>
+                      {dayEvs[0].title}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
           <div className="planning-event-list">
-            {monthEvents.length === 0 && (
-              <div className="planning-empty">No events this month.</div>
+            <h3 style={{ margin: "12px 0 8px", fontSize: 14 }}>
+              {selectedCalDay
+                ? `Events on ${selectedCalDay.toLocaleDateString(undefined, {
+                    weekday: "short",
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                  })}`
+                : "Events this month"}
+              {selectedCalDay && (
+                <button
+                  type="button"
+                  className="planning-btn"
+                  style={{ marginLeft: 8 }}
+                  onClick={() => setSelectedCalDay(null)}
+                >
+                  Show month
+                </button>
+              )}
+            </h3>
+            {dayEvents.length === 0 && (
+              <div className="planning-empty">No events.</div>
             )}
-            {monthEvents.map((ev) => (
+            {dayEvents.map((ev) => (
               <div key={ev.id} className="planning-event-card">
                 <div className="planning-event-type">{ev.type}</div>
                 <div className="planning-card-title">{ev.title}</div>
@@ -895,12 +1601,22 @@ export default function PlanningPage({ onBack, session }: Props) {
                   {formatWhen(ev.startsAt)}
                   {ev.endsAt ? ` → ${formatWhen(ev.endsAt)}` : ""}
                 </div>
+                {ev.type === "committee" && (
+                  <div className="planning-card-meta">Committee meeting</div>
+                )}
                 {ev.attendees.length > 0 && (
                   <div className="planning-card-meta">Attendees: {ev.attendees.join(", ")}</div>
                 )}
                 {ev.proposalIds.length > 0 && (
                   <div className="planning-card-meta">
-                    Proposals: {ev.proposalIds.join(", ")}
+                    Proposals:{" "}
+                    {ev.proposalIds
+                      .map((id) => {
+                        const p = proposals.find((x) => x.id === id);
+                        const c = p ? committeeShortLabel(p.committeeId) : null;
+                        return c ? `${id} (${c})` : id;
+                      })
+                      .join(", ")}
                   </div>
                 )}
                 {perms.canManageCalendar && (
@@ -942,6 +1658,7 @@ export default function PlanningPage({ onBack, session }: Props) {
                 className="planning-btn primary"
                 onClick={() => {
                   setEditingMeetingId(null);
+                  setMeetingAttachments([]);
                   setShowMeetingForm(true);
                 }}
               >
@@ -985,6 +1702,20 @@ export default function PlanningPage({ onBack, session }: Props) {
                     </ul>
                   </div>
                 )}
+                {m.attachments?.length > 0 && (
+                  <div className="planning-meeting-block">
+                    <label>Attachments</label>
+                    <ul className="planning-attach-list">
+                      {m.attachments.map((url) => (
+                        <li key={url}>
+                          <a href={attachmentHref(url)} target="_blank" rel="noreferrer">
+                            {attachmentLabel(url)}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 {perms.canManageMeetings && (
                   <div className="planning-action-row">
                     <button
@@ -1012,66 +1743,167 @@ export default function PlanningPage({ onBack, session }: Props) {
 
       {showCreate && (
         <div className="planning-modal-backdrop" onClick={() => setShowCreate(false)}>
-          <div className="planning-modal" onClick={(e) => e.stopPropagation()}>
-            <h2>New planning proposal</h2>
-            <label>Title</label>
-            <input
-              className="planning-input"
-              value={draftTitle}
-              onChange={(e) => setDraftTitle(e.target.value)}
-            />
-            <label>Summary</label>
-            <textarea
-              className="planning-input"
-              rows={4}
-              value={draftSummary}
-              onChange={(e) => setDraftSummary(e.target.value)}
-            />
-            <label>Barangay</label>
-            <select
-              className="planning-input"
-              value={draftBarangay}
-              onChange={(e) => setDraftBarangay(e.target.value)}
-            >
-              <option value="">—</option>
-              {BARANGAY_LIST.map((b) => (
-                <option key={b} value={b}>
-                  {b}
-                </option>
-              ))}
-            </select>
-            <label>Priority (1 = highest)</label>
-            <select
-              className="planning-input"
-              value={draftPriority}
-              onChange={(e) => setDraftPriority(Number(e.target.value) as 1 | 2 | 3 | 4 | 5)}
-            >
-              {[1, 2, 3, 4, 5].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-            <div className="planning-action-row">
-              <button
-                type="button"
-                className="planning-btn"
-                disabled={busy}
-                onClick={() => handleCreateProposal(false)}
+          <div
+            className="planning-modal planning-modal--tall"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-labelledby="planning-create-title"
+          >
+            <div className="planning-modal-head">
+              <h2 id="planning-create-title">New infrastructure request / proposal</h2>
+            </div>
+            <div className="planning-modal-body">
+              <label>Request type</label>
+              <select
+                className="planning-input"
+                value={draftRequestKind}
+                onChange={(e) =>
+                  setDraftRequestKind(e.target.value as PlanningRequestKind)
+                }
               >
-                Save draft
-              </button>
-              <button
-                type="button"
-                className="planning-btn primary"
-                disabled={busy}
-                onClick={() => handleCreateProposal(true)}
+                <option value="office_proposal">Office proposal</option>
+                <option value="barangay_request">Barangay infrastructure request</option>
+              </select>
+              <label>Title</label>
+              <input
+                className="planning-input"
+                value={draftTitle}
+                onChange={(e) => setDraftTitle(e.target.value)}
+              />
+              <label>Summary</label>
+              <textarea
+                className="planning-input planning-textarea"
+                rows={3}
+                value={draftSummary}
+                onChange={(e) => setDraftSummary(e.target.value)}
+              />
+              <div className="planning-modal-row">
+                <div>
+                  <label>
+                    Barangay
+                    {draftRequestKind === "barangay_request" ? " *" : ""}
+                  </label>
+                  <select
+                    className="planning-input"
+                    value={draftBarangay}
+                    onChange={(e) => setDraftBarangay(e.target.value)}
+                  >
+                    <option value="">—</option>
+                    {BARANGAY_LIST.map((b) => (
+                      <option key={b} value={b}>
+                        {b}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label>Priority (1 = highest)</label>
+                  <select
+                    className="planning-input"
+                    value={draftPriority}
+                    onChange={(e) =>
+                      setDraftPriority(Number(e.target.value) as 1 | 2 | 3 | 4 | 5)
+                    }
+                  >
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <label>Committee</label>
+              <select
+                className="planning-input"
+                value={draftCommitteeId}
+                onChange={(e) => setDraftCommitteeId(e.target.value)}
               >
-                Submit
-              </button>
-              <button type="button" className="planning-btn" onClick={() => setShowCreate(false)}>
-                Cancel
-              </button>
+                <option value="">— None —</option>
+                {PLANNING_COMMITTEES.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+              <label>Assignees</label>
+              <div className="planning-check-list planning-check-list--offices">
+                {officeAccounts.map((acc) => (
+                  <label key={acc.username} className="planning-check">
+                    <input
+                      type="checkbox"
+                      checked={draftAssignees.includes(acc.username)}
+                      onChange={() =>
+                        setDraftAssignees((prev) => toggleAssignee(prev, acc.username))
+                      }
+                    />
+                    <span>
+                      {acc.label}
+                      <span className="planning-check-user"> · {acc.role}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <label>Supporting documents (optional)</label>
+              {draftAttachments.length > 0 && (
+                <ul className="planning-attach-list">
+                  {draftAttachments.map((url) => (
+                    <li key={url}>
+                      <a href={attachmentHref(url)} target="_blank" rel="noreferrer">
+                        {attachmentLabel(url)}
+                      </a>
+                      <button
+                        type="button"
+                        className="planning-btn"
+                        onClick={() =>
+                          setDraftAttachments((prev) => prev.filter((u) => u !== url))
+                        }
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <label className="planning-file-btn">
+                <input
+                  type="file"
+                  hidden
+                  disabled={busy}
+                  onChange={(e) => {
+                    void handleDraftFile(e.target.files?.[0] ?? null);
+                    e.target.value = "";
+                  }}
+                />
+                Attach file
+              </label>
+            </div>
+            <div className="planning-modal-foot">
+              <div className="planning-action-row">
+                <button
+                  type="button"
+                  className="planning-btn"
+                  disabled={busy}
+                  onClick={() => handleCreateProposal(false)}
+                >
+                  Save draft
+                </button>
+                <button
+                  type="button"
+                  className="planning-btn primary"
+                  disabled={busy}
+                  onClick={() => handleCreateProposal(true)}
+                >
+                  Submit
+                </button>
+                <button
+                  type="button"
+                  className="planning-btn"
+                  onClick={() => setShowCreate(false)}
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1192,6 +2024,39 @@ export default function PlanningPage({ onBack, session }: Props) {
               value={meetingProposalIds}
               onChange={(e) => setMeetingProposalIds(e.target.value)}
             />
+            <label>Attachments</label>
+            <div className="planning-attach-compose">
+              <input
+                type="file"
+                accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx"
+                disabled={busy}
+                onChange={(e) => {
+                  const f = e.target.files?.[0] ?? null;
+                  e.target.value = "";
+                  void handleMeetingFile(f);
+                }}
+              />
+              {meetingAttachments.length > 0 && (
+                <ul className="planning-attach-list">
+                  {meetingAttachments.map((url) => (
+                    <li key={url}>
+                      <a href={attachmentHref(url)} target="_blank" rel="noreferrer">
+                        {attachmentLabel(url)}
+                      </a>
+                      <button
+                        type="button"
+                        className="planning-btn danger"
+                        onClick={() =>
+                          setMeetingAttachments((prev) => prev.filter((u) => u !== url))
+                        }
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
             <div className="planning-action-row">
               <button
                 type="button"
@@ -1204,7 +2069,10 @@ export default function PlanningPage({ onBack, session }: Props) {
               <button
                 type="button"
                 className="planning-btn"
-                onClick={() => setShowMeetingForm(false)}
+                onClick={() => {
+                  setShowMeetingForm(false);
+                  setMeetingAttachments([]);
+                }}
               >
                 Cancel
               </button>

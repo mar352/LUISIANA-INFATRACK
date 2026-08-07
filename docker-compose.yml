@@ -6,6 +6,8 @@ services:
       CLIENT_ORIGIN: ${CLIENT_ORIGIN:-http://localhost:8080}
       UPLOADS_DIR: /app/uploads
       PROJECTS_DATA_PATH: /app/data/projects.json
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:1b}
     volumes:
       - uploads_data:/app/uploads
       - project_data:/app/data

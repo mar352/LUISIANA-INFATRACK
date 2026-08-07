@@ -21,9 +21,12 @@ import type {
   PlanningComment,
   PlanningEvent,
   PlanningMeeting,
+  PlanningNeedsAssessment,
   PlanningProposal,
+  PlanningRequestKind,
 } from "../types";
 import { backendUrl } from "../lib/api";
+import { computeRecommendation } from "../lib/planning-recommend";
 
 function stripUndefined<T extends Record<string, unknown>>(obj: T): Record<string, unknown> {
   const cleaned: Record<string, unknown> = {};
@@ -45,8 +48,23 @@ async function notifyPlanningUpdate(kind: string) {
   }
 }
 
-function mapProposal(id: string, data: Record<string, unknown>): PlanningProposal {
+function mapNeeds(raw: unknown): PlanningNeedsAssessment | null {
+  if (!raw || typeof raw !== "object") return null;
+  const d = raw as Record<string, unknown>;
   return {
+    populationServed: d.populationServed ? String(d.populationServed) : undefined,
+    hazardExposure: d.hazardExposure ? String(d.hazardExposure) : undefined,
+    existingInfra: d.existingInfra ? String(d.existingInfra) : undefined,
+    urgencyNote: d.urgencyNote ? String(d.urgencyNote) : undefined,
+    assessedBy: d.assessedBy ? String(d.assessedBy) : undefined,
+    assessedAt: d.assessedAt ? String(d.assessedAt) : undefined,
+  };
+}
+
+function mapProposal(id: string, data: Record<string, unknown>): PlanningProposal {
+  const requestKind = (data.requestKind as PlanningRequestKind) || "office_proposal";
+  const needsAssessment = mapNeeds(data.needsAssessment);
+  const base: PlanningProposal = {
     id,
     title: String(data.title ?? ""),
     summary: String(data.summary ?? ""),
@@ -63,9 +81,25 @@ function mapProposal(id: string, data: Record<string, unknown>): PlanningProposa
     assignees: Array.isArray(data.assignees) ? (data.assignees as string[]) : [],
     committeeId: (data.committeeId as string | null) ?? null,
     approvals: Array.isArray(data.approvals) ? (data.approvals as PlanningApproval[]) : [],
+    requestKind,
+    needsAssessment,
+    recommendationScore:
+      data.recommendationScore != null ? Number(data.recommendationScore) : null,
+    recommendationReasons: Array.isArray(data.recommendationReasons)
+      ? (data.recommendationReasons as string[])
+      : [],
+    attachments: Array.isArray(data.attachments) ? (data.attachments as string[]) : [],
     createdAt: String(data.createdAt ?? ""),
     updatedAt: String(data.updatedAt ?? ""),
   };
+
+  // Backfill score for older docs missing it
+  if (base.recommendationScore == null) {
+    const rec = computeRecommendation(base);
+    base.recommendationScore = rec.score;
+    base.recommendationReasons = rec.reasons;
+  }
+  return base;
 }
 
 export function subscribeToProposals(
@@ -94,12 +128,28 @@ export async function createProposal(
   },
 ): Promise<PlanningProposal> {
   const now = new Date().toISOString();
+  const withDefaults: PlanningProposal = {
+    ...input,
+    id: "pending",
+    approvals: input.approvals ?? [],
+    requestKind: input.requestKind ?? "office_proposal",
+    needsAssessment: input.needsAssessment ?? null,
+    attachments: input.attachments ?? [],
+    createdAt: now,
+    updatedAt: now,
+  };
+  const rec = computeRecommendation(withDefaults);
   const payload = stripUndefined({
     ...input,
     approvals: input.approvals ?? [],
     linkedProjectId: input.linkedProjectId ?? null,
     location: input.location ?? null,
     committeeId: input.committeeId ?? null,
+    requestKind: input.requestKind ?? "office_proposal",
+    needsAssessment: input.needsAssessment ?? null,
+    attachments: input.attachments ?? [],
+    recommendationScore: rec.score,
+    recommendationReasons: rec.reasons,
     createdAt: now,
     updatedAt: now,
   });
