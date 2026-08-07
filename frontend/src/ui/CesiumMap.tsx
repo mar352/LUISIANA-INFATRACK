@@ -8,12 +8,13 @@ import * as Cesium from "cesium";
 import "cesium/Build/Cesium/Widgets/widgets.css";
 import type { Project, ProjectStatus } from "../types";
 import { MODEL_CATALOG, PROJECT_STATUS_COLORS, PROJECT_STATUS_LABELS } from "../types";
-import { dateFromSolarHour, getSunPosition, LUISIANA_CENTER } from "../lib/solar";
+import { dateFromSolarHour, getSunPosition, LUISIANA_CENTER, sunEnuFromAltitudeBearing } from "../lib/solar";
 import { patchProject } from "../lib/api";
 import { updateProjectInFirestore } from "../services/firestore-projects";
 import { gibsWmtsTileUrl, GIBS_LAYERS, type GibsLayerId } from "../lib/gibs";
 import { getCachedGlbUrl } from "../lib/glb-cache";
 import { luisianaPaddedBounds } from "../lib/luisiana-bounds";
+import { fetchLuisianaBuildings, type BuildingFootprint } from "../lib/osm-buildings";
 import { PlaceSidePanel } from "./PlaceSidePanel";
 
 /**
@@ -22,6 +23,62 @@ import { PlaceSidePanel } from "./PlaceSidePanel";
  */
 const MUNICIPAL_3D_PITCH_RAD = Cesium.Math.toRadians(-75);
 const MUNICIPAL_3D_MAX_HEIGHT_M = 45_000;
+/** Cap extruded OSM blocks so weak GPUs don't melt. */
+const MAX_OSM_BUILDING_BLOCKS = 4500;
+const OSM_BUILDING_BATCH = 350;
+/** Lift blocks off the ellipsoid to avoid black z-fight with the basemap. */
+const OSM_BLOCK_BASE_M = 1.25;
+/** Light gray-white blocks (reference style) — basemap stays normal OSM. */
+const OSM_BLOCK_COLOR = "#E8E6E1";
+const OSM_BLDG_ID_PREFIX = "osm-bldg-";
+const REMOVED_BLOCKS_STORAGE_KEY = "infatrack-luisiana-removed-blocks-v1";
+
+function osmBuildingInstanceId(id: string | number | undefined, fallback: number): string {
+  return `${OSM_BLDG_ID_PREFIX}${id ?? `i${fallback}`}`;
+}
+
+function loadRemovedBlockIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(REMOVED_BLOCKS_STORAGE_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr.map(String) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveRemovedBlockIds(ids: Set<string>) {
+  try {
+    localStorage.setItem(REMOVED_BLOCKS_STORAGE_KEY, JSON.stringify([...ids]));
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+function pickOsmBuildingId(viewer: Cesium.Viewer, screenPos: Cesium.Cartesian2): string | null {
+  const picked = viewer.scene.pick(screenPos);
+  if (!Cesium.defined(picked)) return null;
+  if (typeof picked === "string" && picked.startsWith(OSM_BLDG_ID_PREFIX)) return picked;
+  const id = (picked as { id?: unknown }).id;
+  if (typeof id === "string" && id.startsWith(OSM_BLDG_ID_PREFIX)) return id;
+  return null;
+}
+
+function ringSpanOk(ring: number[][]): boolean {
+  let west = Infinity;
+  let south = Infinity;
+  let east = -Infinity;
+  let north = -Infinity;
+  for (const p of ring) {
+    if (p[0] < west) west = p[0];
+    if (p[0] > east) east = p[0];
+    if (p[1] < south) south = p[1];
+    if (p[1] > north) north = p[1];
+  }
+  // Skip broken/huge rings that paint over the whole town.
+  return east - west < 0.012 && north - south < 0.012 && east > west && north > south;
+}
 
 /** Load full GLB only when camera is this close (meters). */
 const MODEL_LOAD_DIST_M = 5500;
@@ -41,6 +98,8 @@ export type CesiumMapHandle = {
   zoomOut: () => void;
   flyHome: () => void;
   toggleTilt: () => void;
+  /** Restore all user-removed OSM blocks. */
+  restoreRemovedBlocks: () => void;
 };
 
 type PlaceClick = { lng: number; lat: number };
@@ -60,6 +119,11 @@ type LocalXform = {
 
 type Props = {
   solarHour: number;
+  /**
+   * Compass bearing of the sun (0° = N, 90° = E). Overrides SunCalc azimuth;
+   * altitude still comes from solarHour.
+   */
+  sunAzimuthDeg?: number;
   projects: Project[];
   visible?: boolean;
   placementMode?: boolean;
@@ -74,6 +138,12 @@ type Props = {
     date: string;
     opacity: number;
   };
+  /** Opacity of Luisiana OSM 3D building blocks (0–1). */
+  buildingBlocksOpacity?: number;
+  /** Layers toggle — hide/show Luisiana 3D blocks. */
+  buildingBlocksVisible?: boolean;
+  /** Click a block to remove it (engineer tool). */
+  blockRemoverActive?: boolean;
 };
 
 function gibsMaximumLevel(layer: GibsLayerId): number {
@@ -232,6 +302,7 @@ function statusColor(status: Project["status"]) {
 export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
   {
     solarHour,
+    sunAzimuthDeg,
     projects,
     visible = true,
     placementMode = false,
@@ -240,12 +311,25 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     canAddPhotos = false,
     onDeleteBuilding,
     gibs,
+    buildingBlocksOpacity = 1,
+    buildingBlocksVisible = true,
+    blockRemoverActive = false,
   },
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<Cesium.Viewer | null>(null);
   const gibsImageryRef = useRef<Cesium.ImageryLayer | null>(null);
+  const buildingPrimitivesRef = useRef<Cesium.Primitive[]>([]);
+  const buildingMaterialRef = useRef<Cesium.Material | null>(null);
+  const buildingBlocksVisibleRef = useRef(buildingBlocksVisible);
+  buildingBlocksVisibleRef.current = buildingBlocksVisible;
+  const buildingFootprintsRef = useRef<BuildingFootprint[] | null>(null);
+  const removedBlockIdsRef = useRef<Set<string>>(loadRemovedBlockIds());
+  const rebuildBuildingsRef = useRef<(() => Promise<void>) | null>(null);
+  const blockRemoverActiveRef = useRef(blockRemoverActive);
+  blockRemoverActiveRef.current = blockRemoverActive;
+  const [removedBlockCount, setRemovedBlockCount] = useState(() => loadRemovedBlockIds().size);
   const [viewerReady, setViewerReady] = useState(0);
   const loadedIdsRef = useRef<Set<string>>(new Set());
   /** Project ids that currently have a GLB ModelGraphics attached (not just a pin). */
@@ -351,6 +435,12 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         },
         duration: 0.5,
       });
+    },
+    restoreRemovedBlocks() {
+      removedBlockIdsRef.current = new Set();
+      saveRemovedBlockIds(removedBlockIdsRef.current);
+      setRemovedBlockCount(0);
+      void rebuildBuildingsRef.current?.();
     },
   }));
 
@@ -473,8 +563,9 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
 
     const sm = viewer.shadowMap;
     sm.softShadows = false;
-    sm.darkness = 0.55;
-    sm.maximumDistance = 4500;
+    sm.darkness = 0.35;
+    sm.maximumDistance = 3500;
+    sm.size = 2048;
 
     (async () => {
       try {
@@ -487,14 +578,104 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       }
     })();
 
+    // Luisiana-only extruded OSM blocks (pickable ids for block remover).
+    let buildingsCancelled = false;
+
+    const clearBuildingPrimitives = () => {
+      for (const p of buildingPrimitivesRef.current) {
+        try {
+          if (!viewer.isDestroyed()) viewer.scene.primitives.remove(p);
+        } catch {
+          /* ignore */
+        }
+      }
+      buildingPrimitivesRef.current = [];
+    };
+
+    const mountBuildingFootprints = async (footprints: BuildingFootprint[]) => {
+      if (buildingsCancelled || viewer.isDestroyed()) return;
+      clearBuildingPrimitives();
+      const removed = removedBlockIdsRef.current;
+      const capped = footprints.slice(0, MAX_OSM_BUILDING_BLOCKS);
+      const roof = Cesium.Color.fromCssColorString(OSM_BLOCK_COLOR).withAlpha(1);
+      const kept: { b: BuildingFootprint; id: string }[] = [];
+      for (let i = 0; i < capped.length; i++) {
+        const b = capped[i];
+        const id = osmBuildingInstanceId(b.id, i);
+        if (removed.has(id)) continue;
+        if (b.ring.length < 4 || !ringSpanOk(b.ring)) continue;
+        kept.push({ b, id });
+      }
+
+      for (let i = 0; i < kept.length; i += OSM_BUILDING_BATCH) {
+        if (buildingsCancelled || viewer.isDestroyed()) return;
+        const slice = kept.slice(i, i + OSM_BUILDING_BATCH);
+        const instances: Cesium.GeometryInstance[] = [];
+        for (const { b, id } of slice) {
+          const positions: number[] = [];
+          for (const p of b.ring) positions.push(p[0], p[1]);
+          const h = Math.max(3.5, Math.min(45, b.heightM));
+          try {
+            instances.push(
+              new Cesium.GeometryInstance({
+                id,
+                geometry: new Cesium.PolygonGeometry({
+                  polygonHierarchy: new Cesium.PolygonHierarchy(
+                    Cesium.Cartesian3.fromDegreesArray(positions),
+                  ),
+                  height: OSM_BLOCK_BASE_M,
+                  extrudedHeight: OSM_BLOCK_BASE_M + h,
+                  vertexFormat: Cesium.PerInstanceColorAppearance.VERTEX_FORMAT,
+                  arcType: Cesium.ArcType.GEODESIC,
+                }),
+                attributes: {
+                  color: Cesium.ColorGeometryInstanceAttribute.fromColor(roof),
+                },
+              }),
+            );
+          } catch {
+            /* skip bad rings */
+          }
+        }
+        if (instances.length === 0) continue;
+        const primitive = new Cesium.Primitive({
+          geometryInstances: instances,
+          appearance: new Cesium.PerInstanceColorAppearance({
+            closed: true,
+            translucent: false,
+            flat: false,
+          }),
+          asynchronous: true,
+          shadows: Cesium.ShadowMode.CAST_ONLY,
+          compressVertices: true,
+          cull: true,
+          allowPicking: true,
+        });
+        viewer.scene.primitives.add(primitive);
+        primitive.show = buildingBlocksVisibleRef.current;
+        buildingPrimitivesRef.current.push(primitive);
+        viewer.scene.requestRender();
+        await new Promise((r) => setTimeout(r, 0));
+      }
+      console.info(
+        `[CesiumMap] Luisiana 3D blocks: ${kept.length} (removed ${removed.size})`,
+      );
+    };
+
+    rebuildBuildingsRef.current = async () => {
+      const fps = buildingFootprintsRef.current;
+      if (!fps || viewer.isDestroyed()) return;
+      await mountBuildingFootprints(fps);
+    };
+
     (async () => {
-      if (!hasIon) return;
       try {
-        const buildings = await Cesium.createOsmBuildingsAsync();
-        buildings.shadows = Cesium.ShadowMode.ENABLED;
-        viewer.scene.primitives.add(buildings);
+        const footprints = await fetchLuisianaBuildings();
+        if (buildingsCancelled || viewer.isDestroyed()) return;
+        buildingFootprintsRef.current = footprints;
+        await mountBuildingFootprints(footprints);
       } catch (err) {
-        console.warn("[CesiumMap] OSM Buildings unavailable:", err);
+        console.warn("[CesiumMap] Luisiana buildings failed:", err);
       }
     })();
 
@@ -535,8 +716,20 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     setViewerReady((n) => n + 1);
 
     return () => {
+      rebuildBuildingsRef.current = null;
+      buildingFootprintsRef.current = null;
+      buildingsCancelled = true;
       removeCamChanged();
       removeCamMoveEnd();
+      for (const p of buildingPrimitivesRef.current) {
+        try {
+          if (!viewer.isDestroyed()) viewer.scene.primitives.remove(p);
+        } catch {
+          /* ignore */
+        }
+      }
+      buildingPrimitivesRef.current = [];
+      buildingMaterialRef.current = null;
       loadedIdsRef.current.clear();
       modelAttachedRef.current.clear();
       modelLoadingIdsRef.current.clear();
@@ -549,7 +742,18 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     };
   }, [visible]);
 
-  // ── Sync solar clock ─────────────────────────────────────────────────────
+  // ── 3D block visibility + opacity (Luisiana OSM extrusions) ──────────────
+  useEffect(() => {
+    const alpha = Math.max(0, Math.min(1, buildingBlocksOpacity));
+    const show = buildingBlocksVisible && alpha > 0.05;
+    for (const p of buildingPrimitivesRef.current) {
+      p.show = show;
+    }
+    const viewer = viewerRef.current;
+    if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();
+  }, [buildingBlocksVisible, buildingBlocksOpacity, viewerReady]);
+
+  // ── Sync solar clock + directional light from hour + azimuth dial ────────
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer || viewer.isDestroyed()) return;
@@ -558,14 +762,44 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     viewer.clock.currentTime = Cesium.JulianDate.fromDate(date);
     viewer.clock.shouldAnimate = false;
 
-    const pos = getSunPosition(LUISIANA_CENTER.lat, LUISIANA_CENTER.lon, date);
-    viewer.shadows = pos.isDaylight;
+    const astro = getSunPosition(LUISIANA_CENTER.lat, LUISIANA_CENTER.lon, date);
+    const bearing =
+      typeof sunAzimuthDeg === "number" && Number.isFinite(sunAzimuthDeg)
+        ? ((sunAzimuthDeg % 360) + 360) % 360
+        : undefined;
+
+    // Keep astronomical daylight from altitude; dial only rotates horizontally.
+    const isDay = astro.isDaylight;
+    viewer.shadows = isDay;
     viewer.scene.globe.enableLighting = true;
-    viewer.scene.light = new Cesium.SunLight({
-      intensity: pos.isDaylight ? 2.2 : 0.35,
-    });
+
+    if (bearing != null) {
+      const { east, north, up } = sunEnuFromAltitudeBearing(astro.altitudeRad, bearing);
+      const origin = Cesium.Cartesian3.fromDegrees(LUISIANA_CENTER.lon, LUISIANA_CENTER.lat, 0);
+      const enu = Cesium.Transforms.eastNorthUpToFixedFrame(origin);
+      const localTowardSun = new Cesium.Cartesian3(east, north, up);
+      const worldTowardSun = Cesium.Matrix4.multiplyByPointAsVector(
+        enu,
+        localTowardSun,
+        new Cesium.Cartesian3(),
+      );
+      Cesium.Cartesian3.normalize(worldTowardSun, worldTowardSun);
+      // DirectionalLight.direction = direction light travels (toward the scene).
+      const lightDir = Cesium.Cartesian3.negate(worldTowardSun, new Cesium.Cartesian3());
+
+      viewer.scene.light = new Cesium.DirectionalLight({
+        direction: lightDir,
+        color: Cesium.Color.WHITE,
+        intensity: isDay ? 2.8 : 0.35,
+      });
+    } else {
+      viewer.scene.light = new Cesium.SunLight({
+        intensity: isDay ? 2.8 : 0.35,
+      });
+    }
+
     viewer.scene.requestRender();
-  }, [solarHour, viewerReady]);
+  }, [solarHour, sunAzimuthDeg, viewerReady]);
 
   // ── NASA GIBS precip / climate WMTS overlay ──────────────────────────────
   useEffect(() => {
@@ -1003,6 +1237,18 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       }
       if (moving || rotating) return;
 
+      // Block remover: click an OSM extrusion to delete it (persisted locally).
+      if (blockRemoverActiveRef.current && !readOnlyRef.current) {
+        const bldgId = pickOsmBuildingId(viewer, click.position);
+        if (bldgId) {
+          removedBlockIdsRef.current.add(bldgId);
+          saveRemovedBlockIds(removedBlockIdsRef.current);
+          setRemovedBlockCount(removedBlockIdsRef.current.size);
+          void rebuildBuildingsRef.current?.();
+          return;
+        }
+      }
+
       const hitId = pickProjectId(viewer, click.position);
 
       if (placementModeRef.current) {
@@ -1096,11 +1342,15 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer || viewer.isDestroyed() || !viewerReady) return;
-    viewer.canvas.style.cursor = placementMode ? "crosshair" : "";
+    viewer.canvas.style.cursor = placementMode
+      ? "crosshair"
+      : blockRemoverActive
+        ? "cell"
+        : "";
     return () => {
       if (!viewer.isDestroyed()) viewer.canvas.style.cursor = "";
     };
-  }, [placementMode, viewerReady]);
+  }, [placementMode, blockRemoverActive, viewerReady]);
 
   // While an unlocked model is selected, scroll scales it instead of zooming the camera.
   useEffect(() => {
@@ -1271,7 +1521,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
           position: "absolute",
           inset: 0,
           zIndex: 1,
-          cursor: placementMode ? "crosshair" : undefined,
+          cursor: placementMode ? "crosshair" : blockRemoverActive ? "cell" : undefined,
         }}
       />
 

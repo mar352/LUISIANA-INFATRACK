@@ -18,14 +18,17 @@ import {
   dateFromSolarHour,
   formatSolarHour,
   getCurrentSolarHour,
-  getSunLightPosition,
   getSunPosition,
+  bearingDegFromSunCalcAzimuth,
+  sunPositionWithBearing,
+  sunDirectionFromPosition,
   shadowGroundOffset,
   shadowStretchFromAltitude,
   daylightRasterScale,
   ensureNightVeilLayer,
   LUISIANA_CENTER,
 } from "../lib/solar";
+import { SunAzimuthDial } from "./SunAzimuthDial";
 import { 
   getTerrainSource, 
   getSatelliteSource, 
@@ -181,6 +184,7 @@ type LayerToggles = {
   gibsPrecip: boolean;
   risk: boolean;
   projects: boolean;
+  buildingBlocks: boolean;
   stormTrack: boolean;
 };
 
@@ -193,10 +197,11 @@ const DEFAULT_TOGGLES: LayerToggles = {
   gibsPrecip: false,
   risk: false,
   projects: true,
+  buildingBlocks: true,
   stormTrack: false,
 };
 
-const BUILDING_EXTRUSION_OPACITY_DEFAULT = 0.9;
+const BUILDING_EXTRUSION_OPACITY_DEFAULT = 1;
 
 /**
  * The REAL 3D blocks on this app:
@@ -317,19 +322,36 @@ export default function App() {
   const [connected, setConnected] = useState(false);
   const [toggles, setToggles] = useState<LayerToggles>(DEFAULT_TOGGLES);
   const [solarHour, setSolarHour] = useState(() => getCurrentSolarHour());
+  const [sunAzimuthDeg, setSunAzimuthDeg] = useState(() => {
+    const date = dateFromSolarHour(getCurrentSolarHour());
+    const pos = getSunPosition(LUISIANA_CENTER.lat, LUISIANA_CENTER.lon, date);
+    return bearingDegFromSunCalcAzimuth(pos.azimuthRad);
+  });
   const sunLighting = useMemo(() => {
     const date = dateFromSolarHour(solarHour);
-    const pos = getSunPosition(LUISIANA_CENTER.lat, LUISIANA_CENTER.lon, date);
+    const astro = getSunPosition(LUISIANA_CENTER.lat, LUISIANA_CENTER.lon, date);
+    const pos = sunPositionWithBearing(astro.altitudeRad, sunAzimuthDeg);
+    const [dx, dy, dz] = sunDirectionFromPosition(pos);
+    const lightPosition: [number, number, number] = pos.isDaylight
+      ? [dx * 100, dy * 100, Math.max(12, dz * 100)]
+      : [dx * 40, dy * 40, Math.max(8, Math.abs(dz) * 20)];
     return {
       pos,
-      lightPosition: getSunLightPosition(LUISIANA_CENTER.lat, LUISIANA_CENTER.lon, solarHour),
+      lightPosition,
       altitudeRad: pos.altitudeRad,
       azimuthRad: pos.azimuthRad,
       isDaylight: pos.isDaylight,
       stretch: shadowStretchFromAltitude(pos.altitudeRad),
       groundOffset: shadowGroundOffset(pos),
     };
-  }, [solarHour]);
+  }, [solarHour, sunAzimuthDeg]);
+
+  const setSolarHourAndSyncAzimuth = (hour: number) => {
+    setSolarHour(hour);
+    const date = dateFromSolarHour(hour);
+    const pos = getSunPosition(LUISIANA_CENTER.lat, LUISIANA_CENTER.lon, date);
+    setSunAzimuthDeg(bearingDegFromSunCalcAzimuth(pos.azimuthRad));
+  };
 
   // Drive MapLibre basemap light + hillshade + night veil from SunCalc
   useEffect(() => {
@@ -355,6 +377,7 @@ export default function App() {
   const [riskZones, setRiskZones] = useState<RiskZones | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [placementMode, setPlacementMode] = useState(false);
+  const [blockRemoverMode, setBlockRemoverMode] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [snapToRoad, setSnapToRoad] = useState(true);
   const [selectedModel, setSelectedModel] = useState<ModelType>("office");
@@ -1855,6 +1878,10 @@ export default function App() {
         <CesiumMap
           ref={cesiumMapRef}
           solarHour={solarHour}
+          sunAzimuthDeg={sunAzimuthDeg}
+          buildingBlocksOpacity={buildingExtrusionOpacity}
+          buildingBlocksVisible={toggles.buildingBlocks}
+          blockRemoverActive={blockRemoverMode && currentRole !== "Viewer"}
           projects={projects}
           visible={screen === "app"}
           placementMode={placementMode}
@@ -2043,24 +2070,33 @@ export default function App() {
           </div>
         </div>
 
-        {/* Solar time slider — drives Cesium sun clock + shadows */}
-        <div className="solar-map-slider" title="Sun time of day (Luisiana)">
-          <div className="solar-map-slider-label">
-            <span>Sun</span>
-            <span className="solar-map-slider-time">{formatSolarHour(solarHour)}</span>
-            {!sunLighting.isDaylight ? (
-              <span className="solar-map-slider-time"> · night</span>
-            ) : null}
+        {/* Sun bearing dial + time — one control for Cesium light/shadows */}
+        <div className="solar-map-controls" title="Sun bearing & time (Luisiana)">
+          <div className="solar-azimuth-wrap">
+            <div className="solar-map-slider-label">
+              <span>Sun</span>
+              <span className="solar-map-slider-time">
+                {Math.round(sunAzimuthDeg)}°
+                {!sunLighting.isDaylight ? " · night" : ""}
+              </span>
+            </div>
+            <SunAzimuthDial value={sunAzimuthDeg} onChange={setSunAzimuthDeg} size={108} />
+            <div className="solar-azimuth-time">
+              <div className="solar-map-slider-label">
+                <span>Time</span>
+                <span className="solar-map-slider-time">{formatSolarHour(solarHour)}</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={24}
+                step={0.25}
+                value={solarHour}
+                aria-label="Solar time of day"
+                onChange={(e) => setSolarHourAndSyncAzimuth(Number(e.target.value))}
+              />
+            </div>
           </div>
-          <input
-            type="range"
-            min={0}
-            max={24}
-            step={0.25}
-            value={solarHour}
-            aria-label="Solar time of day"
-            onChange={(e) => setSolarHour(Number(e.target.value))}
-          />
         </div>
 
         {/* ── Map Controls ── */}
@@ -2090,6 +2126,29 @@ export default function App() {
               <line x1="2" y1="20" x2="22" y2="20"/>
             </svg>
           </button>
+          {currentRole !== "Viewer" && (
+            <>
+              <div className="map-ctrl-divider" />
+              <button
+                className={`map-ctrl-btn${blockRemoverMode ? " is-active" : ""}`}
+                title={blockRemoverMode ? "Block remover ON — click a building to delete" : "Remove 3D block"}
+                type="button"
+                aria-pressed={blockRemoverMode}
+                onClick={() => {
+                  setBlockRemoverMode((v) => !v);
+                  if (!blockRemoverMode) setPlacementMode(false);
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <polyline points="3 6 5 6 21 6" />
+                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                  <path d="M10 11v6" />
+                  <path d="M14 11v6" />
+                  <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                </svg>
+              </button>
+            </>
+          )}
         </div>
 
       </div>
@@ -2214,7 +2273,7 @@ export default function App() {
             Layers (LGU-Friendly Toggles)
           </div>
           <div className="hint" style={{ marginBottom: 10 }}>
-            3D tilt near Luisiana limits far tiles — zoom out anytime to see the full globe.
+            3D tilt near Luisiana limits far tiles — zoom out anytime to see the full globe. OSM building blocks are Luisiana-only.
           </div>
 
           {(
@@ -2227,6 +2286,7 @@ export default function App() {
               { k: "weather", title: "Weather Overlay", hint: "Cloud field + rainfall feel" },
               { k: "stormTrack", title: "Storm Tracking", hint: "Drift line based on wind" },
               { k: "projects", title: "Infrastructure Projects", hint: "GLB models on map" },
+              { k: "buildingBlocks", title: "3D Blocks", hint: "Luisiana OSM building extrusions" },
             ] as const
           ).map((row) => (
             <div key={row.k} className="toggleRow">
@@ -2252,6 +2312,7 @@ export default function App() {
               marginTop: 4,
               marginBottom: 10,
               paddingLeft: 2,
+              flexWrap: "wrap",
             }}
           >
             <span className="pill">3D Blocks</span>
@@ -2261,21 +2322,26 @@ export default function App() {
               max={1}
               step={0.05}
               value={buildingExtrusionOpacity}
-              aria-label="Basemap 3D building extrusion opacity"
+              aria-label="Luisiana 3D building blocks opacity"
               onChange={(e) => {
-                const next = Number(e.target.value);
-                setBuildingExtrusionOpacity(next);
-                const map = mapRef.current ?? mapInstance;
-                if (map) {
-                  const opacity = toggles.satellite ? Math.min(next, 0.4) : next;
-                  applyBuildingExtrusionOpacity(map, opacity);
-                }
+                setBuildingExtrusionOpacity(Number(e.target.value));
               }}
-              style={{ flex: 1 }}
+              style={{ flex: 1, minWidth: 80 }}
             />
             <span style={{ fontSize: 11, color: "var(--muted)", minWidth: 35 }}>
               {Math.round(buildingExtrusionOpacity * 100)}%
             </span>
+            {currentRole !== "Viewer" && (
+              <button
+                type="button"
+                className="btn"
+                style={{ fontSize: 11, padding: "4px 8px" }}
+                title="Restore all deleted OSM blocks"
+                onClick={() => cesiumMapRef.current?.restoreRemovedBlocks()}
+              >
+                Restore blocks
+              </button>
+            )}
           </div>
 
           <div
@@ -2307,26 +2373,35 @@ export default function App() {
           </div>
 
           <div className="solar-time-control" style={{ marginBottom: 12, paddingLeft: 2 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
-              <span className="pill">Sun Time</span>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
+              <span className="pill">Sun</span>
               <span style={{ fontSize: 11, color: "var(--muted)", fontVariantNumeric: "tabular-nums" }}>
-                {formatSolarHour(solarHour)}
+                {Math.round(sunAzimuthDeg)}° · {formatSolarHour(solarHour)}
                 {sunLighting.isDaylight ? "" : " · night"}
               </span>
             </div>
-            <input
-              type="range"
-              className="solar-hour-slider"
-              min={0}
-              max={24}
-              step={0.25}
-              value={solarHour}
-              aria-label="Time of day for solar lighting"
-              onChange={(e) => setSolarHour(Number(e.target.value))}
-              style={{ width: "100%" }}
-            />
-            <div className="hint" style={{ marginTop: 4 }}>
-              Real sun for Luisiana — shades the basemap (buildings + terrain) and model lighting
+            <div className="solar-layers-bearing">
+              <SunAzimuthDial value={sunAzimuthDeg} onChange={setSunAzimuthDeg} size={112} />
+              <div className="solar-azimuth-time" style={{ flex: 1, minWidth: 0 }}>
+                <div className="solar-map-slider-label">
+                  <span>Time</span>
+                  <span className="solar-map-slider-time">{formatSolarHour(solarHour)}</span>
+                </div>
+                <input
+                  type="range"
+                  className="solar-hour-slider"
+                  min={0}
+                  max={24}
+                  step={0.25}
+                  value={solarHour}
+                  aria-label="Time of day for solar lighting"
+                  onChange={(e) => setSolarHourAndSyncAzimuth(Number(e.target.value))}
+                  style={{ width: "100%" }}
+                />
+                <div className="hint" style={{ marginTop: 6 }}>
+                  Dial = bearing (shadows). Slider = sun height / time of day.
+                </div>
+              </div>
             </div>
           </div>
 
@@ -2535,7 +2610,12 @@ export default function App() {
 
             {/* Placement toggle */}
             <button
-              onClick={() => setPlacementMode((v) => !v)}
+              onClick={() => {
+                setPlacementMode((v) => {
+                  if (!v) setBlockRemoverMode(false);
+                  return !v;
+                });
+              }}
               style={{
                 width: "100%", cursor: "pointer", padding: "10px 0",
                 borderRadius: 2, fontWeight: 700, fontSize: 13,

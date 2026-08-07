@@ -15,8 +15,9 @@ export type SunPosition = {
   /** Radians above horizon (negative = night). */
   altitudeRad: number;
   /**
-   * suncalc azimuth: radians from south, westward positive
-   * (0 = south, π/2 = west, ±π = north, -π/2 = east).
+   * Internal azimuth radians in the classic SunCalc v1 convention:
+   * from south, westward positive (0 = south, π/2 = west).
+   * Prefer bearingDegFromSunCalcAzimuth() for compass UI (0 = N).
    */
   azimuthRad: number;
   isDaylight: boolean;
@@ -35,6 +36,21 @@ const LUISIANA_BOUNDS = {
 };
 
 const PH_OFFSET_MS = 8 * 60 * 60 * 1000;
+const DEG2RAD = Math.PI / 180;
+
+/** Inverse: compass bearing → legacy south-based azimuth radians. */
+export function sunCalcAzimuthFromBearingDeg(bearingDeg: number): number {
+  const b = ((bearingDeg % 360) + 360) % 360;
+  return ((b - 180) * Math.PI) / 180;
+}
+
+/**
+ * Compass bearing of the sun: 0° = North, 90° = East, clockwise.
+ * From internal legacy azimuth radians (south-based).
+ */
+export function bearingDegFromSunCalcAzimuth(azimuthRad: number): number {
+  return (((azimuthRad * 180) / Math.PI) + 180 + 360) % 360;
+}
 
 /** Current fractional hour in Asia/Manila (UTC+8). */
 export function getCurrentSolarHour(): number {
@@ -63,12 +79,18 @@ export function dateFromSolarHour(hourFractional: number, baseDate?: Date): Date
   return new Date(asUtcLabel - PH_OFFSET_MS);
 }
 
-/** Astronomical sun position for a place and instant. */
+/**
+ * Astronomical sun position for a place and instant.
+ * SunCalc v2 returns altitude/azimuth in **degrees** (azimuth clockwise from north).
+ * We normalize to radians + legacy south-based azimuth for the rest of the app.
+ */
 export function getSunPosition(lat: number, lon: number, date: Date): SunPosition {
   const pos = SunCalc.getPosition(date, lat, lon);
+  const altitudeRad = pos.altitude * DEG2RAD;
+  const bearingDeg = ((pos.azimuth % 360) + 360) % 360;
   return {
-    altitudeRad: pos.altitude,
-    azimuthRad: pos.azimuth,
+    altitudeRad,
+    azimuthRad: sunCalcAzimuthFromBearingDeg(bearingDeg),
     isDaylight: pos.altitude > 0,
   };
 }
@@ -90,6 +112,32 @@ export function sunDirectionFromPosition(pos: SunPosition): [number, number, num
   const z = Math.sin(altitudeRad); // up
   const len = Math.hypot(x, y, z) || 1;
   return [x / len, y / len, z / len];
+}
+
+/** Sun position with altitude from astronomy and horizontal bearing from the dial. */
+export function sunPositionWithBearing(altitudeRad: number, bearingDeg: number): SunPosition {
+  return {
+    altitudeRad,
+    azimuthRad: sunCalcAzimuthFromBearingDeg(bearingDeg),
+    isDaylight: altitudeRad > 0,
+  };
+}
+
+/**
+ * ENU unit vector toward the sun (east, north, up) from altitude + compass bearing.
+ * Used for Cesium DirectionalLight via eastNorthUpToFixedFrame.
+ */
+export function sunEnuFromAltitudeBearing(
+  altitudeRad: number,
+  bearingDeg: number,
+): { east: number; north: number; up: number } {
+  const bearingRad = ((bearingDeg % 360) + 360) % 360 * (Math.PI / 180);
+  const cosAlt = Math.cos(altitudeRad);
+  const east = Math.sin(bearingRad) * cosAlt;
+  const north = Math.cos(bearingRad) * cosAlt;
+  const up = Math.sin(altitudeRad);
+  const len = Math.hypot(east, north, up) || 1;
+  return { east: east / len, north: north / len, up: up / len };
 }
 
 /**
@@ -133,11 +181,14 @@ export function shadowGroundOffset(pos: SunPosition): [number, number] | null {
   return [-dx / len, -dy / len];
 }
 
+/** Display solar hour as 12-hour clock with AM/PM (e.g. 2:30 PM). */
 export function formatSolarHour(hour: number): string {
-  const h = ((hour % 24) + 24) % 24;
-  const hh = Math.floor(h);
-  const mm = Math.floor((h - hh) * 60);
-  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+  const h24 = ((hour % 24) + 24) % 24;
+  const hh24 = Math.floor(h24);
+  const mm = Math.floor((h24 - hh24) * 60);
+  const period = hh24 >= 12 ? "PM" : "AM";
+  const hh12 = hh24 % 12 === 0 ? 12 : hh24 % 12;
+  return `${hh12}:${String(mm).padStart(2, "0")} ${period}`;
 }
 
 export const SUN_NIGHT_VEIL_SOURCE = "sun-night-veil";
@@ -160,9 +211,8 @@ export function daylightRasterScale(pos: SunPosition): number {
 }
 
 /**
- * MapLibre light + hillshade angles from SunCalc.
+ * MapLibre light + hillshade angles from sun position.
  * Light position: [radial, azimuthal° clockwise from north, polar° from zenith].
- * suncalc azimuth 0 = south → MapLibre azimuth = azimuthDeg + 180.
  */
 export function mapLightFromSun(pos: SunPosition): {
   azimuthDeg: number;

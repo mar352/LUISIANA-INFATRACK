@@ -487,7 +487,7 @@ input[type="range"] {
 
 .appShell:not(.sidebar-collapsed):not(.appShell--fullpage) .map-controls,
 .appShell:not(.sidebar-collapsed):not(.appShell--fullpage) .camera-compass,
-.appShell:not(.sidebar-collapsed):not(.appShell--fullpage) .solar-map-slider {
+.appShell:not(.sidebar-collapsed):not(.appShell--fullpage) .solar-map-controls {
   right: calc(max(320px, var(--situation-panel-width)) + 14px);
   transition: right 0.28s ease;
 }
@@ -630,7 +630,7 @@ input[type="range"] {
 
   .appShell:not(.sidebar-collapsed):not(.appShell--fullpage) .map-controls,
   .appShell:not(.sidebar-collapsed):not(.appShell--fullpage) .camera-compass,
-  .appShell:not(.sidebar-collapsed):not(.appShell--fullpage) .solar-map-slider {
+  .appShell:not(.sidebar-collapsed):not(.appShell--fullpage) .solar-map-controls {
     right: max(10px, env(safe-area-inset-right, 0px));
   }
 
@@ -688,7 +688,7 @@ input[type="range"] {
     right: max(10px, env(safe-area-inset-right, 0px));
   }
 
-  .solar-map-slider {
+  .solar-map-controls {
     top: calc(56px + env(safe-area-inset-top, 0px) + 268px);
     bottom: auto;
     right: max(10px, env(safe-area-inset-right, 0px));
@@ -903,17 +903,161 @@ input[type="range"] {
   transition: background 160ms var(--ease-out), border-color 160ms var(--ease-out);
 }
 
-.solar-map-slider {
+.solar-map-controls {
   position: absolute;
   right: 14px;
   bottom: 330px;
   z-index: 10;
-  width: 120px;
-  padding: 8px 10px;
+  width: 128px;
+}
+
+.solar-azimuth-wrap {
+  padding: 8px 10px 10px;
   border: 2px solid var(--ink);
   background: var(--cream);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
   font-family: var(--font);
   color: var(--ink);
+  user-select: none;
+}
+
+.solar-azimuth-wrap .solar-map-slider-label {
+  width: 100%;
+  margin-bottom: 0;
+}
+
+.solar-azimuth-time {
+  width: 100%;
+  margin-top: 2px;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in oklch, var(--ink) 18%, transparent);
+  touch-action: auto;
+}
+
+.solar-azimuth-time input[type="range"] {
+  width: 100%;
+  accent-color: var(--burnt);
+  cursor: pointer;
+}
+
+.solar-layers-bearing {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sun-azimuth-dial {
+  position: relative;
+  cursor: grab;
+  touch-action: none;
+  outline: none;
+  flex-shrink: 0;
+}
+
+.sun-azimuth-dial:active {
+  cursor: grabbing;
+}
+
+.sun-azimuth-dial:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+
+.sun-azimuth-dial-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.sun-azimuth-dial-svg {
+  display: block;
+  overflow: visible;
+}
+
+.sun-azimuth-dial-disc {
+  fill: color-mix(in oklch, var(--cream) 88%, var(--ink));
+}
+
+.sun-azimuth-dial-ring {
+  stroke: var(--ink);
+  stroke-width: 2;
+}
+
+.sun-azimuth-dial-tick {
+  stroke: var(--muted2);
+  stroke-width: 1.25;
+}
+
+.sun-azimuth-dial-tick-major {
+  stroke: var(--ink);
+  stroke-width: 1.75;
+}
+
+.sun-azimuth-dial-cardinal {
+  fill: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+  font-family: var(--font);
+  letter-spacing: 0.04em;
+  pointer-events: none;
+}
+
+.sun-azimuth-dial-n {
+  fill: #c43c3c;
+  font-weight: 800;
+}
+
+.sun-azimuth-dial-beam {
+  stroke: color-mix(in oklch, var(--amber) 70%, var(--burnt));
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.sun-azimuth-dial-hub {
+  fill: var(--ink);
+}
+
+.sun-azimuth-dial-sun {
+  fill: color-mix(in oklch, var(--amber) 75%, #fff);
+  stroke: var(--ink);
+  stroke-width: 1.5;
+  filter: drop-shadow(0 0 4px color-mix(in oklch, var(--amber) 55%, transparent));
+  transition: filter 0.15s var(--ease-out, ease-out);
+}
+
+.sun-azimuth-dial-sun-core {
+  fill: var(--ink);
+  pointer-events: none;
+}
+
+.sun-azimuth-dial-readout {
+  position: absolute;
+  left: 50%;
+  top: 58%;
+  transform: translateX(-50%);
+  font-size: 9px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  pointer-events: none;
+  line-height: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sun-azimuth-dial-sun {
+    filter: none;
+    transition: none;
+  }
 }
 
 .solar-map-slider-label {
