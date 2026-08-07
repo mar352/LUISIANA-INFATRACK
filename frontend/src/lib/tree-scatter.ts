@@ -248,7 +248,13 @@ export function buildTreePosesFromFeatures(
     if (poses.length >= maxInstances) break;
     const cls = String(f.properties?.class ?? "");
     if (cls === "farmland") continue;
-    const baseSpacing = cls === "wood" ? 16 : cls === "scrub" ? 20 : 24;
+    const baseSpacing =
+      cls === "wood" ? 14 :
+      cls === "orchard" ? 16 :
+      cls === "scrub" ? 18 :
+      cls === "park" ? 22 :
+      cls === "grass" ? 30 :
+      24;
     const spacingM = baseSpacing * Math.max(0.8, spacingScale);
 
     const polys = extractPolygons(f.geometry);

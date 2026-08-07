@@ -49,6 +49,8 @@ export type ModelType =
   | "school"
   | "hospital"
   | "barangay_hall"
+  | "municipal_hall"
+  | "rhu"
   | "road"
   | "bridge"
   | "water_tank"
@@ -67,6 +69,8 @@ export const MODEL_CATALOG: {
   glb: string;        // path under /models/
   scale: number;      // world-space scale multiplier
 }[] = [
+  { type: "municipal_hall",    label: "Municipal Hall",     icon: "municipal_hall",    category: "Building",        description: "Luisiana Municipal Hall",                      glb: "municipal-office.glb",   scale: 1   },
+  { type: "rhu",               label: "Rural Health Unit",  icon: "rhu",               category: "Building",        description: "Luisiana Rural Health Unit (RHU)",            glb: "rural-health-unit.glb",  scale: 1   },
   { type: "office",            label: "Office / Admin",      icon: "office",            category: "Building",        description: "Multi-floor office or admin building",        glb: "building.glb",      scale: 80  },
   { type: "school",            label: "School",              icon: "school",            category: "Building",        description: "Elementary or high school building",          glb: "building.glb",      scale: 100 },
   { type: "hospital",          label: "Health Center",       icon: "hospital",          category: "Building",        description: "Barangay health center or hospital",          glb: "Hospital.glb",      scale: 90  },
@@ -173,6 +177,10 @@ export type Project = {
   rotation?: number;
   /** User-adjusted multiplier for the map GLB model. */
   modelScale?: number;
+  /**
+   * Height above ground in meters. Use 0 (default) to clamp to terrain — no elevation float.
+   */
+  modelHeight?: number;
   /** When true, model cannot be moved / rotated / scaled on the map. */
   modelLocked?: boolean;
   customModelUrl?: string;

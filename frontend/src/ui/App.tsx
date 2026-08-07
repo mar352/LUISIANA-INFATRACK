@@ -1,11 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import maplibregl, { Map as MapLibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { DeckGLOverlay } from "./DeckOverlay";
-import { BuildingOverlay } from "./BuildingOverlay";
-import { TreeOverlay } from "./TreeOverlay";
-import { CameraCompass } from "./CameraCompass";
-import { SunOverlay } from "./SunOverlay";
+import { CesiumMap, type CesiumMapHandle } from "./CesiumMap";
 import InventoryPage from "./InventoryPage";
 import PlanningPage from "./PlanningPage";
 import DocumentsPage from "./DocumentsPage";
@@ -123,6 +119,16 @@ const ModelIcons: Record<string, React.FC<{ size?: number; color?: string }>> = 
       <path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-4h6v4"/><path d="M9 10h.01"/><path d="M15 10h.01"/>
     </svg>
   ),
+  municipal_hall: ({ size = 18, color = "currentColor" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 21h18"/><path d="M4 21V10l8-6 8 6v11"/><path d="M9 21v-6h6v6"/><path d="M12 4v3"/><path d="M8 14h.01"/><path d="M16 14h.01"/>
+    </svg>
+  ),
+  rhu: ({ size = 18, color = "currentColor" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 21h18"/><path d="M5 21V9l7-5 7 5v12"/><path d="M12 11v6"/><path d="M9 14h6"/>
+    </svg>
+  ),
   evacuation_center: ({ size = 18, color = "currentColor" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
@@ -175,7 +181,6 @@ type LayerToggles = {
   gibsPrecip: boolean;
   risk: boolean;
   projects: boolean;
-  trees: boolean;
   stormTrack: boolean;
 };
 
@@ -188,7 +193,6 @@ const DEFAULT_TOGGLES: LayerToggles = {
   gibsPrecip: false,
   risk: false,
   projects: true,
-  trees: true,
   stormTrack: false,
 };
 
@@ -276,6 +280,7 @@ export default function App() {
   const mapDivRef = useRef<HTMLDivElement | null>(null);
   // Separate state so React re-renders overlays when the map instance is ready
   const [mapInstance, setMapInstance] = useState<MapLibreMap | null>(null);
+  const cesiumMapRef = useRef<CesiumMapHandle | null>(null);
 
   const [currentSession, setCurrentSession] = useState<SessionUser | null>(null);
   const currentRole = currentSession?.role ?? null;
@@ -624,14 +629,19 @@ export default function App() {
   }, [riskZones]);
 
   // Clear map when leaving the app screen
+  // Tear down MapLibre when leaving the app screen
   useEffect(() => {
     if (screen !== "app" && mapRef.current) {
       mapRef.current.remove();
       mapRef.current = null;
+      setMapInstance(null);
     }
   }, [screen]);
 
+  // MapLibre retired — Cesium globe is the primary map. Keep init gated off.
   useEffect(() => {
+    const ENABLE_MAPLIBRE = false;
+    if (!ENABLE_MAPLIBRE) return;
     if (!mapDivRef.current || mapRef.current) return;
     if (screen !== "app") return; // Only initialize when on app screen
 
@@ -1015,7 +1025,7 @@ export default function App() {
       mapRef.current = null;
       setMapInstance(null);
     };
-  }, [screen]); // Re-initialize when screen changes to "app"
+  }, [screen]); // MapLibre init gated off — Cesium is primary
 
   // ── Placement mode: click on map to place a model ──────────────────────────
   const placementModeRef = useRef(false);
@@ -1121,25 +1131,29 @@ export default function App() {
         }
       }
 
-      // Show modal to enter building details
-      setPendingPlacement({ lng, lat });
-      const catalog = MODEL_CATALOG.find((m) => m.type === selectedModelRef.current);
-      setModalProjectName(placingNameRef.current.trim() || `${catalog?.label ?? selectedModelRef.current}`);
-      setModalProjectType(
-        catalog?.category === "Agriculture" ? "Agricultural Structure" :
-        catalog?.category === "Infrastructure" ? "Municipal Project" :
-        catalog?.category === "Construction" ? "Municipal Project" : "Private Building"
-      );
-      setModalDepartment("Engineering");
-      setModalStatus("Planned");
-      setModalProgress(0);
-      setModalDescription(catalog?.description || "");
-      setShowPlacementModal(true);
+      openPlacementAt({ lng, lat });
     };
 
     map.on("click", handleClick);
     return () => { map.off("click", handleClick); };
   }, [mapRef.current]);
+
+  /** Open the placement details modal at a clicked lat/lng (MapLibre or Cesium). */
+  function openPlacementAt({ lng, lat }: { lng: number; lat: number }) {
+    setPendingPlacement({ lng, lat });
+    const catalog = MODEL_CATALOG.find((m) => m.type === selectedModelRef.current);
+    setModalProjectName(placingNameRef.current.trim() || `${catalog?.label ?? selectedModelRef.current}`);
+    setModalProjectType(
+      catalog?.category === "Agriculture" ? "Agricultural Structure" :
+      catalog?.category === "Infrastructure" ? "Municipal Project" :
+      catalog?.category === "Construction" ? "Municipal Project" : "Private Building"
+    );
+    setModalDepartment("Engineering");
+    setModalStatus("Planned");
+    setModalProgress(0);
+    setModalDescription(catalog?.description || "");
+    setShowPlacementModal(true);
+  }
 
   // Function to actually place the building after modal submission
   const handlePlaceBuilding = async () => {
@@ -1838,56 +1852,32 @@ export default function App() {
       {/* Main app - only render when logged in */}
       {screen === "app" && <>
       <div className="mapWrap">
-        <div className="map" ref={mapDivRef} style={{ cursor: placementMode ? "crosshair" : undefined }} />
-
-        <DeckGLOverlay
-          map={mapInstance}
-          enabledHeatmap={toggles.heatmap && !toggles.gibsPrecip}
-          heatPoints={heatPoints}
-          enabledWeather={toggles.weather}
-          weather={weather}
-          shadowsEnabled={toggles.terrain}
-          sunLightPosition={sunLighting.lightPosition}
+        <CesiumMap
+          ref={cesiumMapRef}
           solarHour={solarHour}
-          enabledEONET={eonetEnabled}
-          eonetEvents={eonetEvents}
-          enabledAIRisk={aiRiskEnabled}
-          aiRiskPredictions={aiRiskPredictions}
-        />
-
-        <BuildingOverlay
-          map={mapInstance}
           projects={projects}
-          visible={toggles.projects}
-          opacity={glbModelsOpacity}
-          sunLightPosition={sunLighting.lightPosition}
-          sunIsDaylight={sunLighting.isDaylight}
+          visible={screen === "app"}
+          placementMode={placementMode}
+          onPlaceClick={openPlacementAt}
           readOnly={currentRole === "Viewer"}
           canAddPhotos={currentRole === "MPDC" || currentRole === "Engineer"}
-          snapToRoad={snapToRoad && (editMode || placementMode)}
-          onBuildingClick={(hit) => { buildingHitRef.current = hit; }}
-          onDeleteBuilding={currentRole === "Viewer" ? undefined : async (projectId) => {
-            try {
-              await fetch(backendUrl(`/api/projects/${projectId}`), { method: "DELETE" });
-            } catch (err) {
-              console.error("Failed to delete project:", err);
-            }
+          gibs={{
+            enabled: toggles.gibsPrecip && gibsStatus === "ok",
+            layer: gibsLayer,
+            date: gibsDate,
+            opacity: gibsOpacity,
           }}
-        />
-
-        <TreeOverlay
-          map={mapInstance}
-          visible={toggles.trees}
-          sunLightPosition={sunLighting.lightPosition}
-          sunIsDaylight={sunLighting.isDaylight}
-        />
-
-        {/* 3D sun disc+ring in the sky — SunCalc direction, not an HTML overlay */}
-        <SunOverlay
-          map={mapInstance}
-          sunLightPosition={sunLighting.lightPosition}
-          isDaylight={sunLighting.isDaylight}
-          visible
+          onDeleteBuilding={
+            currentRole === "Viewer"
+              ? undefined
+              : async (projectId) => {
+                  try {
+                    await fetch(backendUrl(`/api/projects/${projectId}`), { method: "DELETE" });
+                  } catch (err) {
+                    console.error("Failed to delete project:", err);
+                  }
+                }
+          }
         />
 
         <ProjectChat />
@@ -2053,14 +2043,14 @@ export default function App() {
           </div>
         </div>
 
-        {/* Shadowmap-style FOV cone — syncs bearing / pitch / FOV */}
-        <CameraCompass map={mapInstance} />
-
-        {/* Solar time slider — real SunCalc position for Luisiana */}
+        {/* Solar time slider — drives Cesium sun clock + shadows */}
         <div className="solar-map-slider" title="Sun time of day (Luisiana)">
           <div className="solar-map-slider-label">
             <span>Sun</span>
             <span className="solar-map-slider-time">{formatSolarHour(solarHour)}</span>
+            {!sunLighting.isDaylight ? (
+              <span className="solar-map-slider-time"> · night</span>
+            ) : null}
           </div>
           <input
             type="range"
@@ -2075,39 +2065,25 @@ export default function App() {
 
         {/* ── Map Controls ── */}
         <div className="map-controls">
-          {/* Zoom in */}
-          <button className="map-ctrl-btn" title="Zoom In (=)" onClick={() => mapRef.current?.zoomIn({ duration: 300 })}>+</button>
-          {/* Zoom out */}
-          <button className="map-ctrl-btn" title="Zoom Out (-)" onClick={() => mapRef.current?.zoomOut({ duration: 300 })}>−</button>
+          <button className="map-ctrl-btn" title="Zoom In (=)" type="button" onClick={() => cesiumMapRef.current?.zoomIn()}>+</button>
+          <button className="map-ctrl-btn" title="Zoom Out (-)" type="button" onClick={() => cesiumMapRef.current?.zoomOut()}>−</button>
           <div className="map-ctrl-divider" />
-          {/* Fly home */}
           <button
             className="map-ctrl-btn"
             title="Fly to Luisiana"
-            onClick={() => mapRef.current?.flyTo({
-              center: [CENTER.lon, CENTER.lat],
-              zoom: CENTER.zoom,
-              pitch: 75,
-              bearing: -15,
-              duration: 1200,
-              essential: true,
-            })}
+            type="button"
+            onClick={() => cesiumMapRef.current?.flyHome()}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
               <polyline points="9 22 9 12 15 12 15 22"/>
             </svg>
           </button>
-          {/* Tilt toggle */}
           <button
             className="map-ctrl-btn"
             title="Toggle Tilt"
-            onClick={() => {
-              const m = mapRef.current;
-              if (!m) return;
-              const p = m.getPitch();
-              m.easeTo({ pitch: p > 10 ? 0 : 85, duration: 500 });
-            }}
+            type="button"
+            onClick={() => cesiumMapRef.current?.toggleTilt()}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M2 20 L12 4 L22 20"/>
@@ -2237,6 +2213,9 @@ export default function App() {
           <div className="sectionTitle" style={{ marginBottom: 8 }}>
             Layers (LGU-Friendly Toggles)
           </div>
+          <div className="hint" style={{ marginBottom: 10 }}>
+            3D tilt near Luisiana limits far tiles — zoom out anytime to see the full globe.
+          </div>
 
           {(
             [
@@ -2248,7 +2227,6 @@ export default function App() {
               { k: "weather", title: "Weather Overlay", hint: "Cloud field + rainfall feel" },
               { k: "stormTrack", title: "Storm Tracking", hint: "Drift line based on wind" },
               { k: "projects", title: "Infrastructure Projects", hint: "GLB models on map" },
-              { k: "trees", title: "3D Trees", hint: "Instanced trees on forest areas (Luisiana)" },
             ] as const
           ).map((row) => (
             <div key={row.k} className="toggleRow">
@@ -2570,7 +2548,7 @@ export default function App() {
               {placementMode ? (
                 <span style={{ display: "flex", alignItems: "center", gap: 7, justifyContent: "center" }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
-                  Placement Mode ON — Click map to place
+                  Placement Mode ON — Click globe to place
                 </span>
               ) : (
                 <span style={{ display: "flex", alignItems: "center", gap: 7, justifyContent: "center" }}>

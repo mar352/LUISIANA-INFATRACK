@@ -30,7 +30,7 @@ let nextId = 1;
 
 function modelTypeToLegacyType(modelType) {
   if (!modelType) return "Private Building";
-  if (["road", "bridge", "water_tank", "solar_farm"].includes(modelType)) return "Municipal Project";
+  if (["road", "bridge", "water_tank", "solar_farm", "municipal_hall", "rhu"].includes(modelType)) return "Municipal Project";
   if (["barn"].includes(modelType)) return "Agricultural Structure";
   return "Private Building";
 }
@@ -55,6 +55,7 @@ function ensureProjectShape(p) {
     targetEndDate: p.targetEndDate ?? null,
     rotation: Number.isFinite(Number(p.rotation)) ? Number(p.rotation) : 0,
     modelScale: Number.isFinite(Number(p.modelScale)) ? Number(p.modelScale) : 1,
+    modelHeight: Number.isFinite(Number(p.modelHeight)) ? Number(p.modelHeight) : 0,
     modelLocked: Boolean(p.modelLocked),
   };
 }
@@ -359,12 +360,14 @@ export function updateProject(id, patch) {
     if (
       patch.location !== undefined ||
       patch.rotation !== undefined ||
-      patch.modelScale !== undefined
+      patch.modelScale !== undefined ||
+      patch.modelHeight !== undefined
     ) {
       // strip transform changes when locked (modelLocked toggle above still applies)
       delete patch.location;
       delete patch.rotation;
       delete patch.modelScale;
+      delete patch.modelHeight;
     }
   }
 
@@ -382,13 +385,21 @@ export function updateProject(id, patch) {
   if (patch.modelScale !== undefined) {
     const scale = Number(patch.modelScale);
     if (Number.isFinite(scale)) {
-      project.modelScale = Math.max(0.1, Math.min(20, scale));
+      project.modelScale = Math.max(0.001, Math.min(100, scale));
+    }
+  }
+  if (patch.modelHeight !== undefined) {
+    const h = Number(patch.modelHeight);
+    if (Number.isFinite(h)) {
+      // 0 = ground-clamped (no elevation); allow tiny negative for pivot fixes
+      project.modelHeight = Math.max(-50, Math.min(500, h));
     }
   }
   if (
     patch.location !== undefined ||
     patch.rotation !== undefined ||
-    patch.modelScale !== undefined
+    patch.modelScale !== undefined ||
+    patch.modelHeight !== undefined
   ) {
     logActivity(project, "3D model position, rotation, or scale updated.");
   }

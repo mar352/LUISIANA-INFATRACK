@@ -9,7 +9,9 @@ type Tab = "overview" | "activity" | "about";
 
 type Props = {
   project: Project;
-  map: MapLibreMap | null;
+  map?: MapLibreMap | null;
+  /** Cesium (or other) fly-to when MapLibre map is unavailable. */
+  onFlyHere?: () => void;
   readOnly?: boolean;
   /** Engineer / MPDC — add & remove progress photos in this panel. */
   canAddPhotos?: boolean;
@@ -30,7 +32,8 @@ function statusColor(status: Project["status"]) {
 
 export function PlaceSidePanel({
   project,
-  map,
+  map = null,
+  onFlyHere,
   readOnly = false,
   canAddPhotos = false,
   onClose,
@@ -63,6 +66,10 @@ export function PlaceSidePanel({
   }, [project.photos]);
 
   function flyHere() {
+    if (onFlyHere) {
+      onFlyHere();
+      return;
+    }
     map?.flyTo({
       center: [project.location.lon, project.location.lat],
       zoom: Math.max(map.getZoom(), 17),
