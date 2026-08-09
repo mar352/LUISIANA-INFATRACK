@@ -6,13 +6,34 @@ import InventoryPage from "./InventoryPage";
 import PlanningPage from "./PlanningPage";
 import DocumentsPage from "./DocumentsPage";
 import AnalyticsPage from "./AnalyticsPage";
+import CitizenPortal from "./CitizenPortal";
+import EngagementPage from "./EngagementPage";
 import { addProjectToFirestore } from "../services/firestore-projects";
-import type { AlertItem, HeatPoint, Project, RiskZones, WeatherSnapshot, ProjectStatus } from "../types";
-import { MODEL_CATALOG, type ModelType, PROJECT_STATUS_COLORS } from "../types";
+import type {
+  AlertItem,
+  HeatPoint,
+  MapSketch,
+  MapSketchKind,
+  PlacementTool,
+  PlanningProposal,
+  Project,
+  RiskZones,
+  WeatherSnapshot,
+  ProjectStatus,
+} from "../types";
+import {
+  MAP_SKETCH_COLORS,
+  MODEL_CATALOG,
+  PLANNING_STATUS_LABELS,
+  type ModelType,
+  PROJECT_STATUS_COLORS,
+} from "../types";
 import { connectRealtime } from "../lib/realtime";
 import { BACKEND_URL, backendUrl } from "../lib/api";
+import { fetchProposalsOnce, updateProposal } from "../services/firestore-planning";
+import { departmentForRole } from "../lib/planning-permissions";
 import { buildHeatmapPoints, type BBox, type HeatmapMetric } from "../lib/heatmap";
-import { formatGibsDate, gibsWmtsTileUrl, type GibsLayerId } from "../lib/gibs";
+import { formatGibsDate, getGibsLayerInfo, gibsWmtsTileUrl, type GibsLayerId } from "../lib/gibs";
 import {
   applyMapSunLighting,
   dateFromSolarHour,
@@ -28,6 +49,14 @@ import {
   ensureNightVeilLayer,
   LUISIANA_CENTER,
 } from "../lib/solar";
+import {
+  DEFAULT_MAP_SETTINGS,
+  loadMapSettings,
+  saveMapSettings,
+  type MapSettings,
+  type ShadowQuality,
+  type TerrainQuality,
+} from "../lib/map-settings";
 import { SunAzimuthDial } from "./SunAzimuthDial";
 import { 
   getTerrainSource, 
@@ -47,14 +76,14 @@ import {
   EONET_CATEGORIES,
   type EONETEvent 
 } from "../lib/eonet";
+import {
+  fetchTropicalSystems,
+  getTropicalColor,
+  getTropicalIcon,
+  getTropicalStageMeta,
+  type TropicalSystem,
+} from "../lib/tropical-systems";
 import { detectOpenMapTilesSourceId, stadiaStyleUrl } from "../lib/stadia";
-import { 
-  TerrainRiskModel, 
-  generateSyntheticTrainingData,
-  getRiskColor,
-  getRiskDescription,
-  type RiskPrediction 
-} from "../lib/ml-risk";
 import {
   ensureEditStreetLayers,
   setEditStreetVisible,
@@ -67,6 +96,8 @@ import { LandingPage, LoginScreen, ROLE_CONFIGS, type UserRole } from "./Landing
 import { ProjectMonitoringPanel } from "./ProjectMonitoringPanel";
 import { ThemeToggle } from "./ThemeToggle";
 import { ProjectChat } from "./ProjectChat";
+import { HazardLegend } from "./HazardLegend";
+import { activeHazardFromToggles } from "../lib/hazard-overlays";
 import {
   seedAccounts,
   getSessionFromCookie,
@@ -177,7 +208,6 @@ const VECTOR_STYLE_URL = stadiaStyleUrl();
 
 type LayerToggles = {
   satellite: boolean;
-  streetMap: boolean;
   terrain: boolean;
   heatmap: boolean;
   weather: boolean;
@@ -186,11 +216,13 @@ type LayerToggles = {
   projects: boolean;
   buildingBlocks: boolean;
   stormTrack: boolean;
+  hazardEil2010: boolean;
+  hazardEq2014: boolean;
+  hazardGsh2014: boolean;
 };
 
 const DEFAULT_TOGGLES: LayerToggles = {
   satellite: false,
-  streetMap: false,
   terrain: false,
   heatmap: false,
   weather: false,
@@ -199,6 +231,9 @@ const DEFAULT_TOGGLES: LayerToggles = {
   projects: true,
   buildingBlocks: true,
   stormTrack: false,
+  hazardEil2010: false,
+  hazardEq2014: false,
+  hazardGsh2014: false,
 };
 
 const BUILDING_EXTRUSION_OPACITY_DEFAULT = 1;
@@ -280,6 +315,105 @@ function formatAgo(iso: string) {
   return `${m}m ago`;
 }
 
+type PanelNotice = {
+  id: string;
+  proposalId: string;
+  title: string;
+  message: string;
+  at: string;
+  kind: "botohan" | "returned" | "review" | "assigned" | "update";
+};
+
+function buildEngineerPlanningNotices(
+  proposals: PlanningProposal[],
+  session: SessionUser,
+): PanelNotice[] {
+  const username = session.username.toLowerCase();
+  const dept = departmentForRole(session.role);
+  const notices: PanelNotice[] = [];
+
+  for (const p of proposals) {
+    const isDept = p.department === dept;
+    const isAssignee = (p.assignees || []).some((a) => a.toLowerCase() === username);
+    const votes = p.votes || [];
+    const hasVoted = votes.some((v) => v.username.toLowerCase() === username);
+    const yes = votes.filter((v) => v.choice === "yes").length;
+    const no = votes.filter((v) => v.choice === "no").length;
+    const abstain = votes.filter((v) => v.choice === "abstain").length;
+    const statusLabel = PLANNING_STATUS_LABELS[p.status] || p.status;
+    const at = p.updatedAt || p.createdAt;
+
+    if (p.status === "in_review" && !hasVoted) {
+      notices.push({
+        id: `${p.id}:botohan:${votes.length}`,
+        proposalId: p.id,
+        title: "Botohan open",
+        message: `"${p.title}" — cast your Yes / No / Abstain vote.`,
+        at,
+        kind: "botohan",
+      });
+      continue;
+    }
+
+    if (!isDept && !isAssignee) continue;
+
+    if (p.status === "returned") {
+      notices.push({
+        id: `${p.id}:returned:${at}`,
+        proposalId: p.id,
+        title: "Returned for revision",
+        message: `"${p.title}" was returned. Update and resubmit.`,
+        at,
+        kind: "returned",
+      });
+      continue;
+    }
+
+    if (isAssignee && (p.status === "submitted" || p.status === "in_review")) {
+      notices.push({
+        id: `${p.id}:assigned:${p.status}:${votes.length}`,
+        proposalId: p.id,
+        title: "Assigned to you",
+        message: `"${p.title}" · ${statusLabel}${votes.length ? ` · Botohan ${yes}Y / ${no}N / ${abstain}A` : ""}`,
+        at,
+        kind: "assigned",
+      });
+      continue;
+    }
+
+    if (isDept && (p.status === "submitted" || p.status === "in_review" || p.status === "recommended")) {
+      notices.push({
+        id: `${p.id}:${p.status}:${votes.length}`,
+        proposalId: p.id,
+        title: statusLabel,
+        message:
+          p.status === "in_review" && votes.length
+            ? `"${p.title}" · Botohan ${yes}Y / ${no}N / ${abstain}A`
+            : `"${p.title}" needs Engineering attention.`,
+        at,
+        kind: p.status === "in_review" ? "review" : "update",
+      });
+    }
+  }
+
+  return notices
+    .sort((a, b) => (b.at || "").localeCompare(a.at || ""))
+    .slice(0, 12);
+}
+
+const DISMISSED_NOTICES_KEY = "infatrack_eng_dismissed_notices";
+
+function loadDismissedNoticeIds(): string[] {
+  try {
+    const raw = localStorage.getItem(DISMISSED_NOTICES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
 export default function App() {
   const mapRef = useRef<MapLibreMap | null>(null);
   const mapDivRef = useRef<HTMLDivElement | null>(null);
@@ -289,8 +423,12 @@ export default function App() {
 
   const [currentSession, setCurrentSession] = useState<SessionUser | null>(null);
   const currentRole = currentSession?.role ?? null;
-  const [screen, setScreen] = useState<"landing" | "login" | "app" | "inventory" | "planning" | "documents" | "analytics">("landing");
+  const [screen, setScreen] = useState<"landing" | "login" | "app" | "inventory" | "planning" | "documents" | "analytics" | "engagement" | "citizen">("landing");
   const roleConfig = currentRole ? ROLE_CONFIGS[currentRole] : null;
+  /** Keep Cesium alive briefly after leaving the map so logout/home doesn't white-screen on WebGL teardown. */
+  const [mapHold, setMapHold] = useState(false);
+  /** Same for Citizen Portal globe — unmounting it after Home was white-screening Landing. */
+  const [citizenHold, setCitizenHold] = useState(false);
 
   const [cookieConsent, setCookieConsent] = useState<"pending" | "accepted" | "declined">(() => {
     const stored = localStorage.getItem("infatrack_cookie_consent");
@@ -321,6 +459,10 @@ export default function App() {
 
   const [connected, setConnected] = useState(false);
   const [toggles, setToggles] = useState<LayerToggles>(DEFAULT_TOGGLES);
+  const [mapSettings, setMapSettings] = useState<MapSettings>(() => loadMapSettings());
+  useEffect(() => {
+    saveMapSettings(mapSettings);
+  }, [mapSettings]);
   const [solarHour, setSolarHour] = useState(() => getCurrentSolarHour());
   const [sunAzimuthDeg, setSunAzimuthDeg] = useState(() => {
     const date = dateFromSolarHour(getCurrentSolarHour());
@@ -362,7 +504,6 @@ export default function App() {
         showHillshade: true,
         beforeVeilId: BUILDING_EXTRUSION_LAYER,
         satelliteOn: toggles.satellite,
-        streetMapOn: toggles.streetMap,
       });
     };
     if (map.isStyleLoaded()) apply();
@@ -371,7 +512,7 @@ export default function App() {
     return () => {
       map.off("style.load", apply);
     };
-  }, [mapInstance, sunLighting, toggles.satellite, toggles.streetMap]);
+  }, [mapInstance, sunLighting, toggles.satellite]);
   const [weather, setWeather] = useState<WeatherSnapshot | null>(null);
   const [heatPoints, setHeatPoints] = useState<HeatPoint[]>([]);
   const [riskZones, setRiskZones] = useState<RiskZones | null>(null);
@@ -385,20 +526,49 @@ export default function App() {
   const [placingName, setPlacingName] = useState("");
   const [customModelFile, setCustomModelFile] = useState<File | null>(null);
   const [customModelPreview, setCustomModelPreview] = useState<string | null>(null);
-  const [sidebarTab, setSidebarTab] = useState<"layers" | "risk" | "projects" | "climate" | "events" | "ai-risk">("climate");
+  /** Approved proposal waiting for MPDC to click the map and pin the site. */
+  const [pinProposal, setPinProposal] = useState<PlanningProposal | null>(null);
+  const pinProposalRef = useRef<PlanningProposal | null>(null);
+  const [placementTool, setPlacementTool] = useState<PlacementTool>("pin");
+  const [placementColor, setPlacementColor] = useState<string>(MAP_SKETCH_COLORS[0]);
+
+  const placementToolbarOpen =
+    (pinProposal && currentRole === "MPDC" && screen === "app") ||
+    (placementMode && currentRole === "Engineer" && screen === "app");
+  const eraseBlocksActive = placementToolbarOpen && placementTool === "erase";
+  const [sidebarTab, setSidebarTab] = useState<"notify" | "layers" | "risk" | "projects" | "climate" | "events">("climate");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
     typeof window !== "undefined" && window.matchMedia("(max-width: 1024px)").matches
   );
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
+  const [planningNotices, setPlanningNotices] = useState<PanelNotice[]>([]);
+  const [dismissedNoticeIds, setDismissedNoticeIds] = useState<string[]>(() => loadDismissedNoticeIds());
+  const refreshPlanningNoticesRef = useRef<() => void>(() => {});
 
   // Set default tab based on role permissions
   useEffect(() => {
     if (roleConfig) {
-      if (roleConfig.canSeeWeather || roleConfig.canSeeLayers) setSidebarTab("climate");
+      if (currentRole === "Engineer") setSidebarTab("notify");
+      else if (roleConfig.canSeeWeather || roleConfig.canSeeLayers) setSidebarTab("climate");
       else if (roleConfig.canSeeRisk) setSidebarTab("risk");
       else if (roleConfig.canSeeProjects) setSidebarTab("projects");
     }
+    if (currentRole !== "Engineer") {
+      setBlockRemoverMode(false);
+      setEditMode(false);
+    }
+    if (currentRole !== "MPDC") {
+      setPinProposal(null);
+      pinProposalRef.current = null;
+    }
+    if (currentRole !== "Engineer" && currentRole !== "MPDC") {
+      setPlacementMode(false);
+    }
   }, [currentRole]);
+
+  useEffect(() => {
+    pinProposalRef.current = pinProposal;
+  }, [pinProposal]);
 
   // Collapse side panel by default on tablet/phone; full map first
   useEffect(() => {
@@ -488,62 +658,15 @@ export default function App() {
   const [eonetCategories, setEonetCategories] = useState<string[]>(["wildfires", "severeStorms", "volcanoes", "earthquakes", "floods"]);
   const [eonetRadius, setEonetRadius] = useState(1000); // km radius from Luisiana
 
-  // AI Risk Analysis
-  const [aiRiskEnabled, setAiRiskEnabled] = useState(false);
-  const [aiRiskLoading, setAiRiskLoading] = useState(false);
-  const [aiRiskTrained, setAiRiskTrained] = useState(false);
-  const [aiRiskPredictions, setAiRiskPredictions] = useState<any[]>([]);
-  const [aiRiskModel, setAiRiskModel] = useState<any>(null);
-  const [aiRiskAutoTraining, setAiRiskAutoTraining] = useState(false);
+  // Tropical systems (Invest / TC / LPA-watch via RAMMB)
+  const [tropicalEnabled, setTropicalEnabled] = useState(false);
+  const [tropicalSystems, setTropicalSystems] = useState<TropicalSystem[]>([]);
+  const [tropicalLoading, setTropicalLoading] = useState(false);
+  const [tropicalDisclaimer, setTropicalDisclaimer] = useState("");
+  const [tropicalError, setTropicalError] = useState<string | null>(null);
 
   // Google Street View mode — when active, clicking the map opens GSV in a new tab
   const [streetViewMode, setStreetViewMode] = useState(false);
-
-  // Auto-train AI model on app load
-  useEffect(() => {
-    if (screen !== 'app' || aiRiskAutoTraining || aiRiskTrained) return;
-
-    const autoTrainModel = async () => {
-      setAiRiskAutoTraining(true);
-      setAiRiskLoading(true);
-      
-      try {
-        console.log('🤖 Auto-training AI Risk Model...');
-        
-        // Try to load existing model first
-        const { TerrainRiskModel } = await import('../lib/ml-risk');
-        const model = new TerrainRiskModel();
-        
-        try {
-          await model.loadModel('luisiana-risk-model');
-          console.log('✅ Loaded existing trained model');
-          setAiRiskModel(model);
-          setAiRiskTrained(true);
-        } catch (loadError) {
-          // No existing model, train new one
-          console.log('📚 Training new model with 2000 samples...');
-          const { generateSyntheticTrainingData } = await import('../lib/ml-risk');
-          const trainingData = generateSyntheticTrainingData(2000);
-          
-          await model.train(trainingData, 50); // 50 epochs for better accuracy
-          await model.saveModel('luisiana-risk-model');
-          
-          console.log('✅ Model trained and saved successfully!');
-          setAiRiskModel(model);
-          setAiRiskTrained(true);
-        }
-      } catch (error) {
-        console.error('❌ Auto-training failed:', error);
-      } finally {
-        setAiRiskLoading(false);
-        setAiRiskAutoTraining(false);
-      }
-    };
-
-    // Start auto-training after 2 seconds (let app load first)
-    const timer = setTimeout(autoTrainModel, 2000);
-    return () => clearTimeout(timer);
-  }, [screen, aiRiskAutoTraining, aiRiskTrained]);
 
   // Map bearing tracked by CameraCompass (live rotate/pitch sync)
 
@@ -557,11 +680,11 @@ export default function App() {
       if (e.key === "=" || e.key === "+") m.zoomIn({ duration: 300 });
       if (e.key === "-" || e.key === "_") m.zoomOut({ duration: 300 });
       if (e.key === "n" || e.key === "N") m.easeTo({ bearing: 0, pitch: 75, duration: 500 });
-      if (e.key === "h" || e.key === "H") m.flyTo({ center: [CENTER.lon, CENTER.lat], zoom: CENTER.zoom, pitch: toggles.terrain ? 75 : 30, bearing: -15, duration: 1200, essential: true });
+      if (e.key === "h" || e.key === "H") m.flyTo({ center: [CENTER.lon, CENTER.lat], zoom: CENTER.zoom, pitch: toggles.satellite ? 75 : 30, bearing: -15, duration: 1200, essential: true });
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggles.terrain]);
+  }, [toggles.satellite]);
 
   // Fetch NASA EONET natural events
   useEffect(() => {
@@ -600,47 +723,30 @@ export default function App() {
     return () => clearInterval(interval);
   }, [eonetEnabled, eonetCategories, eonetRadius]);
 
-  // Generate AI Risk Predictions
+  // Fetch West Pacific tropical systems (Invest / TC / LPA-watch)
   useEffect(() => {
-    if (!aiRiskEnabled || !aiRiskModel) return;
+    if (!tropicalEnabled) return;
 
-    const generatePredictions = async () => {
-      setAiRiskLoading(true);
+    const loadTropical = async () => {
+      setTropicalLoading(true);
       try {
-        const { generateRiskGrid, updateGridWithWeather } = await import('../lib/risk-grid');
-        
-        // Generate smaller grid (20x20 = 441 points) - lighter and faster
-        let grid = generateRiskGrid(20);
-        
-        // Update with current weather if available
-        if (weather) {
-          grid = updateGridWithWeather(grid, {
-            rainfallMm: weather.rainfallMm,
-            humidityPct: weather.humidityPct || 70,
-          });
-        }
-        
-        // Generate predictions for all grid points
-        const predictions = await aiRiskModel.predictBatch(grid.map((p: any) => p.features));
-        
-        // Combine with positions
-        const predictionData = grid.map((point: any, i: number) => ({
-          position: point.position,
-          prediction: predictions[i],
-        }));
-        
-        setAiRiskPredictions(predictionData);
-        console.log(`✅ Generated ${predictionData.length} risk predictions`);
+        const response = await fetchTropicalSystems();
+        setTropicalSystems(response.systems ?? []);
+        setTropicalDisclaimer(response.disclaimer ?? "");
+        setTropicalError(response.error ?? null);
       } catch (error) {
-        console.error("Failed to generate predictions:", error);
-        setAiRiskPredictions([]);
+        console.error("Failed to fetch tropical systems:", error);
+        setTropicalSystems([]);
+        setTropicalError(error instanceof Error ? error.message : "Failed to load");
       } finally {
-        setAiRiskLoading(false);
+        setTropicalLoading(false);
       }
     };
 
-    generatePredictions();
-  }, [aiRiskEnabled, aiRiskModel, weather]);
+    loadTropical();
+    const interval = setInterval(loadTropical, 20 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [tropicalEnabled]);
 
   const topRisk = useMemo(() => {
     const feats = riskZones?.features || [];
@@ -772,20 +878,6 @@ export default function App() {
         },
       });
 
-      // ── OSM Street Map raster source ──
-      // Guard every addSource: the terrain/satellite/street toggle effects run on
-      // "style.load" (fires before "load") and may have created these already.
-      // An unguarded duplicate addSource throws and kills the rest of this handler.
-      if (!map.getSource("osm-street")) {
-        map.addSource("osm-street", {
-          type: "raster",
-          tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
-          tileSize: 256,
-          maxzoom: 19,
-          attribution: "© OpenStreetMap contributors",
-        } as any);
-      }
-
       // ── Satellite imagery source (Enhanced WebGL with multiple providers) ──
       if (!map.getSource("satellite")) {
         const satelliteSource = getSatelliteSource("esri");
@@ -852,22 +944,10 @@ export default function App() {
         } as any);
       }
 
-      // OSM Street / Satellite — insert before 3d-buildings when that layer exists
+      // Satellite — insert before 3d-buildings when that layer exists
       const beforeBuildings = map.getLayer(BUILDING_EXTRUSION_LAYER)
         ? BUILDING_EXTRUSION_LAYER
         : undefined;
-
-      if (!map.getLayer("osm-street-layer")) {
-        map.addLayer(
-          {
-            id: "osm-street-layer",
-            type: "raster",
-            source: "osm-street",
-            paint: { "raster-opacity": 0 },
-          } as any,
-          beforeBuildings
-        );
-      }
 
       if (!map.getLayer("satellite-layer")) {
         map.addLayer(
@@ -1163,6 +1243,16 @@ export default function App() {
 
   /** Open the placement details modal at a clicked lat/lng (MapLibre or Cesium). */
   function openPlacementAt({ lng, lat }: { lng: number; lat: number }) {
+    const pendingPin = pinProposalRef.current;
+    if (pendingPin && currentRole === "MPDC") {
+      void placeApprovedProposalAt(pendingPin, lng, lat, {
+        kind: "pin",
+        color: placementColor,
+        coordinates: [{ lon: lng, lat }],
+      });
+      return;
+    }
+
     setPendingPlacement({ lng, lat });
     const catalog = MODEL_CATALOG.find((m) => m.type === selectedModelRef.current);
     setModalProjectName(placingNameRef.current.trim() || `${catalog?.label ?? selectedModelRef.current}`);
@@ -1176,6 +1266,129 @@ export default function App() {
     setModalProgress(0);
     setModalDescription(catalog?.description || "");
     setShowPlacementModal(true);
+  }
+
+  function handlePlaceSketch(sketch: MapSketch) {
+    const pendingPin = pinProposalRef.current;
+    const first = sketch.coordinates[0];
+    if (!first) return;
+    if (pendingPin && currentRole === "MPDC") {
+      void placeApprovedProposalAt(pendingPin, first.lon, first.lat, sketch);
+      return;
+    }
+    // Engineer free placement: use sketch centroid / first point for the GLB modal.
+    openPlacementAt({ lng: first.lon, lat: first.lat });
+  }
+
+  function startPinSite(proposal: PlanningProposal) {
+    setPinProposal(proposal);
+    pinProposalRef.current = proposal;
+    setPlacingName(proposal.title);
+    setSelectedModel("office");
+    setModalDepartment(proposal.department);
+    setPlacementTool("pin");
+    setPlacementColor(MAP_SKETCH_COLORS[0]);
+    setPlacementMode(true);
+    setBlockRemoverMode(false);
+    setEditMode(false);
+    setSidebarCollapsed(true);
+    setStreetViewMode(false);
+    setScreen("app");
+  }
+
+  async function placeApprovedProposalAt(
+    proposal: PlanningProposal,
+    lng: number,
+    lat: number,
+    sketch?: MapSketch | null,
+  ) {
+    const now = new Date().toISOString();
+    const dept = proposal.department;
+    const mapSketch: MapSketch = sketch ?? {
+      kind: "pin",
+      color: placementColor,
+      coordinates: [{ lon: lng, lat }],
+    };
+    const body = {
+      name: proposal.title,
+      modelType: "office" as ModelType,
+      type: "Municipal Project" as const,
+      department: dept,
+      status: "Planned" as ProjectStatus,
+      progress: 0,
+      description: proposal.summary,
+      barangay: proposal.barangay,
+      fundingSource: "LGU",
+      contractor:
+        dept === "Engineering"
+          ? "Municipal Engineering Office"
+          : dept === "Agriculture"
+            ? "Municipal Agriculture Office"
+            : dept === "Negosyo Center"
+              ? "Negosyo Center"
+              : "Municipal Planning & Development Coordinator",
+      location: { lat, lon: lng },
+      rotation: 0,
+      modelLocked: true,
+      siteMarkerOnly: true,
+      mapSketch,
+      markerColor: mapSketch.color,
+      lifecyclePhase: "Planning",
+    };
+
+    try {
+      let linkedId: string;
+      try {
+        const res = await fetch(backendUrl("/api/projects"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const { project } = await res.json();
+        linkedId = project.id as string;
+        addProjectToFirestore(project).catch(() => undefined);
+      } catch {
+        const fallback = {
+          id:
+            typeof crypto !== "undefined" && "randomUUID" in crypto
+              ? crypto.randomUUID()
+              : `plan-${Date.now()}`,
+          ...body,
+          milestones: [],
+          issues: [],
+          photos: [],
+          activityLog: [
+            {
+              at: now,
+              message: `Site markup drawn by MPDC from approved proposal ${proposal.id}.`,
+            },
+          ],
+          updatedAt: now,
+          archivedAt: null,
+        } as Project;
+        linkedId = fallback.id;
+        await addProjectToFirestore(fallback);
+        setProjects((prev) => [fallback, ...prev]);
+      }
+
+      await updateProposal(proposal.id, {
+        status: "approved",
+        linkedProjectId: linkedId,
+        location: { lat, lon: lng },
+      });
+
+      setPinProposal(null);
+      pinProposalRef.current = null;
+      setPlacementMode(false);
+      cesiumMapRef.current?.flyToLonLat(lng, lat, 2500);
+      window.alert(
+        `Site markup saved for “${proposal.title}” (${mapSketch.kind}, no 3D model).`,
+      );
+    } catch (err) {
+      console.error(err);
+      window.alert("Failed to pin site. Please try again.");
+    }
   }
 
   // Function to actually place the building after modal submission
@@ -1260,6 +1473,13 @@ export default function App() {
             startDate: modalStartDate || undefined,
             targetEndDate: modalTargetEndDate || undefined,
             budgetTotal: modalBudgetTotal ? Number(modalBudgetTotal) : undefined,
+            fundingSource: "LGU",
+            contractor:
+              modalDepartment === "Engineering"
+                ? "Municipal Engineering Office"
+                : modalDepartment === "Agriculture"
+                  ? "Municipal Agriculture Office"
+                  : modalDepartment || "LGU Implementing Office",
             location: { lat, lon: lng },
             rotation: placementRotationRef.current,
             customModelUrl,
@@ -1303,17 +1523,23 @@ export default function App() {
     }
   };
 
-  // ESC key to close placement modal
+  // ESC key to close placement modal / cancel MPDC site pin
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && showPlacementModal) {
+      if (e.key !== "Escape") return;
+      if (showPlacementModal) {
         setShowPlacementModal(false);
         setPendingPlacement(null);
+      }
+      if (pinProposal) {
+        setPinProposal(null);
+        pinProposalRef.current = null;
+        setPlacementMode(false);
       }
     };
     window.addEventListener("keydown", handleEsc);
     return () => window.removeEventListener("keydown", handleEsc);
-  }, [showPlacementModal]);
+  }, [showPlacementModal, pinProposal]);
 
   function upsertGibsLayer(args: { layer: GibsLayerId; date: string; opacity: number; visible: boolean }) {
     const map = mapRef.current;
@@ -1419,13 +1645,84 @@ export default function App() {
 
     socket.on("weather:update", (w) => setWeather(w));
     socket.on("risk:update", (z) => setRiskZones(z.zones));
-    socket.on("projects:update", (p) => setProjects(p.projects));
+    socket.on("projects:update", (p) => {
+      setProjects(Array.isArray(p?.projects) ? p.projects : []);
+    });
     socket.on("alerts:new", (a) => setAlerts((prev) => [a, ...prev].slice(0, 8)));
+    socket.on("planning:update", () => {
+      refreshPlanningNoticesRef.current();
+    });
 
     return () => {
       socket.disconnect();
     };
   }, []);
+
+  // Engineer Live Situation notifications (planning / botohan)
+  useEffect(() => {
+    if (currentRole !== "Engineer" || !currentSession) {
+      setPlanningNotices([]);
+      refreshPlanningNoticesRef.current = () => {};
+      return;
+    }
+
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const list = await fetchProposalsOnce();
+        if (cancelled) return;
+        setPlanningNotices(buildEngineerPlanningNotices(list, currentSession));
+      } catch (err) {
+        console.warn("[Notices] Failed to load planning notifications:", err);
+        if (!cancelled) setPlanningNotices([]);
+      }
+    };
+
+    refreshPlanningNoticesRef.current = () => {
+      void refresh();
+    };
+    void refresh();
+    const interval = window.setInterval(() => {
+      void refresh();
+    }, 20_000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      refreshPlanningNoticesRef.current = () => {};
+    };
+  }, [currentRole, currentSession]);
+
+  const activePlanningNotices = useMemo(
+    () => planningNotices.filter((n) => !dismissedNoticeIds.includes(n.id)),
+    [planningNotices, dismissedNoticeIds],
+  );
+  const noticeUnreadCount = activePlanningNotices.length;
+
+  function dismissNotice(id: string) {
+    setDismissedNoticeIds((prev) => {
+      if (prev.includes(id)) return prev;
+      const next = [...prev, id].slice(-80);
+      try {
+        localStorage.setItem(DISMISSED_NOTICES_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore quota */
+      }
+      return next;
+    });
+  }
+
+  function dismissAllNotices() {
+    setDismissedNoticeIds((prev) => {
+      const next = [...new Set([...prev, ...activePlanningNotices.map((n) => n.id)])].slice(-80);
+      try {
+        localStorage.setItem(DISMISSED_NOTICES_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }
 
   // Heatmap engine (Zoom Earth feel): regenerate points from live signals + viewport.
   useEffect(() => {
@@ -1562,59 +1859,6 @@ export default function App() {
     };
   }, [mapInstance, buildingExtrusionOpacity, toggles.satellite]);
 
-  // OSM Street Map toggle
-  useEffect(() => {
-    const map = mapInstance ?? mapRef.current;
-    if (!map) return;
-
-    const applyStreet = () => {
-      if (!map.getSource("osm-street")) {
-        try {
-          map.addSource("osm-street", {
-            type: "raster",
-            tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
-            tileSize: 256,
-            maxzoom: 19,
-            attribution: "© OpenStreetMap contributors",
-          } as any);
-        } catch {
-          // source may be in-flight during style load
-        }
-      }
-
-      if (!map.getLayer("osm-street-layer") && map.getSource("osm-street")) {
-        try {
-          map.addLayer(
-            {
-              id: "osm-street-layer",
-              type: "raster",
-              source: "osm-street",
-              paint: { "raster-opacity": 0 },
-            } as any,
-            map.getLayer("satellite-layer")
-              ? "satellite-layer"
-              : map.getLayer("3d-buildings")
-                ? "3d-buildings"
-                : undefined
-          );
-        } catch {
-          // layer may already exist
-        }
-      }
-
-      if (map.getLayer("osm-street-layer")) {
-        map.setPaintProperty(
-          "osm-street-layer",
-          "raster-opacity",
-          toggles.streetMap ? daylightRasterScale(sunLighting.pos) : 0,
-        );
-      }
-    };
-
-    if (map.isStyleLoaded()) applyStreet();
-    else map.once("style.load", applyStreet);
-  }, [toggles.streetMap, mapInstance, sunLighting.pos]);
-
   // Google Street View mode — click map to open GSV in new tab
   const streetViewModeRef = useRef(false);
   useEffect(() => { streetViewModeRef.current = streetViewMode; }, [streetViewMode]);
@@ -1665,7 +1909,7 @@ export default function App() {
       }
 
       try {
-        if (toggles.terrain) {
+        if (toggles.satellite) {
           // Dynamic exaggeration based on zoom level for optimal visualization
           const currentZoom = map.getZoom();
           const exaggeration = calculateTerrainExaggeration(currentZoom);
@@ -1700,7 +1944,7 @@ export default function App() {
 
     // Update exaggeration on zoom change
     const handleZoom = () => {
-      if (!toggles.terrain) return;
+      if (!toggles.satellite) return;
       const currentZoom = map.getZoom();
       const exaggeration = calculateTerrainExaggeration(currentZoom);
       try {
@@ -1717,7 +1961,7 @@ export default function App() {
     return () => {
       map.off("zoomend", handleZoom);
     };
-  }, [toggles.terrain, mapInstance]);
+  }, [toggles.satellite, mapInstance]);
 
   // Keep project/municipal holes in the basemap building extrusion layer.
   useEffect(() => {
@@ -1823,6 +2067,43 @@ export default function App() {
     return { high, mod, low, total: feats.length };
   }, [riskZones]);
 
+  const activeHazardLegend = useMemo(
+    () =>
+      activeHazardFromToggles({
+        hazardEil2010: toggles.hazardEil2010,
+        hazardEq2014: toggles.hazardEq2014,
+        hazardGsh2014: toggles.hazardGsh2014,
+      }),
+    [toggles.hazardEil2010, toggles.hazardEq2014, toggles.hazardGsh2014],
+  );
+
+  const staffOverlay =
+    screen === "planning" ||
+    screen === "documents" ||
+    screen === "analytics" ||
+    screen === "inventory" ||
+    screen === "engagement";
+  /**
+   * Once the globe has been created, never tear it down in-SPA.
+   * Deferred Cesium destroy after logout painted Landing then white-screened.
+   */
+  const showMapShell = screen === "app" || staffOverlay || mapHold;
+  const parkMapShell = showMapShell && screen !== "app";
+
+  useEffect(() => {
+    if (screen === "app" || staffOverlay) setMapHold(true);
+    if (screen === "citizen") setCitizenHold(true);
+  }, [screen, staffOverlay]);
+
+  function goHome() {
+    clearSessionCookie();
+    setCurrentSession(null);
+    setScreen("landing");
+  }
+
+  const showCitizenShell = screen === "citizen" || citizenHold;
+  const parkCitizenShell = showCitizenShell && screen !== "citizen";
+
   return (
     <div
       className={`appShell${
@@ -1833,9 +2114,9 @@ export default function App() {
       {screen === "landing" && (
         <LandingPage
           onEnter={() => setScreen("login")}
-          onViewMap={() => {
+          onPublicPortal={() => {
             setCurrentSession(sessionForRole("Viewer"));
-            setScreen("app");
+            setScreen("citizen");
           }}
         />
       )}
@@ -1851,43 +2132,105 @@ export default function App() {
         />
       )}
 
-      {/* Inventory Page */}
+      {showCitizenShell && (
+        <div
+          className={parkCitizenShell ? "app-shell-parked" : undefined}
+          aria-hidden={parkCitizenShell}
+          style={parkCitizenShell ? undefined : { position: "relative", zIndex: 10000 }}
+        >
+          <CitizenPortal
+            onBack={goHome}
+            onOpenLiveMap={() => {
+              setCurrentSession(sessionForRole("Viewer"));
+              setSidebarCollapsed(false);
+              setScreen("app");
+            }}
+          />
+        </div>
+      )}
+
+      {/* Inventory / Planning / Documents / Analytics — overlays; map stays parked underneath */}
       {screen === "inventory" && (
         <InventoryPage
           onBack={() => setScreen("app")}
-          backendProjects={projects}
+          backendProjects={Array.isArray(projects) ? projects : []}
           currentRole={currentRole}
         />
       )}
 
-      {screen === "planning" && (
-        <PlanningPage onBack={() => setScreen("app")} session={currentSession} />
+      {screen === "planning" && currentRole !== "Viewer" && (
+        <PlanningPage
+          onBack={() => setScreen("app")}
+          session={currentSession}
+          onPinSite={currentRole === "MPDC" ? startPinSite : undefined}
+        />
       )}
 
-      {screen === "documents" && (
+      {screen === "documents" && currentRole !== "Viewer" && (
         <DocumentsPage onBack={() => setScreen("app")} session={currentSession} />
       )}
 
-      {screen === "analytics" && (
-        <AnalyticsPage onBack={() => setScreen("app")} projects={projects} />
+      {screen === "analytics" && currentRole !== "Viewer" && (
+        <AnalyticsPage onBack={() => setScreen("app")} projects={Array.isArray(projects) ? projects : []} />
       )}
 
-      {/* Main app - only render when logged in */}
-      {screen === "app" && <>
+      {screen === "engagement" && roleConfig?.canSeeEngagement && (
+        <EngagementPage
+          onBack={() => setScreen("app")}
+          onFlyTo={(lon, lat) => {
+            window.setTimeout(() => {
+              cesiumMapRef.current?.flyToLonLat(lon, lat, 2500);
+            }, 100);
+          }}
+        />
+      )}
+
+      {/* Main map shell — stays alive while staff overlays are open */}
+      {showMapShell && (
+      <div
+        className={parkMapShell ? "app-shell-parked" : undefined}
+        aria-hidden={parkMapShell}
+      >
+      <>
       <div className="mapWrap">
         <CesiumMap
           ref={cesiumMapRef}
           solarHour={solarHour}
           sunAzimuthDeg={sunAzimuthDeg}
-          buildingBlocksOpacity={buildingExtrusionOpacity}
           buildingBlocksVisible={toggles.buildingBlocks}
-          blockRemoverActive={blockRemoverMode && currentRole !== "Viewer"}
-          projects={projects}
-          visible={screen === "app"}
-          placementMode={placementMode}
+          blockRemoverActive={
+            (blockRemoverMode && currentRole === "Engineer") || eraseBlocksActive
+          }
+          terrainEnabled={toggles.satellite}
+          satellite={toggles.satellite}
+          hazardOverlays={{
+            eil2010: toggles.hazardEil2010,
+            eq2014: toggles.hazardEq2014,
+            gsh2014: toggles.hazardGsh2014,
+          }}
+          mapSettings={mapSettings}
+          eonetEnabled={eonetEnabled}
+          eonetEvents={eonetEvents}
+          tropicalEnabled={tropicalEnabled}
+          tropicalSystems={tropicalSystems}
+          projects={Array.isArray(projects) ? projects : []}
+          visible
+          placementMode={
+            (placementMode && currentRole === "Engineer") ||
+            (placementMode && currentRole === "MPDC" && Boolean(pinProposal))
+          }
+          placementTool={placementTool}
+          placementColor={placementColor}
           onPlaceClick={openPlacementAt}
+          onPlaceSketch={handlePlaceSketch}
           readOnly={currentRole === "Viewer"}
+          canManipulateModels={currentRole === "Engineer"}
           canAddPhotos={currentRole === "MPDC" || currentRole === "Engineer"}
+          onPhotosChange={(projectId, photos) => {
+            setProjects((prev) =>
+              prev.map((p) => (p.id === projectId ? { ...p, photos } : p)),
+            );
+          }}
           gibs={{
             enabled: toggles.gibsPrecip && gibsStatus === "ok",
             layer: gibsLayer,
@@ -1895,19 +2238,23 @@ export default function App() {
             opacity: gibsOpacity,
           }}
           onDeleteBuilding={
-            currentRole === "Viewer"
-              ? undefined
-              : async (projectId) => {
+            currentRole === "Engineer"
+              ? async (projectId) => {
                   try {
                     await fetch(backendUrl(`/api/projects/${projectId}`), { method: "DELETE" });
                   } catch (err) {
                     console.error("Failed to delete project:", err);
                   }
                 }
+              : undefined
           }
         />
 
         <ProjectChat />
+
+        {activeHazardLegend && screen === "app" && (
+          <HazardLegend hazard={activeHazardLegend} variant="map" />
+        )}
 
         {/* Google Street View mode indicator */}
         {streetViewMode && (
@@ -1953,6 +2300,279 @@ export default function App() {
           </div>
         )}
 
+        {placementToolbarOpen ? (
+          <div
+            className="placement-draw-toolbar"
+            style={{
+              position: "absolute",
+              top: 70,
+              left: "50%",
+              transform: "translateX(-50%)",
+              zIndex: 12,
+              background: "var(--cream)",
+              color: "var(--ink)",
+              padding: "10px 12px",
+              border: "2px solid var(--ink)",
+              boxShadow: "4px 4px 0 var(--shadow-accent)",
+              fontSize: 12,
+              fontFamily: '"Chakra Petch", sans-serif',
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+              maxWidth: "min(560px, calc(100vw - 24px))",
+              minWidth: "min(320px, calc(100vw - 24px))",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <span style={{ lineHeight: 1.35, flex: 1, minWidth: 140 }}>
+                {pinProposal ? (
+                  <>
+                    <b>Draw site</b> for <b>{pinProposal.title}</b> — pin / draw / area / erase blocks
+                  </>
+                ) : (
+                  <>
+                    <b>Place tools</b> — pin, draw, color, or delete OSM blocks
+                  </>
+                )}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setPinProposal(null);
+                  pinProposalRef.current = null;
+                  setPlacementMode(false);
+                  setBlockRemoverMode(false);
+                  setPlacementTool("pin");
+                  cesiumMapRef.current?.clearSketch();
+                }}
+                style={{
+                  cursor: "pointer",
+                  flexShrink: 0,
+                  background: "var(--cream-deep)",
+                  border: "2px solid var(--ink)",
+                  color: "var(--ink)",
+                  padding: "6px 10px",
+                  fontSize: 11,
+                  fontWeight: 700,
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+              {(
+                [
+                  ["pin", "Pin"],
+                  ["line", "Draw"],
+                  ["area", "Area"],
+                  ["erase", "Delete blocks"],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => {
+                    setPlacementTool(id);
+                    cesiumMapRef.current?.clearSketch();
+                    if (id === "erase") {
+                      setBlockRemoverMode(true);
+                    } else {
+                      setBlockRemoverMode(false);
+                    }
+                  }}
+                  style={{
+                    cursor: "pointer",
+                    padding: "6px 10px",
+                    fontWeight: 700,
+                    border: "2px solid var(--ink)",
+                    background:
+                      placementTool === id
+                        ? id === "erase"
+                          ? "rgba(255,77,79,0.35)"
+                          : "var(--seed)"
+                        : "var(--cream-deep)",
+                    color: "var(--ink)",
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+              {placementTool !== "erase" && (
+                <>
+                  <span style={{ width: 1, height: 22, background: "var(--stroke)", margin: "0 4px" }} />
+                  {MAP_SKETCH_COLORS.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      title={c}
+                      aria-label={`Color ${c}`}
+                      onClick={() => setPlacementColor(c)}
+                      style={{
+                        width: 22,
+                        height: 22,
+                        borderRadius: 0,
+                        cursor: "pointer",
+                        background: c,
+                        border:
+                          placementColor === c
+                            ? "3px solid var(--ink)"
+                            : "2px solid rgba(0,0,0,0.35)",
+                      }}
+                    />
+                  ))}
+                  <input
+                    type="color"
+                    value={placementColor}
+                    aria-label="Custom color"
+                    onChange={(e) => setPlacementColor(e.target.value)}
+                    style={{
+                      width: 28,
+                      height: 22,
+                      padding: 0,
+                      border: "2px solid var(--ink)",
+                      cursor: "pointer",
+                    }}
+                  />
+                </>
+              )}
+            </div>
+
+            {placementTool === "erase" && (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <span style={{ color: "var(--muted)", fontSize: 11 }}>
+                  Click gray OSM building blocks to remove them from the map.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => cesiumMapRef.current?.restoreRemovedBlocks()}
+                  style={{
+                    cursor: "pointer",
+                    padding: "5px 10px",
+                    border: "2px solid var(--ink)",
+                    background: "var(--cream-deep)",
+                    fontWeight: 700,
+                  }}
+                >
+                  Restore all blocks
+                </button>
+              </div>
+            )}
+
+            {placementTool === "line" && (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <span style={{ color: "var(--muted)", fontSize: 11 }}>
+                  Hold and drag to draw. Release pauses — press Finish to save.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    cesiumMapRef.current?.undoSketchVertex();
+                  }}
+                  style={{
+                    cursor: "pointer",
+                    padding: "5px 8px",
+                    border: "1px solid var(--stroke)",
+                    background: "var(--cream-deep)",
+                    fontWeight: 600,
+                  }}
+                >
+                  Undo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    cesiumMapRef.current?.clearSketch();
+                  }}
+                  style={{
+                    cursor: "pointer",
+                    padding: "5px 8px",
+                    border: "1px solid var(--stroke)",
+                    background: "var(--cream-deep)",
+                    fontWeight: 600,
+                  }}
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const ok = cesiumMapRef.current?.finishSketch() ?? false;
+                    if (!ok) {
+                      window.alert("Draw a longer stroke first (need at least 2 points).");
+                    }
+                  }}
+                  style={{
+                    cursor: "pointer",
+                    padding: "5px 10px",
+                    border: "2px solid var(--ink)",
+                    background: "var(--seed)",
+                    fontWeight: 800,
+                  }}
+                >
+                  Finish
+                </button>
+              </div>
+            )}
+
+            {placementTool === "area" && (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <span style={{ color: "var(--muted)", fontSize: 11 }}>
+                  Click map to add points (≥3). Double-click last point or Finish.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    cesiumMapRef.current?.undoSketchVertex();
+                  }}
+                  style={{
+                    cursor: "pointer",
+                    padding: "5px 8px",
+                    border: "1px solid var(--stroke)",
+                    background: "var(--cream-deep)",
+                    fontWeight: 600,
+                  }}
+                >
+                  Undo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    cesiumMapRef.current?.clearSketch();
+                  }}
+                  style={{
+                    cursor: "pointer",
+                    padding: "5px 8px",
+                    border: "1px solid var(--stroke)",
+                    background: "var(--cream-deep)",
+                    fontWeight: 600,
+                  }}
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const ok = cesiumMapRef.current?.finishSketch() ?? false;
+                    if (!ok) {
+                      window.alert("Need at least 3 points for an area.");
+                    }
+                  }}
+                  style={{
+                    cursor: "pointer",
+                    padding: "5px 10px",
+                    border: "2px solid var(--ink)",
+                    background: "var(--seed)",
+                    fontWeight: 800,
+                  }}
+                >
+                  Finish
+                </button>
+              </div>
+            )}
+          </div>
+        ) : null}
+
         <div className="topBar">
           <div className="topBar-brand">
             <div className="topBar-brand-text">
@@ -1981,7 +2601,7 @@ export default function App() {
             <div className="chip chip-updates topBar-hide-mobile">Updates: 5s</div>
           </div>
           <div className="topBar-actions-primary">
-            {roleConfig?.canSeePlanning && (
+            {roleConfig?.canSeePlanning && currentRole !== "Viewer" && (
               <button
                 type="button"
                 className="topBar-exit"
@@ -2000,7 +2620,7 @@ export default function App() {
                 <span className="topBar-exit-short">Plan</span>
               </button>
             )}
-            {currentRole && (
+            {currentRole && currentRole !== "Viewer" && (
               <button
                 type="button"
                 className="topBar-exit"
@@ -2021,7 +2641,7 @@ export default function App() {
                 <span className="topBar-exit-short">Docs</span>
               </button>
             )}
-            {currentRole && (
+            {currentRole && currentRole !== "Viewer" && (
               <button
                 type="button"
                 className="topBar-exit"
@@ -2040,6 +2660,23 @@ export default function App() {
                 <span className="topBar-exit-short">Stats</span>
               </button>
             )}
+            {roleConfig?.canSeeEngagement && (
+              <button
+                type="button"
+                className="topBar-exit"
+                style={{
+                  background: "linear-gradient(135deg, rgba(36,92,58,0.2), rgba(212,160,23,0.18))",
+                  borderColor: "rgba(36,92,58,0.45)",
+                }}
+                onClick={() => setScreen("engagement")}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
+                <span className="topBar-exit-full">Engagement</span>
+                <span className="topBar-exit-short">Engage</span>
+              </button>
+            )}
             {currentRole !== "Negosyo Center" && currentRole !== "Viewer" && (
               <button
                 type="button"
@@ -2053,14 +2690,26 @@ export default function App() {
               </button>
             )}
             <ThemeToggle iconOnly />
+            {currentRole === "Viewer" && (
+              <button
+                type="button"
+                className="topBar-exit"
+                style={{
+                  background: "linear-gradient(135deg, rgba(36,92,58,0.2), rgba(212,160,23,0.18))",
+                  borderColor: "rgba(36,92,58,0.45)",
+                }}
+                onClick={() => setScreen("citizen")}
+              >
+                <span className="topBar-exit-full">Portal</span>
+                <span className="topBar-exit-short">Portal</span>
+              </button>
+            )}
             {currentRole && (
               <button
                 type="button"
                 className="topBar-exit"
                 onClick={() => {
-                  clearSessionCookie();
-                  setCurrentSession(null);
-                  setScreen("landing");
+                  goHome();
                 }}
               >
                 <span className="topBar-exit-full">{currentRole === "Viewer" ? "Exit Map" : "Sign Out"}</span>
@@ -2126,7 +2775,7 @@ export default function App() {
               <line x1="2" y1="20" x2="22" y2="20"/>
             </svg>
           </button>
-          {currentRole !== "Viewer" && (
+          {currentRole === "Engineer" && (
             <>
               <div className="map-ctrl-divider" />
               <button
@@ -2155,9 +2804,17 @@ export default function App() {
 
       <button
         type="button"
-        className={`sidePanel-edgeToggle${sidebarCollapsed ? " is-collapsed" : ""}`}
+        className={`sidePanel-edgeToggle${sidebarCollapsed ? " is-collapsed" : ""}${
+          currentRole === "Engineer" && noticeUnreadCount > 0 ? " has-badge" : ""
+        }`}
         aria-label={sidebarCollapsed ? "Expand side panel" : "Collapse side panel"}
-        title={sidebarCollapsed ? "Expand panel" : "Collapse panel"}
+        title={
+          sidebarCollapsed
+            ? noticeUnreadCount > 0
+              ? `Expand panel · ${noticeUnreadCount} notification${noticeUnreadCount === 1 ? "" : "s"}`
+              : "Expand panel"
+            : "Collapse panel"
+        }
         onClick={() => setSidebarCollapsed((v) => !v)}
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -2165,11 +2822,21 @@ export default function App() {
             ? <polyline points="15 18 9 12 15 6" />
             : <polyline points="9 18 15 12 9 6" />}
         </svg>
+        {currentRole === "Engineer" && noticeUnreadCount > 0 && (
+          <span className="sidePanel-edgeBadge" aria-hidden>{noticeUnreadCount > 9 ? "9+" : noticeUnreadCount}</span>
+        )}
       </button>
 
       <aside className={`sidePanel${sidebarCollapsed ? " is-collapsed" : ""}`} aria-hidden={sidebarCollapsed}>
         <div className="sidePanel-head">
-          <div className="sectionTitle">Live Situation Panel</div>
+          <div className="sectionTitle">
+            Live Situation Panel
+            {currentRole === "Engineer" && noticeUnreadCount > 0 && (
+              <span className="sidePanel-titleBadge" aria-label={`${noticeUnreadCount} notifications`}>
+                {noticeUnreadCount}
+              </span>
+            )}
+          </div>
           <button
             type="button"
             className="sidePanel-collapseBtn"
@@ -2185,6 +2852,18 @@ export default function App() {
 
         {/* Tab Navigation */}
         <div className="sidebar-tabs">
+          {currentRole === "Engineer" && (
+            <button
+              type="button"
+              className={`sidebar-tab${sidebarTab === "notify" ? " active" : ""}`}
+              onClick={() => setSidebarTab("notify")}
+            >
+              Notify
+              {noticeUnreadCount > 0 && (
+                <span className="sidebar-tab-badge">{noticeUnreadCount > 9 ? "9+" : noticeUnreadCount}</span>
+              )}
+            </button>
+          )}
           {(roleConfig?.canSeeWeather || roleConfig?.canSeeLayers) && (
             <button type="button" className={`sidebar-tab${sidebarTab === "climate" ? " active" : ""}`} onClick={() => setSidebarTab("climate")}>Climate</button>
           )}
@@ -2200,22 +2879,111 @@ export default function App() {
           {roleConfig?.canSeeLayers && (
             <button type="button" className={`sidebar-tab${sidebarTab === "events" ? " active" : ""}`} onClick={() => setSidebarTab("events")}>Events</button>
           )}
-          {roleConfig?.canSeeLayers && (
-            <button type="button" className={`sidebar-tab${sidebarTab === "ai-risk" ? " active" : ""}`} onClick={() => setSidebarTab("ai-risk")}>AI Risk</button>
-          )}
         </div>
 
         {currentRole === "Viewer" && (
           <div className="card viewer-banner" style={{ marginBottom: 12 }}>
-            <div className="sectionTitle" style={{ marginBottom: 4 }}>Public Map Viewer</div>
+            <div className="sectionTitle" style={{ marginBottom: 4 }}>Public Portal · Live Map</div>
             <p style={{ margin: 0, fontSize: 11, color: "var(--muted2)", lineHeight: 1.5 }}>
-              View-only mode — browse weather, risk, and projects without department sign-in.
+              View-only map with climate, layers, risk, and projects. Use <strong>Portal</strong> in the top bar for reporting, feedback, and transparency.
             </p>
           </div>
         )}
 
         {/* Tab Content */}
         <div className="sidePanel-body">
+
+        {/* ── Engineer: Notifications ── */}
+        {sidebarTab === "notify" && currentRole === "Engineer" && (
+          <div style={{ marginBottom: 12 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+                marginBottom: 8,
+              }}
+            >
+              <div className="sectionTitle" style={{ margin: 0 }}>
+                Notifications
+              </div>
+              {activePlanningNotices.length > 0 && (
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  style={{ fontSize: 11, padding: "4px 8px" }}
+                  onClick={dismissAllNotices}
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
+            <p style={{ margin: "0 0 10px", fontSize: 12, color: "var(--muted)", lineHeight: 1.45 }}>
+              Planning &amp; botohan items for Engineering. Live updates when the committee workspace changes.
+            </p>
+            {activePlanningNotices.length ? (
+              <div className="miniList">
+                {activePlanningNotices.map((n) => (
+                  <div
+                    key={n.id}
+                    className={`alert notice-card notice-${n.kind}`}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => {
+                      dismissNotice(n.id);
+                      setScreen("planning");
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        dismissNotice(n.id);
+                        setScreen("planning");
+                      }
+                    }}
+                  >
+                    <div className="t">{n.title}</div>
+                    <div className="m">{n.message}</div>
+                    <div className="meta">
+                      Updated {formatAgo(n.at)} · Open Planning
+                      <button
+                        type="button"
+                        className="notice-dismiss"
+                        aria-label="Dismiss notification"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          dismissNotice(n.id);
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="card" style={{ color: "var(--muted)", fontSize: 13 }}>
+                No open notifications. New botohan, returns, and Engineering assignments will show up here.
+              </div>
+            )}
+            {roleConfig?.canSeeAlerts && alerts.length > 0 && (
+              <>
+                <div className="sectionTitle" style={{ marginTop: 16, marginBottom: 8 }}>
+                  Risk alerts
+                </div>
+                <div className="miniList">
+                  {alerts.slice(0, 3).map((a) => (
+                    <div key={a.id} className="alert">
+                      <div className="t">{a.title}</div>
+                      <div className="m">{a.message}</div>
+                      <div className="meta">Triggered: {formatAgo(a.triggeredAt)}</div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {/* ── Negosyo Center: Business Permit Panel ── */}
         {roleConfig?.canSeeBusinessPermits && (
@@ -2273,8 +3041,152 @@ export default function App() {
             Layers (LGU-Friendly Toggles)
           </div>
           <div className="hint" style={{ marginBottom: 10 }}>
-            3D tilt near Luisiana limits far tiles — zoom out anytime to see the full globe. OSM building blocks are Luisiana-only.
+            3D tilt uses Map Settings draw distance around Luisiana — zoom out anytime for the full globe.
           </div>
+
+          <div className="sectionTitle" style={{ marginBottom: 8, marginTop: 4, fontSize: 13 }}>
+            Map Settings
+          </div>
+          <div className="hint" style={{ marginBottom: 10 }}>
+            Tune performance and view. Saved on this device.
+          </div>
+
+          <div
+            className="extrusion-opacity-control"
+            style={{
+              display: "flex",
+              gap: 10,
+              alignItems: "center",
+              marginBottom: 10,
+              paddingLeft: 2,
+            }}
+          >
+            <span className="pill">Draw distance</span>
+            <input
+              type="range"
+              min={5}
+              max={50}
+              step={1}
+              value={mapSettings.drawDistanceKm}
+              aria-label="3D draw distance in kilometers"
+              onChange={(e) =>
+                setMapSettings((s) => ({ ...s, drawDistanceKm: Number(e.target.value) }))
+              }
+              style={{ flex: 1 }}
+            />
+            <span style={{ fontSize: 11, color: "var(--muted)", minWidth: 40 }}>
+              {mapSettings.drawDistanceKm} km
+            </span>
+          </div>
+
+          <div style={{ marginBottom: 10, paddingLeft: 2 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+              <span className="pill">Terrain quality</span>
+              <span style={{ fontSize: 11, color: "var(--muted)" }}>
+                {mapSettings.terrainQuality === "low"
+                  ? "Fastest"
+                  : mapSettings.terrainQuality === "high"
+                    ? "Sharpest"
+                    : "Balanced"}
+              </span>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {(["low", "medium", "high"] as TerrainQuality[]).map((q) => (
+                <button
+                  key={q}
+                  type="button"
+                  onClick={() => setMapSettings((s) => ({ ...s, terrainQuality: q }))}
+                  style={{
+                    cursor: "pointer",
+                    borderRadius: 2,
+                    padding: "6px 10px",
+                    fontSize: 12,
+                    textTransform: "capitalize",
+                    background: mapSettings.terrainQuality === q ? "var(--seed)" : "var(--cream-ink)",
+                    color: "var(--ink)",
+                    fontWeight: 700,
+                    border:
+                      mapSettings.terrainQuality === q ? "2px solid var(--ink)" : "1px solid var(--stroke)",
+                    boxShadow: mapSettings.terrainQuality === q ? "2px 2px 0 var(--ink)" : "none",
+                  }}
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="toggleRow">
+            <div>
+              <label>Shadows</label>
+              <div className="hint">Sun shadows on terrain &amp; models (day only)</div>
+            </div>
+            <div
+              className={`switch ${mapSettings.shadowsEnabled ? "on" : ""}`}
+              role="switch"
+              aria-checked={mapSettings.shadowsEnabled}
+              onClick={() => setMapSettings((s) => ({ ...s, shadowsEnabled: !s.shadowsEnabled }))}
+            />
+          </div>
+
+          <div style={{ marginBottom: 10, paddingLeft: 2, opacity: mapSettings.shadowsEnabled ? 1 : 0.55 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+              <span className="pill">Shadow quality</span>
+              <span style={{ fontSize: 11, color: "var(--muted)" }}>
+                {mapSettings.shadowQuality === "low"
+                  ? "250 m · 512"
+                  : mapSettings.shadowQuality === "high"
+                    ? "1000 m · 2048"
+                    : "500 m · 1024"}
+              </span>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {(["low", "medium", "high"] as ShadowQuality[]).map((q) => (
+                <button
+                  key={q}
+                  type="button"
+                  onClick={() => setMapSettings((s) => ({ ...s, shadowQuality: q }))}
+                  style={{
+                    cursor: "pointer",
+                    borderRadius: 2,
+                    padding: "6px 10px",
+                    fontSize: 12,
+                    textTransform: "capitalize",
+                    background: mapSettings.shadowQuality === q ? "var(--seed)" : "var(--cream-ink)",
+                    color: "var(--ink)",
+                    fontWeight: 700,
+                    border:
+                      mapSettings.shadowQuality === q ? "2px solid var(--ink)" : "1px solid var(--stroke)",
+                    boxShadow: mapSettings.shadowQuality === q ? "2px 2px 0 var(--ink)" : "none",
+                  }}
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="toggleRow">
+            <div>
+              <label>Horizon fog</label>
+              <div className="hint">Fades far terrain in 3D tilt (helps FPS)</div>
+            </div>
+            <div
+              className={`switch ${mapSettings.fogEnabled ? "on" : ""}`}
+              role="switch"
+              aria-checked={mapSettings.fogEnabled}
+              onClick={() => setMapSettings((s) => ({ ...s, fogEnabled: !s.fogEnabled }))}
+            />
+          </div>
+
+          <button
+            type="button"
+            className="btn"
+            style={{ fontSize: 11, padding: "4px 8px", marginBottom: 12 }}
+            onClick={() => setMapSettings({ ...DEFAULT_MAP_SETTINGS })}
+          >
+            Reset map settings
+          </button>
 
           {(
             [
@@ -2303,35 +3215,8 @@ export default function App() {
             </div>
           ))}
 
-          <div
-            className="extrusion-opacity-control"
-            style={{
-              display: "flex",
-              gap: 10,
-              alignItems: "center",
-              marginTop: 4,
-              marginBottom: 10,
-              paddingLeft: 2,
-              flexWrap: "wrap",
-            }}
-          >
-            <span className="pill">3D Blocks</span>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              value={buildingExtrusionOpacity}
-              aria-label="Luisiana 3D building blocks opacity"
-              onChange={(e) => {
-                setBuildingExtrusionOpacity(Number(e.target.value));
-              }}
-              style={{ flex: 1, minWidth: 80 }}
-            />
-            <span style={{ fontSize: 11, color: "var(--muted)", minWidth: 35 }}>
-              {Math.round(buildingExtrusionOpacity * 100)}%
-            </span>
-            {currentRole !== "Viewer" && (
+          {currentRole !== "Viewer" && (
+            <div style={{ marginBottom: 10, paddingLeft: 2 }}>
               <button
                 type="button"
                 className="btn"
@@ -2341,8 +3226,8 @@ export default function App() {
               >
                 Restore blocks
               </button>
-            )}
-          </div>
+            </div>
+          )}
 
           <div
             className="extrusion-opacity-control"
@@ -2405,19 +3290,6 @@ export default function App() {
             </div>
           </div>
 
-          <div className="toggleRow">
-            <div>
-              <label>NASA GIBS Precip</label>
-              <div className="hint">Satellite rainfall heatmap (low-res, daily)</div>
-            </div>
-            <div
-              className={`switch ${toggles.gibsPrecip ? "on" : ""}`}
-              role="switch"
-              aria-checked={toggles.gibsPrecip}
-              onClick={() => setToggles((t) => ({ ...t, gibsPrecip: !t.gibsPrecip }))}
-            />
-          </div>
-
           <div className="toggleRow" style={{ alignItems: "flex-start", flexWrap: "wrap" }}>
             <div style={{ flex: "1 1 180px", minWidth: 0 }}>
               <label>Heatmap Mode</label>
@@ -2467,24 +3339,6 @@ export default function App() {
 
           <div className="toggleRow">
             <div>
-              <label>Street Map</label>
-              <div className="hint">OpenStreetMap — clean roads, labels, POIs</div>
-            </div>
-            <div
-              className={`switch ${toggles.streetMap ? "on" : ""}`}
-              role="switch"
-              aria-checked={toggles.streetMap}
-              onClick={() =>
-                setToggles((t) => ({
-                  ...t,
-                  streetMap: !t.streetMap,
-                  satellite: t.streetMap ? t.satellite : false,
-                }))
-              }
-            />
-          </div>
-          <div className="toggleRow">
-            <div>
               <label>Street View</label>
               <div className="hint">Google — click map to view 360° street imagery</div>
             </div>
@@ -2498,37 +3352,19 @@ export default function App() {
           <div className="toggleRow">
             <div>
               <label>Satellite</label>
-              <div className="hint">ESRI World Imagery — damage validation</div>
+              <div className="hint">
+                HD aerial imagery + 3D terrain together — zoom in for rooftop detail
+              </div>
             </div>
             <div
               className={`switch ${toggles.satellite ? "on" : ""}`}
               role="switch"
               aria-checked={toggles.satellite}
               onClick={() =>
-                setToggles((t) => ({
-                  ...t,
-                  satellite: !t.satellite,
-                  streetMap: t.satellite ? t.streetMap : false,
-                  terrain: t.satellite ? t.terrain : false,
-                }))
-              }
-            />
-          </div>
-          <div className="toggleRow">
-            <div>
-              <label>3D Terrain</label>
-              <div className="hint">Elevation exaggeration — slope analysis</div>
-            </div>
-            <div
-              className={`switch ${toggles.terrain ? "on" : ""}`}
-              role="switch"
-              aria-checked={toggles.terrain}
-              onClick={() =>
-                setToggles((t) => ({
-                  ...t,
-                  terrain: !t.terrain,
-                  satellite: t.terrain ? t.satellite : false,
-                }))
+                setToggles((t) => {
+                  const next = !t.satellite;
+                  return { ...t, satellite: next, terrain: next };
+                })
               }
             />
           </div>
@@ -2569,6 +3405,73 @@ export default function App() {
           <div style={{ marginTop: 10, fontSize: 12, color: "var(--muted)" }}>
             Model: rainfall + slope (LGU explainable logic)
           </div>
+        </div>
+
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div className="sectionTitle" style={{ marginBottom: 8 }}>
+            Official map overlays (KMZ)
+          </div>
+          <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12, lineHeight: 1.5 }}>
+            Light high-res PHIVOLCS map tiles — turn on one at a time.
+          </div>
+          <div className="toggleRow" style={{ marginBottom: 10 }}>
+            <div>
+              <label>EIL 2010 landslide map</label>
+              <div className="hint">Earthquake-induced landslide</div>
+            </div>
+            <div
+              className={`switch ${toggles.hazardEil2010 ? "on" : ""}`}
+              role="switch"
+              aria-checked={toggles.hazardEil2010}
+              onClick={() =>
+                setToggles((t) => ({
+                  ...t,
+                  hazardEil2010: !t.hazardEil2010,
+                  hazardEq2014: false,
+                  hazardGsh2014: false,
+                }))
+              }
+            />
+          </div>
+          <div className="toggleRow" style={{ marginBottom: 10 }}>
+            <div>
+              <label>Earthquake 50K 2014 (EIL)</label>
+              <div className="hint">Earthquake-induced landslide</div>
+            </div>
+            <div
+              className={`switch ${toggles.hazardEq2014 ? "on" : ""}`}
+              role="switch"
+              aria-checked={toggles.hazardEq2014}
+              onClick={() =>
+                setToggles((t) => ({
+                  ...t,
+                  hazardEq2014: !t.hazardEq2014,
+                  hazardEil2010: false,
+                  hazardGsh2014: false,
+                }))
+              }
+            />
+          </div>
+          <div className="toggleRow" style={{ marginBottom: 10 }}>
+            <div>
+              <label>Ground Shaking 2014</label>
+              <div className="hint">PHIVOLCS ground shaking map</div>
+            </div>
+            <div
+              className={`switch ${toggles.hazardGsh2014 ? "on" : ""}`}
+              role="switch"
+              aria-checked={toggles.hazardGsh2014}
+              onClick={() =>
+                setToggles((t) => ({
+                  ...t,
+                  hazardGsh2014: !t.hazardGsh2014,
+                  hazardEil2010: false,
+                  hazardEq2014: false,
+                }))
+              }
+            />
+          </div>
+          {activeHazardLegend && <HazardLegend hazard={activeHazardLegend} variant="panel" />}
         </div>
 
         {roleConfig?.canSeeAlerts && <>
@@ -2850,6 +3753,7 @@ export default function App() {
             projects={projects}
             currentRole={currentRole}
             mapRef={mapRef}
+            cesiumMapRef={cesiumMapRef}
             readOnly={currentRole === "Viewer"}
           />
         )}
@@ -2970,27 +3874,17 @@ export default function App() {
               NASA GIBS Map Layers
             </div>
             <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12, lineHeight: 1.5 }}>
-              Optional map overlays — precipitation, temperature, imagery, atmosphere.
-            </div>
-
-            {/* Enable/Disable Toggle */}
-            <div className="toggleRow" style={{ marginBottom: 16 }}>
-              <div>
-                <label>Enable Climate Layer</label>
-                <div className="hint">Show NASA GIBS data on map</div>
-              </div>
-              <div
-                className={`switch ${toggles.gibsPrecip ? "on" : ""}`}
-                role="switch"
-                aria-checked={toggles.gibsPrecip}
-                onClick={() => setToggles((t) => ({ ...t, gibsPrecip: !t.gibsPrecip }))}
-              />
+              Precipitation follows Tropical Tracking (Events). Other overlays use the same on/off.
             </div>
 
             {/* Precipitation Layers */}
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 11, color: "rgba(61,155,95,0.85)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
                 ☔ Precipitation (Ulan)
+              </div>
+              <div className="hint" style={{ marginBottom: 8 }}>
+                Turns on/off with tropical tracking
+                {tropicalEnabled ? " · active" : " · off"}
               </div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {(
@@ -3328,13 +4222,15 @@ export default function App() {
                       <div
                         key={event.id}
                         onClick={() => {
-                          if (geometry && mapRef.current) {
-                            mapRef.current.flyTo({
-                              center: [geometry.coordinates[0], geometry.coordinates[1]],
-                              zoom: 8,
-                              duration: 2000,
-                            });
-                          }
+                          if (!geometry) return;
+                          const [lon, lat] = geometry.coordinates;
+                          cesiumMapRef.current?.flyToLonLat(lon, lat, 80_000);
+                          // Keep MapLibre in sync if it ever becomes visible again.
+                          mapRef.current?.flyTo({
+                            center: [lon, lat],
+                            zoom: 8,
+                            duration: 2000,
+                          });
                         }}
                         style={{
                           padding: 10,
@@ -3405,169 +4301,141 @@ export default function App() {
           </div>
         )}
 
-        {/* ── AI Risk Analysis Tab ── */}
-        {sidebarTab === "ai-risk" && roleConfig?.canSeeLayers && (
+        {/* ── Tropical systems (Invest / TC / LPA-watch) ── */}
+        {sidebarTab === "events" && roleConfig?.canSeeLayers && (
           <div className="card" style={{ marginBottom: 12 }}>
             <div className="sectionTitle" style={{ marginBottom: 8 }}>
-              🤖 AI-Powered Risk Analysis
+              Tropical systems (Invest / TC)
             </div>
             <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12, lineHeight: 1.5 }}>
-              Machine learning model predicts landslide and flood risks based on terrain, weather, and historical data
+              West Pacific Invests and named cyclones from RAMMB/CIRA. Invests inside the Philippine AOI are labeled LPA-watch.
             </div>
 
-            {/* Model Status */}
-            <div style={{ marginBottom: 16, padding: 12, background: aiRiskTrained ? "rgba(61,155,95,0.08)" : aiRiskLoading ? "rgba(255,215,0,0.08)" : "rgba(255,215,0,0.08)", border: `1px solid ${aiRiskTrained ? "rgba(61,155,95,0.15)" : aiRiskLoading ? "rgba(255,215,0,0.15)" : "rgba(255,215,0,0.15)"}`, borderRadius: 2 }}>
-              <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
-                Model Status
+            <div className="toggleRow" style={{ marginBottom: 16 }}>
+              <div>
+                <label>Enable tropical tracking</label>
+                <div className="hint">Invest / TC tracks + NASA GIBS precip</div>
               </div>
-              <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>
-                {aiRiskLoading ? (
-                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--seed)", animation: "pulse 1.5s infinite" }} />
-                    Auto-training model... (50 epochs)
-                  </span>
-                ) : aiRiskTrained ? (
-                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--seed)" }} />
-                    Model trained and ready (2000 samples)
-                  </span>
-                ) : (
-                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--seed)" }} />
-                    Initializing...
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Manual Train Button (only if auto-train failed) */}
-            {!aiRiskTrained && !aiRiskLoading && (
-              <div style={{ marginBottom: 16 }}>
-                <button
-                  onClick={async () => {
-                    setAiRiskLoading(true);
-                    try {
-                      const { TerrainRiskModel, generateSyntheticTrainingData } = await import('../lib/ml-risk');
-                      const model = new TerrainRiskModel();
-                      const trainingData = generateSyntheticTrainingData(2000);
-                      await model.train(trainingData, 50);
-                      await model.saveModel('luisiana-risk-model');
-                      setAiRiskModel(model);
-                      setAiRiskTrained(true);
-                      alert('✅ Model trained successfully!');
-                    } catch (error) {
-                      console.error('Training failed:', error);
-                      alert('❌ Training failed. Check console for details.');
-                    } finally {
-                      setAiRiskLoading(false);
+              <div
+                className={`switch ${tropicalEnabled ? "on" : ""}`}
+                role="switch"
+                aria-checked={tropicalEnabled}
+                onClick={() => {
+                  setTropicalEnabled((on) => {
+                    const next = !on;
+                    setToggles((t) => ({ ...t, gibsPrecip: next }));
+                    if (next) {
+                      setGibsLayer((layer) =>
+                        layer.startsWith("IMERG_") ? layer : "IMERG_Precipitation_Rate"
+                      );
                     }
-                  }}
-                  style={{
-                    width: "100%",
-                    cursor: "pointer",
-                    padding: "12px",
-                    borderRadius: 2,
-                    background: "rgba(36,92,58,0.20)",
-                    border: "1px solid rgba(36,92,58,0.40)",
-                    color: "var(--ink)",
-                    fontSize: 13,
-                    fontWeight: 600,
-                  }}
-                >
-                  🚀 Retry Training
-                </button>
-              </div>
-            )}
-
-            {/* Enable/Disable Toggle */}
-            {aiRiskTrained && (
-              <div className="toggleRow" style={{ marginBottom: 16 }}>
-                <div>
-                  <label>Enable Risk Visualization</label>
-                  <div className="hint">Show AI predictions on map</div>
-                </div>
-                <div
-                  className={`switch ${aiRiskEnabled ? "on" : ""}`}
-                  role="switch"
-                  aria-checked={aiRiskEnabled}
-                  onClick={() => setAiRiskEnabled(!aiRiskEnabled)}
-                />
-              </div>
-            )}
-
-            {/* Risk Statistics */}
-            {aiRiskEnabled && aiRiskPredictions.length > 0 && (
-              <div style={{ marginBottom: 16, padding: 12, background: "rgba(36,92,58,0.08)", border: "1px solid rgba(36,92,58,0.15)", borderRadius: 2 }}>
-                <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
-                  Risk Analysis Summary
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
-                  {(() => {
-                    const safe = aiRiskPredictions.filter(p => p.riskLevel === 'SAFE').length;
-                    const low = aiRiskPredictions.filter(p => p.riskLevel === 'LOW').length;
-                    const moderate = aiRiskPredictions.filter(p => p.riskLevel === 'MODERATE').length;
-                    const high = aiRiskPredictions.filter(p => p.riskLevel === 'HIGH').length;
-                    const critical = aiRiskPredictions.filter(p => p.riskLevel === 'CRITICAL').length;
-                    const total = aiRiskPredictions.length;
-
-                    return (
-                      <>
-                        <div style={{ fontSize: 11 }}>
-                          <span style={{ color: "var(--seed)" }}>🟢 Safe:</span>
-                          <span style={{ color: "var(--ink-soft)", marginLeft: 6 }}>
-                            {((safe / total) * 100).toFixed(0)}%
-                          </span>
-                        </div>
-                        <div style={{ fontSize: 11 }}>
-                          <span style={{ color: "#90ee90" }}>🟡 Low:</span>
-                          <span style={{ color: "var(--ink-soft)", marginLeft: 6 }}>
-                            {((low / total) * 100).toFixed(0)}%
-                          </span>
-                        </div>
-                        <div style={{ fontSize: 11 }}>
-                          <span style={{ color: "var(--seed)" }}>🟡 Moderate:</span>
-                          <span style={{ color: "var(--ink-soft)", marginLeft: 6 }}>
-                            {((moderate / total) * 100).toFixed(0)}%
-                          </span>
-                        </div>
-                        <div style={{ fontSize: 11 }}>
-                          <span style={{ color: "#ffa500" }}>🟠 High:</span>
-                          <span style={{ color: "var(--ink-soft)", marginLeft: 6 }}>
-                            {((high / total) * 100).toFixed(0)}%
-                          </span>
-                        </div>
-                        <div style={{ fontSize: 11, gridColumn: "1 / -1" }}>
-                          <span style={{ color: "#ff4d4f" }}>🔴 Critical:</span>
-                          <span style={{ color: "var(--ink-soft)", marginLeft: 6 }}>
-                            {((critical / total) * 100).toFixed(0)}%
-                          </span>
-                        </div>
-                      </>
-                    );
-                  })()}
-                </div>
-              </div>
-            )}
-
-            {/* Features Info */}
-            <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--stroke2)" }}>
-              <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
-                📊 Analysis Features
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 11, color: "var(--muted)" }}>
-                <div>✓ Terrain slope and elevation</div>
-                <div>✓ Rainfall and soil moisture</div>
-                <div>✓ Vegetation density</div>
-                <div>✓ Distance to water bodies</div>
-                <div>✓ Historical disaster data</div>
-                <div>✓ Real-time weather integration</div>
-              </div>
+                    return next;
+                  });
+                }}
+              />
             </div>
 
-            {/* Info Box */}
-            <div style={{ marginTop: 16, padding: 12, background: "rgba(36,92,58,0.08)", border: "1px solid rgba(36,92,58,0.15)", borderRadius: 2 }}>
+            {tropicalLoading && (
+              <div style={{ marginTop: 8, fontSize: 11, color: "rgba(255,215,0,0.85)", display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "rgba(255,215,0,0.85)", animation: "pulse 1.5s infinite" }} />
+                Loading tropical systems...
+              </div>
+            )}
+
+            {!tropicalLoading && tropicalEnabled && tropicalError && (
+              <div style={{ marginTop: 8, fontSize: 11, color: "rgba(255,140,80,0.9)" }}>
+                {tropicalError}
+              </div>
+            )}
+
+            {!tropicalLoading && tropicalEnabled && !tropicalError && tropicalSystems.length === 0 && (
+              <div style={{ marginTop: 8, fontSize: 11, color: "rgba(61,155,95,0.85)" }}>
+                No active West Pacific systems reported
+              </div>
+            )}
+
+            {!tropicalLoading && tropicalEnabled && tropicalSystems.length > 0 && (
+              <div style={{ marginTop: 8, fontSize: 11, color: "rgba(240,160,48,0.9)", display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "rgba(240,160,48,0.9)" }} />
+                {tropicalSystems.length} system{tropicalSystems.length !== 1 ? "s" : ""} tracked
+              </div>
+            )}
+
+            {tropicalEnabled && tropicalSystems.length > 0 && (
+              <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--stroke2)" }}>
+                <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
+                  Active systems
+                </div>
+                <div style={{ maxHeight: 320, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+                  {tropicalSystems.map((system) => {
+                    const color = getTropicalColor(system);
+                    const meta = getTropicalStageMeta(system.stage);
+                    const distance = Math.round(
+                      calculateDistance(14.1856, 121.5167, system.lat, system.lon),
+                    );
+                    return (
+                      <div
+                        key={system.id}
+                        onClick={() => {
+                          cesiumMapRef.current?.flyToLonLat(system.lon, system.lat, 400_000);
+                          mapRef.current?.flyTo({
+                            center: [system.lon, system.lat],
+                            zoom: 5,
+                            duration: 2000,
+                          });
+                        }}
+                        style={{
+                          padding: 10,
+                          background: "rgba(0,0,0,0.20)",
+                          border: `1px solid ${color}30`,
+                          borderRadius: 2,
+                          cursor: "pointer",
+                          transition: "all 0.2s ease",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = "rgba(0,0,0,0.35)";
+                          e.currentTarget.style.borderColor = `${color}60`;
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = "rgba(0,0,0,0.20)";
+                          e.currentTarget.style.borderColor = `${color}30`;
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                          <span style={{ fontSize: 16, flexShrink: 0, color }}>{getTropicalIcon(system)}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--ink)", marginBottom: 4, lineHeight: 1.3 }}>
+                              {system.label}
+                            </div>
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", fontSize: 10, color: "var(--muted)" }}>
+                              <span style={{ color }}>{meta.title}</span>
+                              <span>•</span>
+                              <span>{system.intensityKt} kt</span>
+                              <span>•</span>
+                              <span>{distance.toLocaleString()} km away</span>
+                              {system.lpaWatch && (
+                                <>
+                                  <span>•</span>
+                                  <span style={{ color: "#f0a030" }}>LPA-watch</span>
+                                </>
+                              )}
+                            </div>
+                            <div style={{ fontSize: 9, color: "var(--muted2)", marginTop: 4 }}>
+                              Observed: {new Date(system.observedAt).toLocaleString()}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div style={{ marginTop: 16, padding: 12, background: "rgba(240,160,48,0.08)", border: "1px solid rgba(240,160,48,0.18)", borderRadius: 2 }}>
               <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.6 }}>
-                💡 <strong>About:</strong> AI model uses deep learning to predict landslide and flood risks. Predictions are probabilistic and should be used as decision support, not sole determinant.
+                {tropicalDisclaimer ||
+                  "Positions from RAMMB/CIRA TC Realtime (JTWC-derived). Not an official PAGASA bulletin."}
               </div>
             </div>
           </div>
@@ -3584,7 +4452,9 @@ export default function App() {
           </div>
         )}
       </aside>
-      </>}
+      </>
+      </div>
+      )}
       
       {/* Placement Modal - Enter Building Details */}
       {showPlacementModal && pendingPlacement && (

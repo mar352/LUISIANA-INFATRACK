@@ -16,8 +16,9 @@ import {
   updateProjectInFirestore,
   archiveProject,
   restoreProject,
-  seedFirestoreFromBackend,
+  syncFirestoreWithBackend,
 } from "../services/firestore-projects";
+import { patchProject } from "../lib/api";
 import { ThemeToggle } from "./ThemeToggle";
 import type { UserRole } from "./Landing";
 import "./InventoryPage.css";
@@ -56,11 +57,12 @@ const ROLE_PERMISSIONS: Record<string, {
 
 export default function InventoryPage({ onBack, backendProjects, currentRole }: Props) {
   const perms = ROLE_PERMISSIONS[currentRole || "Viewer"] ?? ROLE_PERMISSIONS.Viewer;
+  const safeBackendProjects = Array.isArray(backendProjects) ? backendProjects : [];
   const [tab, setTab] = useState<"active" | "archived">("active");
   const [projects, setProjects] = useState<Project[]>([]);
   const [archivedProjects, setArchivedProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
-  const [seeded, setSeeded] = useState(false);
+  const [syncKey, setSyncKey] = useState("");
 
   const [search, setSearch] = useState("");
   const [filterBarangay, setFilterBarangay] = useState("");
@@ -76,13 +78,29 @@ export default function InventoryPage({ onBack, backendProjects, currentRole }: 
   const [editDraft, setEditDraft] = useState<Partial<Project>>({});
   const [saving, setSaving] = useState(false);
 
+  // Fingerprint map projects so inventory re-syncs when status/progress change
+  const backendSyncKey = useMemo(
+    () =>
+      safeBackendProjects
+        .map(
+          (p) =>
+            `${p.id}:${p.status}:${p.progress}:${p.fundingSource || ""}:${p.contractor || ""}:${p.updatedAt || ""}`,
+        )
+        .sort()
+        .join("|"),
+    [safeBackendProjects],
+  );
+
   useEffect(() => {
-    if (seeded || !backendProjects.length) return;
-    seedFirestoreFromBackend(backendProjects).then((didSeed) => {
-      setSeeded(true);
-      if (didSeed) console.log("[Inventory] Seeded Firestore with", backendProjects.length, "projects");
+    if (!safeBackendProjects.length || backendSyncKey === syncKey) return;
+    let cancelled = false;
+    syncFirestoreWithBackend(safeBackendProjects).then((ok) => {
+      if (!cancelled && ok) setSyncKey(backendSyncKey);
     });
-  }, [backendProjects, seeded]);
+    return () => {
+      cancelled = true;
+    };
+  }, [safeBackendProjects, backendSyncKey, syncKey]);
 
   useEffect(() => {
     setLoading(true);
@@ -185,7 +203,12 @@ export default function InventoryPage({ onBack, backendProjects, currentRole }: 
     if (!editProject) return;
     setSaving(true);
     try {
-      await updateProjectInFirestore(editProject.id, editDraft);
+      await Promise.all([
+        updateProjectInFirestore(editProject.id, editDraft),
+        patchProject(editProject.id, editDraft).catch((err) => {
+          console.error("Failed to sync edit to map backend:", err);
+        }),
+      ]);
       setEditProject(null);
     } catch (err) {
       console.error("Failed to save:", err);

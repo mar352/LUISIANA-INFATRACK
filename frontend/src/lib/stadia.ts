@@ -1,17 +1,45 @@
 /**
- * Stadia Maps basemap helpers (OpenMapTiles-compatible vector styles).
+ * Stadia Maps basemap helpers (vector styles for MapLibre + raster tiles for Cesium).
  */
 
 export const STADIA_DEFAULT_STYLE = "outdoors";
 
+export const STADIA_ATTRIBUTION =
+  "© Stadia Maps © OpenMapTiles © OpenStreetMap";
+
+/** Optional API key — not required on localhost; needed for production hosts. */
+export function stadiaApiKey(): string | undefined {
+  const key = (import.meta.env.VITE_STADIA_API_KEY as string | undefined)?.trim();
+  return key || undefined;
+}
+
 /** Known Stadia style ids: outdoors | alidade_smooth | alidade_smooth_dark | osm_bright | … */
 export function stadiaStyleUrl(style: string = STADIA_DEFAULT_STYLE): string {
-  const key = import.meta.env.VITE_STADIA_API_KEY as string | undefined;
+  const key = stadiaApiKey();
   const base = `https://tiles.stadiamaps.com/styles/${style}.json`;
-  return key?.trim()
-    ? `${base}?api_key=${encodeURIComponent(key.trim())}`
-    : base;
+  return key ? `${base}?api_key=${encodeURIComponent(key)}` : base;
 }
+
+/**
+ * Raster XYZ URL template for Cesium `UrlTemplateImageryProvider`.
+ * Same style family as MapLibre vector (default: outdoors).
+ * @see https://docs.stadiamaps.com/raster/
+ */
+export function stadiaRasterTileUrl(
+  style: string = STADIA_DEFAULT_STYLE,
+  opts?: { retina?: boolean },
+): string {
+  const retina = opts?.retina ? "@2x" : "";
+  const key = stadiaApiKey();
+  const base = `https://tiles.stadiamaps.com/tiles/${style}/{z}/{x}/{y}${retina}.png`;
+  return key ? `${base}?api_key=${encodeURIComponent(key)}` : base;
+}
+
+export const OSM_RASTER_ATTRIBUTION = "© OpenStreetMap contributors";
+
+/** Classic OSM raster XYZ — Layers → Street Map overlay on Cesium/MapLibre. */
+export const OSM_RASTER_TILE_URL =
+  "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 
 /**
  * Find the OpenMapTiles vector source id in the loaded style.

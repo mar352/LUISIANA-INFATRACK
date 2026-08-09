@@ -96,8 +96,8 @@ function ringAreaDeg2(ring: number[][]): number {
 }
 
 /**
- * Stable world-meter grid inside a polygon (PIP-filtered).
- * Spacing does NOT change with zoom — so trees don't reshuffle/dance when zooming.
+ * Stable world-meter samples inside a polygon (PIP-filtered).
+ * Optional jitter breaks the regular lattice so forests don't look like road grids.
  */
 export function samplePointsInPolygon(
   outer: number[][],
@@ -105,6 +105,8 @@ export function samplePointsInPolygon(
   countTarget: number,
   seed: number,
   spacingM = 18,
+  /** Extra random offset in meters after lattice sample (re-checked with PIP). */
+  jitterMRange: [number, number] = [0, 0],
 ): LonLat[] {
   if (!outer || outer.length < 4 || countTarget <= 0) return [];
   const bbox = ringBBox(outer);
@@ -121,6 +123,8 @@ export function samplePointsInPolygon(
   const mPerDegLon = Math.max(1e-6, 111320 * Math.cos((midLat * Math.PI) / 180));
   const stepLat = spacingM / mPerDegLat;
   const stepLon = spacingM / mPerDegLon;
+  const [jMin, jMax] = jitterMRange;
+  const jitterSpan = Math.max(0, jMax - jMin);
 
   const accept = (lon: number, lat: number) => {
     if (!insideLuisiana(lon, lat)) return false;
@@ -132,20 +136,35 @@ export function samplePointsInPolygon(
   };
 
   const out: LonLat[] = [];
-  // Snap grid origin to a global lattice so adjacent polygons share the same world cells.
-  const i0 = Math.floor(south / stepLat);
-  const i1 = Math.ceil(north / stepLat);
-  const j0 = Math.floor(west / stepLon);
-  const j1 = Math.ceil(east / stepLon);
+  // Offset lattice origin per-seed so adjacent forests don't share one global grid.
+  const originJ = hash01(seed, 11, 22);
+  const originI = hash01(seed, 33, 44);
+  const i0 = Math.floor(south / stepLat - originI);
+  const i1 = Math.ceil(north / stepLat - originI);
+  const j0 = Math.floor(west / stepLon - originJ);
+  const j1 = Math.ceil(east / stepLon - originJ);
 
   for (let i = i0; i <= i1 && out.length < countTarget; i++) {
     for (let j = j0; j <= j1 && out.length < countTarget; j++) {
+      // Full-cell random (not a narrow 0.2–0.6 band) → breaks visible rows.
       const u = hash01(seed, i, j * 3 + 1);
       const v = hash01(seed, i, j * 3 + 2);
-      const lon = (j + 0.2 + u * 0.6) * stepLon;
-      const lat = (i + 0.2 + v * 0.6) * stepLat;
+      let lon = (j + originJ + u) * stepLon;
+      let lat = (i + originI + v) * stepLat;
       if (lon < west || lon > east || lat < south || lat > north) continue;
-      if (accept(lon, lat)) out.push({ lon, lat });
+      if (!accept(lon, lat)) continue;
+
+      if (jitterSpan > 0) {
+        const jm = jMin + hash01(seed, i, j * 5 + 9) * jitterSpan;
+        const ang = hash01(seed, i, j * 7 + 3) * Math.PI * 2;
+        const jLon = lon + (Math.cos(ang) * jm) / mPerDegLon;
+        const jLat = lat + (Math.sin(ang) * jm) / mPerDegLat;
+        if (accept(jLon, jLat)) {
+          lon = jLon;
+          lat = jLat;
+        }
+      }
+      out.push({ lon, lat });
     }
   }
   return out;

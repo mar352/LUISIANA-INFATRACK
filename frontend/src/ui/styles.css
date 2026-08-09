@@ -248,6 +248,19 @@ input[type="range"] {
 .mapWrap { position: relative; height: 100%; min-height: 0; }
 .map { position: absolute; inset: 0; }
 
+/* Park the live map under Planning / Documents / Analytics / Inventory / Landing
+   instead of destroying Cesium (WebGL teardown white-screens the app). */
+.app-shell-parked {
+  visibility: hidden !important;
+  pointer-events: none !important;
+  position: fixed !important;
+  inset: 0;
+  z-index: 0 !important;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
 .topBar {
   position: absolute;
   left: 0;
@@ -1340,6 +1353,108 @@ input[type="range"] {
   color: var(--ink);
   border-bottom-color: var(--amber-sharp);
   background: color-mix(in oklch, var(--amber) 18%, transparent);
+}
+
+.sidebar-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+.sidebar-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--danger, #c44);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.sidePanel-titleBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: 8px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--amber-sharp, #e8a317);
+  color: var(--ink, #1a1a1a);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  vertical-align: middle;
+  text-transform: none;
+}
+
+.sidePanel-edgeBadge {
+  position: absolute;
+  top: -6px;
+  left: -6px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--danger, #c44);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 16px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.notice-card {
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.notice-card:hover {
+  border-color: var(--amber-sharp, #e8a317);
+}
+
+.notice-card .meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.notice-dismiss {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.notice-dismiss:hover {
+  color: var(--ink);
+}
+
+.notice-botohan {
+  border-left: 3px solid var(--warn, #f5a623);
+}
+
+.notice-returned {
+  border-left: 3px solid var(--danger, #e05252);
+}
+
+.notice-assigned,
+.notice-review {
+  border-left: 3px solid var(--seed, #3d9b5f);
 }
 
 /* ── Landing / Login (editorial poster) ─────────────────────────────────── */

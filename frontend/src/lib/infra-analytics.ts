@@ -68,11 +68,12 @@ function countBy(
 
 /** Aggregate live projects for Infrastructure development analytics (Feature 1). */
 export function computeInfraAnalytics(projects: Project[]): InfraAnalyticsSummary {
-  const total = projects.length;
+  const list = Array.isArray(projects) ? projects : [];
+  const total = list.length;
   const statusMap = new Map<ProjectStatus, number>();
   let progressSum = 0;
 
-  for (const p of projects) {
+  for (const p of list) {
     const st = (STATUS_ORDER.includes(p.status) ? p.status : "Planned") as ProjectStatus;
     statusMap.set(st, (statusMap.get(st) || 0) + 1);
     progressSum += Number(p.progress) || 0;
@@ -91,11 +92,11 @@ export function computeInfraAnalytics(projects: Project[]): InfraAnalyticsSummar
     total,
     byStatus,
     byDepartment: countBy(
-      projects,
+      list,
       (p) => p.department || "Unknown",
       (k) => DEPT_FILL[k],
     ),
-    byType: countBy(projects, (p) => modelLabel(p.modelType)),
+    byType: countBy(list, (p) => modelLabel(p.modelType)),
     ongoing: statusMap.get("Ongoing") || 0,
     completed: statusMap.get("Completed") || 0,
     delayed: statusMap.get("Delayed") || 0,

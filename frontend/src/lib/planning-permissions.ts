@@ -9,6 +9,7 @@ export type PlanningPermissions = {
   canAssign: boolean;
   canRecommend: boolean;
   canApprove: boolean;
+  canVote: boolean;
   canManageCalendar: boolean;
   canManageMeetings: boolean;
 };
@@ -23,6 +24,7 @@ export function getPlanningPermissions(role: UserRole | null): PlanningPermissio
       canAssign: false,
       canRecommend: false,
       canApprove: false,
+      canVote: false,
       canManageCalendar: false,
       canManageMeetings: false,
     };
@@ -40,6 +42,7 @@ export function getPlanningPermissions(role: UserRole | null): PlanningPermissio
     canAssign: isMpdC,
     canRecommend: isCommittee,
     canApprove: isMpdC,
+    canVote: !isViewer,
     canManageCalendar: !isViewer,
     canManageMeetings: isMpdC || role === "Engineer",
   };

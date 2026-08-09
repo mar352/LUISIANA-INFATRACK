@@ -130,3 +130,51 @@ export async function seedFirestoreFromBackend(projects: Project[]) {
     return false;
   }
 }
+
+/**
+ * Keep Inventory in lockstep with the map/backend list:
+ * - upsert every backend project (status/progress from map win)
+ * - remove Firestore rows that are no longer on the map
+ */
+export async function syncFirestoreWithBackend(projects: Project[]) {
+  try {
+    const existing = await getDocs(projectsCollection);
+    const backendIds = new Set(projects.map((p) => p.id));
+    const prevById = new Map(
+      existing.docs.map((d) => [d.id, d.data() as Project]),
+    );
+
+    const batch = writeBatch(db);
+
+    for (const p of projects) {
+      const prev = prevById.get(p.id);
+      const merged: Project = {
+        ...prev,
+        ...p,
+        // Preserve inventory-only fields when map payload left them empty
+        barangay: p.barangay || prev?.barangay || "",
+        fundingSource: p.fundingSource || prev?.fundingSource || "",
+        contractor: p.contractor || prev?.contractor || "",
+        lifecyclePhase: p.lifecyclePhase || prev?.lifecyclePhase || "Planning",
+        budgetTotal: p.budgetTotal ?? prev?.budgetTotal ?? null,
+        budgetSpent: p.budgetSpent ?? prev?.budgetSpent ?? 0,
+        // Live map projects stay active in inventory
+        archivedAt: null,
+        updatedAt: p.updatedAt || prev?.updatedAt || new Date().toISOString(),
+      };
+      batch.set(doc(projectsCollection, p.id), sanitizeProjectForFirestore(merged));
+    }
+
+    for (const d of existing.docs) {
+      if (!backendIds.has(d.id)) {
+        batch.delete(d.ref);
+      }
+    }
+
+    await batch.commit();
+    return true;
+  } catch (err: any) {
+    console.error("[Firestore] syncFirestoreWithBackend error:", err.message);
+    return false;
+  }
+}

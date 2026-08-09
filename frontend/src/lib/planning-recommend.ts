@@ -145,7 +145,7 @@ export function nextActorHint(status: PlanningProposalStatus): string {
     case "recommended":
       return "Waiting on MPDC to approve, return, or reject.";
     case "approved":
-      return "Approved — can link / create map project.";
+      return "Waiting on MPDC to pin the building site on the map.";
     case "returned":
       return "Returned to submitter — revise and resubmit.";
     case "rejected":

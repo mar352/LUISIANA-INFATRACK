@@ -61,7 +61,7 @@ export function generateRiskGrid(gridSize: number): GridPoint[] {
  * Extract terrain features for a specific location
  * In production, this should use real DEM data
  */
-function extractTerrainFeatures(lon: number, lat: number): TerrainFeatures {
+export function extractTerrainFeaturesAt(lon: number, lat: number): TerrainFeatures {
   // Simulate terrain features based on location
   // In production, fetch from actual DEM/weather APIs
   
@@ -84,20 +84,20 @@ function extractTerrainFeatures(lon: number, lat: number): TerrainFeatures {
   // Curvature (concave in valleys, convex on ridges)
   const curvature = Math.sin(distFromCenter * 100) * 0.5;
   
-  // Simulate rainfall (more in mountainous areas)
-  const rainfall = 80 + (elevation / 10) + (Math.random() * 40);
+  // Deterministic rainfall proxy (no Math.random — stable training labels)
+  const rainfall = 80 + (elevation / 10) + ((Math.abs(Math.sin(lon * 40 + lat * 30)) * 40));
   
   // Soil moisture (higher in low areas)
-  const soilMoisture = Math.max(20, 80 - (elevation / 5) + (Math.random() * 20));
+  const soilMoisture = Math.max(20, 80 - (elevation / 5) + (Math.abs(Math.cos(lat * 50)) * 20));
   
   // Vegetation (less in steep slopes)
-  const vegetation = Math.max(0.1, 0.9 - (slope / 100) + (Math.random() * 0.2));
+  const vegetation = Math.max(0.1, Math.min(1, 0.9 - (slope / 100) + (Math.abs(Math.sin(lon * 20)) * 0.2)));
   
   // Distance to river (simulate rivers in valleys)
-  const distanceToRiver = elevation < 100 ? Math.random() * 500 : 500 + (Math.random() * 2000);
+  const distanceToRiver = elevation < 100 ? (Math.abs(Math.sin(lat * 80)) * 500) : 500 + (Math.abs(Math.cos(lon * 60)) * 2000);
   
   // Historical events (more in high-risk areas)
-  const historicalEvents = slope > 30 && elevation > 200 ? Math.floor(Math.random() * 4) : 0;
+  const historicalEvents = slope > 30 && elevation > 200 ? Math.floor(Math.abs(Math.sin(lon * lat * 100)) * 4) : 0;
   
   return {
     slope,
@@ -110,6 +110,14 @@ function extractTerrainFeatures(lon: number, lat: number): TerrainFeatures {
     distanceToRiver,
     historicalEvents,
   };
+}
+
+/**
+ * Extract terrain features for a specific location
+ * @deprecated use extractTerrainFeaturesAt
+ */
+function extractTerrainFeatures(lon: number, lat: number): TerrainFeatures {
+  return extractTerrainFeaturesAt(lon, lat);
 }
 
 /**

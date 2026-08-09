@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
-import type { Project, ProjectPhoto } from "../types";
+import type { Project, ProjectPhoto, ProjectPhotoKind } from "../types";
 import { MODEL_CATALOG, PROJECT_STATUS_COLORS, PROJECT_STATUS_LABELS } from "../types";
 import { backendUrl, deleteProjectPhoto, uploadProjectPhoto } from "../lib/api";
 import "./PlaceSidePanel.css";
 
-type Tab = "overview" | "activity" | "about";
+type Tab = "overview" | "progress" | "activity" | "about";
 
 type Props = {
   project: Project;
@@ -13,8 +13,10 @@ type Props = {
   /** Cesium (or other) fly-to when MapLibre map is unavailable. */
   onFlyHere?: () => void;
   readOnly?: boolean;
-  /** Engineer / MPDC — add & remove progress photos in this panel. */
+  /** Engineer / MPDC — add & remove photos in this panel. */
   canAddPhotos?: boolean;
+  /** Keep parent project list in sync after upload/delete. */
+  onPhotosChange?: (projectId: string, photos: ProjectPhoto[]) => void;
   onClose: () => void;
   onEdit?: () => void;
   onToggleLock?: () => void;
@@ -30,12 +32,17 @@ function statusColor(status: Project["status"]) {
   return PROJECT_STATUS_COLORS[normalized as keyof typeof PROJECT_STATUS_COLORS] ?? "#9b9b9b";
 }
 
+function photoKindOf(photo: ProjectPhoto): ProjectPhotoKind {
+  return photo.kind === "site" ? "site" : "progress";
+}
+
 export function PlaceSidePanel({
   project,
   map = null,
   onFlyHere,
   readOnly = false,
   canAddPhotos = false,
+  onPhotosChange,
   onClose,
   onEdit,
   onToggleLock,
@@ -44,26 +51,38 @@ export function PlaceSidePanel({
   const [copied, setCopied] = useState(false);
   const [photos, setPhotos] = useState<ProjectPhoto[]>(project.photos ?? []);
   const [caption, setCaption] = useState("");
+  const [milestoneId, setMilestoneId] = useState("");
   const [uploading, setUploading] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
+  const [uploadKind, setUploadKind] = useState<ProjectPhotoKind>("site");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const modelInfo = MODEL_CATALOG.find((m) => m.type === project.modelType);
-  const heroPhoto = photos[0];
+  const milestones = project.milestones ?? [];
+  const sitePhotos = photos.filter((p) => photoKindOf(p) === "site");
+  const progressPhotos = photos.filter((p) => photoKindOf(p) === "progress");
+  const heroPhoto = sitePhotos[0] ?? progressPhotos[0];
   const coords = `${project.location.lat.toFixed(5)}, ${project.location.lon.toFixed(5)}`;
-  const showPhotoEdit = canAddPhotos && !readOnly;
+  const showPhotoEdit = Boolean(canAddPhotos);
 
   useEffect(() => {
     setTab("overview");
     setCopied(false);
     setCaption("");
+    setMilestoneId("");
     setPhotoError(null);
+    setUploadKind("site");
     setPhotos(project.photos ?? []);
   }, [project.id]);
 
   useEffect(() => {
     setPhotos(project.photos ?? []);
   }, [project.photos]);
+
+  function applyPhotos(next: ProjectPhoto[]) {
+    setPhotos(next);
+    onPhotosChange?.(project.id, next);
+  }
 
   function flyHere() {
     if (onFlyHere) {
@@ -89,6 +108,12 @@ export function PlaceSidePanel({
     }
   }
 
+  function openFilePicker(kind: ProjectPhotoKind) {
+    setUploadKind(kind);
+    setPhotoError(null);
+    window.setTimeout(() => fileInputRef.current?.click(), 0);
+  }
+
   async function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file || !showPhotoEdit) return;
@@ -97,10 +122,13 @@ export function PlaceSidePanel({
     try {
       const { photo } = await uploadProjectPhoto(project.id, file, {
         caption: caption.trim() || undefined,
+        milestoneId: uploadKind === "progress" ? milestoneId || null : null,
+        kind: uploadKind,
       });
-      setPhotos((prev) => [...prev, photo]);
+      applyPhotos([photo, ...photos]);
       setCaption("");
-      setTab("overview");
+      setMilestoneId("");
+      setTab(uploadKind === "progress" ? "progress" : "overview");
     } catch (err) {
       console.error("Failed to upload photo:", err);
       setPhotoError("Upload failed. Try again.");
@@ -115,11 +143,119 @@ export function PlaceSidePanel({
     setPhotoError(null);
     try {
       await deleteProjectPhoto(project.id, photoId);
-      setPhotos((prev) => prev.filter((p) => p.id !== photoId));
+      applyPhotos(photos.filter((p) => p.id !== photoId));
     } catch (err) {
       console.error("Failed to delete photo:", err);
       setPhotoError("Could not remove photo.");
     }
+  }
+
+  function renderPhotoGallery(
+    list: ProjectPhoto[],
+    kind: ProjectPhotoKind,
+    opts: {
+      title: string;
+      empty: string;
+      uploadLabel: string;
+      defaultCaption: string;
+      withMilestones?: boolean;
+    },
+  ) {
+    return (
+      <div className="place-photos-block">
+        <div className="place-photos-heading">
+          <span>{opts.title}</span>
+          {list.length > 0 && <span className="place-photos-count">{list.length}</span>}
+        </div>
+        {list.length === 0 ? (
+          <p className="place-empty">{opts.empty}</p>
+        ) : (
+          <div className="place-photo-grid">
+            {list.map((photo) => {
+              const linkedMilestone =
+                kind === "progress" && photo.milestoneId
+                  ? milestones.find((m) => m.id === photo.milestoneId)
+                  : undefined;
+              return (
+                <div key={photo.id} className="place-photo-card">
+                  <a
+                    href={backendUrl(photo.url)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="place-photo-card-media"
+                    title={photo.caption || opts.defaultCaption}
+                  >
+                    <img
+                      src={backendUrl(photo.url)}
+                      alt={photo.caption || opts.defaultCaption}
+                    />
+                  </a>
+                  <div className="place-photo-card-meta">
+                    <span>{photo.caption || opts.defaultCaption}</span>
+                    {linkedMilestone && (
+                      <span className="place-photo-card-tag">{linkedMilestone.title}</span>
+                    )}
+                    {photo.uploadedAt && (
+                      <span className="place-photo-card-date">
+                        {new Date(photo.uploadedAt).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+                  {showPhotoEdit && (
+                    <button
+                      type="button"
+                      className="place-photo-card-remove"
+                      onClick={() => void handleDeletePhoto(photo.id)}
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {showPhotoEdit && (
+          <div className="place-photo-upload">
+            <input
+              type="text"
+              className="place-photo-caption"
+              placeholder="Caption (optional)"
+              value={caption}
+              onChange={(e) => setCaption(e.target.value)}
+              disabled={uploading}
+            />
+            {opts.withMilestones && milestones.length > 0 && (
+              <select
+                className="place-photo-caption"
+                value={milestoneId}
+                onChange={(e) => setMilestoneId(e.target.value)}
+                disabled={uploading}
+                aria-label="Link to milestone"
+              >
+                <option value="">Link to milestone (optional)</option>
+                {milestones.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.title}
+                  </option>
+                ))}
+              </select>
+            )}
+            <button
+              type="button"
+              className="place-photo-add-btn"
+              disabled={uploading}
+              onClick={() => openFilePicker(kind)}
+            >
+              {uploading && uploadKind === kind ? "Uploading…" : opts.uploadLabel}
+            </button>
+            {photoError && uploadKind === kind && (
+              <div className="place-photo-error">{photoError}</div>
+            )}
+          </div>
+        )}
+      </div>
+    );
   }
 
   return (
@@ -170,6 +306,7 @@ export function PlaceSidePanel({
             {(
               [
                 ["overview", "Overview"],
+                ["progress", "Progress"],
                 ["activity", "Activity"],
                 ["about", "About"],
               ] as const
@@ -180,9 +317,15 @@ export function PlaceSidePanel({
                 role="tab"
                 aria-selected={tab === id}
                 className={`place-panel-tab${tab === id ? " active" : ""}`}
-                onClick={() => setTab(id)}
+                onClick={() => {
+                  setTab(id);
+                  setPhotoError(null);
+                }}
               >
                 {label}
+                {id === "progress" && progressPhotos.length > 0 ? (
+                  <span className="place-panel-tab-count">{progressPhotos.length}</span>
+                ) : null}
               </button>
             ))}
           </div>
@@ -209,7 +352,7 @@ export function PlaceSidePanel({
                 type="button"
                 className="place-action"
                 disabled={uploading}
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => openFilePicker(tab === "progress" ? "progress" : "site")}
               >
                 <span className="place-action-icon">Photo</span>
                 <span>{uploading ? "…" : "Photo"}</span>
@@ -245,7 +388,7 @@ export function PlaceSidePanel({
                   </div>
                 </div>
               </div>
-              {(project.budgetTotal != null && project.budgetTotal > 0) && (
+              {project.budgetTotal != null && project.budgetTotal > 0 && (
                 <div className="place-info-row">
                   <span className="place-info-ico" aria-hidden>
                     ₱
@@ -278,70 +421,51 @@ export function PlaceSidePanel({
                     Lock
                   </span>
                   <div>
-                    <div className="place-info-main">Model locked on map</div>
-                    <div className="place-info-sub">Position and scale are frozen</div>
+                    <div className="place-info-main">
+                      {project.siteMarkerOnly ? "Site pin on map" : "Model locked on map"}
+                    </div>
+                    <div className="place-info-sub">
+                      {project.siteMarkerOnly
+                        ? "Map marker only — no 3D model yet"
+                        : "Position and scale are frozen"}
+                    </div>
+                  </div>
+                </div>
+              )}
+              {project.siteMarkerOnly && !project.modelLocked && (
+                <div className="place-info-row">
+                  <span className="place-info-ico" aria-hidden>
+                    Pin
+                  </span>
+                  <div>
+                    <div className="place-info-main">Site pin on map</div>
+                    <div className="place-info-sub">Map marker only — no 3D model yet</div>
                   </div>
                 </div>
               )}
 
-              <div className="place-photos-block">
-                <div className="place-photos-heading">
-                  <span>Photos</span>
-                  {photos.length > 0 && <span className="place-photos-count">{photos.length}</span>}
-                </div>
-                {photos.length === 0 ? (
-                  <p className="place-empty">
-                    {showPhotoEdit ? "No photos yet — add a site photo below." : "No photos yet."}
-                  </p>
-                ) : (
-                  <div className="place-photo-strip">
-                    {photos.map((photo) => (
-                      <div key={photo.id} className="place-photo-item">
-                        <a
-                          href={backendUrl(photo.url)}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="place-photo-thumb"
-                          title={photo.caption || "Photo"}
-                        >
-                          <img src={backendUrl(photo.url)} alt={photo.caption || "Photo"} />
-                        </a>
-                        {showPhotoEdit && (
-                          <button
-                            type="button"
-                            className="place-photo-remove"
-                            aria-label="Remove photo"
-                            onClick={() => void handleDeletePhoto(photo.id)}
-                          >
-                            ×
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {showPhotoEdit && (
-                  <div className="place-photo-upload">
-                    <input
-                      type="text"
-                      className="place-photo-caption"
-                      placeholder="Caption (optional)"
-                      value={caption}
-                      onChange={(e) => setCaption(e.target.value)}
-                      disabled={uploading}
-                    />
-                    <button
-                      type="button"
-                      className="place-photo-add-btn"
-                      disabled={uploading}
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      {uploading ? "Uploading…" : "Add photo"}
-                    </button>
-                    {photoError && <div className="place-photo-error">{photoError}</div>}
-                  </div>
-                )}
-              </div>
+              {renderPhotoGallery(sitePhotos, "site", {
+                title: "Photos",
+                empty: showPhotoEdit
+                  ? "No photos yet — add any site image below."
+                  : "No photos yet.",
+                uploadLabel: "Upload photo",
+                defaultCaption: "Site photo",
+              })}
+            </div>
+          )}
+
+          {tab === "progress" && (
+            <div className="place-panel-section">
+              {renderPhotoGallery(progressPhotos, "progress", {
+                title: "Progress Photos",
+                empty: showPhotoEdit
+                  ? "No progress photos yet — upload construction / site progress below."
+                  : "No progress photos yet.",
+                uploadLabel: "Upload progress photo",
+                defaultCaption: "Progress photo",
+                withMilestones: true,
+              })}
             </div>
           )}
 

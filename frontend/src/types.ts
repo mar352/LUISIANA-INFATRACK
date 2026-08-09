@@ -60,6 +60,28 @@ export type ModelType =
   | "construction"
   | "custom";
 
+/** Placement / site markup drawn on the map (not a GLB). */
+export type MapSketchKind = "pin" | "line" | "area";
+
+/** Tools available in the placement toolbar (includes erase for OSM blocks). */
+export type PlacementTool = MapSketchKind | "erase";
+
+export type MapSketch = {
+  kind: MapSketchKind;
+  color: string;
+  /** Vertices in order. Pin = 1; line ≥ 2; area ≥ 3. */
+  coordinates: { lon: number; lat: number }[];
+};
+
+export const MAP_SKETCH_COLORS = [
+  "#c47a1a",
+  "#245c3a",
+  "#1d4e89",
+  "#b42318",
+  "#7a3e9d",
+  "#0f766e",
+] as const;
+
 export const MODEL_CATALOG: {
   type: ModelType;
   label: string;
@@ -152,10 +174,14 @@ export type ProjectIssue = {
   resolvedAt?: string;
 };
 
+export type ProjectPhotoKind = "site" | "progress";
+
 export type ProjectPhoto = {
   id: string;
   url: string;
   caption?: string;
+  /** site = Overview gallery; progress = Progress Photos tab / monitoring. */
+  kind?: ProjectPhotoKind;
   milestoneId?: string | null;
   uploadedAt: string;
 };
@@ -163,6 +189,70 @@ export type ProjectPhoto = {
 export type ProjectActivity = {
   at: string;
   message: string;
+};
+
+/** Citizen-facing project (public API DTO). */
+export type PublicProject = {
+  id: string;
+  name: string;
+  modelType: ModelType;
+  type: "Municipal Project" | "Private Building" | "Agricultural Structure";
+  department: "MPDC" | "Engineering" | "Agriculture" | "Negosyo Center";
+  status: ProjectStatus;
+  progress: number;
+  location: { lat: number; lon: number };
+  description?: string;
+  startDate?: string | null;
+  targetEndDate?: string | null;
+  barangay?: string | null;
+  fundingSource?: string | null;
+  lifecyclePhase?: LifecyclePhase | null;
+  customModelUrl?: string | null;
+  rotation?: number;
+  modelScale?: number;
+  modelHeight?: number;
+  milestones: ProjectMilestone[];
+  issues: Array<{
+    id: string;
+    kind: "delay" | "issue";
+    title: string;
+    reportedAt: string;
+    resolvedAt?: string | null;
+    open: boolean;
+  }>;
+  photos: ProjectPhoto[];
+  openIssueCount: number;
+  updatedAt: string;
+};
+
+export type EngagementKind = "feedback" | "issue" | "suggestion";
+export type EngagementStatus = "new" | "reviewing" | "resolved" | "dismissed";
+
+export type EngagementSubmission = {
+  id: string;
+  kind: EngagementKind;
+  title: string;
+  body: string;
+  category: string;
+  projectId?: string | null;
+  lng?: number | null;
+  lat?: number | null;
+  barangay?: string | null;
+  contactName?: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+  status: EngagementStatus;
+  createdAt: string;
+  staffNote?: string | null;
+  updatedAt?: string;
+};
+
+export type EngagementPublicStats = {
+  total: number;
+  byKind: Record<EngagementKind, number>;
+  byStatus: Record<EngagementStatus, number>;
+  open: number;
+  closed: number;
 };
 
 export type Project = {
@@ -183,6 +273,14 @@ export type Project = {
   modelHeight?: number;
   /** When true, model cannot be moved / rotated / scaled on the map. */
   modelLocked?: boolean;
+  /**
+   * MPDC site pin only — show a map marker, do not load a GLB until Engineering places a model.
+   */
+  siteMarkerOnly?: boolean;
+  /** Map markup from placement tools (pin / line / area). */
+  mapSketch?: MapSketch | null;
+  /** Marker / sketch stroke color (hex). */
+  markerColor?: string;
   customModelUrl?: string;
   description?: string;
   startDate?: string | null;
@@ -296,6 +394,17 @@ export type PlanningApproval = {
   at: string;
 };
 
+/** Committee botohan (yes / no / abstain) on a proposal under review. */
+export type PlanningVoteChoice = "yes" | "no" | "abstain";
+
+export type PlanningVote = {
+  username: string;
+  role: string;
+  choice: PlanningVoteChoice;
+  note?: string;
+  at: string;
+};
+
 export type PlanningRequestKind = "barangay_request" | "office_proposal";
 
 export type PlanningNeedsAssessment = {
@@ -321,6 +430,8 @@ export type PlanningProposal = {
   assignees: string[];
   committeeId?: string | null;
   approvals: PlanningApproval[];
+  /** Inter-office botohan / poll tallies. */
+  votes?: PlanningVote[];
   /** Barangay infrastructure request vs office-originated proposal. */
   requestKind?: PlanningRequestKind;
   needsAssessment?: PlanningNeedsAssessment | null;
@@ -371,6 +482,17 @@ export const PLANNING_STATUS_LABELS: Record<PlanningProposalStatus, string> = {
   draft: "Draft",
   submitted: "Submitted",
   in_review: "In Review",
+  recommended: "Recommended",
+  approved: "Approved",
+  returned: "Returned",
+  rejected: "Rejected",
+};
+
+/** Plain-language column headers for the Planning Workspace board. */
+export const PLANNING_STATUS_WORKSPACE_LABELS: Record<PlanningProposalStatus, string> = {
+  draft: "Draft",
+  submitted: "Submitted",
+  in_review: "Under review",
   recommended: "Recommended",
   approved: "Approved",
   returned: "Returned",

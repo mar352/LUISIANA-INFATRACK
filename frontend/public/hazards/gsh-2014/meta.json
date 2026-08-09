@@ -1,0 +1,7 @@
+﻿{
+  "id": "gsh-2014",
+  "title": "Ground Shaking 2014",
+  "url": "/hazards/gsh-2014/overview.png",
+  "rectangle": { "west": 121.42930055610675000, "south": 14.06832254020942900, "east": 121.68874168293704000, "north": 14.30417811005507300 },
+  "attribution": "PHIVOLCS ground shaking map (KMZ ground overlay)"
+}

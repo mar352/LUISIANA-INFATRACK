@@ -3,6 +3,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDocs,
   onSnapshot,
   orderBy,
   query,
@@ -24,16 +25,27 @@ import type {
   PlanningNeedsAssessment,
   PlanningProposal,
   PlanningRequestKind,
+  PlanningVote,
 } from "../types";
 import { backendUrl } from "../lib/api";
 import { computeRecommendation } from "../lib/planning-recommend";
 
-function stripUndefined<T extends Record<string, unknown>>(obj: T): Record<string, unknown> {
+function stripUndefinedDeep(value: unknown): unknown {
+  if (value === undefined) return undefined;
+  if (value === null || typeof value !== "object") return value;
+  if (Array.isArray(value)) {
+    return value.map((item) => stripUndefinedDeep(item));
+  }
   const cleaned: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(obj)) {
-    if (value !== undefined) cleaned[key] = value;
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (entry === undefined) continue;
+    cleaned[key] = stripUndefinedDeep(entry);
   }
   return cleaned;
+}
+
+function stripUndefined<T extends Record<string, unknown>>(obj: T): Record<string, unknown> {
+  return stripUndefinedDeep(obj) as Record<string, unknown>;
 }
 
 async function notifyPlanningUpdate(kind: string) {
@@ -81,6 +93,7 @@ function mapProposal(id: string, data: Record<string, unknown>): PlanningProposa
     assignees: Array.isArray(data.assignees) ? (data.assignees as string[]) : [],
     committeeId: (data.committeeId as string | null) ?? null,
     approvals: Array.isArray(data.approvals) ? (data.approvals as PlanningApproval[]) : [],
+    votes: Array.isArray(data.votes) ? (data.votes as PlanningVote[]) : [],
     requestKind,
     needsAssessment,
     recommendationScore:
@@ -122,6 +135,14 @@ export function subscribeToProposals(
   );
 }
 
+/** One-shot fetch for Board polling (same shape as subscribeToProposals). */
+export async function fetchProposalsOnce(): Promise<PlanningProposal[]> {
+  const snapshot = await getDocs(proposalsCollection);
+  return snapshot.docs
+    .map((d) => mapProposal(d.id, d.data() as Record<string, unknown>))
+    .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+}
+
 export async function createProposal(
   input: Omit<PlanningProposal, "id" | "createdAt" | "updatedAt" | "approvals"> & {
     approvals?: PlanningApproval[];
@@ -132,6 +153,7 @@ export async function createProposal(
     ...input,
     id: "pending",
     approvals: input.approvals ?? [],
+    votes: input.votes ?? [],
     requestKind: input.requestKind ?? "office_proposal",
     needsAssessment: input.needsAssessment ?? null,
     attachments: input.attachments ?? [],
@@ -142,6 +164,7 @@ export async function createProposal(
   const payload = stripUndefined({
     ...input,
     approvals: input.approvals ?? [],
+    votes: input.votes ?? [],
     linkedProjectId: input.linkedProjectId ?? null,
     location: input.location ?? null,
     committeeId: input.committeeId ?? null,
@@ -162,12 +185,14 @@ export async function updateProposal(
   id: string,
   patch: Partial<PlanningProposal>,
 ): Promise<void> {
+  if (!id) throw new Error("Missing proposal id");
   const ref = doc(db, "proposals", id);
   const data = stripUndefined({
     ...patch,
     updatedAt: new Date().toISOString(),
-  });
+  }) as Record<string, unknown>;
   delete data.id;
+  // Firestore rejects nested `undefined` (e.g. empty approval.note).
   await updateDoc(ref, data);
   await notifyPlanningUpdate("proposal:update");
 }
@@ -205,6 +230,23 @@ export function subscribeToComments(
       callback([]);
     },
   );
+}
+
+export async function fetchCommentsOnce(proposalId: string): Promise<PlanningComment[]> {
+  const commentsRef = collection(db, "proposals", proposalId, "comments");
+  const q = query(commentsRef, orderBy("createdAt", "asc"));
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((d) => {
+    const data = d.data();
+    return {
+      id: d.id,
+      author: String(data.author ?? ""),
+      role: String(data.role ?? ""),
+      body: String(data.body ?? ""),
+      createdAt: String(data.createdAt ?? ""),
+      anchor: data.anchor ?? null,
+    } satisfies PlanningComment;
+  });
 }
 
 export async function addComment(
@@ -259,6 +301,13 @@ export function subscribeToPlanningEvents(
       callback([]);
     },
   );
+}
+
+export async function fetchPlanningEventsOnce(): Promise<PlanningEvent[]> {
+  const snapshot = await getDocs(planningEventsCollection);
+  return snapshot.docs
+    .map((d) => mapEvent(d.id, d.data() as Record<string, unknown>))
+    .sort((a, b) => (a.startsAt || "").localeCompare(b.startsAt || ""));
 }
 
 export async function createPlanningEvent(
@@ -320,6 +369,13 @@ export function subscribeToPlanningMeetings(
       callback([]);
     },
   );
+}
+
+export async function fetchPlanningMeetingsOnce(): Promise<PlanningMeeting[]> {
+  const snapshot = await getDocs(planningMeetingsCollection);
+  return snapshot.docs
+    .map((d) => mapMeeting(d.id, d.data() as Record<string, unknown>))
+    .sort((a, b) => (b.heldAt || "").localeCompare(a.heldAt || ""));
 }
 
 export async function createPlanningMeeting(

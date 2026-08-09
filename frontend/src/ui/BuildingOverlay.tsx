@@ -1562,19 +1562,19 @@ export function BuildingOverlay({
               <div style={{ marginBottom: 20 }}>
                 <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>
                   Progress Photos
-                  {(project.photos?.length ?? 0) > 0 && (
+                  {(project.photos ?? []).filter((p) => p.kind !== "site").length > 0 && (
                     <span style={{ marginLeft: 6, fontWeight: 700, color: "var(--seed)" }}>
-                      ({project.photos.length})
+                      ({(project.photos ?? []).filter((p) => p.kind !== "site").length})
                     </span>
                   )}
                 </div>
-                {(project.photos?.length ?? 0) === 0 ? (
+                {(project.photos ?? []).filter((p) => p.kind !== "site").length === 0 ? (
                   <div style={{ fontSize: 12, color: "var(--muted2)", lineHeight: 1.5 }}>
                     No progress photos uploaded yet.
                   </div>
                 ) : (
                   <div className="project-photo-grid building-modal-photos">
-                    {project.photos.map((photo) => (
+                    {(project.photos ?? []).filter((p) => p.kind !== "site").map((photo) => (
                       <a
                         key={photo.id}
                         href={backendUrl(photo.url)}

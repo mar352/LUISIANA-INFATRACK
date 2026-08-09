@@ -1,0 +1,7 @@
+﻿{
+  "id": "eil-2014",
+  "title": "Luisiana Earthquake 50K 2014",
+  "url": "/hazards/eil-2014/overview.png",
+  "rectangle": { "west": 121.43154468716837, "south": 14.071619029901823, "east": 121.68805595624853, "north": 14.30481109270206 },
+  "attribution": "PHIVOLCS earthquake hazard map (KMZ ground overlay)"
+}

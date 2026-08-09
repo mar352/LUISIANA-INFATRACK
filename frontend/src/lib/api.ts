@@ -1,4 +1,15 @@
-import type { Project, ProjectIssue, ProjectMilestone, ProjectPhoto, ProjectAccomplishmentReport } from "../types";
+import type {
+  Project,
+  ProjectIssue,
+  ProjectMilestone,
+  ProjectPhoto,
+  ProjectAccomplishmentReport,
+  PublicProject,
+  EngagementSubmission,
+  EngagementPublicStats,
+  EngagementKind,
+  EngagementStatus,
+} from "../types";
 
 // undefined → local default; "" → same-origin (Docker / nginx proxy)
 const envBackend = import.meta.env.VITE_BACKEND_URL as string | undefined;
@@ -22,7 +33,16 @@ async function sendJson<T>(path: string, method: string, body?: unknown): Promis
     headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+  if (!res.ok) {
+    let detail = `Request failed: ${res.status}`;
+    try {
+      const errBody = await res.json();
+      if (errBody?.error) detail = String(errBody.error);
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail);
+  }
   return (await res.json()) as T;
 }
 
@@ -64,12 +84,13 @@ export function fetchAccomplishmentReport(projectId: string) {
 export async function uploadProjectPhoto(
   projectId: string,
   file: File,
-  opts?: { caption?: string; milestoneId?: string | null }
+  opts?: { caption?: string; milestoneId?: string | null; kind?: "site" | "progress" }
 ) {
   const form = new FormData();
   form.append("photo", file);
   if (opts?.caption) form.append("caption", opts.caption);
   if (opts?.milestoneId) form.append("milestoneId", opts.milestoneId);
+  form.append("kind", opts?.kind === "site" ? "site" : "progress");
   const res = await fetch(backendUrl(`/api/projects/${projectId}/photos`), {
     method: "POST",
     body: form,
@@ -127,5 +148,98 @@ export async function uploadDocumentFile(file: File) {
     originalName: string;
     mimeType: string;
     size: number;
+  };
+}
+
+// ── Public / citizen engagement ─────────────────────────────────────────────
+
+export function fetchPublicProjects() {
+  return getJson<{ projects: PublicProject[]; generatedAt: string }>("/api/public/projects");
+}
+
+export function fetchPublicProject(id: string) {
+  return getJson<{ project: PublicProject }>(`/api/public/projects/${id}`);
+}
+
+export function fetchEngagementPublicStats() {
+  return getJson<{ stats: EngagementPublicStats; generatedAt: string }>(
+    "/api/public/engagement/stats"
+  );
+}
+
+export function submitEngagement(body: {
+  kind: EngagementKind;
+  title: string;
+  body: string;
+  category?: string;
+  projectId?: string | null;
+  lng?: number | null;
+  lat?: number | null;
+  barangay?: string | null;
+  contactName?: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+}) {
+  return sendJson<{ submission: { id: string; createdAt: string } }>(
+    "/api/public/engagement",
+    "POST",
+    body
+  );
+}
+
+export function fetchEngagementList(opts?: { kind?: EngagementKind; status?: EngagementStatus }) {
+  const q = new URLSearchParams();
+  if (opts?.kind) q.set("kind", opts.kind);
+  if (opts?.status) q.set("status", opts.status);
+  const qs = q.toString();
+  return getJson<{ submissions: EngagementSubmission[]; generatedAt: string }>(
+    `/api/engagement${qs ? `?${qs}` : ""}`
+  );
+}
+
+export function patchEngagement(
+  id: string,
+  body: { status?: EngagementStatus; staffNote?: string | null }
+) {
+  return sendJson<{ submission: EngagementSubmission }>(`/api/engagement/${id}`, "PATCH", body);
+}
+
+/** Map public DTO → full Project shape for Cesium (fill staff-only fields with defaults). */
+export function publicProjectAsMapProject(p: PublicProject): Project {
+  const issues = Array.isArray(p.issues) ? p.issues : [];
+  const milestones = Array.isArray(p.milestones) ? p.milestones : [];
+  const photos = Array.isArray(p.photos) ? p.photos : [];
+  return {
+    id: p.id,
+    name: p.name || "Untitled",
+    modelType: p.modelType || "office",
+    type: p.type || "Municipal Project",
+    department: p.department || "MPDC",
+    status: p.status || "Planned",
+    progress: Number(p.progress) || 0,
+    location: p.location || { lat: 14.185, lon: 121.51 },
+    rotation: p.rotation ?? 0,
+    modelScale: p.modelScale ?? 1,
+    modelHeight: p.modelHeight ?? 0,
+    modelLocked: true,
+    customModelUrl: p.customModelUrl || undefined,
+    description: p.description,
+    startDate: p.startDate,
+    targetEndDate: p.targetEndDate,
+    barangay: p.barangay || undefined,
+    fundingSource: p.fundingSource || undefined,
+    lifecyclePhase: p.lifecyclePhase || undefined,
+    milestones,
+    issues: issues.map((i) => ({
+      id: i.id,
+      kind: i.kind,
+      title: i.title,
+      description: "",
+      reportedAt: i.reportedAt,
+      resolvedAt: i.resolvedAt || undefined,
+    })),
+    photos,
+    activityLog: [],
+    updatedAt: p.updatedAt || new Date().toISOString(),
   };
 }

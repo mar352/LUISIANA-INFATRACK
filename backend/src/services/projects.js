@@ -46,18 +46,45 @@ function ensureProjectShape(p) {
     status: normalizeStatus(p.status),
     milestones: Array.isArray(p.milestones) ? p.milestones : [],
     issues: Array.isArray(p.issues) ? p.issues : [],
-    photos: Array.isArray(p.photos) ? p.photos : [],
+    photos: (Array.isArray(p.photos) ? p.photos : []).map((ph) => ({
+      ...ph,
+      // Legacy uploads were progress photos; keep them there.
+      kind: ph.kind === "site" ? "site" : "progress",
+    })),
     activityLog: Array.isArray(p.activityLog) ? p.activityLog : [],
     budgetTotal: p.budgetTotal ?? null,
     budgetSpent: p.budgetSpent ?? 0,
     description: p.description ?? "",
     startDate: p.startDate ?? null,
     targetEndDate: p.targetEndDate ?? null,
+    barangay: p.barangay ?? "",
+    fundingSource: p.fundingSource ?? "",
+    contractor: p.contractor ?? "",
+    lifecyclePhase: p.lifecyclePhase ?? "Planning",
     rotation: Number.isFinite(Number(p.rotation)) ? Number(p.rotation) : 0,
     modelScale: Number.isFinite(Number(p.modelScale)) ? Number(p.modelScale) : 1,
     modelHeight: Number.isFinite(Number(p.modelHeight)) ? Number(p.modelHeight) : 0,
     modelLocked: Boolean(p.modelLocked),
+    siteMarkerOnly: Boolean(p.siteMarkerOnly),
+    markerColor: p.markerColor ? String(p.markerColor) : "",
+    mapSketch: normalizeMapSketch(p.mapSketch),
   };
+}
+
+function normalizeMapSketch(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const kind = raw.kind === "line" || raw.kind === "area" || raw.kind === "pin" ? raw.kind : "pin";
+  const color = typeof raw.color === "string" && raw.color ? raw.color : "#c47a1a";
+  const coordinates = Array.isArray(raw.coordinates)
+    ? raw.coordinates
+        .map((c) => ({
+          lon: Number(c?.lon ?? c?.lng),
+          lat: Number(c?.lat),
+        }))
+        .filter((c) => Number.isFinite(c.lon) && Number.isFinite(c.lat))
+    : [];
+  if (!coordinates.length) return null;
+  return { kind, color, coordinates };
 }
 
 function logActivity(project, message) {
@@ -263,10 +290,18 @@ export function addProject({
   targetEndDate,
   budgetTotal,
   budgetSpent,
+  barangay,
+  fundingSource,
+  contractor,
+  lifecyclePhase,
+  siteMarkerOnly,
+  mapSketch,
+  markerColor,
 }) {
   const projects = projectsSeed();
   const id = `P${nextId++}`;
   const normalizedStatus = normalizeStatus(status || "Planned");
+  const sketch = normalizeMapSketch(mapSketch);
   const project = ensureProjectShape({
     id,
     name: name || `New ${modelType}`,
@@ -278,19 +313,31 @@ export function addProject({
     location,
     rotation,
     customModelUrl,
-    modelLocked: false,
+    modelLocked: siteMarkerOnly ? true : false,
+    siteMarkerOnly: Boolean(siteMarkerOnly),
+    mapSketch: sketch,
+    markerColor: markerColor || sketch?.color || "",
     description: description || "",
     startDate: startDate || null,
     targetEndDate: targetEndDate || null,
     budgetTotal: budgetTotal != null ? Number(budgetTotal) : null,
     budgetSpent: budgetSpent != null ? Number(budgetSpent) : 0,
+    barangay: barangay || "",
+    fundingSource: fundingSource || "LGU",
+    contractor: contractor || "",
+    lifecyclePhase: lifecyclePhase || "Planning",
     milestones: [],
     issues: [],
     photos: [],
     activityLog: [],
     updatedAt: new Date().toISOString(),
   });
-  logActivity(project, `Project created with status ${project.status}.`);
+  logActivity(
+    project,
+    siteMarkerOnly
+      ? `Site markup placed (${sketch?.kind || "pin"}) — map drawing only, no 3D model yet.`
+      : `Project created with status ${project.status}.`,
+  );
   projects.push(project);
   saveState();
   return project;
@@ -337,6 +384,18 @@ export function updateProject(id, patch) {
   if (patch.department !== undefined) {
     project.department = String(patch.department);
   }
+  if (patch.barangay !== undefined) {
+    project.barangay = String(patch.barangay || "");
+  }
+  if (patch.fundingSource !== undefined) {
+    project.fundingSource = String(patch.fundingSource || "");
+  }
+  if (patch.contractor !== undefined) {
+    project.contractor = String(patch.contractor || "");
+  }
+  if (patch.lifecyclePhase !== undefined) {
+    project.lifecyclePhase = String(patch.lifecyclePhase || "Planning");
+  }
 
   if (patch.budgetTotal !== undefined) {
     project.budgetTotal = patch.budgetTotal == null ? null : Number(patch.budgetTotal);
@@ -353,6 +412,32 @@ export function updateProject(id, patch) {
       project.modelLocked = next;
       logActivity(project, next ? "3D model locked on map." : "3D model unlocked on map.");
     }
+  }
+
+  if (patch.siteMarkerOnly !== undefined) {
+    const next = Boolean(patch.siteMarkerOnly);
+    if (project.siteMarkerOnly !== next) {
+      project.siteMarkerOnly = next;
+      logActivity(
+        project,
+        next
+          ? "Showing as site pin only (no 3D model)."
+          : "3D model placement enabled for this site.",
+      );
+      if (next) project.modelLocked = true;
+    }
+  }
+
+  if (patch.mapSketch !== undefined) {
+    project.mapSketch = normalizeMapSketch(patch.mapSketch);
+    if (project.mapSketch?.color) project.markerColor = project.mapSketch.color;
+    logActivity(project, "Map sketch updated.");
+  }
+
+  if (patch.markerColor !== undefined) {
+    project.markerColor = String(patch.markerColor || "");
+    if (project.mapSketch) project.mapSketch = { ...project.mapSketch, color: project.markerColor || project.mapSketch.color };
+    logActivity(project, "Marker color updated.");
   }
 
   if (project.modelLocked) {
@@ -496,19 +581,22 @@ export function removeProject(id) {
   return true;
 }
 
-export function addProjectPhoto(projectId, { url, caption, milestoneId }) {
+export function addProjectPhoto(projectId, { url, caption, milestoneId, kind }) {
   const project = findProject(projectId);
   if (!project || !url) return null;
 
+  const photoKind = kind === "site" ? "site" : "progress";
   const photo = {
     id: `PH${Date.now()}`,
     url: String(url),
     caption: caption ? String(caption) : "",
-    milestoneId: milestoneId || null,
+    kind: photoKind,
+    milestoneId: photoKind === "progress" ? milestoneId || null : null,
     uploadedAt: new Date().toISOString(),
   };
   project.photos.unshift(photo);
-  logActivity(project, `Progress photo uploaded${photo.caption ? `: ${photo.caption}` : ""}.`);
+  const label = photoKind === "site" ? "Site photo" : "Progress photo";
+  logActivity(project, `${label} uploaded${photo.caption ? `: ${photo.caption}` : ""}.`);
   project.updatedAt = new Date().toISOString();
   saveState();
   return photo;
@@ -540,6 +628,8 @@ export function generateAccomplishmentReport(projectId) {
   const missedMs = project.milestones.filter((m) => m.status === "missed").length;
   const util = budgetUtilization(project);
 
+  const progressPhotos = (project.photos || []).filter((ph) => ph.kind !== "site");
+
   const narrative = [
     `${project.name} (${project.department}) is currently ${project.status} at ${project.progress}% completion.`,
     project.milestones.length
@@ -551,7 +641,9 @@ export function generateAccomplishmentReport(projectId) {
     openIssues.length
       ? `${openDelays.length} open delay(s) and ${openOther.length} open issue(s) require attention.`
       : "No open delays or issues.",
-    project.photos.length ? `${project.photos.length} progress photo(s) on file.` : "No progress photos yet.",
+    progressPhotos.length
+      ? `${progressPhotos.length} progress photo(s) on file.`
+      : "No progress photos yet.",
   ].join(" ");
 
   return {
@@ -586,8 +678,8 @@ export function generateAccomplishmentReport(projectId) {
       items: project.issues,
     },
     photos: {
-      count: project.photos.length,
-      items: project.photos,
+      count: progressPhotos.length,
+      items: progressPhotos,
     },
     activityLog: project.activityLog.slice(0, 20),
     narrative,
@@ -596,4 +688,66 @@ export function generateAccomplishmentReport(projectId) {
 
 export function emitProjectsPayload() {
   return { projects: projectsSeed(), generatedAt: new Date().toISOString() };
+}
+
+/** Citizen-facing project shape — strips staff notes, activity log, budget internals. */
+export function toPublicProject(p) {
+  if (!p) return null;
+  const milestones = (p.milestones || []).map((m) => ({
+    id: m.id,
+    title: m.title,
+    targetDate: m.targetDate,
+    completedAt: m.completedAt || null,
+    status: m.status,
+  }));
+  const issues = (p.issues || []).map((i) => ({
+    id: i.id,
+    kind: i.kind,
+    title: i.title,
+    reportedAt: i.reportedAt,
+    resolvedAt: i.resolvedAt || null,
+    open: !i.resolvedAt,
+  }));
+  const photos = (p.photos || []).map((ph) => ({
+    id: ph.id,
+    url: ph.url,
+    caption: ph.caption || "",
+    kind: ph.kind === "site" ? "site" : "progress",
+    uploadedAt: ph.uploadedAt,
+  }));
+  return {
+    id: p.id,
+    name: p.name,
+    modelType: p.modelType,
+    type: p.type,
+    department: p.department,
+    status: p.status,
+    progress: p.progress,
+    location: p.location,
+    description: p.description || "",
+    startDate: p.startDate ?? null,
+    targetEndDate: p.targetEndDate ?? null,
+    barangay: p.barangay || null,
+    fundingSource: p.fundingSource || null,
+    lifecyclePhase: p.lifecyclePhase || null,
+    customModelUrl: p.customModelUrl || null,
+    rotation: p.rotation ?? 0,
+    modelScale: p.modelScale ?? 1,
+    modelHeight: p.modelHeight ?? 0,
+    milestones,
+    issues,
+    photos,
+    openIssueCount: issues.filter((i) => i.open).length,
+    updatedAt: p.updatedAt,
+  };
+}
+
+export function listPublicProjects() {
+  return projectsSeed()
+    .filter((p) => !p.archivedAt)
+    .map(toPublicProject);
+}
+
+export function getPublicProject(id) {
+  return toPublicProject(findProject(id));
 }

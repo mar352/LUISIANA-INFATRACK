@@ -10,6 +10,7 @@ import fs from "fs";
 
 import { buildHeatPointsForBbox, computeRiskZones } from "./services/risk.js";
 import { getWeatherSnapshot } from "./services/weather.js";
+import { getTropicalSystems } from "./services/tropicalSystems.js";
 import {
   projectsSeed,
   tickProjects,
@@ -24,7 +25,16 @@ import {
   removeProjectPhoto,
   generateAccomplishmentReport,
   emitProjectsPayload,
+  listPublicProjects,
+  getPublicProject,
 } from "./services/projects.js";
+import {
+  listEngagement,
+  createEngagement,
+  updateEngagement,
+  checkEngagementRateLimit,
+  engagementPublicStats,
+} from "./services/engagement.js";
 import { createAlertFromRisk } from "./services/alerts.js";
 import { buildSlopeCache } from "./services/dem.js";
 import { chatWithOllama, getChatConfig } from "./services/chat.js";
@@ -166,6 +176,21 @@ app.get("/api/weather", async (req, res) => {
   res.json(snapshot);
 });
 
+/** West Pacific Invest / TC systems (RAMMB proxy; PH AOI → LPA-watch). */
+app.get("/api/tropical-systems", async (req, res) => {
+  const force = req.query.refresh === "1" || req.query.refresh === "true";
+  try {
+    const payload = await getTropicalSystems({ force });
+    res.json(payload);
+  } catch (err) {
+    console.error("tropical-systems:", err);
+    res.status(502).json({
+      error: err instanceof Error ? err.message : "Failed to fetch tropical systems",
+      systems: [],
+    });
+  }
+});
+
 app.get("/api/heatmap", (req, res) => {
   const { west, south, east, north } = req.query;
   if ([west, south, east, north].some((v) => v === undefined)) {
@@ -205,6 +230,57 @@ app.get("/api/projects", (_req, res) => {
   res.json(emitProjectsPayload());
 });
 
+// ── Public citizen APIs (no auth; safe DTOs only) ───────────────────────────
+app.get("/api/public/projects", (_req, res) => {
+  res.json({
+    projects: listPublicProjects(),
+    generatedAt: new Date().toISOString(),
+  });
+});
+
+app.get("/api/public/projects/:id", (req, res) => {
+  const project = getPublicProject(req.params.id);
+  if (!project) return res.status(404).json({ error: "Project not found" });
+  res.json({ project });
+});
+
+app.get("/api/public/engagement/stats", (_req, res) => {
+  res.json({ stats: engagementPublicStats(), generatedAt: new Date().toISOString() });
+});
+
+app.post("/api/public/engagement", (req, res) => {
+  const ip =
+    req.headers["x-forwarded-for"]?.toString().split(",")[0]?.trim() ||
+    req.socket?.remoteAddress ||
+    "anon";
+  if (!checkEngagementRateLimit(ip)) {
+    return res.status(429).json({ error: "Too many submissions. Please try again in a minute." });
+  }
+  const result = createEngagement(req.body || {});
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.status(201).json({ submission: { id: result.submission.id, createdAt: result.submission.createdAt } });
+});
+
+app.get("/api/engagement", (req, res) => {
+  const kind = req.query.kind ? String(req.query.kind) : undefined;
+  const status = req.query.status ? String(req.query.status) : undefined;
+  res.json({
+    submissions: listEngagement({ kind, status }),
+    generatedAt: new Date().toISOString(),
+  });
+});
+
+app.patch("/api/engagement/:id", (req, res) => {
+  const result = updateEngagement(req.params.id, req.body || {});
+  if (!result) return res.status(404).json({ error: "Submission not found" });
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json({ submission: result.submission });
+});
+
+app.get("/api/engagement/stats", (_req, res) => {
+  res.json({ stats: engagementPublicStats(), generatedAt: new Date().toISOString() });
+});
+
 app.post("/api/projects", (req, res) => {
   const {
     name,
@@ -221,6 +297,10 @@ app.post("/api/projects", (req, res) => {
     targetEndDate,
     budgetTotal,
     budgetSpent,
+    barangay,
+    fundingSource,
+    contractor,
+    lifecyclePhase,
   } = req.body;
   if (!name || !modelType || !location?.lat || !location?.lon) {
     return res.status(400).json({ error: "Missing required fields: name, modelType, location" });
@@ -240,6 +320,13 @@ app.post("/api/projects", (req, res) => {
     targetEndDate,
     budgetTotal,
     budgetSpent,
+    barangay,
+    fundingSource,
+    contractor,
+    lifecyclePhase,
+    siteMarkerOnly: Boolean(req.body?.siteMarkerOnly),
+    mapSketch: req.body?.mapSketch ?? null,
+    markerColor: req.body?.markerColor || "",
   });
   io.emit("projects:update", emitProjectsPayload());
   res.json({ project });
@@ -297,6 +384,7 @@ app.post("/api/projects/:id/photos", (req, res, next) => {
       url,
       caption: req.body?.caption,
       milestoneId: req.body?.milestoneId || null,
+      kind: req.body?.kind || "progress",
     });
     if (!photo) return res.status(404).json({ error: "Project not found" });
     io.emit("projects:update", emitProjectsPayload());

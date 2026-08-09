@@ -57,7 +57,7 @@ export const TERRAIN_SOURCES = {
 export const SATELLITE_SOURCES = {
   esri: {
     name: "ESRI World Imagery",
-    tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+    tiles: ["https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
     maxzoom: 19,
     tileSize: 256,
     attribution: "© Esri",

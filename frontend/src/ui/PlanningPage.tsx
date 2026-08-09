@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   PlanningApprovalDecision,
   PlanningComment,
@@ -9,12 +9,13 @@ import type {
   PlanningProposal,
   PlanningProposalStatus,
   PlanningRequestKind,
-  Project,
+  PlanningVoteChoice,
 } from "../types";
 import {
   BARANGAY_LIST,
   PLANNING_STATUS_COLORS,
   PLANNING_STATUS_LABELS,
+  PLANNING_STATUS_WORKSPACE_LABELS,
 } from "../types";
 import type { PublicAccount, SessionUser } from "../services/auth";
 import { listAccounts } from "../services/auth";
@@ -25,6 +26,10 @@ import {
   createProposal,
   deletePlanningEvent,
   deletePlanningMeeting,
+  fetchCommentsOnce,
+  fetchPlanningEventsOnce,
+  fetchPlanningMeetingsOnce,
+  fetchProposalsOnce,
   subscribeToComments,
   subscribeToPlanningEvents,
   subscribeToPlanningMeetings,
@@ -32,7 +37,6 @@ import {
   updatePlanningMeeting,
   updateProposal,
 } from "../services/firestore-planning";
-import { addProjectToFirestore } from "../services/firestore-projects";
 import { BACKEND_URL, backendUrl, uploadPlanningAttachment } from "../lib/api";
 import {
   allowedStatusTransitions,
@@ -60,6 +64,8 @@ type Tab = "board" | "calendar" | "meetings";
 type Props = {
   onBack: () => void;
   session: SessionUser | null;
+  /** After approval, MPDC opens the map to pin where the building will stand. */
+  onPinSite?: (proposal: PlanningProposal) => void;
 };
 
 type AnchorKind = "none" | "section" | "map";
@@ -106,6 +112,18 @@ const STATUS_COLUMNS: PlanningProposalStatus[] = [
   "rejected",
 ];
 
+const MAIN_PIPELINE: PlanningProposalStatus[] = [
+  "draft",
+  "submitted",
+  "in_review",
+  "recommended",
+  "approved",
+];
+
+const SIDE_LANES: PlanningProposalStatus[] = ["returned", "rejected"];
+
+const POLL_MS = 5000;
+
 function formatWhen(iso: string) {
   if (!iso) return "—";
   try {
@@ -143,6 +161,16 @@ function attachmentHref(url: string) {
   return backendUrl(url);
 }
 
+function tallyVotes(votes: PlanningProposal["votes"] | undefined) {
+  const list = votes || [];
+  return {
+    yes: list.filter((v) => v.choice === "yes").length,
+    no: list.filter((v) => v.choice === "no").length,
+    abstain: list.filter((v) => v.choice === "abstain").length,
+    total: list.length,
+  };
+}
+
 function sameCalendarDay(iso: string, day: Date) {
   const d = new Date(iso);
   return (
@@ -164,7 +192,7 @@ function buildMonthGrid(monthStart: Date) {
   return cells;
 }
 
-export default function PlanningPage({ onBack, session }: Props) {
+export default function PlanningPage({ onBack, session, onPinSite }: Props) {
   const role = session?.role ?? null;
   const perms = getPlanningPermissions(role);
 
@@ -187,6 +215,7 @@ export default function PlanningPage({ onBack, session }: Props) {
   const [commentSectionLabel, setCommentSectionLabel] = useState<string>("Summary");
   const [commentOtherLabel, setCommentOtherLabel] = useState("");
   const [decisionNote, setDecisionNote] = useState("");
+  const [voteNote, setVoteNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -195,6 +224,9 @@ export default function PlanningPage({ onBack, session }: Props) {
   const [draftCommitteeId, setDraftCommitteeId] = useState("");
 
   const [showCreate, setShowCreate] = useState(false);
+  const [showCreateMore, setShowCreateMore] = useState(false);
+  const [showDetailMore, setShowDetailMore] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
   const [draftSummary, setDraftSummary] = useState("");
   const [draftBarangay, setDraftBarangay] = useState("");
@@ -230,6 +262,10 @@ export default function PlanningPage({ onBack, session }: Props) {
   });
   const [selectedCalDay, setSelectedCalDay] = useState<Date | null>(null);
   const [firestoreDenied, setFirestoreDenied] = useState(false);
+  const tabRef = useRef(tab);
+  const selectedIdRef = useRef(selectedId);
+  tabRef.current = tab;
+  selectedIdRef.current = selectedId;
 
   useEffect(() => {
     listAccounts()
@@ -242,6 +278,23 @@ export default function PlanningPage({ onBack, session }: Props) {
     const onPlanning = (payload: { kind?: string; at?: string }) => {
       const kind = payload?.kind ? ` (${payload.kind})` : "";
       setMessage(`Planning synced${kind}`);
+      void (async () => {
+        try {
+          const activeTab = tabRef.current;
+          const sel = selectedIdRef.current;
+          if (activeTab === "board") {
+            setProposals(await fetchProposalsOnce());
+            if (sel) setComments(await fetchCommentsOnce(sel));
+          } else if (activeTab === "calendar") {
+            setEvents(await fetchPlanningEventsOnce());
+          } else {
+            setMeetings(await fetchPlanningMeetingsOnce());
+          }
+          setLastSyncedAt(new Date().toISOString());
+        } catch (err) {
+          console.warn("[Planning] socket refetch failed:", err);
+        }
+      })();
     };
     socket.on("planning:update", onPlanning);
     return () => {
@@ -257,6 +310,7 @@ export default function PlanningPage({ onBack, session }: Props) {
     const unsub = subscribeToProposals((list) => {
       setProposals(list);
       setLoading(false);
+      setLastSyncedAt(new Date().toISOString());
       if (list.length > 0) setFirestoreDenied(false);
     }, onPerm);
     return () => unsub();
@@ -283,6 +337,59 @@ export default function PlanningPage({ onBack, session }: Props) {
     }
     const unsub = subscribeToComments(selectedId, setComments);
     return () => unsub();
+  }, [selectedId]);
+
+  // Safety polling — multi-user freshness while the Planning page is open.
+  useEffect(() => {
+    let cancelled = false;
+
+    const tick = async () => {
+      if (cancelled) return;
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      try {
+        if (tab === "board") {
+          const list = await fetchProposalsOnce();
+          if (!cancelled) {
+            setProposals(list);
+            setLoading(false);
+          }
+          if (selectedId) {
+            const nextComments = await fetchCommentsOnce(selectedId);
+            if (!cancelled) setComments(nextComments);
+          }
+        } else if (tab === "calendar") {
+          const list = await fetchPlanningEventsOnce();
+          if (!cancelled) setEvents(list);
+        } else {
+          const list = await fetchPlanningMeetingsOnce();
+          if (!cancelled) setMeetings(list);
+        }
+        if (!cancelled) setLastSyncedAt(new Date().toISOString());
+      } catch (err) {
+        console.warn("[Planning] poll failed:", err);
+      }
+    };
+
+    void tick();
+
+    const id = window.setInterval(() => {
+      void tick();
+    }, POLL_MS);
+
+    const onVis = () => {
+      if (document.visibilityState === "visible") void tick();
+    };
+    document.addEventListener("visibilitychange", onVis);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [tab, selectedId]);
+
+  useEffect(() => {
+    setShowDetailMore(false);
   }, [selectedId]);
 
   const selected = useMemo(
@@ -542,12 +649,13 @@ export default function PlanningPage({ onBack, session }: Props) {
     setBusy(true);
     setMessage(null);
     try {
+      const note = decisionNote.trim();
       const approval = {
         role: session.role,
         username: session.username,
         decision,
-        note: decisionNote.trim() || undefined,
         at: new Date().toISOString(),
+        ...(note ? { note } : {}),
       };
       await updateProposal(proposal.id, {
         status: nextStatus,
@@ -586,87 +694,43 @@ export default function PlanningPage({ onBack, session }: Props) {
     setBusy(false);
   }
 
-  async function handleApproveAndLink(proposal: PlanningProposal) {
+  async function handleApprove(proposal: PlanningProposal) {
     if (!session || !perms.canApprove) return;
     setBusy(true);
     setMessage(null);
     try {
+      const note = decisionNote.trim();
       const approval = {
         role: session.role,
         username: session.username,
         decision: "approve" as const,
-        note: decisionNote.trim() || undefined,
         at: new Date().toISOString(),
+        ...(note ? { note } : {}),
       };
-
-      const now = new Date().toISOString();
-      const fallbackProject: Project = {
-        id:
-          typeof crypto !== "undefined" && "randomUUID" in crypto
-            ? crypto.randomUUID()
-            : `plan-${Date.now()}`,
-        name: proposal.title,
-        modelType: "office",
-        type: "Municipal Project",
-        department: proposal.department,
-        status: "Planned",
-        progress: 0,
-        location: proposal.location ?? { lat: 14.185, lon: 121.51 },
-        description: proposal.summary,
-        barangay: proposal.barangay,
-        lifecyclePhase: "Planning",
-        milestones: [],
-        issues: [],
-        photos: [],
-        activityLog: [
-          {
-            at: now,
-            message: `Created from planning proposal (${proposal.id}) by ${session.username}.`,
-          },
-        ],
-        updatedAt: now,
-      };
-
-      let linkedId = fallbackProject.id;
-      try {
-        const res = await fetch(backendUrl("/api/projects"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: fallbackProject.name,
-            modelType: fallbackProject.modelType,
-            type: fallbackProject.type,
-            department: fallbackProject.department,
-            status: "Planned",
-            progress: 0,
-            description: fallbackProject.description,
-            location: fallbackProject.location,
-            barangay: fallbackProject.barangay,
-          }),
-        });
-        if (res.ok) {
-          const { project } = await res.json();
-          linkedId = project.id;
-          addProjectToFirestore(project).catch(() => undefined);
-        } else {
-          await addProjectToFirestore(fallbackProject);
-        }
-      } catch {
-        await addProjectToFirestore(fallbackProject);
-      }
 
       await updateProposal(proposal.id, {
         status: "approved",
-        linkedProjectId: linkedId,
         approvals: [...(proposal.approvals || []), approval],
       });
       setDecisionNote("");
-      setMessage(`Approved and linked project ${linkedId}.`);
+      if (onPinSite) {
+        setMessage("Approved — opening map to pin the building site…");
+        window.setTimeout(() => onPinSite({ ...proposal, status: "approved" }), 50);
+      } else {
+        setMessage(
+          "Approved. Next: pin the building site on the live map (MPDC).",
+        );
+      }
     } catch (err) {
-      console.error(err);
-      setMessage("Approve / link failed.");
+      console.error("[Planning] Approve failed:", err);
+      const detail =
+        err instanceof Error && err.message
+          ? err.message
+          : "Check Firestore rules / network.";
+      setMessage(`Approve failed: ${detail}`);
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   }
 
   async function handleAddComment() {
@@ -698,6 +762,40 @@ export default function PlanningPage({ onBack, session }: Props) {
     } catch (err) {
       console.error(err);
       setMessage("Failed to post comment.");
+    }
+    setBusy(false);
+  }
+
+  async function handleCastVote(proposal: PlanningProposal, choice: PlanningVoteChoice) {
+    if (!session || !perms.canVote) return;
+    if (proposal.status === "draft" || proposal.status === "rejected") {
+      setMessage("Botohan opens after the proposal is submitted.");
+      return;
+    }
+    setBusy(true);
+    setMessage(null);
+    try {
+      const note = voteNote.trim();
+      const vote = {
+        username: session.username,
+        role: session.role,
+        choice,
+        at: new Date().toISOString(),
+        ...(note ? { note } : {}),
+      };
+      const others = (proposal.votes || []).filter((v) => v.username !== session.username);
+      await updateProposal(proposal.id, { votes: [...others, vote] });
+      setVoteNote("");
+      setMessage(
+        choice === "yes"
+          ? "Vote recorded: Yes / Sang-ayon"
+          : choice === "no"
+            ? "Vote recorded: No / Tutol"
+            : "Vote recorded: Abstain",
+      );
+    } catch (err) {
+      console.error(err);
+      setMessage("Failed to record vote.");
     }
     setBusy(false);
   }
@@ -836,6 +934,15 @@ export default function PlanningPage({ onBack, session }: Props) {
           </div>
         </div>
         <div className="planning-top-right">
+          <div
+            className={`planning-live-pill${lastSyncedAt ? " is-live" : ""}`}
+            title="Auto-refreshes every 5 seconds for multi-user sync"
+          >
+            <span className="planning-live-dot" aria-hidden />
+            {lastSyncedAt
+              ? `Live · ${new Date(lastSyncedAt).toLocaleTimeString()}`
+              : "Polling…"}
+          </div>
           <ThemeToggle iconOnly />
         </div>
       </header>
@@ -912,7 +1019,7 @@ export default function PlanningPage({ onBack, session }: Props) {
                 <option value="">All statuses</option>
                 {STATUS_COLUMNS.map((s) => (
                   <option key={s} value={s}>
-                    {PLANNING_STATUS_LABELS[s]}
+                    {PLANNING_STATUS_WORKSPACE_LABELS[s]}
                   </option>
                 ))}
               </select>
@@ -945,38 +1052,47 @@ export default function PlanningPage({ onBack, session }: Props) {
                   className="planning-btn primary"
                   onClick={() => setShowCreate(true)}
                 >
-                  + New request
+                  + Submit proposal
                 </button>
               )}
             </div>
 
             {!selected && !loading && (
               <p className="planning-board-hint">
-                Select a proposal card to open review, comments, and approval actions.
+                Multi-user workspace — submit proposals, prioritize, review in committee, then approve
+                to create a map project. Cards refresh automatically for other offices.
               </p>
             )}
 
             {loading ? (
               <div className="planning-empty">Loading proposals…</div>
             ) : (
-              <div className="planning-columns">
-                {STATUS_COLUMNS.map((status) => (
+              <>
+              <div className="planning-columns planning-columns--main">
+                {MAIN_PIPELINE.map((status) => (
                   <div key={status} className="planning-column">
                     <div className="planning-column-head">
                       <span
                         className="planning-status-dot"
                         style={{ background: PLANNING_STATUS_COLORS[status] }}
                       />
-                      {PLANNING_STATUS_LABELS[status]}
+                      {PLANNING_STATUS_WORKSPACE_LABELS[status]}
                       <span className="planning-count">{byStatus[status].length}</span>
                     </div>
                     <div className="planning-column-body">
                       {byStatus[status].map((p) => (
-                        <button
+                        <div
                           key={p.id}
-                          type="button"
                           className={`planning-card ${selectedId === p.id ? "selected" : ""}`}
+                          role="button"
+                          tabIndex={0}
                           onClick={() => setSelectedId(p.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setSelectedId(p.id);
+                            }
+                          }}
                         >
                           <div className="planning-card-title-row">
                             <div className="planning-card-title">{p.title}</div>
@@ -991,31 +1107,97 @@ export default function PlanningPage({ onBack, session }: Props) {
                           <div className="planning-card-meta">
                             {p.department}
                             {p.barangay ? ` · ${p.barangay}` : ""}
+                            {p.committeeId
+                              ? ` · ${committeeShortLabel(p.committeeId)}`
+                              : ""}
                           </div>
-                          {(p.assignees?.length > 0 || p.committeeId) && (
-                            <div className="planning-card-chips">
-                              {p.committeeId && (
-                                <span className="planning-chip planning-chip-committee">
-                                  {committeeShortLabel(p.committeeId)}
-                                </span>
-                              )}
-                              {p.assignees?.slice(0, 3).map((u) => (
-                                <span key={u} className="planning-chip">
-                                  {u}
-                                </span>
-                              ))}
-                              {(p.assignees?.length ?? 0) > 3 && (
-                                <span className="planning-chip">+{p.assignees.length - 3}</span>
-                              )}
-                            </div>
-                          )}
+                          <div className="planning-card-next">
+                            Next: {nextActorHint(p.status).replace(/^Waiting on /, "")}
+                          </div>
+                          {(() => {
+                            const t = tallyVotes(p.votes);
+                            if (t.total === 0) return null;
+                            return (
+                              <div className="planning-card-votes">
+                                Botohan · Oo {t.yes} · Hindi {t.no} · Abstain {t.abstain}
+                              </div>
+                            );
+                          })()}
                           <div className="planning-card-foot">
-                            <span>P{p.priority}</span>
+                            <span>Priority P{p.priority}</span>
                             <span>
                               {p.recommendationScore != null
                                 ? `Score ${p.recommendationScore}`
                                 : p.submitter?.username}
                             </span>
+                          </div>
+                          {session?.role === "MPDC" &&
+                            p.status === "approved" &&
+                            !p.linkedProjectId &&
+                            onPinSite && (
+                              <button
+                                type="button"
+                                className="planning-card-pin-btn"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  onPinSite(p);
+                                }}
+                              >
+                                Pin site on map
+                              </button>
+                            )}
+                          {session?.role === "MPDC" &&
+                            (p.status === "recommended" || p.status === "in_review") &&
+                            !p.linkedProjectId &&
+                            perms.canApprove && (
+                              <button
+                                type="button"
+                                className="planning-card-pin-btn"
+                                disabled={busy}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  void handleApprove(p);
+                                }}
+                              >
+                                Approve &amp; pin site
+                              </button>
+                            )}
+                        </div>
+                      ))}
+                      {byStatus[status].length === 0 && (
+                        <div className="planning-column-empty">None</div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="planning-columns planning-columns--side">
+                {SIDE_LANES.map((status) => (
+                  <div key={status} className="planning-column planning-column--muted">
+                    <div className="planning-column-head">
+                      <span
+                        className="planning-status-dot"
+                        style={{ background: PLANNING_STATUS_COLORS[status] }}
+                      />
+                      {PLANNING_STATUS_WORKSPACE_LABELS[status]}
+                      <span className="planning-count">{byStatus[status].length}</span>
+                    </div>
+                    <div className="planning-column-body">
+                      {byStatus[status].map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          className={`planning-card ${selectedId === p.id ? "selected" : ""}`}
+                          onClick={() => setSelectedId(p.id)}
+                        >
+                          <div className="planning-card-title">{p.title}</div>
+                          <div className="planning-card-meta">
+                            {p.barangay || p.department} · P{p.priority}
+                          </div>
+                          <div className="planning-card-next">
+                            Next: {nextActorHint(p.status).replace(/^Waiting on /, "")}
                           </div>
                         </button>
                       ))}
@@ -1026,6 +1208,7 @@ export default function PlanningPage({ onBack, session }: Props) {
                   </div>
                 ))}
               </div>
+              </>
             )}
           </section>
 
@@ -1068,7 +1251,7 @@ export default function PlanningPage({ onBack, session }: Props) {
                 <p className="planning-summary">{selected.summary || "No summary."}</p>
 
                 <div className="planning-route">
-                  <label>Approval route</label>
+                  <label>Committee review route</label>
                   <ol className="planning-stepper">
                     {routingStepsForStatus(selected.status).map((step) => (
                       <li key={step.id} className={`planning-step ${step.state}`}>
@@ -1077,9 +1260,279 @@ export default function PlanningPage({ onBack, session }: Props) {
                       </li>
                     ))}
                   </ol>
-                  <p className="planning-next-actor">{nextActorHint(selected.status)}</p>
+                  <p className="planning-next-actor">
+                    <strong>Next:</strong> {nextActorHint(selected.status)}
+                    {selected.status === "approved" && !selected.linkedProjectId
+                      ? " Tap the green button below."
+                      : ""}
+                  </p>
                 </div>
 
+                {perms.canApprove &&
+                  (selected.status === "recommended" || selected.status === "in_review") &&
+                  !selected.linkedProjectId && (
+                    <div className="planning-site-cta">
+                      <p>
+                        As <strong>MPDC</strong>, approve then pin where the building will stand on
+                        the live map.
+                      </p>
+                      <button
+                        type="button"
+                        className="planning-btn primary planning-site-cta-btn"
+                        disabled={busy}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          void handleApprove(selected);
+                        }}
+                      >
+                        Approve &amp; pin site on map
+                      </button>
+                    </div>
+                  )}
+
+                {session?.role === "MPDC" &&
+                  selected.status === "approved" &&
+                  !selected.linkedProjectId && (
+                    <div className="planning-site-cta">
+                      <p>
+                        Proposal is approved. Click below, then click the map to place the building.
+                      </p>
+                      <button
+                        type="button"
+                        className="planning-btn primary planning-site-cta-btn"
+                        disabled={busy || !onPinSite}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (onPinSite) onPinSite(selected);
+                          else window.alert("Pin mode is only available for MPDC on the live map.");
+                        }}
+                      >
+                        Pin site on map
+                      </button>
+                    </div>
+                  )}
+
+                {selected.status === "approved" && selected.linkedProjectId && (
+                  <div className="planning-site-cta is-done">
+                    <p>
+                      Site already pinned · project <code>{selected.linkedProjectId}</code>
+                    </p>
+                  </div>
+                )}
+
+                {selected.status !== "draft" && selected.status !== "rejected" && (
+                  <div className="planning-poll">
+                    <label>Botohan — committee poll</label>
+                    <p className="planning-muted" style={{ marginTop: 0 }}>
+                      Offices vote Yes / No / Abstain. One vote per account (pwedeng palitan).
+                    </p>
+                    {(() => {
+                      const t = tallyVotes(selected.votes);
+                      const mine = (selected.votes || []).find(
+                        (v) => v.username === session?.username,
+                      );
+                      return (
+                        <>
+                          <div className="planning-poll-tally">
+                            <span className="planning-poll-yes">Oo / Yes · {t.yes}</span>
+                            <span className="planning-poll-no">Hindi / No · {t.no}</span>
+                            <span className="planning-poll-abs">Abstain · {t.abstain}</span>
+                            <span className="planning-muted">
+                              {t.total} vote{t.total === 1 ? "" : "s"}
+                            </span>
+                          </div>
+                          {mine && (
+                            <p className="planning-muted">
+                              Your vote:{" "}
+                              <strong>
+                                {mine.choice === "yes"
+                                  ? "Yes"
+                                  : mine.choice === "no"
+                                    ? "No"
+                                    : "Abstain"}
+                              </strong>
+                              {mine.note ? ` — ${mine.note}` : ""}
+                            </p>
+                          )}
+                          {perms.canVote && (
+                            <>
+                              <input
+                                className="planning-input"
+                                placeholder="Optional note with your vote"
+                                value={voteNote}
+                                onChange={(e) => setVoteNote(e.target.value)}
+                              />
+                              <div className="planning-action-row">
+                                <button
+                                  type="button"
+                                  className={`planning-btn${mine?.choice === "yes" ? " primary" : ""}`}
+                                  disabled={busy}
+                                  onClick={() => void handleCastVote(selected, "yes")}
+                                >
+                                  Yes / Sang-ayon
+                                </button>
+                                <button
+                                  type="button"
+                                  className={`planning-btn${mine?.choice === "no" ? " danger" : ""}`}
+                                  disabled={busy}
+                                  onClick={() => void handleCastVote(selected, "no")}
+                                >
+                                  No / Tutol
+                                </button>
+                                <button
+                                  type="button"
+                                  className={`planning-btn${mine?.choice === "abstain" ? " primary" : ""}`}
+                                  disabled={busy}
+                                  onClick={() => void handleCastVote(selected, "abstain")}
+                                >
+                                  Abstain
+                                </button>
+                              </div>
+                            </>
+                          )}
+                          {(selected.votes?.length ?? 0) > 0 && (
+                            <ul className="planning-poll-list">
+                              {(selected.votes || [])
+                                .slice()
+                                .sort((a, b) => b.at.localeCompare(a.at))
+                                .map((v) => (
+                                  <li key={`${v.username}-${v.at}`}>
+                                    <strong>{v.username}</strong> ({v.role}) —{" "}
+                                    {v.choice === "yes"
+                                      ? "Yes"
+                                      : v.choice === "no"
+                                        ? "No"
+                                        : "Abstain"}
+                                    {v.note ? ` · ${v.note}` : ""} · {formatWhen(v.at)}
+                                  </li>
+                                ))}
+                            </ul>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
+
+                {transitions.length > 0 && (
+                  <div className="planning-actions planning-actions--workflow">
+                    <label>Other status actions</label>
+                    <textarea
+                      className="planning-input"
+                      rows={2}
+                      placeholder="Decision note (optional)"
+                      value={decisionNote}
+                      onChange={(e) => setDecisionNote(e.target.value)}
+                    />
+                    <div className="planning-action-row">
+                      {transitions.map((next) => (
+                        <button
+                          key={next}
+                          type="button"
+                          className="planning-btn"
+                          disabled={busy}
+                          onClick={() => transitionStatus(selected, next)}
+                        >
+                          → {PLANNING_STATUS_WORKSPACE_LABELS[next]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="planning-comments">
+                  <label>Office comments &amp; annotations</label>
+                  <div className="planning-comment-list">
+                    {comments.length === 0 && (
+                      <div className="planning-column-empty">No comments yet.</div>
+                    )}
+                    {comments.map((c) => (
+                      <div key={c.id} className="planning-comment">
+                        <div className="planning-comment-head">
+                          <strong>{c.author}</strong>
+                          <span>{c.role}</span>
+                          <span>{formatWhen(c.createdAt)}</span>
+                        </div>
+                        {c.anchor && (
+                          <div className="planning-anchor-badge">
+                            {c.anchor.kind === "map" ? "Map" : "Section"}
+                            {c.anchor.label ? `: ${c.anchor.label}` : ""}
+                          </div>
+                        )}
+                        <div>{c.body}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {perms.canComment && (
+                    <div className="planning-comment-compose">
+                      <textarea
+                        className="planning-input"
+                        rows={3}
+                        placeholder="Add an inter-office comment…"
+                        value={commentBody}
+                        onChange={(e) => setCommentBody(e.target.value)}
+                      />
+                      <div className="planning-anchor-row">
+                        <label>Annotate</label>
+                        <select
+                          className="planning-input"
+                          value={commentAnchorKind}
+                          onChange={(e) =>
+                            setCommentAnchorKind(e.target.value as AnchorKind)
+                          }
+                        >
+                          <option value="none">No anchor</option>
+                          <option value="section">Section</option>
+                          <option value="map">Map location</option>
+                        </select>
+                        {commentAnchorKind === "section" && (
+                          <>
+                            <select
+                              className="planning-input"
+                              value={commentSectionLabel}
+                              onChange={(e) => setCommentSectionLabel(e.target.value)}
+                            >
+                              {SECTION_ANCHORS.map((s) => (
+                                <option key={s} value={s}>
+                                  {s}
+                                </option>
+                              ))}
+                            </select>
+                            {commentSectionLabel === "Other" && (
+                              <input
+                                className="planning-input"
+                                placeholder="Section label"
+                                value={commentOtherLabel}
+                                onChange={(e) => setCommentOtherLabel(e.target.value)}
+                              />
+                            )}
+                          </>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        className="planning-btn primary"
+                        disabled={busy || !commentBody.trim()}
+                        onClick={() => handleAddComment()}
+                      >
+                        Post comment
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  className="planning-more-toggle"
+                  onClick={() => setShowDetailMore((v) => !v)}
+                >
+                  {showDetailMore ? "Hide more details" : "More details — score, assessment, assignees"}
+                </button>
+
+                {showDetailMore && (
+                <>
                 <div className="planning-recommend">
                   <label>System suggestion</label>
                   <div className="planning-recommend-score">
@@ -1330,46 +1783,7 @@ export default function PlanningPage({ onBack, session }: Props) {
                     )}
                   </div>
                 </div>
-
-                {(transitions.length > 0 ||
-                  (perms.canApprove &&
-                    (selected.status === "recommended" || selected.status === "in_review"))) && (
-                  <div className="planning-actions">
-                    <label>Evaluation</label>
-                    <textarea
-                      className="planning-input"
-                      rows={2}
-                      placeholder="Decision note (optional)"
-                      value={decisionNote}
-                      onChange={(e) => setDecisionNote(e.target.value)}
-                    />
-                    <div className="planning-action-row">
-                      {transitions.map((next) => (
-                        <button
-                          key={next}
-                          type="button"
-                          className="planning-btn"
-                          disabled={busy}
-                          onClick={() => transitionStatus(selected, next)}
-                        >
-                          → {PLANNING_STATUS_LABELS[next]}
-                        </button>
-                      ))}
-                      {perms.canApprove &&
-                        (selected.status === "recommended" ||
-                          selected.status === "in_review") &&
-                        !selected.linkedProjectId && (
-                          <button
-                            type="button"
-                            className="planning-btn primary"
-                            disabled={busy}
-                            onClick={() => handleApproveAndLink(selected)}
-                          >
-                            Approve & create project
-                          </button>
-                        )}
-                    </div>
-                  </div>
+                </>
                 )}
 
                 {selected.approvals?.length > 0 && (
@@ -1386,92 +1800,6 @@ export default function PlanningPage({ onBack, session }: Props) {
                     </ul>
                   </div>
                 )}
-
-                <div className="planning-comments">
-                  <label>Comments</label>
-                  <div className="planning-comment-list">
-                    {comments.length === 0 && (
-                      <div className="planning-column-empty">No comments yet.</div>
-                    )}
-                    {comments.map((c) => (
-                      <div key={c.id} className="planning-comment">
-                        <div className="planning-comment-head">
-                          <strong>{c.author}</strong>
-                          <span>{c.role}</span>
-                          <span>{formatWhen(c.createdAt)}</span>
-                        </div>
-                        {c.anchor && (
-                          <div className="planning-anchor-badge">
-                            {c.anchor.kind === "map" ? "Map" : "Section"}
-                            {c.anchor.label ? `: ${c.anchor.label}` : ""}
-                          </div>
-                        )}
-                        <div>{c.body}</div>
-                      </div>
-                    ))}
-                  </div>
-                  {perms.canComment && (
-                    <div className="planning-comment-compose">
-                      <textarea
-                        className="planning-input"
-                        rows={3}
-                        placeholder="Add an inter-office comment…"
-                        value={commentBody}
-                        onChange={(e) => setCommentBody(e.target.value)}
-                      />
-                      <div className="planning-anchor-row">
-                        <label>Anchor</label>
-                        <select
-                          className="planning-input"
-                          value={commentAnchorKind}
-                          onChange={(e) =>
-                            setCommentAnchorKind(e.target.value as AnchorKind)
-                          }
-                        >
-                          <option value="none">None</option>
-                          <option value="section">Section</option>
-                          <option
-                            value="map"
-                            disabled={!selected.location}
-                          >
-                            Map{!selected.location ? " (no location)" : ""}
-                          </option>
-                        </select>
-                        {commentAnchorKind === "section" && (
-                          <>
-                            <select
-                              className="planning-input"
-                              value={commentSectionLabel}
-                              onChange={(e) => setCommentSectionLabel(e.target.value)}
-                            >
-                              {SECTION_ANCHORS.map((s) => (
-                                <option key={s} value={s}>
-                                  {s}
-                                </option>
-                              ))}
-                            </select>
-                            {commentSectionLabel === "Other" && (
-                              <input
-                                className="planning-input"
-                                placeholder="Section label"
-                                value={commentOtherLabel}
-                                onChange={(e) => setCommentOtherLabel(e.target.value)}
-                              />
-                            )}
-                          </>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        className="planning-btn primary"
-                        disabled={busy || !commentBody.trim()}
-                        onClick={handleAddComment}
-                      >
-                        Post comment
-                      </button>
-                    </div>
-                  )}
-                </div>
           </aside>
           )}
         </div>
@@ -1479,6 +1807,10 @@ export default function PlanningPage({ onBack, session }: Props) {
 
       {tab === "calendar" && (
         <section className="planning-panel">
+          <p className="planning-panel-intro">
+            Shared planning calendar — committee and review dates linked to proposals. Updates
+            refresh automatically for other offices.
+          </p>
           <div className="planning-toolbar">
             <button
               type="button"
@@ -1650,6 +1982,10 @@ export default function PlanningPage({ onBack, session }: Props) {
 
       {tab === "meetings" && (
         <section className="planning-panel">
+          <p className="planning-panel-intro">
+            Planning meeting documentation — agenda, minutes, decisions, and attachments. List
+            refreshes automatically for multi-user collaboration.
+          </p>
           <div className="planning-toolbar">
             <h2 style={{ margin: 0, flex: 1 }}>Meeting documentation</h2>
             {perms.canManageMeetings && (
@@ -1750,7 +2086,7 @@ export default function PlanningPage({ onBack, session }: Props) {
             aria-labelledby="planning-create-title"
           >
             <div className="planning-modal-head">
-              <h2 id="planning-create-title">New infrastructure request / proposal</h2>
+              <h2 id="planning-create-title">Submit proposal</h2>
             </div>
             <div className="planning-modal-body">
               <label>Request type</label>
@@ -1813,6 +2149,17 @@ export default function PlanningPage({ onBack, session }: Props) {
                   </select>
                 </div>
               </div>
+
+              <button
+                type="button"
+                className="planning-more-toggle"
+                onClick={() => setShowCreateMore((v) => !v)}
+              >
+                {showCreateMore ? "Hide more details" : "More details — committee, assignees, documents"}
+              </button>
+
+              {showCreateMore && (
+              <>
               <label>Committee</label>
               <select
                 className="planning-input"
@@ -1877,6 +2224,8 @@ export default function PlanningPage({ onBack, session }: Props) {
                 />
                 Attach file
               </label>
+              </>
+              )}
             </div>
             <div className="planning-modal-foot">
               <div className="planning-action-row">
@@ -1899,7 +2248,10 @@ export default function PlanningPage({ onBack, session }: Props) {
                 <button
                   type="button"
                   className="planning-btn"
-                  onClick={() => setShowCreate(false)}
+                  onClick={() => {
+                    setShowCreate(false);
+                    setShowCreateMore(false);
+                  }}
                 >
                   Cancel
                 </button>

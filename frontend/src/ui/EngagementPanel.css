@@ -1,0 +1,144 @@
+.ep-root {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ep-help {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted, #666);
+  line-height: 1.4;
+}
+
+.ep-filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.ep-filters label,
+.ep-note,
+.ep-detail > label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted, #666);
+}
+
+.ep-filters select,
+.ep-detail select,
+.ep-note textarea {
+  font: inherit;
+  font-weight: 400;
+  font-size: 13px;
+  padding: 6px 8px;
+  border: 1px solid var(--stroke, rgba(0, 0, 0, 0.2));
+  background: var(--cream-deep, #fff);
+  color: inherit;
+}
+
+.ep-btn {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 10px;
+  border: 1px solid var(--stroke, rgba(0, 0, 0, 0.2));
+  background: var(--cream-deep, #f5f2ea);
+  cursor: pointer;
+  color: inherit;
+}
+
+.ep-btn.primary {
+  background: #245C3A;
+  border-color: #245C3A;
+  color: #fff;
+  margin-top: 8px;
+}
+
+.ep-err {
+  font-size: 12px;
+  color: #8b1e1e;
+  background: rgba(180, 40, 40, 0.08);
+  padding: 8px;
+  border: 1px solid rgba(180, 40, 40, 0.25);
+}
+
+.ep-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 280px;
+  overflow: auto;
+}
+
+.ep-empty {
+  font-size: 13px;
+  color: var(--muted, #666);
+  padding: 8px 0;
+}
+
+.ep-item {
+  text-align: left;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--stroke, rgba(0, 0, 0, 0.12));
+  background: var(--cream-deep, #fff);
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.ep-item.active {
+  border-color: #245C3A;
+  box-shadow: inset 3px 0 0 #245C3A;
+}
+
+.ep-item-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 800;
+}
+
+.ep-kind { color: #245C3A; }
+.ep-status { color: var(--muted, #666); }
+.ep-id { color: var(--muted, #666); font-size: 11px; }
+
+.ep-title {
+  font-size: 13px;
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+.ep-meta {
+  font-size: 11px;
+  color: var(--muted, #666);
+  margin-top: 2px;
+}
+
+.ep-detail h3 {
+  margin: 8px 0 6px;
+  font-size: 15px;
+}
+
+.ep-body {
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.ep-contact {
+  font-size: 12px;
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: rgba(61, 155, 95, 0.08);
+  border: 1px solid rgba(61, 155, 95, 0.25);
+}
