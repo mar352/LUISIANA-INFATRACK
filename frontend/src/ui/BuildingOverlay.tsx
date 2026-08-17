@@ -1732,7 +1732,7 @@ export function BuildingOverlay({
                 : transformMessage ??
                   (sel.modelLocked ? "Locked" : transformDirty ? "Save Position" : "Saved")}
             </button>
-            {!confirmDelete ? (
+            {onDeleteBuilding && (!confirmDelete ? (
               <button
                 onClick={() => setConfirmDelete(true)}
                 style={{
@@ -1791,7 +1791,7 @@ export function BuildingOverlay({
                   </div>
                 </div>
               </>
-            )}
+            ))}
           </div>
           )}
         </div>

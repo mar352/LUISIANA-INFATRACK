@@ -3,18 +3,18 @@
  * and MapLibre-parity edit: select / left-drag move / right-drag rotate / scroll scale.
  */
 
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState, type CSSProperties } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import * as Cesium from "cesium";
 import "cesium/Build/Cesium/Widgets/widgets.css";
 import type { MapSketch, MapSketchKind, PlacementTool, Project, ProjectPhoto, ProjectStatus } from "../types";
-import { MODEL_CATALOG, PROJECT_STATUS_COLORS, PROJECT_STATUS_LABELS } from "../types";
-import { dateFromSolarHour, getSunPosition, LUISIANA_CENTER, sunEnuFromAltitudeBearing } from "../lib/solar";
+import { BARANGAY_LIST, MAP_SKETCH_COLORS, MODEL_CATALOG, PROJECT_STATUS_COLORS, PROJECT_STATUS_LABELS } from "../types";
+import { dateFromDisplaySolarHour, getSunPosition, LUISIANA_CENTER, sunEnuFromAltitudeBearing } from "../lib/solar";
 import { patchProject } from "../lib/api";
 import { updateProjectInFirestore } from "../services/firestore-projects";
+import { writeAudit } from "../services/firestore-audit";
 import { gibsWmtsTileUrl, GIBS_LAYERS, type GibsLayerId } from "../lib/gibs";
 import { createGibsHoverSampler, type GibsSampleResult } from "../lib/gibs-sample";
 import { getCachedGlbUrl } from "../lib/glb-cache";
-import { luisianaPaddedBounds } from "../lib/luisiana-bounds";
 import { fetchLuisianaBuildings, type BuildingFootprint } from "../lib/osm-buildings";
 import {
   applyTerrainPerfSettings,
@@ -22,6 +22,10 @@ import {
   exaggerateTerrainHeight,
   LUISIANA_TERRAIN_EXAGGERATION,
 } from "../lib/cesium-terrain";
+import {
+  applyProceduralAtmosphere,
+  initProceduralSky,
+} from "../lib/cesium-atmosphere";
 import {
   DEFAULT_MAP_SETTINGS,
   shadowQualityToShadowMap,
@@ -35,14 +39,14 @@ import {
 } from "../lib/stadia";
 import { getSatelliteSource } from "../lib/terrain";
 import { PlaceSidePanel } from "./PlaceSidePanel";
+import { classAdvice, classColor } from "../lib/earthquake-labels";
 import {
-  EONET_CATEGORIES,
-  formatEventInfo,
-  getEventColor,
-  getEventIcon,
-  getLatestGeometry,
-  type EONETEvent,
-} from "../lib/eonet";
+  earthquakeProneModel,
+  type EarthquakeDualSummary,
+  type EarthquakeGridCell,
+  type EarthquakeSiteScore,
+} from "../lib/ml-earthquake";
+import { registerTerrainSatSampler, type TerrainSatSample } from "../lib/terrain-sat-features";
 import {
   formatTropicalInfo,
   getTropicalColor,
@@ -51,10 +55,11 @@ import {
   type TropicalSystem,
 } from "../lib/tropical-systems";
 import { HAZARD_OVERLAYS, loadHazardTilesManifest } from "../lib/hazard-overlays";
+import { addLuisianaBoundary } from "../lib/luisiana-boundary";
 
 /**
- * When pitched into local 3D and still near the ground, clip tiles to Luisiana.
- * Zoomed out / top-down → full globe (round Earth) stays free to scroll.
+ * When pitched into local 3D and still near the ground, tighten fog / pan speed.
+ * Never clip the globe to a rectangle — that makes a floating “square map” on blue sky.
  */
 const MUNICIPAL_3D_PITCH_RAD = Cesium.Math.toRadians(-75);
 const MUNICIPAL_3D_MAX_HEIGHT_M = 45_000;
@@ -65,11 +70,8 @@ const GLOBE_FAR_M = 10_000_000_000;
  * Draw distance is enforced with fog + tile SSE, not by chopping the frustum.
  */
 const LOCAL_3D_FAR_M = 2_000_000;
-/** Base fog density at ~18 km draw distance (scales inversely with drawDistanceKm). */
-const FOG_DENSITY_AT_18KM = 0.0006;
 const LOCAL_3D_FOG_SSE_FACTOR = 4.0;
 const FOG_MIN_BRIGHTNESS_DAY = 0.25;
-const FOG_MIN_BRIGHTNESS_NIGHT = 0.06;
 /** Cap extruded OSM blocks so weak GPUs don't melt. */
 const MAX_OSM_BUILDING_BLOCKS = 4500;
 const OSM_BUILDING_BATCH = 350;
@@ -79,6 +81,28 @@ const OSM_BLOCK_BASE_M = 0.35;
 const OSM_BLOCK_COLOR = "#E8E6E1";
 const OSM_BLDG_ID_PREFIX = "osm-bldg-";
 const REMOVED_BLOCKS_STORAGE_KEY = "infatrack-luisiana-removed-blocks-v1";
+
+/**
+ * Procedural SkyAtmosphere driven by TIME / sun altitude.
+ * Scene DirectionalLight shades terrain & models only (SUNLIGHT atmosphere mode).
+ */
+function applyCesiumAtmosphere(
+  viewer: Cesium.Viewer,
+  opts?: {
+    isDay?: boolean;
+    satelliteHd?: boolean;
+    solarHour?: number;
+    sunAltitudeRad?: number;
+    satelliteLayer?: Cesium.ImageryLayer | null;
+  },
+) {
+  applyProceduralAtmosphere(viewer, {
+    isDay: opts?.isDay,
+    solarHour: opts?.solarHour,
+    sunAltitudeRad: opts?.sunAltitudeRad,
+    satelliteLayer: opts?.satelliteLayer,
+  });
+}
 
 function osmBuildingInstanceId(id: string | number | undefined, fallback: number): string {
   return `${OSM_BLDG_ID_PREFIX}${id ?? `i${fallback}`}`;
@@ -139,20 +163,66 @@ const HOVER_PICK_THROTTLE_MS = 60;
 const HOVER_POS_DELTA_PX = 8;
 
 const MUNICIPAL_OFFICE = { lat: 14.185435, lon: 121.509513 };
-const CENTER = { lat: LUISIANA_CENTER.lat, lon: LUISIANA_CENTER.lon };
-const HOME_HEIGHT_M = 2200;
-const HOME_HEADING = Cesium.Math.toRadians(-15);
-const HOME_PITCH = Cesium.Math.toRadians(-35);
+/** Look-at for Home — poblacion / municipal hall, not the camera stand point. */
+const HOME_TARGET = MUNICIPAL_OFFICE;
+const HOME_HEADING = 0;
+/**
+ * Street-level 3D (screenshot): horizon near the top, blocks filling the frame.
+ * Cesium 0° = horizon, -90° = nadir.
+ */
+const HOME_PITCH = Cesium.Math.toRadians(-20);
+/** Distance from municipal hall — close enough that buildings read large. */
+const HOME_RANGE_M = 560;
+const HOME_TARGET_HEIGHT_M = 18;
+
+function homeLookAtTarget(): Cesium.Cartesian3 {
+  return Cesium.Cartesian3.fromDegrees(HOME_TARGET.lon, HOME_TARGET.lat, HOME_TARGET_HEIGHT_M);
+}
+
+function homeHeadingPitchRange(): Cesium.HeadingPitchRange {
+  return new Cesium.HeadingPitchRange(HOME_HEADING, HOME_PITCH, HOME_RANGE_M);
+}
+
+/** Instant home pose. lookAt is unlocked so the user can pan freely afterwards. */
+function setCameraHomeView(camera: Cesium.Camera) {
+  camera.lookAt(homeLookAtTarget(), homeHeadingPitchRange());
+  camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
+}
+
+/** Animate so Luisiana (municipal office) is centered in the view. */
+function flyCameraHome(viewer: Cesium.Viewer, duration = 1.2) {
+  viewer.camera.cancelFlight();
+  viewer.camera.flyToBoundingSphere(new Cesium.BoundingSphere(homeLookAtTarget(), 80), {
+    duration,
+    offset: homeHeadingPitchRange(),
+  });
+}
+
 /** Never let the camera go under the ground (dark “underside / hell” view). */
 const MIN_CAMERA_HEIGHT_M = 35;
 /** Extra clearance above sampled DEM when collision tiles aren’t ready yet. */
 const MIN_TERRAIN_CLEARANCE_M = 40;
+/**
+ * Only run globe/terrain collision when the camera is this close to the ground.
+ * A high value (Cesium default ~15 km) keeps collision on while tilting at
+ * municipal height, which flips the view when the look-ray hits the globe.
+ */
+const COLLISION_TERRAIN_HEIGHT_M = 90;
+/** Almost nadir — still a hair off -90 so the controller does not lock. */
+const MIN_CAMERA_PITCH = Cesium.Math.toRadians(-89.2);
+/**
+ * Max tilt = the screenshot street view (horizon just in frame).
+ * A little more open than HOME_PITCH so you can settle on that shot.
+ */
+const MAX_CAMERA_PITCH = Cesium.Math.toRadians(-10);
 
 export type CesiumMapHandle = {
   zoomIn: () => void;
   zoomOut: () => void;
   flyHome: () => void;
   toggleTilt: () => void;
+  /** Freeze / unfreeze globe mouse look while overlay UI is dragged. */
+  setCameraInputsEnabled: (enabled: boolean) => void;
   /** Restore all user-removed OSM blocks. */
   restoreRemovedBlocks: () => void;
   /** Fly camera to lon/lat (used by Events list). */
@@ -192,8 +262,12 @@ type Props = {
    */
   sunAzimuthDeg?: number;
   projects: Project[];
+  /** When true, nearby pins collapse into count bubbles until you zoom in. */
+  clusteringEnabled?: boolean;
   visible?: boolean;
   placementMode?: boolean;
+  /** Select an existing model and move / rotate / scale it. */
+  editMode?: boolean;
   onPlaceClick?: (pos: PlaceClick) => void;
   /** Active placement draw tool (pin / line / area / erase). */
   placementTool?: PlacementTool;
@@ -204,6 +278,10 @@ type Props = {
   readOnly?: boolean;
   /** Engineer only — unlock / move / rotate / scale / remove map models. */
   canManipulateModels?: boolean;
+  /** Engineer: convert an MPDC site pin into the Under Construction GLB. */
+  canPromoteSitePin?: boolean;
+  /** Keep App project list in sync after a local patch. */
+  onProjectPatch?: (projectId: string, patch: Partial<Project>) => void;
   canAddPhotos?: boolean;
   /** Sync photo list into App projects after place-panel upload/delete. */
   onPhotosChange?: (projectId: string, photos: ProjectPhoto[]) => void;
@@ -229,12 +307,12 @@ type Props = {
     eq2014?: boolean;
     gsh2014?: boolean;
   };
-  /** Events tab — NASA EONET natural hazard markers. */
-  eonetEnabled?: boolean;
-  eonetEvents?: EONETEvent[];
   /** Events tab — West Pacific Invest / TC / LPA-watch. */
   tropicalEnabled?: boolean;
   tropicalSystems?: TropicalSystem[];
+  /** Risk tab — trained PHIVOLCS siting grid. */
+  earthquakeEnabled?: boolean;
+  earthquakeGrid?: EarthquakeGridCell[];
   /** Layers → Map Settings (draw distance, quality, shadows, fog). */
   mapSettings?: MapSettings;
 };
@@ -275,17 +353,6 @@ function modelScaleValue(p: Project, scaleMultiplier: number): number {
 /** Scroll-scale range for engineer-authored GLBs of wildly different unit sizes. */
 const SCALE_MULT_MIN = 0.001;
 const SCALE_MULT_MAX = 100;
-
-const xyzBtnStyle: CSSProperties = {
-  cursor: "pointer",
-  padding: "4px 6px",
-  border: "1px solid var(--stroke)",
-  background: "var(--cream-deep)",
-  color: "var(--ink)",
-  fontSize: 10,
-  fontWeight: 700,
-  fontFamily: '"Chakra Petch", sans-serif',
-};
 
 function entityIdFor(projectId: string) {
   return `project-${projectId}`;
@@ -390,43 +457,42 @@ function flyCameraToProjectTarget(
   });
 }
 
-function eonetEntityId(eventId: string) {
-  return `eonet-${eventId}`;
-}
-
-function eonetIdFromEntity(id: string | undefined): string | null {
-  if (!id || !id.startsWith("eonet-")) return null;
-  return id.slice("eonet-".length);
-}
-
-function tropicalEntityId(systemId: string) {
-  return `tropical-${systemId}`;
-}
-
-function tropicalTrackEntityId(systemId: string) {
-  return `tropical-track-${systemId}`;
-}
-
-function tropicalIdFromEntity(id: string | undefined): string | null {
-  if (!id || !id.startsWith("tropical-")) return null;
-  if (id.startsWith("tropical-track-")) return null;
-  return id.slice("tropical-".length);
-}
-
-function parseHexColor(hex: string): Cesium.Color {
-  try {
-    return Cesium.Color.fromCssColorString(hex);
-  } catch {
-    return Cesium.Color.ORANGE;
-  }
-}
-
 function projectIdFromEntity(id: string | undefined): string | null {
   if (!id || !id.startsWith("project-")) return null;
   let rest = id.slice("project-".length);
   if (rest.endsWith("-sketch-line")) rest = rest.slice(0, -"-sketch-line".length);
   else if (rest.endsWith("-sketch-poly")) rest = rest.slice(0, -"-sketch-poly".length);
   return rest || null;
+}
+
+const CLUSTER_ID_PREFIX = "infra-cluster-";
+
+function clusterIdFromEntity(id: string | undefined): string | null {
+  if (!id || !id.startsWith(CLUSTER_ID_PREFIX)) return null;
+  return id;
+}
+
+function clusterCellDeg(heightM: number): number | null {
+  if (heightM > 40_000) return 0.028;
+  if (heightM > 16_000) return 0.014;
+  if (heightM > 7_000) return 0.006;
+  if (heightM > 3_200) return 0.0026;
+  return null;
+}
+
+function pickClusterEntity(viewer: Cesium.Viewer, screenPos: Cesium.Cartesian2): Cesium.Entity | null {
+  const picked = viewer.scene.pick(screenPos);
+  if (!Cesium.defined(picked)) return null;
+  const raw = (picked as { id?: unknown }).id;
+  const id =
+    typeof raw === "string"
+      ? raw
+      : raw instanceof Cesium.Entity
+        ? raw.id
+        : undefined;
+  const cid = clusterIdFromEntity(typeof id === "string" ? id : undefined);
+  if (!cid) return null;
+  return viewer.entities.getById(cid) ?? null;
 }
 
 function pickGlobeLngLat(
@@ -481,6 +547,48 @@ function applyProjectHoverVisual(
   viewer.scene.requestRender();
 }
 
+function quakeEntityId(index: number) {
+  return `quake-${index}`;
+}
+
+function quakeIndexFromEntity(id: string | undefined): number | null {
+  if (!id || !id.startsWith("quake-")) return null;
+  const n = Number(id.slice("quake-".length));
+  return Number.isInteger(n) ? n : null;
+}
+
+function quakePointSize(
+  cls: EarthquakeGridCell["cls"],
+  hovered = false,
+  predicted = false,
+): number {
+  const base = cls === "HIGH" ? 16 : cls === "MODERATE" ? 13 : 9;
+  const sized = predicted ? Math.max(8, base - 2) : base;
+  return hovered ? sized + 6 : sized;
+}
+
+function tropicalEntityId(systemId: string) {
+  return `tropical-${systemId}`;
+}
+
+function tropicalTrackEntityId(systemId: string) {
+  return `tropical-track-${systemId}`;
+}
+
+function tropicalIdFromEntity(id: string | undefined): string | null {
+  if (!id || !id.startsWith("tropical-")) return null;
+  if (id.startsWith("tropical-track-")) return null;
+  return id.slice("tropical-".length);
+}
+
+function parseHexColor(hex: string): Cesium.Color {
+  try {
+    return Cesium.Color.fromCssColorString(hex);
+  } catch {
+    return Cesium.Color.ORANGE;
+  }
+}
+
 function pickProjectId(viewer: Cesium.Viewer, screenPos: Cesium.Cartesian2): string | null {
   const picked = viewer.scene.pick(screenPos);
   if (!Cesium.defined(picked)) return null;
@@ -491,13 +599,23 @@ function pickProjectId(viewer: Cesium.Viewer, screenPos: Cesium.Cartesian2): str
   return null;
 }
 
-function pickEonetId(viewer: Cesium.Viewer, screenPos: Cesium.Cartesian2): string | null {
+type HoverHit =
+  | { kind: "project"; id: string }
+  | { kind: "tropical"; id: string }
+  | { kind: "quake"; id: string };
+
+/** Single scene.pick for project / tropical / quake hover (avoids extra picks on move). */
+function pickHoverHit(viewer: Cesium.Viewer, screenPos: Cesium.Cartesian2): HoverHit | null {
   const picked = viewer.scene.pick(screenPos);
   if (!Cesium.defined(picked)) return null;
-  const id = (picked as { id?: Cesium.Entity }).id;
-  if (id instanceof Cesium.Entity) {
-    return eonetIdFromEntity(id.id);
-  }
+  const ent = (picked as { id?: Cesium.Entity }).id;
+  if (!(ent instanceof Cesium.Entity)) return null;
+  const projectId = projectIdFromEntity(ent.id);
+  if (projectId) return { kind: "project", id: projectId };
+  const tropicalId = tropicalIdFromEntity(ent.id);
+  if (tropicalId) return { kind: "tropical", id: tropicalId };
+  const quakeIdx = quakeIndexFromEntity(typeof ent.id === "string" ? ent.id : undefined);
+  if (quakeIdx != null) return { kind: "quake", id: String(quakeIdx) };
   return null;
 }
 
@@ -508,27 +626,6 @@ function pickTropicalId(viewer: Cesium.Viewer, screenPos: Cesium.Cartesian2): st
   if (id instanceof Cesium.Entity) {
     return tropicalIdFromEntity(id.id);
   }
-  return null;
-}
-
-type HoverHit =
-  | { kind: "project"; id: string }
-  | { kind: "eonet"; id: string }
-  | { kind: "tropical"; id: string };
-
-/** Single scene.pick → project / EONET / tropical (avoids 3× pick on hover). */
-function pickHoverHit(viewer: Cesium.Viewer, screenPos: Cesium.Cartesian2): HoverHit | null {
-  const picked = viewer.scene.pick(screenPos);
-  if (!Cesium.defined(picked)) return null;
-  const ent = (picked as { id?: Cesium.Entity }).id;
-  if (!(ent instanceof Cesium.Entity)) return null;
-  const eid = ent.id;
-  const projectId = projectIdFromEntity(eid);
-  if (projectId) return { kind: "project", id: projectId };
-  const eonetId = eonetIdFromEntity(eid);
-  if (eonetId) return { kind: "eonet", id: eonetId };
-  const tropicalId = tropicalIdFromEntity(eid);
-  if (tropicalId) return { kind: "tropical", id: tropicalId };
   return null;
 }
 
@@ -592,6 +689,44 @@ function applyEntityPose(
   }
 }
 
+/** Refresh pin vs label chrome after a site pin is promoted to a 3D model. */
+function applySitePinChrome(
+  ent: Cesium.Entity,
+  p: Project,
+  opts: {
+    isAttached: (id: string) => boolean;
+    isSelected: (id: string) => boolean;
+    isHovered: (id: string) => boolean;
+  },
+) {
+  const isSitePin = Boolean(p.siteMarkerOnly);
+  if (ent.point) {
+    const point = ent.point as Cesium.PointGraphics;
+    point.pixelSize = new Cesium.ConstantProperty(isSitePin ? 16 : 10);
+    point.outlineWidth = new Cesium.ConstantProperty(isSitePin ? 3 : 2);
+    point.show = new Cesium.CallbackProperty(
+      () => isSitePin || !opts.isAttached(p.id),
+      false,
+    );
+  }
+  if (ent.label) {
+    const label = ent.label as Cesium.LabelGraphics;
+    label.text = new Cesium.ConstantProperty(isSitePin ? `📌 ${p.name}` : p.name);
+    label.font = new Cesium.ConstantProperty(isSitePin ? "bold 13px sans-serif" : "12px sans-serif");
+    label.pixelOffset = new Cesium.ConstantProperty(
+      new Cesium.Cartesian2(0, isSitePin ? -22 : -18),
+    );
+    label.show = new Cesium.CallbackProperty(
+      () =>
+        isSitePin ||
+        opts.isSelected(p.id) ||
+        opts.isHovered(p.id) ||
+        !opts.isAttached(p.id),
+      false,
+    );
+  }
+}
+
 function statusLabel(status: Project["status"]) {
   return PROJECT_STATUS_LABELS[status as ProjectStatus] ?? String(status);
 }
@@ -600,19 +735,59 @@ function statusColor(status: Project["status"]) {
   return PROJECT_STATUS_COLORS[status as ProjectStatus] ?? "#9b9b9b";
 }
 
+function DualQuakeSummary({
+  score,
+  ink = false,
+}: {
+  score: EarthquakeDualSummary;
+  ink?: boolean;
+}) {
+  const mute = ink ? "var(--muted)" : "rgba(255,255,255,0.62)";
+  const row = (label: string, item: EarthquakeSiteScore | null, empty: string) => (
+    <div style={{ marginBottom: 6 }}>
+      <div style={{ fontSize: 10, letterSpacing: "0.04em", textTransform: "uppercase", color: mute }}>
+        {label}
+      </div>
+      {item ? (
+        <div>
+          <b style={{ color: classColor(item.cls) }}>{item.cls}</b>
+          {" — "}
+          {classAdvice(item.cls)}
+          <div style={{ fontSize: 11, opacity: 0.8, marginTop: 1 }}>
+            PEIS {item.shakeClass.toUpperCase()} · EIL {item.eilClass} ·{" "}
+            {Math.round(item.confidence * 100)}%
+          </div>
+        </div>
+      ) : (
+        <div style={{ opacity: 0.7 }}>{empty}</div>
+      )}
+    </div>
+  );
+  return (
+    <div>
+      {row("Old · PHIVOLCS EIL 2014", score.official, "No nearby 2014 sheet pixel")}
+      {row("Prediction · terrain / satellite", score.predicted, "Model not ready")}
+    </div>
+  );
+}
+
 export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
   {
     solarHour,
     sunAzimuthDeg,
     projects,
+    clusteringEnabled = true,
     visible = true,
     placementMode = false,
+    editMode = false,
     onPlaceClick,
     placementTool = "pin",
     placementColor = "#c47a1a",
     onPlaceSketch,
     readOnly = false,
     canManipulateModels = false,
+    canPromoteSitePin = false,
+    onProjectPatch,
     canAddPhotos = false,
     onPhotosChange,
     onDeleteBuilding,
@@ -622,10 +797,10 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     terrainEnabled = false,
     satellite = false,
     hazardOverlays = {},
-    eonetEnabled = false,
-    eonetEvents = [],
     tropicalEnabled = false,
     tropicalSystems = [],
+    earthquakeEnabled = false,
+    earthquakeGrid = [],
     mapSettings = DEFAULT_MAP_SETTINGS,
   },
   ref,
@@ -647,15 +822,6 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     title: string;
     valueText: string;
   } | null>(null);
-  const eonetIdsRef = useRef<Set<string>>(new Set());
-  const eonetEventsRef = useRef(eonetEvents);
-  eonetEventsRef.current = eonetEvents;
-  const [selectedEonetId, setSelectedEonetId] = useState<string | null>(null);
-  const [hoveredEonet, setHoveredEonet] = useState<{
-    event: EONETEvent;
-    x: number;
-    y: number;
-  } | null>(null);
   const tropicalIdsRef = useRef<Set<string>>(new Set());
   const tropicalSystemsRef = useRef(tropicalSystems);
   tropicalSystemsRef.current = tropicalSystems;
@@ -670,6 +836,19 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     x: number;
     y: number;
   } | null>(null);
+  const [hoveredQuake, setHoveredQuake] = useState<{
+    cell: EarthquakeGridCell;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [selectedQuakeCell, setSelectedQuakeCell] = useState<EarthquakeGridCell | null>(null);
+  const [siteQuakeScore, setSiteQuakeScore] = useState<EarthquakeDualSummary | null>(null);
+  const [selectedQuakeCompare, setSelectedQuakeCompare] =
+    useState<EarthquakeDualSummary | null>(null);
+  const earthquakeGridRef = useRef(earthquakeGrid);
+  earthquakeGridRef.current = earthquakeGrid;
+  const earthquakeEnabledRef = useRef(earthquakeEnabled);
+  earthquakeEnabledRef.current = earthquakeEnabled;
   const hoveredProjectIdRef = useRef<string | null>(null);
   const buildingPrimitivesRef = useRef<Cesium.Primitive[]>([]);
   const buildingMaterialRef = useRef<Cesium.Material | null>(null);
@@ -698,8 +877,13 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
   const tiltedRef = useRef(true);
   const xformsRef = useRef<Map<string, LocalXform>>(new Map());
   const projectsRef = useRef(projects);
+  const clusteringEnabledRef = useRef(clusteringEnabled);
+  const applyInfraClustersRef = useRef<() => void>(() => {});
+  const clusterMetaRef = useRef(new Map<string, { lon: number; lat: number }>());
   const selectedIdRef = useRef<string | null>(null);
   const placementModeRef = useRef(placementMode);
+  const editModeRef = useRef(editMode);
+  const modelsFrozenRef = useRef(false);
   const onPlaceClickRef = useRef(onPlaceClick);
   const onPlaceSketchRef = useRef(onPlaceSketch);
   const placementToolRef = useRef(placementTool);
@@ -727,9 +911,14 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
   const [transformSaving, setTransformSaving] = useState(false);
   const [transformMessage, setTransformMessage] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmStartBuild, setConfirmStartBuild] = useState(false);
+  const [startBuildBusy, setStartBuildBusy] = useState(false);
   const [hudCollapsed, setHudCollapsed] = useState(false);
+  const hudRef = useRef<HTMLDivElement>(null);
+  const pickChromeRef = useRef<HTMLDivElement>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [editDraft, setEditDraft] = useState<{
+    name: string;
     status: ProjectStatus;
     progress: number;
     description: string;
@@ -737,6 +926,9 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     targetEndDate: string;
     budgetTotal: string;
     budgetSpent: string;
+    markerColor: string;
+    barangay: string;
+    officialUrl: string;
   } | null>(null);
   const [editSaving, setEditSaving] = useState(false);
   const [, bumpXform] = useState(0);
@@ -750,8 +942,16 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     projectsRef.current = projects;
   }, [projects]);
   useEffect(() => {
+    clusteringEnabledRef.current = clusteringEnabled;
+    applyInfraClustersRef.current();
+  }, [clusteringEnabled]);
+  useEffect(() => {
     placementModeRef.current = placementMode;
   }, [placementMode]);
+  useEffect(() => {
+    editModeRef.current = editMode;
+  }, [editMode]);
+  modelsFrozenRef.current = placementMode || blockRemoverActive;
   useEffect(() => {
     onPlaceClickRef.current = onPlaceClick;
   }, [onPlaceClick]);
@@ -793,6 +993,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     ? projects.find((p) => p.id === selectedId) ?? null
     : null;
   const selectedXform = selectedId ? xformsRef.current.get(selectedId) : undefined;
+  const modelsFrozen = placementMode || blockRemoverActive;
 
   function emitCompletedSketch(coords: { lon: number; lat: number }[], kind: MapSketchKind) {
     const sketch: MapSketch = {
@@ -912,11 +1113,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       const viewer = viewerRef.current;
       if (!viewer || viewer.isDestroyed()) return;
       tiltedRef.current = true;
-      viewer.camera.flyTo({
-        destination: Cesium.Cartesian3.fromDegrees(CENTER.lon, CENTER.lat, HOME_HEIGHT_M),
-        orientation: { heading: HOME_HEADING, pitch: HOME_PITCH, roll: 0 },
-        duration: 1.2,
-      });
+      flyCameraHome(viewer);
     },
     toggleTilt() {
       const viewer = viewerRef.current;
@@ -932,6 +1129,11 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         },
         duration: 0.5,
       });
+    },
+    setCameraInputsEnabled(enabled: boolean) {
+      const viewer = viewerRef.current;
+      if (!viewer || viewer.isDestroyed()) return;
+      viewer.scene.screenSpaceCameraController.enableInputs = enabled;
     },
     restoreRemovedBlocks() {
       removedBlockIdsRef.current = new Set();
@@ -1061,9 +1263,18 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       shadows: true,
       terrainShadows: Cesium.ShadowMode.RECEIVE_ONLY,
       shouldAnimate: false,
+      scene3DOnly: true,
       // OSM street basemap (Ion token stays for terrain only).
       baseLayer: false,
     });
+
+    // Ours is the only click handler — default pick/fly-to fights placement.
+    viewer.screenSpaceEventHandler.removeInputAction(
+      Cesium.ScreenSpaceEventType.LEFT_CLICK,
+    );
+    viewer.screenSpaceEventHandler.removeInputAction(
+      Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK,
+    );
 
     const osmLayer = viewer.imageryLayers.addImageryProvider(
       new Cesium.UrlTemplateImageryProvider({
@@ -1078,13 +1289,8 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     // Satellite: Cesium ion Bing Aerial (HD demo look) when token set, else ESRI World Imagery.
     const ESRI_WORLD_IMAGERY =
       "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
-    const SAT_RESOLUTION_SCALE = Math.min(2, window.devicePixelRatio || 1);
-
     const styleSatelliteLayer = (layer: Cesium.ImageryLayer) => {
-      layer.brightness = 1.05;
-      layer.contrast = 1.18;
-      layer.saturation = 1.08;
-      layer.gamma = 0.92;
+      layer.maximumAnisotropy = 4;
     };
 
     const syncOsmBlocksForSatellite = () => {
@@ -1096,34 +1302,15 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     };
 
     const applySatelliteHdScene = (on: boolean) => {
-      const globe = viewer.scene.globe as Cesium.Globe & {
-        maximumScreenSpaceError?: number;
-        terrainExaggeration?: number;
-        tileCacheSize?: number;
-      };
-      if (on && terrainEnabledRef.current) {
-        globe.maximumScreenSpaceError = 1.75;
-        globe.terrainExaggeration = 1.55;
-        if (typeof globe.tileCacheSize === "number") globe.tileCacheSize = 1000;
-      } else if (terrainEnabledRef.current) {
-        globe.maximumScreenSpaceError = terrainQualityToSse(
-          mapSettingsRef.current.terrainQuality,
-        );
-        globe.terrainExaggeration = LUISIANA_TERRAIN_EXAGGERATION;
+      if (terrainEnabledRef.current) {
+        applyTerrainPerfSettings(viewer, true, {
+          screenSpaceError: terrainQualityToSse(mapSettingsRef.current.terrainQuality),
+          satelliteOn: on,
+        });
       }
-      if (on) {
-        viewer.scene.fog.density = Math.min(viewer.scene.fog.density || 0.0006, 0.00015);
-        viewer.resolutionScale = SAT_RESOLUTION_SCALE;
-        if (viewer.scene.skyAtmosphere) {
-          viewer.scene.skyAtmosphere.brightnessShift = 0.08;
-        }
-      } else {
-        viewer.resolutionScale = 1;
-        applyScopeRef.current?.();
-        if (viewer.scene.skyAtmosphere) {
-          viewer.scene.skyAtmosphere.brightnessShift = 0;
-        }
-      }
+      // Never upscale the framebuffer for satellite — 2× DPR * DEM * imagery melts GPUs.
+      viewer.resolutionScale = 1;
+      if (!on) applyScopeRef.current?.();
     };
 
     const applySatVisibility = () => {
@@ -1181,7 +1368,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         new Cesium.UrlTemplateImageryProvider({
           url,
           credit: satCfg.attribution,
-          maximumLevel: 22,
+          maximumLevel: 18,
           tilingScheme: new Cesium.WebMercatorTilingScheme(),
         }),
       );
@@ -1232,24 +1419,14 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     }
 
     viewer.clock.shouldAnimate = false;
-    viewer.scene.globe.enableLighting = true;
-    viewer.scene.globe.dynamicAtmosphereLighting = true;
-    viewer.scene.globe.dynamicAtmosphereLightingFromSun = true;
+    initProceduralSky(viewer);
     viewer.scene.globe.shadows = Cesium.ShadowMode.RECEIVE_ONLY;
-    viewer.scene.backgroundColor = Cesium.Color.fromCssColorString("#7eb6d9");
-    if (viewer.scene.sun) viewer.scene.sun.show = true;
-    if (viewer.scene.moon) viewer.scene.moon.show = true;
-    if (viewer.scene.skyBox) viewer.scene.skyBox.show = true;
-    if (viewer.scene.skyAtmosphere) {
-      viewer.scene.skyAtmosphere.show = true;
-      viewer.scene.skyAtmosphere.brightnessShift = 0;
-      viewer.scene.skyAtmosphere.saturationShift = 0;
-      viewer.scene.skyAtmosphere.hueShift = 0;
-    }
 
-    // Luisiana tile clip + short draw distance ONLY in local 3D tilt.
-    const pad = luisianaPaddedBounds(0.015);
-    const luisianaRect = Cesium.Rectangle.fromDegrees(pad.west, pad.south, pad.east, pad.north);
+    // Draw the Luisiana municipality boundary outline on the globe.
+    void addLuisianaBoundary(viewer);
+
+    // Fog + pan tuning in local 3D tilt (no cartographic clip — keeps full globe).
+    viewer.scene.globe.cartographicLimitRectangle = Cesium.Rectangle.MAX_VALUE;
     viewer.scene.fog.minimumBrightness = FOG_MIN_BRIGHTNESS_DAY;
 
     const applyLuisianaScopeForCamera = () => {
@@ -1263,19 +1440,18 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         carto.height < MUNICIPAL_3D_MAX_HEIGHT_M;
 
       const settings = mapSettingsRef.current;
-      const drawM = Math.max(5000, Math.min(50_000, settings.drawDistanceKm * 1000));
       const frustum = viewer.camera.frustum as Cesium.PerspectiveFrustum;
+      // Always full globe — clipping to Luisiana made a floating square on blue sky.
+      viewer.scene.globe.cartographicLimitRectangle = Cesium.Rectangle.MAX_VALUE;
       if (inLocal3d) {
-        viewer.scene.globe.cartographicLimitRectangle = luisianaRect;
         viewer.scene.fog.enabled = settings.fogEnabled;
-        // Shorter draw distance → denser fog so far tiles drop sooner.
-        // Do NOT shrink frustum.far to drawM — that clips the entire sky.
-        viewer.scene.fog.density =
-          FOG_DENSITY_AT_18KM * (18_000 / drawM) * (terrainEnabledRef.current ? 1.25 : 1);
+        // Only set the tile-culling SSE factor here — do NOT override fog.density.
+        // applyProceduralAtmosphere owns the density value; overwriting it with the
+        // hardcoded constant caused a visible "blue fog pop" on the very first click
+        // (camera.changed fired → density jumped from ~0.00011 to 0.0006, 5× denser).
         viewer.scene.fog.screenSpaceErrorFactor = LOCAL_3D_FOG_SSE_FACTOR;
         if (typeof frustum.far === "number") frustum.far = LOCAL_3D_FAR_M;
       } else {
-        viewer.scene.globe.cartographicLimitRectangle = Cesium.Rectangle.MAX_VALUE;
         viewer.scene.fog.enabled = false;
         if (typeof frustum.far === "number") frustum.far = GLOBE_FAR_M;
       }
@@ -1323,21 +1499,39 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       Cesium.CameraEventType.PINCH,
       { eventType: Cesium.CameraEventType.LEFT_DRAG, modifier: Cesium.KeyboardEventModifier.CTRL },
     ];
+    // Keep orbit around world-up so tilt cannot roll/flip the globe.
+    camCtrl.constrainedAxis = Cesium.Cartesian3.UNIT_Z;
     // Baseline; applyLuisianaScopeForCamera retunes for 3D / bottom view.
     camCtrl.maximumMovementRatio = 0.028;
     camCtrl.inertiaTranslate = 0.3;
     camCtrl.inertiaSpin = 0.35;
     camCtrl.inertiaZoom = 0.5;
-    // Always collide with globe/terrain — never allow digging under the mesh
-    // (that shows the dark underside / “hell” view).
     camCtrl.enableCollisionDetection = true;
     camCtrl.minimumZoomDistance = MIN_CAMERA_HEIGHT_M;
     camCtrl.maximumZoomDistance = 8_000_000;
-    // Use terrain collision even when the camera is relatively high.
-    camCtrl.minimumCollisionTerrainHeight = 20_000;
+    // Collision only when actually near the ground — not while tilting at 1–8 km.
+    camCtrl.minimumCollisionTerrainHeight = COLLISION_TERRAIN_HEIGHT_M;
+    if ("minimumPickingTerrainHeight" in camCtrl) {
+      camCtrl.minimumPickingTerrainHeight = COLLISION_TERRAIN_HEIGHT_M;
+    }
+
+    const clampCameraPitch = () => {
+      if (viewer.isDestroyed()) return;
+      const cam = viewer.camera;
+      const pitch = cam.pitch;
+      if (pitch > MAX_CAMERA_PITCH) {
+        cam.lookDown(pitch - MAX_CAMERA_PITCH);
+      } else if (pitch < MIN_CAMERA_PITCH) {
+        cam.lookUp(MIN_CAMERA_PITCH - pitch);
+      }
+      if (Math.abs(cam.roll) > 0.008) {
+        cam.twistLeft(cam.roll);
+      }
+    };
 
     const keepCameraAboveGround = () => {
       if (viewer.isDestroyed()) return;
+      clampCameraPitch();
       const cam = viewer.camera;
       const carto = cam.positionCartographic;
       const sampled = viewer.scene.globe.getHeight(carto);
@@ -1348,24 +1542,35 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         ground + MIN_TERRAIN_CLEARANCE_M,
       );
 
-      // Height only — do not clamp pitch (user must be able to tilt up to the sky).
       if (carto.height >= minHeight) return;
 
-      cam.setView({
-        destination: Cesium.Cartesian3.fromRadians(
-          carto.longitude,
-          carto.latitude,
-          minHeight,
-        ),
-        orientation: {
-          heading: cam.heading,
-          pitch: cam.pitch,
-          roll: 0,
-        },
-      });
+      // Lift only — keep the already-clamped pitch (do not setView, that flips).
+      const up = Cesium.Cartesian3.normalize(
+        Cesium.Cartesian3.fromRadians(carto.longitude, carto.latitude),
+        new Cesium.Cartesian3(),
+      );
+      const lift = minHeight - carto.height;
+      cam.position = Cesium.Cartesian3.add(
+        cam.position,
+        Cesium.Cartesian3.multiplyByScalar(up, lift, new Cesium.Cartesian3()),
+        new Cesium.Cartesian3(),
+      );
     };
     const removeKeepAbove = viewer.camera.changed.addEventListener(keepCameraAboveGround);
     const removeKeepAboveMoveEnd = viewer.camera.moveEnd.addEventListener(keepCameraAboveGround);
+
+    const terrainSseWhileIdle = () =>
+      terrainQualityToSse(mapSettingsRef.current.terrainQuality);
+    const onCamMoveStart = () => {
+      if (viewer.isDestroyed() || !terrainEnabledRef.current) return;
+      viewer.scene.globe.maximumScreenSpaceError = terrainSseWhileIdle() * 1.8;
+    };
+    const onCamMoveEnd = () => {
+      if (viewer.isDestroyed() || !terrainEnabledRef.current) return;
+      viewer.scene.globe.maximumScreenSpaceError = terrainSseWhileIdle();
+    };
+    const removeMoveStart = viewer.camera.moveStart.addEventListener(onCamMoveStart);
+    const removeMoveEndSse = viewer.camera.moveEnd.addEventListener(onCamMoveEnd);
 
     (async () => {
       // Start flat; Layers → 3D Terrain loads Ion/ArcGIS elevation.
@@ -1543,7 +1748,8 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
           shadows: Cesium.ShadowMode.CAST_ONLY,
           compressVertices: true,
           cull: true,
-          allowPicking: true,
+          allowPicking:
+            !placementModeRef.current || placementToolRef.current === "erase",
         });
         viewer.scene.primitives.add(primitive);
         primitive.show =
@@ -1601,10 +1807,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     });
 
     tiltedRef.current = true;
-    viewer.camera.setView({
-      destination: Cesium.Cartesian3.fromDegrees(CENTER.lon, CENTER.lat, HOME_HEIGHT_M),
-      orientation: { heading: HOME_HEADING, pitch: HOME_PITCH, roll: 0 },
-    });
+    setCameraHomeView(viewer.camera);
 
     viewerRef.current = viewer;
     loadedIdsRef.current.clear();
@@ -1633,6 +1836,16 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         }
         try {
           removeKeepAboveMoveEnd();
+        } catch {
+          /* ignore */
+        }
+        try {
+          removeMoveStart();
+        } catch {
+          /* ignore */
+        }
+        try {
+          removeMoveEndSse();
         } catch {
           /* ignore */
         }
@@ -1821,11 +2034,13 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         viewer.terrainProvider = provider;
         applyTerrainPerfSettings(viewer, true, {
           screenSpaceError: terrainQualityToSse(mapSettingsRef.current.terrainQuality),
+          satelliteOn: satelliteEnabledRef.current,
         });
         // Keep terrain collision ON so the camera cannot dig under hills.
         viewer.scene.screenSpaceCameraController.enableCollisionDetection = true;
         viewer.scene.screenSpaceCameraController.minimumZoomDistance = MIN_CAMERA_HEIGHT_M;
-        viewer.scene.screenSpaceCameraController.minimumCollisionTerrainHeight = 20_000;
+        viewer.scene.screenSpaceCameraController.minimumCollisionTerrainHeight =
+          COLLISION_TERRAIN_HEIGHT_M;
         applyScopeRef.current?.();
         viewer.scene.requestRender();
 
@@ -1843,12 +2058,12 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
           frames++;
           await new Promise((r) => setTimeout(r, 300));
         }
-        if (!cancelled && !viewer.isDestroyed()) {
+        if (!cancelled && !viewer.isDestroyed() && !satelliteEnabledRef.current) {
           await rebuildBuildingsRef.current?.();
         }
         // One delayed rebuild once more tiles arrive — no continuous poll.
         await new Promise((r) => setTimeout(r, 1200));
-        if (!cancelled && !viewer.isDestroyed()) {
+        if (!cancelled && !viewer.isDestroyed() && !satelliteEnabledRef.current) {
           await rebuildBuildingsRef.current?.();
         }
         console.info("[CesiumMap] 3D terrain enabled (perf SSE)");
@@ -1875,6 +2090,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     if (terrainEnabled) {
       applyTerrainPerfSettings(viewer, true, {
         screenSpaceError: terrainQualityToSse(mapSettings.terrainQuality),
+        satelliteOn: satelliteEnabledRef.current,
       });
     }
     applyScopeRef.current?.();
@@ -1890,7 +2106,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     const viewer = viewerRef.current;
     if (!viewer || viewer.isDestroyed()) return;
 
-    const date = dateFromSolarHour(solarHour);
+    const date = dateFromDisplaySolarHour(solarHour);
     viewer.clock.currentTime = Cesium.JulianDate.fromDate(date);
     viewer.clock.shouldAnimate = false;
 
@@ -1902,25 +2118,17 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
 
     const isDay = astro.isDaylight;
     viewer.shadows = isDay && mapSettingsRef.current.shadowsEnabled;
-    viewer.scene.globe.enableLighting = true;
-    viewer.scene.globe.dynamicAtmosphereLighting = true;
-    viewer.scene.globe.dynamicAtmosphereLightingFromSun = true;
-    if (viewer.scene.sun) viewer.scene.sun.show = true;
-    if (viewer.scene.skyAtmosphere) {
-      viewer.scene.skyAtmosphere.show = true;
-      // Subtle day/night only — large shifts can wash out / kill the sky.
-      viewer.scene.skyAtmosphere.brightnessShift = isDay ? 0.05 : -0.15;
-      viewer.scene.skyAtmosphere.saturationShift = 0;
-      viewer.scene.skyAtmosphere.hueShift = 0;
-    }
-    viewer.scene.fog.minimumBrightness = isDay
-      ? FOG_MIN_BRIGHTNESS_DAY
-      : FOG_MIN_BRIGHTNESS_NIGHT;
-    viewer.scene.backgroundColor = isDay
-      ? Cesium.Color.fromCssColorString("#7eb6d9")
-      : Cesium.Color.fromCssColorString("#0b1220");
+    // TIME slider → clock sun + procedural sky (no cubemap loads).
+    applyCesiumAtmosphere(viewer, {
+      isDay,
+      satelliteHd: satelliteEnabledRef.current,
+      solarHour,
+      sunAltitudeRad: astro.altitudeRad,
+      satelliteLayer: satelliteEnabledRef.current ? satelliteImageryRef.current : null,
+    });
 
-    const dayIntensity = isDay ? 2.5 : 0.45;
+    const altDeg = (astro.altitudeRad * 180) / Math.PI;
+    const dayIntensity = isDay ? 2.5 : Math.max(0.12, 0.14 + Math.max(0, altDeg + 6) * 0.04);
 
     // SunLight keeps the visible sun + sky in sync with the time slider.
     // Dial may override surface light during day for shadow direction.
@@ -1949,7 +2157,57 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     }
 
     viewer.scene.requestRender();
-  }, [solarHour, sunAzimuthDeg, viewerReady, mapSettings.shadowsEnabled]);
+  }, [solarHour, sunAzimuthDeg, viewerReady, mapSettings.shadowsEnabled, satellite, terrainEnabled]);
+
+  // Live DEM (+ optional satellite greenness) for the siting net.
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer || viewer.isDestroyed() || !viewerReady || !terrainEnabled) {
+      registerTerrainSatSampler(null);
+      return;
+    }
+
+    const dLat = 0.00018;
+    const dLon = 0.00018;
+    const offsets: Array<[number, number]> = [
+      [0, 0],
+      [dLon, 0],
+      [-dLon, 0],
+      [0, dLat],
+      [0, -dLat],
+    ];
+
+    registerTerrainSatSampler(async (lon, lat) => {
+      const v = viewerRef.current;
+      if (!v || v.isDestroyed()) return null;
+      const terrain = v.terrainProvider;
+      if (terrain instanceof Cesium.EllipsoidTerrainProvider) return null;
+      const cartos = offsets.map(([dx, dy]) => Cesium.Cartographic.fromDegrees(lon + dx, lat + dy));
+      try {
+        const sampled = await Cesium.sampleTerrainMostDetailed(terrain, cartos);
+        const h = sampled.map((c) =>
+          typeof c?.height === "number" && Number.isFinite(c.height) ? c.height : 0,
+        );
+        const elevation = h[0] ?? 0;
+        const dzdx = ((h[1] ?? elevation) - (h[2] ?? elevation)) / (2 * 20);
+        const dzdy = ((h[3] ?? elevation) - (h[4] ?? elevation)) / (2 * 20);
+        const slope = Math.min(80, (Math.atan(Math.sqrt(dzdx * dzdx + dzdy * dzdy)) * 180) / Math.PI);
+        const aspect = ((Math.atan2(dzdx, dzdy) * 180) / Math.PI + 360) % 360;
+        let greenness = 0.35;
+        const sat = satelliteImageryRef.current;
+        if (sat && satelliteEnabledRef.current) {
+          // Steeper, higher ground is typically less canopy in this municipality.
+          greenness = Math.max(0.05, Math.min(0.85, 0.55 - slope / 140 - Math.max(0, elevation - 250) / 1200));
+        }
+        const sample: TerrainSatSample = { elevation, slope, aspect, greenness };
+        return sample;
+      } catch {
+        return null;
+      }
+    });
+
+    return () => registerTerrainSatSampler(null);
+  }, [viewerReady, terrainEnabled, satellite]);
 
   // ── NASA GIBS precip / climate WMTS overlay ──────────────────────────────
   useEffect(() => {
@@ -2063,103 +2321,13 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     };
   }, [viewerReady, gibs?.enabled, gibs?.layer, gibs?.date]);
 
-  // ── NASA EONET natural event markers ─────────────────────────────────────
-  useEffect(() => {
-    const viewer = viewerRef.current;
-    if (!viewer || viewer.isDestroyed() || !viewerReady) return;
-
-    const nextIds = new Set<string>();
-    if (eonetEnabled) {
-      for (const event of eonetEvents) {
-        const geometry = getLatestGeometry(event);
-        if (!geometry || geometry.type !== "Point") continue;
-        const [lon, lat] = geometry.coordinates;
-        if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
-
-        nextIds.add(event.id);
-        const eid = eonetEntityId(event.id);
-        const color = parseHexColor(getEventColor(event));
-        const icon = getEventIcon(event);
-        const cat = event.categories[0];
-        const catTitle = EONET_CATEGORIES[cat?.id]?.title ?? cat?.title ?? "Event";
-        const magLabel =
-          geometry.magnitudeValue != null
-            ? `${geometry.magnitudeValue.toLocaleString()}${geometry.magnitudeUnit ? ` ${geometry.magnitudeUnit}` : ""}`
-            : "";
-
-        let ent = viewer.entities.getById(eid);
-        const position = Cesium.Cartesian3.fromDegrees(lon, lat);
-        const labelText = `${icon} ${event.title}`;
-        if (!ent) {
-          ent = viewer.entities.add({
-            id: eid,
-            name: `${catTitle}${magLabel ? ` · ${magLabel}` : ""}`,
-            position,
-            point: {
-              pixelSize: 16,
-              color,
-              outlineColor: Cesium.Color.WHITE,
-              outlineWidth: 2,
-              heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-              disableDepthTestDistance: Number.POSITIVE_INFINITY,
-            },
-            label: {
-              text: labelText,
-              font: "12px sans-serif",
-              fillColor: Cesium.Color.WHITE,
-              outlineColor: Cesium.Color.BLACK,
-              outlineWidth: 3,
-              style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-              verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-              pixelOffset: new Cesium.Cartesian2(0, -18),
-              heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-              disableDepthTestDistance: Number.POSITIVE_INFINITY,
-              showBackground: true,
-              backgroundColor: Cesium.Color.fromCssColorString("#0c121ce6"),
-              backgroundPadding: new Cesium.Cartesian2(6, 4),
-              scaleByDistance: new Cesium.NearFarScalar(5e3, 1.0, 4e5, 0.35),
-              // Show label only when close / selected — hover tooltip covers far view.
-              show: false,
-            },
-            description: formatEventInfo(event),
-          });
-        } else {
-          ent.position = new Cesium.ConstantPositionProperty(position);
-          if (ent.point) {
-            ent.point.color = new Cesium.ConstantProperty(color);
-          }
-          if (ent.label) {
-            ent.label.text = new Cesium.ConstantProperty(labelText);
-          }
-          ent.description = new Cesium.ConstantProperty(formatEventInfo(event));
-        }
-      }
-    }
-
-    for (const id of [...eonetIdsRef.current]) {
-      if (!nextIds.has(id)) {
-        const ent = viewer.entities.getById(eonetEntityId(id));
-        if (ent) viewer.entities.remove(ent);
-      }
-    }
-    eonetIdsRef.current = nextIds;
-
-    if (!eonetEnabled) {
-      setSelectedEonetId(null);
-    } else {
-      setSelectedEonetId((prev) => (prev && !nextIds.has(prev) ? null : prev));
-    }
-
-    viewer.scene.requestRender();
-  }, [viewerReady, eonetEnabled, eonetEvents]);
-
   // ── Unified entity hover (one scene.pick, throttled) ─────────────────────
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer || viewer.isDestroyed() || !viewerReady) return;
 
-    if (!eonetEnabled) setHoveredEonet(null);
     if (!tropicalEnabled) setHoveredTropical(null);
+    if (!earthquakeEnabled) setHoveredQuake(null);
 
     const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
     const canvas = viewer.scene.canvas;
@@ -2177,36 +2345,42 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       return system?.stage === "invest" || system?.lpaWatch ? 14 : 18;
     };
 
-    const clearEonetVisual = (id: string) => {
-      const ent = viewer.entities.getById(eonetEntityId(id));
-      if (ent?.point) ent.point.pixelSize = new Cesium.ConstantProperty(16);
-      if (ent?.label) ent.label.show = new Cesium.ConstantProperty(false);
-    };
     const clearTropicalVisual = (id: string) => {
       const ent = viewer.entities.getById(tropicalEntityId(id));
       if (ent?.point) ent.point.pixelSize = new Cesium.ConstantProperty(tropicalBasePx(id));
       if (ent?.label) ent.label.show = new Cesium.ConstantProperty(false);
     };
+
+    const clearQuakeVisual = (id: string) => {
+      const idx = Number(id);
+      const cell = earthquakeGridRef.current[idx];
+      const ent = viewer.entities.getById(quakeEntityId(idx));
+      if (ent?.point && cell) {
+        ent.point.pixelSize = new Cesium.ConstantProperty(
+          quakePointSize(cell.cls, false, cell.source === "model"),
+        );
+      }
+    };
+
     const clearProjectVisual = (id: string) => {
-      const prev = projectsRef.current.find((p) => p.id === id);
+      const prev = projectsRef.current.find((proj) => proj.id === id);
       if (prev) applyProjectHoverVisual(viewer, prev, false);
     };
 
     const clearAllHover = (opts?: { render?: boolean }) => {
       const had = lastId != null || hoveredProjectIdRef.current != null;
       if (!had) return;
-      if (lastKind === "eonet" && lastId) clearEonetVisual(lastId);
       if (lastKind === "tropical" && lastId) clearTropicalVisual(lastId);
+      if (lastKind === "quake" && lastId) clearQuakeVisual(lastId);
       if (lastKind === "project" && lastId) clearProjectVisual(lastId);
       lastKind = null;
       lastId = null;
       hoveredProjectIdRef.current = null;
-      setHoveredEonet(null);
       setHoveredTropical(null);
+      setHoveredQuake(null);
       setHoveredProject(null);
       if (
-        !placementModeRef.current &&
-        !blockRemoverActiveRef.current &&
+        !modelsFrozenRef.current &&
         canvas.style.cursor === "pointer"
       ) {
         canvas.style.cursor = "";
@@ -2221,18 +2395,11 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         Math.abs(y - lastTooltipY) >= HOVER_POS_DELTA_PX;
 
       if (idChanged) {
-        if (lastKind === "eonet" && lastId) clearEonetVisual(lastId);
         if (lastKind === "tropical" && lastId) clearTropicalVisual(lastId);
+        if (lastKind === "quake" && lastId) clearQuakeVisual(lastId);
         if (lastKind === "project" && lastId) clearProjectVisual(lastId);
 
-        if (hit.kind === "eonet") {
-          const ent = viewer.entities.getById(eonetEntityId(hit.id));
-          if (ent?.point) ent.point.pixelSize = new Cesium.ConstantProperty(22);
-          if (ent?.label) ent.label.show = new Cesium.ConstantProperty(true);
-          hoveredProjectIdRef.current = null;
-          setHoveredProject(null);
-          setHoveredTropical(null);
-        } else if (hit.kind === "tropical") {
+        if (hit.kind === "tropical") {
           const ent = viewer.entities.getById(tropicalEntityId(hit.id));
           if (ent?.point) {
             ent.point.pixelSize = new Cesium.ConstantProperty(tropicalBasePx(hit.id) + 6);
@@ -2240,13 +2407,25 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
           if (ent?.label) ent.label.show = new Cesium.ConstantProperty(true);
           hoveredProjectIdRef.current = null;
           setHoveredProject(null);
-          setHoveredEonet(null);
+          setHoveredQuake(null);
+        } else if (hit.kind === "quake") {
+          const idx = Number(hit.id);
+          const cell = earthquakeGridRef.current[idx];
+          const ent = viewer.entities.getById(quakeEntityId(idx));
+          if (ent?.point && cell) {
+            ent.point.pixelSize = new Cesium.ConstantProperty(
+              quakePointSize(cell.cls, true, cell.source === "model"),
+            );
+          }
+          hoveredProjectIdRef.current = null;
+          setHoveredProject(null);
+          setHoveredTropical(null);
         } else {
-          const project = projectsRef.current.find((p) => p.id === hit.id);
+          const project = projectsRef.current.find((proj) => proj.id === hit.id);
           if (project) applyProjectHoverVisual(viewer, project, true);
           hoveredProjectIdRef.current = hit.id;
-          setHoveredEonet(null);
           setHoveredTropical(null);
+          setHoveredQuake(null);
         }
 
         lastKind = hit.kind;
@@ -2259,21 +2438,20 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       lastTooltipX = x;
       lastTooltipY = y;
       canvas.style.cursor = "pointer";
-
-      if (hit.kind === "eonet") {
-        const event = eonetEventsRef.current.find((e) => e.id === hit.id);
-        if (event) setHoveredEonet({ event, x, y });
-      } else if (hit.kind === "tropical") {
+      if (hit.kind === "tropical") {
         const system = tropicalSystemsRef.current.find((s) => s.id === hit.id);
         if (system) setHoveredTropical({ system, x, y });
+      } else if (hit.kind === "quake") {
+        const cell = earthquakeGridRef.current[Number(hit.id)];
+        if (cell) setHoveredQuake({ cell, x, y });
       } else {
-        const project = projectsRef.current.find((p) => p.id === hit.id);
+        const project = projectsRef.current.find((proj) => proj.id === hit.id);
         if (project) setHoveredProject({ project, x, y });
       }
     };
 
     const runPick = (screenPos: Cesium.Cartesian2) => {
-      if (placementModeRef.current || blockRemoverActiveRef.current) {
+      if (modelsFrozenRef.current) {
         clearAllHover();
         return;
       }
@@ -2283,26 +2461,35 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       if (!cam.enableRotate || !cam.enableTranslate) return;
 
       const hit = pickHoverHit(viewer, screenPos);
+      if (
+        editModeRef.current &&
+        selectedIdRef.current &&
+        (!hit || hit.kind !== "project" || hit.id !== selectedIdRef.current)
+      ) {
+        clearAllHover();
+        return;
+      }
       if (!hit) {
         clearAllHover();
         return;
       }
-      if (hit.kind === "eonet" && !eonetEnabled) {
-        clearAllHover();
-        return;
-      }
-      if (hit.kind === "tropical" && !tropicalEnabled) {
-        clearAllHover();
-        return;
-      }
-      if (hit.kind === "project") {
-        const project = projectsRef.current.find((p) => p.id === hit.id);
+      if (hit.kind === "tropical") {
+        if (!tropicalEnabled) {
+          clearAllHover();
+          return;
+        }
+      } else if (hit.kind === "quake") {
+        if (!earthquakeEnabledRef.current) {
+          clearAllHover();
+          return;
+        }
+      } else {
+        const project = projectsRef.current.find((proj) => proj.id === hit.id);
         if (!project) {
           clearAllHover();
           return;
         }
       }
-
       applyHit(hit, screenPos.x, screenPos.y);
     };
 
@@ -2332,7 +2519,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       canvas.removeEventListener("mouseleave", onLeave);
       handler.destroy();
     };
-  }, [viewerReady, eonetEnabled, tropicalEnabled]);
+  }, [viewerReady, tropicalEnabled, earthquakeEnabled]);
 
   // ── Tropical systems (Invest / TC) markers + track ───────────────────────
   useEffect(() => {
@@ -2404,8 +2591,8 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         );
         if (trackPts && trackPts.length >= 2) {
           const positions = trackPts.flatMap((p) => [p.lon, p.lat]);
-          let trackEnt = viewer.entities.getById(trackId);
           const polylinePositions = Cesium.Cartesian3.fromDegreesArray(positions);
+          let trackEnt = viewer.entities.getById(trackId);
           if (!trackEnt) {
             viewer.entities.add({
               id: trackId,
@@ -2447,6 +2634,84 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
 
     viewer.scene.requestRender();
   }, [viewerReady, tropicalEnabled, tropicalSystems]);
+
+  // ── Earthquake-prone siting grid ─────────────────────────────────────────
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer || viewer.isDestroyed() || !viewerReady) return;
+
+    const doomed: Cesium.Entity[] = [];
+    for (const e of viewer.entities.values) {
+      if (typeof e.id === "string" && e.id.startsWith("quake-")) doomed.push(e);
+    }
+    for (const e of doomed) viewer.entities.remove(e);
+
+    if (!earthquakeEnabled || earthquakeGrid.length === 0) {
+      setSelectedQuakeCell(null);
+      viewer.scene.requestRender();
+      return;
+    }
+
+    earthquakeGrid.forEach((cell, i) => {
+      const position = Cesium.Cartesian3.fromDegrees(cell.lon, cell.lat);
+      const color = Cesium.Color.fromCssColorString(classColor(cell.cls));
+      viewer.entities.add({
+        id: quakeEntityId(i),
+        name: `Earthquake site ${cell.cls}`,
+        position,
+        point: {
+          pixelSize: quakePointSize(cell.cls, false, cell.source === "model"),
+          color: color.withAlpha(cell.source === "model" ? 0.72 : 0.92),
+          outlineColor:
+            cell.source === "model"
+              ? Cesium.Color.fromCssColorString("#111111")
+              : Cesium.Color.WHITE,
+          outlineWidth: cell.source === "model" ? 2 : 1,
+          heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        },
+      });
+    });
+    viewer.scene.requestRender();
+  }, [viewerReady, earthquakeEnabled, earthquakeGrid]);
+
+  useEffect(() => {
+    if (!earthquakeEnabled || !selectedProject?.location) {
+      setSiteQuakeScore(null);
+      return;
+    }
+    let cancelled = false;
+    void earthquakeProneModel
+      .predictAt(selectedProject.location.lon, selectedProject.location.lat)
+      .then((score) => {
+        if (!cancelled) setSiteQuakeScore(score);
+      })
+      .catch(() => {
+        if (!cancelled) setSiteQuakeScore(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [earthquakeEnabled, selectedProject?.id, selectedProject?.location.lat, selectedProject?.location.lon]);
+
+  useEffect(() => {
+    if (!earthquakeEnabled || !selectedQuakeCell) {
+      setSelectedQuakeCompare(null);
+      return;
+    }
+    let cancelled = false;
+    void earthquakeProneModel
+      .predictAt(selectedQuakeCell.lon, selectedQuakeCell.lat)
+      .then((score) => {
+        if (!cancelled) setSelectedQuakeCompare(score);
+      })
+      .catch(() => {
+        if (!cancelled) setSelectedQuakeCompare(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [earthquakeEnabled, selectedQuakeCell?.lon, selectedQuakeCell?.lat]);
 
   // ── Sync project pins (lightweight). GLBs attach via distance LOD + cache. ─
   useEffect(() => {
@@ -2543,20 +2808,11 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         loadedIdsRef.current.add(p.id);
       } else {
         applyEntityPose(ent, xf.lon, xf.lat, xf.rotationDeg, scale, xf.heightM);
-        if (ent.label && !xf.dirty) {
-          const isSitePin = Boolean(p.siteMarkerOnly);
-          (ent.label as Cesium.LabelGraphics).text = new Cesium.ConstantProperty(
-            isSitePin ? `📌 ${p.name}` : p.name,
-          );
-          ent.label.show = new Cesium.CallbackProperty(
-            () =>
-              isSitePin ||
-              selectedIdRef.current === p.id ||
-              hoveredProjectIdRef.current === p.id ||
-              !modelAttachedRef.current.has(p.id),
-            false,
-          );
-        }
+        applySitePinChrome(ent, p, {
+          isAttached: (id) => modelAttachedRef.current.has(id),
+          isSelected: (id) => selectedIdRef.current === id,
+          isHovered: (id) => hoveredProjectIdRef.current === id,
+        });
         if (ent.point && (p.markerColor || p.mapSketch?.color)) {
           const c = p.markerColor || p.mapSketch?.color || "#245c3a";
           ent.point.color = new Cesium.ConstantProperty(Cesium.Color.fromCssColorString(c));
@@ -2565,8 +2821,115 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       syncProjectSketchEntities(viewer, p);
     }
 
+    applyInfraClustersRef.current();
     viewer.scene.requestRender();
   }, [projects, viewerReady, ensureXform]);
+
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer || viewer.isDestroyed() || !viewerReady) return;
+
+    const clearClusterEntities = () => {
+      const doomed: Cesium.Entity[] = [];
+      for (const e of viewer.entities.values) {
+        if (typeof e.id === "string" && e.id.startsWith(CLUSTER_ID_PREFIX)) doomed.push(e);
+      }
+      for (const e of doomed) viewer.entities.remove(e);
+    };
+
+    const apply = () => {
+      if (viewer.isDestroyed()) return;
+      clearClusterEntities();
+      const list = projectsRef.current.filter((p) => p?.location?.lon && p?.location?.lat);
+      const height = viewer.camera.positionCartographic.height;
+      const cell = clusteringEnabledRef.current ? clusterCellDeg(height) : null;
+
+      const groups = new Map<string, Project[]>();
+      if (cell) {
+        for (const p of list) {
+          const gx = Math.floor(p.location.lon / cell);
+          const gy = Math.floor(p.location.lat / cell);
+          const key = `${gx}:${gy}`;
+          const arr = groups.get(key);
+          if (arr) arr.push(p);
+          else groups.set(key, [p]);
+        }
+      }
+
+      const clusteredIds = new Set<string>();
+      if (cell) {
+        let i = 0;
+        clusterMetaRef.current.clear();
+        for (const members of groups.values()) {
+          if (members.length < 2) continue;
+          for (const p of members) clusteredIds.add(p.id);
+          let lon = 0;
+          let lat = 0;
+          for (const p of members) {
+            lon += p.location.lon;
+            lat += p.location.lat;
+          }
+          lon /= members.length;
+          lat /= members.length;
+          const n = members.length;
+          const cid = `${CLUSTER_ID_PREFIX}${i++}`;
+          clusterMetaRef.current.set(cid, { lon, lat });
+          viewer.entities.add({
+            id: cid,
+            name: `${n} infrastructure sites`,
+            position: Cesium.Cartesian3.fromDegrees(lon, lat),
+            point: {
+              pixelSize: 18 + Math.min(14, n),
+              color: Cesium.Color.fromCssColorString("#245c3a"),
+              outlineColor: Cesium.Color.WHITE,
+              outlineWidth: 3,
+              heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+              disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            },
+            label: {
+              text: String(n),
+              font: "bold 13px sans-serif",
+              fillColor: Cesium.Color.WHITE,
+              outlineColor: Cesium.Color.fromCssColorString("#14331f"),
+              outlineWidth: 3,
+              style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+              verticalOrigin: Cesium.VerticalOrigin.CENTER,
+              horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+              pixelOffset: new Cesium.Cartesian2(0, 0),
+              disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            },
+          });
+        }
+      } else {
+        clusterMetaRef.current.clear();
+      }
+
+      for (const p of list) {
+        const eid = entityIdFor(p.id);
+        const ent = viewer.entities.getById(eid);
+        const show = !clusteredIds.has(p.id);
+        if (ent) ent.show = show;
+        const line = viewer.entities.getById(`${eid}-sketch-line`);
+        if (line) line.show = show;
+        const poly = viewer.entities.getById(`${eid}-sketch-poly`);
+        if (poly) poly.show = show;
+      }
+      viewer.scene.requestRender();
+    };
+
+    applyInfraClustersRef.current = apply;
+    apply();
+    const removeMoveEnd = viewer.camera.moveEnd.addEventListener(apply);
+    return () => {
+      try {
+        removeMoveEnd();
+      } catch {
+        /* ignore */
+      }
+      applyInfraClustersRef.current = () => {};
+      if (!viewer.isDestroyed()) clearClusterEntities();
+    };
+  }, [viewerReady]);
 
   // Live draft preview while drawing line / area
   useEffect(() => {
@@ -2908,6 +3271,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         setCameraInteractive(viewer, false);
         return;
       }
+      if (modelsFrozenRef.current || !editModeRef.current) return;
       if (!canEditModelsRef.current) return;
       const hitId = pickProjectId(viewer, click.position);
       const sel = selectedIdRef.current;
@@ -2920,6 +3284,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     }, Cesium.ScreenSpaceEventType.LEFT_DOWN);
 
     handler.setInputAction((click: { position: Cesium.Cartesian2 }) => {
+      if (modelsFrozenRef.current || !editModeRef.current) return;
       if (!canEditModelsRef.current) return;
       const hitId = pickProjectId(viewer, click.position);
       const sel = selectedIdRef.current;
@@ -2947,6 +3312,12 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         draft.push(pt);
         syncFreehandDraftPreview(viewer);
         if (draft.length % 12 === 0) bumpSketchUiRef.current();
+        return;
+      }
+
+      if (modelsFrozenRef.current || !editModeRef.current) {
+        moving = false;
+        rotating = false;
         return;
       }
 
@@ -3036,13 +3407,8 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         if (placementToolRef.current === "erase") return;
       }
 
-      const hitId = pickProjectId(viewer, click.position);
-      const eonetHit = pickEonetId(viewer, click.position);
-      const tropicalHit = pickTropicalId(viewer, click.position);
-
       if (placementModeRef.current) {
         if (placementToolRef.current === "erase") return;
-        // Line is freehand (LEFT_DOWN / MOVE / UP) — ignore clicks.
         if (placementToolRef.current === "line") return;
         const ll = pickGlobeLngLat(viewer, click.position);
         if (!ll) return;
@@ -3061,7 +3427,6 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
 
         const draft = sketchDraftRef.current;
         const last = draft[draft.length - 1];
-        // Same-point click ≈ finish (double-click style)
         if (
           last &&
           Math.abs(last.lon - pt.lon) < 1e-6 &&
@@ -3087,29 +3452,68 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         return;
       }
 
+      const hitId = pickProjectId(viewer, click.position);
+      if (editModeRef.current && selectedIdRef.current) {
+        const sel = selectedIdRef.current;
+        if (hitId && hitId !== sel) {
+          viewer.selectedEntity = undefined;
+          return;
+        }
+        if (!hitId) {
+          setSelectedId(null);
+          setSelectedTropicalId(null);
+          setSelectedQuakeCell(null);
+          setConfirmDelete(false);
+          setEditOpen(false);
+        }
+        viewer.selectedEntity = undefined;
+        return;
+      }
+      const tropicalHit = pickTropicalId(viewer, click.position);
+      const pickedEnt = viewer.scene.pick(click.position);
+      const pickedEid =
+        Cesium.defined(pickedEnt) && (pickedEnt as { id?: Cesium.Entity }).id instanceof Cesium.Entity
+          ? String(((pickedEnt as { id: Cesium.Entity }).id as Cesium.Entity).id)
+          : "";
+      const quakeHit = quakeIndexFromEntity(pickedEid);
+
+      const clusterEnt = pickClusterEntity(viewer, click.position);
+      if (clusterEnt) {
+        const meta = clusterMetaRef.current.get(String(clusterEnt.id));
+        if (meta) {
+          const h = viewer.camera.positionCartographic.height;
+          viewer.camera.flyTo({
+            destination: Cesium.Cartesian3.fromDegrees(meta.lon, meta.lat, Math.max(900, h * 0.35)),
+            orientation: { heading: HOME_HEADING, pitch: HOME_PITCH, roll: 0 },
+            duration: 0.9,
+          });
+        }
+        return;
+      }
+
       if (hitId) {
         setSelectedId(hitId);
-        setSelectedEonetId(null);
         setSelectedTropicalId(null);
+        setSelectedQuakeCell(null);
         setConfirmDelete(false);
         setEditOpen(false);
         setTransformDirty(Boolean(xformsRef.current.get(hitId)?.dirty));
       } else if (tropicalHit) {
         setSelectedId(null);
-        setSelectedEonetId(null);
         setSelectedTropicalId(tropicalHit);
+        setSelectedQuakeCell(null);
         setConfirmDelete(false);
         setEditOpen(false);
-      } else if (eonetHit) {
+      } else if (quakeHit != null && earthquakeEnabledRef.current) {
         setSelectedId(null);
-        setSelectedEonetId(eonetHit);
         setSelectedTropicalId(null);
+        setSelectedQuakeCell(earthquakeGridRef.current[quakeHit] ?? null);
         setConfirmDelete(false);
         setEditOpen(false);
       } else {
         setSelectedId(null);
-        setSelectedEonetId(null);
         setSelectedTropicalId(null);
+        setSelectedQuakeCell(null);
         setConfirmDelete(false);
         setEditOpen(false);
       }
@@ -3118,6 +3522,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
 
     // Native wheel — Cesium's WHEEL delta is often 0/undefined, which made scale only grow.
     const onWheel = (e: WheelEvent) => {
+      if (modelsFrozenRef.current || !editModeRef.current) return;
       if (!canEditModelsRef.current) return;
       const sel = selectedIdRef.current;
       if (!sel) return;
@@ -3162,7 +3567,6 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setSelectedId(null);
-        setSelectedEonetId(null);
         setSelectedTropicalId(null);
         setConfirmDelete(false);
         setEditOpen(false);
@@ -3195,28 +3599,120 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         hoveredProjectIdRef.current = null;
       }
       setHoveredProject(null);
+      setHoveredTropical(null);
+      setHoveredQuake(null);
+      setSelectedId(null);
+      setSelectedTropicalId(null);
+      setSelectedQuakeCell(null);
+      setConfirmDelete(false);
+      setEditOpen(false);
+      viewer.selectedEntity = undefined;
     }
     return () => {
       if (!viewer.isDestroyed()) viewer.canvas.style.cursor = "";
     };
-  }, [placementMode, blockRemoverActive, viewerReady]);
+  }, [placementMode, blockRemoverActive, placementTool, viewerReady]);
 
   // While an unlocked model is selected, scroll scales it instead of zooming the camera.
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer || viewer.isDestroyed() || !viewerReady) return;
     const xf = selectedId ? xformsRef.current.get(selectedId) : undefined;
-    const scaleMode = Boolean(selectedId && canEditModels && xf && !xf.modelLocked);
+    const scaleMode = Boolean(
+      selectedId &&
+        canEditModels &&
+        editMode &&
+        xf &&
+        !xf.modelLocked &&
+        !modelsFrozen,
+    );
     viewer.scene.screenSpaceCameraController.enableZoom = !scaleMode;
     return () => {
       if (!viewer.isDestroyed()) {
         viewer.scene.screenSpaceCameraController.enableZoom = true;
       }
     };
-  }, [selectedId, canEditModels, viewerReady, transformDirty, transformMessage]);
+  }, [selectedId, canEditModels, editMode, viewerReady, transformDirty, transformMessage, modelsFrozen]);
+
+  useEffect(() => {
+    setConfirmStartBuild(Boolean(canPromoteSitePin && selectedProject?.siteMarkerOnly));
+  }, [canPromoteSitePin, selectedProject?.id, selectedProject?.siteMarkerOnly]);
+
+  async function handleStartConstruction() {
+    if (!selectedId || !canPromoteSitePin) return;
+    const current = projectsRef.current.find((p) => p.id === selectedId);
+    if (!current?.siteMarkerOnly) return;
+    setStartBuildBusy(true);
+    const patch: Partial<Project> = {
+      siteMarkerOnly: false,
+      modelType: "construction",
+      modelLocked: false,
+      status: "Ongoing",
+      lifecyclePhase: "Construction",
+    };
+    try {
+      try {
+        await patchProject(selectedId, patch);
+        void updateProjectInFirestore(selectedId, patch).catch(() => {});
+      } catch (backendError) {
+        try {
+          await updateProjectInFirestore(selectedId, patch);
+        } catch {
+          throw backendError;
+        }
+      }
+      const nextProject: Project = { ...current, ...patch };
+      projectsRef.current = projectsRef.current.map((p) =>
+        p.id === selectedId ? nextProject : p,
+      );
+      const xf = xformsRef.current.get(selectedId);
+      if (xf) {
+        xf.modelLocked = false;
+        xf.dirty = false;
+      }
+      const viewer = viewerRef.current;
+      if (viewer && !viewer.isDestroyed()) {
+        const ent = viewer.entities.getById(entityIdFor(selectedId));
+        if (ent) {
+          applySitePinChrome(ent, nextProject, {
+            isAttached: (id) => modelAttachedRef.current.has(id),
+            isSelected: (id) => selectedIdRef.current === id,
+            isHovered: (id) => hoveredProjectIdRef.current === id,
+          });
+          if (xf) {
+            applyEntityPose(
+              ent,
+              xf.lon,
+              xf.lat,
+              xf.rotationDeg,
+              modelScaleValue(nextProject, xf.scaleMultiplier),
+              xf.heightM,
+            );
+          }
+        }
+      }
+      onProjectPatch?.(selectedId, patch);
+      setConfirmStartBuild(false);
+      lodReconcileRef.current?.();
+      bumpXform((n) => n + 1);
+      void writeAudit({
+        action: "project.startConstruction",
+        category: "project",
+        summary: `Started Under Construction model for “${current.name}”`,
+        entityType: "project",
+        entityId: selectedId,
+        entityName: current.name,
+      });
+    } catch (err) {
+      console.error("Failed to start construction model:", err);
+      window.alert("Hindi naisimulan ang construction model. Subukan ulit.");
+    } finally {
+      setStartBuildBusy(false);
+    }
+  }
 
   async function handleToggleLock() {
-    if (!selectedId || !canEditModels) return;
+    if (!selectedId || !canEditModels || !editMode) return;
     const xf = xformsRef.current.get(selectedId);
     if (!xf) return;
     if (!xf.modelLocked && xf.dirty) {
@@ -3255,6 +3751,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
   function openEdit() {
     if (!selectedProject || !canEditModels) return;
     setEditDraft({
+      name: selectedProject.name,
       status: selectedProject.status,
       progress: selectedProject.progress,
       description: selectedProject.description ?? "",
@@ -3262,6 +3759,9 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       targetEndDate: selectedProject.targetEndDate ?? "",
       budgetTotal: selectedProject.budgetTotal != null ? String(selectedProject.budgetTotal) : "",
       budgetSpent: selectedProject.budgetSpent != null ? String(selectedProject.budgetSpent) : "0",
+      markerColor: selectedProject.markerColor || selectedProject.mapSketch?.color || MAP_SKETCH_COLORS[0],
+      barangay: selectedProject.barangay ?? "",
+      officialUrl: selectedProject.officialUrl ?? "",
     });
     setEditOpen(true);
   }
@@ -3270,7 +3770,8 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     if (!selectedId || !editDraft) return;
     setEditSaving(true);
     try {
-      await patchProject(selectedId, {
+      const patch: Parameters<typeof patchProject>[1] = {
+        name: editDraft.name.trim() || undefined,
         status: editDraft.status,
         progress: editDraft.progress,
         description: editDraft.description,
@@ -3278,7 +3779,43 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         targetEndDate: editDraft.targetEndDate || null,
         budgetTotal: editDraft.budgetTotal ? Number(editDraft.budgetTotal) : null,
         budgetSpent: editDraft.budgetSpent ? Number(editDraft.budgetSpent) : 0,
-      });
+        markerColor: editDraft.markerColor || undefined,
+        barangay: editDraft.barangay || undefined,
+        officialUrl: editDraft.officialUrl.trim(),
+      };
+      // Keep mapSketch.color in sync so the color persists after a page reload.
+      const currentProject = projectsRef.current.find((p) => p.id === selectedId);
+      if (currentProject?.mapSketch && editDraft.markerColor) {
+        (patch as Record<string, unknown>)["mapSketch"] = {
+          ...currentProject.mapSketch,
+          color: editDraft.markerColor,
+        };
+      }
+      try {
+        await patchProject(selectedId, patch);
+      } catch {
+        await updateProjectInFirestore(selectedId, patch);
+      }
+      onProjectPatch?.(selectedId, patch);
+      // Reflect new color + label on the Cesium entity immediately (no page reload needed).
+      const viewer = viewerRef.current;
+      if (viewer && !viewer.isDestroyed()) {
+        const ent = viewer.entities.getById(entityIdFor(selectedId));
+        if (ent) {
+          if (ent.point && editDraft.markerColor) {
+            ent.point.color = new Cesium.ConstantProperty(
+              Cesium.Color.fromCssColorString(editDraft.markerColor),
+            );
+          }
+          if (ent.label && editDraft.name.trim()) {
+            const isSitePin = Boolean(currentProject?.siteMarkerOnly);
+            (ent.label as Cesium.LabelGraphics).text = new Cesium.ConstantProperty(
+              isSitePin ? `📌 ${editDraft.name.trim()}` : editDraft.name.trim(),
+            );
+          }
+          viewer.scene.requestRender();
+        }
+      }
       setEditOpen(false);
       setEditDraft(null);
     } catch (err) {
@@ -3310,7 +3847,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     const xf = xformsRef.current.get(projectId);
     const p = projectsRef.current.find((x) => x.id === projectId);
     const viewer = viewerRef.current;
-    if (!xf || !p || xf.modelLocked || !canEditModels) return;
+    if (!xf || !p || xf.modelLocked || !canEditModels || !editMode) return;
     Object.assign(xf, next);
     xf.dirty = true;
     const ent = viewer && !viewer.isDestroyed() ? viewer.entities.getById(entityIdFor(projectId)) : undefined;
@@ -3330,7 +3867,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
   }
 
   function nudgeSelected(eastM: number, northM: number, upM: number) {
-    if (!selectedId || !selectedXform) return;
+    if (!editMode || !selectedId || !selectedXform) return;
     const moved = offsetLngLatMeters(selectedXform.lon, selectedXform.lat, eastM, northM);
     commitLocalPose(
       selectedId,
@@ -3345,6 +3882,40 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
   }
 
   const locked = Boolean(selectedXform?.modelLocked ?? selectedProject?.modelLocked);
+
+  useEffect(() => {
+    const chrome = pickChromeRef.current;
+    const hud = hudRef.current;
+    if (!chrome) return;
+    if (!hud) {
+      chrome.style.removeProperty("--pick-hud-offset");
+      return;
+    }
+    const apply = () => {
+      const h = Math.ceil(hud.getBoundingClientRect().height);
+      chrome.style.setProperty("--pick-hud-offset", `${h + 10}px`);
+    };
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(hud);
+    return () => {
+      ro.disconnect();
+      chrome.style.removeProperty("--pick-hud-offset");
+    };
+  }, [
+    selectedProject?.id,
+    hudCollapsed,
+    locked,
+    confirmDelete,
+    canEditModels,
+    selectedProject?.siteMarkerOnly,
+    confirmStartBuild,
+    startBuildBusy,
+    transformDirty,
+    transformMessage,
+    transformSaving,
+  ]);
+
   const panelProject =
     selectedProject && selectedXform
       ? {
@@ -3356,11 +3927,6 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
           modelLocked: selectedXform.modelLocked,
         }
       : selectedProject;
-
-  const selectedEonetEvent =
-    selectedEonetId && eonetEnabled
-      ? eonetEvents.find((e) => e.id === selectedEonetId) ?? null
-      : null;
 
   const selectedTropicalSystem =
     selectedTropicalId && tropicalEnabled
@@ -3412,72 +3978,55 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
             <div style={{ fontWeight: 600 }}>{gibsHover.valueText}</div>
           </div>
         )}
-        {hoveredEonet && eonetEnabled && (
+        {hoveredQuake && earthquakeEnabled && !modelsFrozen && (
           <div
             role="status"
             aria-live="polite"
             style={{
               position: "absolute",
               left: Math.min(
-                hoveredEonet.x + 14,
-                (containerRef.current?.clientWidth ?? 360) - 280,
+                hoveredQuake.x + 14,
+                (containerRef.current?.clientWidth ?? 360) - 260,
               ),
               top: Math.min(
-                hoveredEonet.y + 14,
-                (containerRef.current?.clientHeight ?? 400) - 140,
+                hoveredQuake.y + 14,
+                (containerRef.current?.clientHeight ?? 400) - 130,
               ),
               pointerEvents: "none",
               zIndex: 14,
-              width: 280,
-              maxWidth: "min(280px, calc(100% - 24px))",
+              width: 240,
+              maxWidth: "min(240px, calc(100% - 24px))",
               padding: "10px 12px",
               background: "rgba(12, 18, 28, 0.95)",
-              border: `2px solid ${getEventColor(hoveredEonet.event)}`,
+              border: `2px solid ${classColor(hoveredQuake.cell.cls)}`,
               boxShadow: "3px 3px 0 rgba(0,0,0,0.4)",
               color: "#f4f6f8",
               fontSize: 12,
               lineHeight: 1.35,
             }}
           >
-            <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 6 }}>
-              <span style={{ fontSize: 20 }}>{getEventIcon(hoveredEonet.event)}</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, marginBottom: 2 }}>{hoveredEonet.event.title}</div>
-                {hoveredEonet.event.description && (
-                  <div style={{ opacity: 0.8, fontSize: 11, marginBottom: 4 }}>
-                    {hoveredEonet.event.description}
-                  </div>
-                )}
-              </div>
+            <div style={{ fontWeight: 700, marginBottom: 4, color: classColor(hoveredQuake.cell.cls) }}>
+              Earthquake site: {hoveredQuake.cell.cls}
+            </div>
+            <div style={{ opacity: 0.85, marginBottom: 6 }}>
+              {hoveredQuake.cell.source === "model" ? "Model prediction" : "PHIVOLCS EIL 2014"}
+              {" — "}
+              {classAdvice(hoveredQuake.cell.cls)}
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11 }}>
-              <span style={{ opacity: 0.7 }}>Category</span>
-              <span style={{ color: getEventColor(hoveredEonet.event), fontWeight: 700 }}>
-                {hoveredEonet.event.categories[0]?.title ?? "Unknown"}
-              </span>
+              <span style={{ opacity: 0.7 }}>EIL</span>
+              <span style={{ fontWeight: 600 }}>{hoveredQuake.cell.eilClass}</span>
             </div>
-            {(() => {
-              const g = getLatestGeometry(hoveredEonet.event);
-              if (!g?.magnitudeValue) return null;
-              return (
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11, marginTop: 2 }}>
-                  <span style={{ opacity: 0.7 }}>Magnitude</span>
-                  <span style={{ fontWeight: 600 }}>
-                    {g.magnitudeValue.toLocaleString()} {g.magnitudeUnit ?? ""}
-                  </span>
-                </div>
-              );
-            })()}
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11, marginTop: 2 }}>
-              <span style={{ opacity: 0.7 }}>Status</span>
-              <span style={{ fontWeight: 700, color: hoveredEonet.event.closed ? "#aaa" : "#ff7a7a" }}>
-                {hoveredEonet.event.closed ? "Closed" : "Active"}
-              </span>
+              <span style={{ opacity: 0.7 }}>Shaking</span>
+              <span style={{ fontWeight: 600 }}>PEIS {hoveredQuake.cell.shakeClass.toUpperCase()}</span>
             </div>
-            <div style={{ marginTop: 6, fontSize: 10, opacity: 0.55 }}>Click for details</div>
+            <div style={{ marginTop: 6, fontSize: 10, opacity: 0.55 }}>
+              {hoveredQuake.cell.lat.toFixed(5)}, {hoveredQuake.cell.lon.toFixed(5)}
+            </div>
           </div>
         )}
-        {hoveredTropical && tropicalEnabled && (
+        {hoveredTropical && tropicalEnabled && !modelsFrozen && (
           <div
             role="status"
             aria-live="polite"
@@ -3533,7 +4082,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
             <div style={{ marginTop: 6, fontSize: 10, opacity: 0.55 }}>Click for details</div>
           </div>
         )}
-        {hoveredProject && !placementMode && (
+        {hoveredProject && !modelsFrozen && (
           <div
             role="status"
             aria-live="polite"
@@ -3617,83 +4166,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         </div>
       )}
 
-      {selectedEonetEvent && (
-        <div
-          style={{
-            position: "absolute",
-            top: 16,
-            left: 16,
-            zIndex: 12,
-            width: 300,
-            maxWidth: "min(300px, calc(100% - 32px))",
-            padding: 12,
-            background: "rgba(12, 18, 28, 0.94)",
-            border: `1px solid ${getEventColor(selectedEonetEvent)}66`,
-            boxShadow: "3px 3px 0 rgba(0,0,0,0.35)",
-            color: "#f4f6f8",
-            fontSize: 12,
-            lineHeight: 1.4,
-          }}
-        >
-          <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-            <span style={{ fontSize: 20 }}>{getEventIcon(selectedEonetEvent)}</span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 700, marginBottom: 4 }}>{selectedEonetEvent.title}</div>
-              <div style={{ color: getEventColor(selectedEonetEvent), fontWeight: 600, marginBottom: 6 }}>
-                {selectedEonetEvent.categories[0]?.title ?? "Natural event"}
-                {selectedEonetEvent.closed ? " · Closed" : " · Active"}
-              </div>
-              {selectedEonetEvent.description && (
-                <div style={{ opacity: 0.8, marginBottom: 8 }}>{selectedEonetEvent.description}</div>
-              )}
-              {(() => {
-                const g = getLatestGeometry(selectedEonetEvent);
-                if (!g) return null;
-                return (
-                  <div style={{ opacity: 0.75, fontSize: 11 }}>
-                    {g.magnitudeValue != null && (
-                      <div>
-                        Magnitude: {g.magnitudeValue.toLocaleString()} {g.magnitudeUnit ?? ""}
-                      </div>
-                    )}
-                    {g.date && <div>Updated: {new Date(g.date).toLocaleString()}</div>}
-                  </div>
-                );
-              })()}
-              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                {selectedEonetEvent.link && (
-                  <a
-                    href={selectedEonetEvent.link}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{ color: "#9ad0ff", fontWeight: 600 }}
-                  >
-                    Details
-                  </a>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setSelectedEonetId(null)}
-                  style={{
-                    marginLeft: "auto",
-                    cursor: "pointer",
-                    background: "rgba(255,255,255,0.1)",
-                    border: "1px solid rgba(255,255,255,0.25)",
-                    color: "#fff",
-                    padding: "2px 10px",
-                    fontSize: 11,
-                    fontWeight: 600,
-                  }}
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {selectedTropicalSystem && (
+      {selectedTropicalSystem && !modelsFrozen && (
         <div
           style={{
             position: "absolute",
@@ -3769,7 +4242,65 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         </div>
       )}
 
-      {panelProject && (
+      {selectedQuakeCell && earthquakeEnabled && !modelsFrozen && (
+        <div
+          style={{
+            position: "absolute",
+            top: 16,
+            left: 16,
+            zIndex: 12,
+            width: 280,
+            maxWidth: "min(280px, calc(100% - 32px))",
+            padding: 12,
+            background: "rgba(12, 18, 28, 0.94)",
+            border: `1px solid ${classColor(selectedQuakeCell.cls)}66`,
+            boxShadow: "3px 3px 0 rgba(0,0,0,0.35)",
+            color: "#f4f6f8",
+            fontSize: 12,
+            lineHeight: 1.4,
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: 8 }}>Earthquake site</div>
+          {selectedQuakeCompare ? (
+            <DualQuakeSummary score={selectedQuakeCompare} />
+          ) : (
+            <>
+          <div style={{ opacity: 0.85, marginBottom: 6 }}>
+            {selectedQuakeCell.source === "model" ? "Model prediction" : "PHIVOLCS EIL 2014"}
+            {" — "}
+            {classAdvice(selectedQuakeCell.cls)}
+          </div>
+          <div style={{ fontSize: 11, opacity: 0.8 }}>
+            <div>Ground shaking: PEIS {selectedQuakeCell.shakeClass.toUpperCase()}</div>
+            <div>EIL (slope failure): {selectedQuakeCell.eilClass}</div>
+            <div>Confidence: {Math.round(selectedQuakeCell.confidence * 100)}%</div>
+          </div>
+            </>
+          )}
+          <button
+            type="button"
+            onClick={() => setSelectedQuakeCell(null)}
+            style={{
+              marginTop: 10,
+              cursor: "pointer",
+              background: "rgba(255,255,255,0.1)",
+              border: "1px solid rgba(255,255,255,0.25)",
+              color: "#fff",
+              padding: "2px 10px",
+              fontSize: 11,
+              fontWeight: 600,
+            }}
+          >
+            Close
+          </button>
+        </div>
+      )}
+
+      <div
+        ref={pickChromeRef}
+        className={`cesium-pick-chrome${selectedProject && !modelsFrozen ? " has-hud" : ""}`}
+      >
+      {panelProject && !modelsFrozen && !editMode && (
         <PlaceSidePanel
           project={panelProject}
           onFlyHere={flyToSelected}
@@ -3782,304 +4313,237 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
             setEditOpen(false);
           }}
           onEdit={canEditModels ? openEdit : undefined}
-          onToggleLock={canEditModels ? () => void handleToggleLock() : undefined}
+          onToggleLock={
+            editMode && canEditModels && !panelProject.siteMarkerOnly
+              ? () => void handleToggleLock()
+              : undefined
+          }
+          canPromoteSitePin={canPromoteSitePin}
+          startConstructionBusy={startBuildBusy}
+          onStartConstruction={
+            canPromoteSitePin && panelProject.siteMarkerOnly
+              ? () => void handleStartConstruction()
+              : undefined
+          }
+          earthquakeScore={earthquakeEnabled ? siteQuakeScore : null}
         />
       )}
 
-      {selectedProject && (
+      {selectedProject && !modelsFrozen && (
         <div
-          style={{
-            position: "absolute",
-            left: "50%",
-            bottom: 28,
-            transform: "translateX(-50%)",
-            zIndex: 12,
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-            alignItems: "stretch",
-            minWidth: 280,
-            maxWidth: "min(520px, calc(100vw - 24px))",
-            padding: "10px 12px",
-            background: "var(--cream)",
-            border: "2px solid var(--ink)",
-            boxShadow: "5px 5px 0 var(--shadow-accent)",
-            fontFamily: '"Chakra Petch", sans-serif',
-          }}
+          ref={hudRef}
+          className={`project-pick-hud${hudCollapsed ? " is-collapsed" : ""}`}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div className="project-pick-hud-head">
             <div
-              style={{
-                width: 10,
-                height: 10,
-                borderRadius: 0,
-                background: statusColor(selectedProject.status),
-                flexShrink: 0,
-              }}
+              className="project-pick-hud-dot"
+              style={{ background: statusColor(selectedProject.status) }}
             />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: 13, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {selectedProject.name}
-              </div>
-              <div style={{ fontSize: 11, color: "var(--muted2)" }}>
-                {statusLabel(selectedProject.status)}
-                {selectedXform
-                  ? ` · ${selectedXform.lat.toFixed(5)}, ${selectedXform.lon.toFixed(5)} · ${Math.round(selectedXform.rotationDeg)}° · ×${
-                      selectedXform.scaleMultiplier >= 0.1
-                        ? selectedXform.scaleMultiplier.toFixed(2)
-                        : selectedXform.scaleMultiplier.toFixed(3)
-                    }`
-                  : null}
+            <div className="project-pick-hud-identity">
+              <div className="project-pick-hud-name">{selectedProject.name}</div>
+              <div className="project-pick-hud-meta">
+                <span>{statusLabel(selectedProject.status)}</span>
+                {selectedXform ? (
+                  <span className="project-pick-hud-pose">
+                    {selectedXform.lat.toFixed(5)}, {selectedXform.lon.toFixed(5)}
+                    {" · "}
+                    {Math.round(selectedXform.rotationDeg)}°
+                    {" · ×"}
+                    {selectedXform.scaleMultiplier >= 0.1
+                      ? selectedXform.scaleMultiplier.toFixed(2)
+                      : selectedXform.scaleMultiplier.toFixed(3)}
+                  </span>
+                ) : null}
               </div>
             </div>
-            {canEditModels && (
+            <div className="project-pick-hud-tools">
+              {canEditModels && (
+                <button type="button" className="project-pick-hud-btn project-pick-hud-btn--edit" onClick={openEdit}>
+                  Edit
+                </button>
+              )}
               <button
                 type="button"
-                onClick={openEdit}
-                style={{
-                  cursor: "pointer",
-                  background: "var(--seed)",
-                  border: "2px solid var(--ink)",
-                  color: "var(--ink)",
-                  fontSize: 11,
-                  padding: "6px 12px",
-                  fontWeight: 700,
-                }}
+                className="project-pick-hud-btn"
+                onClick={() => setHudCollapsed((v) => !v)}
+                title={hudCollapsed ? "Expand controls" : "Collapse controls"}
+                aria-expanded={!hudCollapsed}
               >
-                Edit
+                {hudCollapsed ? "▴" : "▾"}
               </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setHudCollapsed((v) => !v)}
-              style={{
-                cursor: "pointer",
-                background: "var(--cream-deep)",
-                border: "2px solid var(--ink)",
-                color: "var(--ink)",
-                fontSize: 11,
-                padding: "6px 10px",
-                fontWeight: 700,
-                lineHeight: 1,
-              }}
-              title={hudCollapsed ? "Expand controls" : "Collapse controls"}
-              aria-expanded={!hudCollapsed}
-            >
-              {hudCollapsed ? "▴" : "▾"}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedId(null);
-                setConfirmDelete(false);
-                setEditOpen(false);
-              }}
-              style={{
-                cursor: "pointer",
-                background: "none",
-                border: "none",
-                color: "var(--muted2)",
-                fontSize: 20,
-                lineHeight: 1,
-                padding: "0 4px",
-              }}
-              title="Deselect"
-            >
-              ×
-            </button>
+              <button
+                type="button"
+                className="project-pick-hud-btn project-pick-hud-btn--ghost"
+                onClick={() => {
+                  setSelectedId(null);
+                  setConfirmDelete(false);
+                  setEditOpen(false);
+                }}
+                title="Deselect"
+              >
+                ×
+              </button>
+            </div>
           </div>
 
           {!hudCollapsed && (
             <>
-          {canEditModels && selectedXform && !locked && (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "28px 1fr auto auto",
-                gap: 6,
-                alignItems: "center",
-                borderTop: "1px solid var(--stroke2)",
-                paddingTop: 8,
-                fontSize: 11,
-              }}
-            >
-              <span style={{ fontWeight: 700, color: "#c0392b" }}>X</span>
+          {canEditModels && editMode && selectedXform && !locked && (
+            <div className="project-pick-hud-xyz">
+              <span className="project-pick-hud-axis" style={{ color: "#c0392b" }}>X</span>
               <input
                 type="number"
                 step="0.00001"
                 value={selectedXform.lon}
                 title="Longitude (East / West)"
+                className="project-pick-hud-input"
                 onChange={(e) => {
                   const lon = Number(e.target.value);
                   if (!Number.isFinite(lon) || !selectedId) return;
                   commitLocalPose(selectedId, { lon });
                 }}
                 onBlur={() => selectedId && void persistTransform(selectedId)}
-                style={{
-                  width: "100%",
-                  boxSizing: "border-box",
-                  padding: "5px 6px",
-                  border: "1px solid var(--stroke)",
-                  background: "var(--cream-deep)",
-                  color: "var(--ink)",
-                  fontSize: 11,
-                }}
               />
-              <button type="button" title="West −1 m" onClick={() => nudgeSelected(-1, 0, 0)} style={xyzBtnStyle}>
+              <button type="button" title="West −1 m" onClick={() => nudgeSelected(-1, 0, 0)} className="project-pick-hud-nudge">
                 −1m
               </button>
-              <button type="button" title="East +1 m" onClick={() => nudgeSelected(1, 0, 0)} style={xyzBtnStyle}>
+              <button type="button" title="East +1 m" onClick={() => nudgeSelected(1, 0, 0)} className="project-pick-hud-nudge">
                 +1m
               </button>
 
-              <span style={{ fontWeight: 700, color: "#27ae60" }}>Y</span>
+              <span className="project-pick-hud-axis" style={{ color: "#27ae60" }}>Y</span>
               <input
                 type="number"
                 step="0.00001"
                 value={selectedXform.lat}
                 title="Latitude (North / South)"
+                className="project-pick-hud-input"
                 onChange={(e) => {
                   const lat = Number(e.target.value);
                   if (!Number.isFinite(lat) || !selectedId) return;
                   commitLocalPose(selectedId, { lat });
                 }}
                 onBlur={() => selectedId && void persistTransform(selectedId)}
-                style={{
-                  width: "100%",
-                  boxSizing: "border-box",
-                  padding: "5px 6px",
-                  border: "1px solid var(--stroke)",
-                  background: "var(--cream-deep)",
-                  color: "var(--ink)",
-                  fontSize: 11,
-                }}
               />
-              <button type="button" title="South −1 m" onClick={() => nudgeSelected(0, -1, 0)} style={xyzBtnStyle}>
+              <button type="button" title="South −1 m" onClick={() => nudgeSelected(0, -1, 0)} className="project-pick-hud-nudge">
                 −1m
               </button>
-              <button type="button" title="North +1 m" onClick={() => nudgeSelected(0, 1, 0)} style={xyzBtnStyle}>
+              <button type="button" title="North +1 m" onClick={() => nudgeSelected(0, 1, 0)} className="project-pick-hud-nudge">
                 +1m
               </button>
 
-              <span style={{ fontWeight: 700, color: "#2980b9" }}>Z</span>
+              <span className="project-pick-hud-axis" style={{ color: "#2980b9" }}>Z</span>
               <input
                 type="number"
                 step="0.1"
                 value={selectedXform.heightM}
                 title="Height above ground (m). Keep 0 for ground — no elevation."
+                className="project-pick-hud-input"
                 onChange={(e) => {
                   const heightM = Number(e.target.value);
                   if (!Number.isFinite(heightM) || !selectedId) return;
                   commitLocalPose(selectedId, { heightM: Math.max(-50, Math.min(500, heightM)) });
                 }}
                 onBlur={() => selectedId && void persistTransform(selectedId)}
-                style={{
-                  width: "100%",
-                  boxSizing: "border-box",
-                  padding: "5px 6px",
-                  border: "1px solid var(--stroke)",
-                  background: "var(--cream-deep)",
-                  color: "var(--ink)",
-                  fontSize: 11,
-                }}
               />
               <button
                 type="button"
                 title="Set Z = 0 (ground, no elevation)"
                 onClick={() => selectedId && commitLocalPose(selectedId, { heightM: 0 }, true)}
-                style={xyzBtnStyle}
+                className="project-pick-hud-nudge"
               >
                 Ground
               </button>
-              <button type="button" title="Up +0.5 m" onClick={() => nudgeSelected(0, 0, 0.5)} style={xyzBtnStyle}>
+              <button type="button" title="Up +0.5 m" onClick={() => nudgeSelected(0, 0, 0.5)} className="project-pick-hud-nudge">
                 +0.5
               </button>
-              <div
-                style={{
-                  gridColumn: "1 / -1",
-                  color: "var(--muted2)",
-                  fontSize: 10,
-                }}
-              >
+              <div className="project-pick-hud-xyz-hint">
                 X = lon · Y = lat · Z = height m (keep <b>0</b> for ground clamp — no elevation)
               </div>
             </div>
           )}
 
-          {selectedProject.siteMarkerOnly && (
-            <div
-              style={{
-                fontSize: 12,
-                color: "#c47a1a",
-                fontWeight: 600,
-                borderTop: "1px solid var(--stroke2)",
-                paddingTop: 8,
-              }}
-            >
+          {earthquakeEnabled && siteQuakeScore && (
+            <div className="project-pick-hud-note">
+              <DualQuakeSummary score={siteQuakeScore} ink />
+            </div>
+          )}
+
+          {selectedProject.siteMarkerOnly && !canPromoteSitePin && (
+            <div className="project-pick-hud-note">
               Site pin only — no 3D GLB. Engineering places the model later.
             </div>
           )}
 
-          {canEditModels && selectedProject.siteMarkerOnly && onDeleteBuilding && (
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {canPromoteSitePin && selectedProject.siteMarkerOnly && (
+            <div className="project-pick-hud-build">
+              {confirmStartBuild ? (
+                <>
+                  <div className="project-pick-hud-build-copy">
+                    <strong>Itatayo na ba ito?</strong>
+                    <span>
+                      Lalabas ang Under Construction model sa pin. Ikaw pa rin ang maglalagay —
+                      move, rotate, at scale.
+                    </span>
+                  </div>
+                  <div className="project-pick-hud-actions">
+                    <button
+                      type="button"
+                      className="project-pick-hud-action is-primary"
+                      disabled={startBuildBusy}
+                      onClick={() => void handleStartConstruction()}
+                    >
+                      {startBuildBusy ? "Sineset…" : "Oo, itayo na"}
+                    </button>
+                    <button
+                      type="button"
+                      className="project-pick-hud-action"
+                      disabled={startBuildBusy}
+                      onClick={() => setConfirmStartBuild(false)}
+                    >
+                      Hindi muna
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className="project-pick-hud-action is-primary"
+                  onClick={() => setConfirmStartBuild(true)}
+                >
+                  Itayo na (Under Construction)
+                </button>
+              )}
+            </div>
+          )}
+
+          {editMode && canEditModels && selectedProject.siteMarkerOnly && onDeleteBuilding && (
+            <div className="project-pick-hud-actions">
               {!confirmDelete ? (
                 <button
                   type="button"
+                  className="project-pick-hud-action project-pick-hud-action--danger"
                   onClick={() => setConfirmDelete(true)}
-                  style={{
-                    cursor: "pointer",
-                    flex: "1 1 120px",
-                    padding: "8px 0",
-                    background: "rgba(255,77,79,0.15)",
-                    border: "1px solid rgba(255,77,79,0.3)",
-                    color: "#ff4d4f",
-                    fontSize: 12,
-                    fontWeight: 600,
-                  }}
                 >
                   Remove site pin
                 </button>
               ) : (
-                <div
-                  style={{
-                    flex: "1 1 100%",
-                    display: "flex",
-                    gap: 6,
-                  }}
-                >
+                <div className="project-pick-hud-confirm">
                   <button
                     type="button"
+                    className="project-pick-hud-action project-pick-hud-action--danger"
                     onClick={() => {
                       if (selectedId) onDeleteBuilding?.(selectedId);
                       setSelectedId(null);
                       setConfirmDelete(false);
-                    }}
-                    style={{
-                      cursor: "pointer",
-                      flex: 1,
-                      padding: "7px 0",
-                      background: "rgba(255,77,79,0.25)",
-                      border: "1px solid rgba(255,77,79,0.5)",
-                      color: "#ff4d4f",
-                      fontSize: 12,
-                      fontWeight: 700,
                     }}
                   >
                     Yes, Remove
                   </button>
                   <button
                     type="button"
+                    className="project-pick-hud-action"
                     onClick={() => setConfirmDelete(false)}
-                    style={{
-                      cursor: "pointer",
-                      flex: 1,
-                      padding: "7px 0",
-                      background: "var(--cream-deep)",
-                      border: "1px solid var(--stroke)",
-                      color: "var(--muted)",
-                      fontSize: 12,
-                      fontWeight: 600,
-                    }}
                   >
                     Cancel
                   </button>
@@ -4088,19 +4552,10 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
             </div>
           )}
 
-          {canEditModels && !selectedProject.siteMarkerOnly && (
-            <div
-              style={{
-                display: "flex",
-                gap: 12,
-                fontSize: 11,
-                color: "var(--muted2)",
-                borderTop: "1px solid var(--stroke2)",
-                paddingTop: 8,
-              }}
-            >
+          {editMode && canEditModels && !selectedProject.siteMarkerOnly && (
+            <div className="project-pick-hud-hint">
               {locked ? (
-                <span style={{ color: "#c47a1a", fontWeight: 600 }}>
+                <span className="project-pick-hud-hint-lock">
                   Locked — unlock to move / rotate / scale
                 </span>
               ) : (
@@ -4113,127 +4568,71 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
             </div>
           )}
 
-          {canEditModels && !selectedProject.siteMarkerOnly && (
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {editMode && canEditModels && !selectedProject.siteMarkerOnly && (
+            <div className="project-pick-hud-actions">
               <button
                 type="button"
+                className={`project-pick-hud-action${locked ? " is-warn" : ""}`}
                 onClick={() => void handleToggleLock()}
                 disabled={transformSaving}
-                style={{
-                  cursor: transformSaving ? "default" : "pointer",
-                  flex: "1 1 90px",
-                  padding: "8px 10px",
-                  background: locked ? "rgba(196,122,26,0.18)" : "var(--cream-deep)",
-                  border: "2px solid var(--ink)",
-                  color: "var(--ink)",
-                  fontSize: 12,
-                  fontWeight: 700,
-                  opacity: transformSaving ? 0.65 : 1,
-                }}
               >
                 {locked ? "Unlock" : "Lock"}
               </button>
               <button
                 type="button"
+                className={`project-pick-hud-action${transformDirty && !locked ? " is-primary" : ""}`}
                 onClick={() => selectedId && void persistTransform(selectedId)}
                 disabled={transformSaving || !transformDirty || locked}
-                style={{
-                  cursor: transformSaving || !transformDirty || locked ? "default" : "pointer",
-                  flex: "1 1 110px",
-                  padding: "8px 10px",
-                  background: transformDirty && !locked ? "var(--seed)" : "var(--cream-deep)",
-                  border: "2px solid var(--ink)",
-                  color: "var(--ink)",
-                  fontSize: 12,
-                  fontWeight: 700,
-                  opacity: transformSaving || !transformDirty || locked ? 0.65 : 1,
-                }}
               >
                 {transformSaving
                   ? "Saving…"
                   : transformMessage ??
                     (locked ? "Locked" : transformDirty ? "Save Position" : "Saved")}
               </button>
-              {!confirmDelete ? (
+              {onDeleteBuilding && (!confirmDelete ? (
                 <button
                   type="button"
+                  className="project-pick-hud-action project-pick-hud-action--danger"
                   onClick={() => setConfirmDelete(true)}
-                  style={{
-                    cursor: "pointer",
-                    flex: "1 1 120px",
-                    padding: "8px 0",
-                    background: "rgba(255,77,79,0.15)",
-                    border: "1px solid rgba(255,77,79,0.3)",
-                    color: "#ff4d4f",
-                    fontSize: 12,
-                    fontWeight: 600,
-                  }}
                 >
                   Remove Building
                 </button>
               ) : (
-                <div
-                  style={{
-                    flex: "1 1 100%",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 6,
-                    padding: "8px 10px",
-                    background: "rgba(255,77,79,0.1)",
-                    border: "1px solid rgba(255,77,79,0.3)",
-                  }}
-                >
-                  <span style={{ fontSize: 12, color: "var(--muted)", textAlign: "center" }}>
-                    Remove <strong style={{ color: "var(--seed)" }}>{selectedProject.name}</strong>?
+                <div className="project-pick-hud-confirm">
+                  <span className="project-pick-hud-confirm-label">
+                    Remove <strong>{selectedProject.name}</strong>?
                   </span>
-                  <div style={{ display: "flex", gap: 6 }}>
+                  <div className="project-pick-hud-confirm-row">
                     <button
                       type="button"
+                      className="project-pick-hud-action project-pick-hud-action--danger"
                       onClick={() => {
                         if (selectedId) onDeleteBuilding?.(selectedId);
                         setSelectedId(null);
                         setConfirmDelete(false);
-                      }}
-                      style={{
-                        cursor: "pointer",
-                        flex: 1,
-                        padding: "7px 0",
-                        background: "rgba(255,77,79,0.25)",
-                        border: "1px solid rgba(255,77,79,0.5)",
-                        color: "#ff4d4f",
-                        fontSize: 12,
-                        fontWeight: 700,
                       }}
                     >
                       Yes, Remove
                     </button>
                     <button
                       type="button"
+                      className="project-pick-hud-action"
                       onClick={() => setConfirmDelete(false)}
-                      style={{
-                        cursor: "pointer",
-                        flex: 1,
-                        padding: "7px 0",
-                        background: "var(--cream-deep)",
-                        border: "1px solid var(--stroke)",
-                        color: "var(--muted)",
-                        fontSize: 12,
-                        fontWeight: 600,
-                      }}
                     >
                       Cancel
                     </button>
                   </div>
                 </div>
-              )}
+              ))}
             </div>
           )}
             </>
           )}
         </div>
       )}
+      </div>
 
-      {editOpen && editDraft && selectedProject && (
+      {editOpen && editDraft && selectedProject && !modelsFrozen && !editMode && (
         <div
           style={{
             position: "absolute",
@@ -4262,6 +4661,73 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
             <div className="sectionTitle" style={{ marginBottom: 12 }}>
               Edit — {selectedProject.name}
             </div>
+            <label style={{ display: "block", fontSize: 12, marginBottom: 8 }}>
+              Name
+              <input
+                type="text"
+                value={editDraft.name}
+                onChange={(e) => setEditDraft({ ...editDraft, name: e.target.value })}
+                style={{ width: "100%", marginTop: 4, padding: 8, boxSizing: "border-box" }}
+                placeholder="Pin name"
+              />
+            </label>
+            <label style={{ display: "block", fontSize: 12, marginBottom: 8 }}>
+              Official page
+              <input
+                type="url"
+                value={editDraft.officialUrl}
+                onChange={(e) => setEditDraft({ ...editDraft, officialUrl: e.target.value })}
+                style={{ width: "100%", marginTop: 4, padding: 8, boxSizing: "border-box" }}
+                placeholder="https://…"
+              />
+            </label>
+            {selectedProject.siteMarkerOnly && (
+              <label style={{ display: "block", fontSize: 12, marginBottom: 8 }}>
+                Pin color
+                <div style={{ display: "flex", gap: 6, marginTop: 6, alignItems: "center", flexWrap: "wrap" }}>
+                  {MAP_SKETCH_COLORS.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      aria-label={`Color ${c}`}
+                      title={c}
+                      onClick={() => setEditDraft({ ...editDraft, markerColor: c })}
+                      style={{
+                        width: 26,
+                        height: 26,
+                        borderRadius: 0,
+                        cursor: "pointer",
+                        background: c,
+                        border: editDraft.markerColor === c
+                          ? "3px solid var(--ink)"
+                          : "2px solid rgba(0,0,0,0.3)",
+                        flexShrink: 0,
+                      }}
+                    />
+                  ))}
+                  <input
+                    type="color"
+                    value={editDraft.markerColor}
+                    aria-label="Custom pin color"
+                    onChange={(e) => setEditDraft({ ...editDraft, markerColor: e.target.value })}
+                    style={{ width: 32, height: 26, padding: 0, border: "2px solid var(--ink)", cursor: "pointer" }}
+                  />
+                </div>
+              </label>
+            )}
+            <label style={{ display: "block", fontSize: 12, marginBottom: 8 }}>
+              Barangay
+              <select
+                value={editDraft.barangay}
+                onChange={(e) => setEditDraft({ ...editDraft, barangay: e.target.value })}
+                style={{ width: "100%", marginTop: 4, padding: 8 }}
+              >
+                <option value="">— not set —</option>
+                {BARANGAY_LIST.map((b) => (
+                  <option key={b} value={b}>{b}</option>
+                ))}
+              </select>
+            </label>
             <label style={{ display: "block", fontSize: 12, marginBottom: 8 }}>
               Status
               <select

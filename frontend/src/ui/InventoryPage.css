@@ -620,6 +620,10 @@
 }
 
 @media (max-width: 600px) {
+  .inv-page {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
   .inv-stat { min-width: 90px; padding: 12px 12px; }
   .inv-stat-v { font-size: 1.2rem; }
 

@@ -12,6 +12,8 @@ type Props = {
   disabled?: boolean;
   className?: string;
   size?: number;
+  /** Called when dial drag starts/ends (e.g. freeze Cesium camera inputs). */
+  onDragStateChange?: (dragging: boolean) => void;
 };
 
 function normalizeDeg(d: number): number {
@@ -38,16 +40,22 @@ export function SunAzimuthDial({
   disabled = false,
   className = "",
   size = 112,
+  onDragStateChange,
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
   const onChangeRef = useRef(onChange);
+  const onDragStateChangeRef = useRef(onDragStateChange);
   const labelId = useId();
   const bearing = normalizeDeg(value);
 
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
+
+  useEffect(() => {
+    onDragStateChangeRef.current = onDragStateChange;
+  }, [onDragStateChange]);
 
   const setFromEvent = useCallback((clientX: number, clientY: number) => {
     const el = rootRef.current;
@@ -62,27 +70,36 @@ export function SunAzimuthDial({
     const onMove = (e: PointerEvent) => {
       if (!draggingRef.current) return;
       e.preventDefault();
+      e.stopPropagation();
       setFromEvent(e.clientX, e.clientY);
     };
     const onUp = () => {
+      if (!draggingRef.current) return;
       draggingRef.current = false;
+      onDragStateChangeRef.current?.(false);
     };
 
-    window.addEventListener("pointermove", onMove, { passive: false });
-    window.addEventListener("pointerup", onUp);
-    window.addEventListener("pointercancel", onUp);
+    window.addEventListener("pointermove", onMove, { passive: false, capture: true });
+    window.addEventListener("pointerup", onUp, true);
+    window.addEventListener("pointercancel", onUp, true);
     return () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      window.removeEventListener("pointercancel", onUp);
+      window.removeEventListener("pointermove", onMove, true);
+      window.removeEventListener("pointerup", onUp, true);
+      window.removeEventListener("pointercancel", onUp, true);
+      if (draggingRef.current) {
+        draggingRef.current = false;
+        onDragStateChangeRef.current?.(false);
+      }
     };
   }, [disabled, setFromEvent]);
 
   const onPointerDown = (e: React.PointerEvent) => {
     if (disabled) return;
     e.preventDefault();
+    e.stopPropagation();
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
     draggingRef.current = true;
+    onDragStateChangeRef.current?.(true);
     setFromEvent(e.clientX, e.clientY);
   };
 

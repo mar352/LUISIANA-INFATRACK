@@ -101,6 +101,15 @@ export default function EngagementPage({ onBack, onFlyTo }: Props) {
         staffNote: note,
       });
       setItems((prev) => prev.map((i) => (i.id === res.submission.id ? res.submission : i)));
+      const { writeAudit } = await import("../services/firestore-audit");
+      void writeAudit({
+        action: "engagement.update",
+        category: "engagement",
+        summary: `Engagement “${res.submission.title || selected.id}” → ${res.submission.status}`,
+        entityType: "engagement",
+        entityId: res.submission.id,
+        entityName: res.submission.title,
+      });
       void load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Update failed");

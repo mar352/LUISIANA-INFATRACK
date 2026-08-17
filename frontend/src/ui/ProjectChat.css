@@ -1,9 +1,10 @@
 .project-chat-root {
   position: absolute;
-  left: 14px;
-  bottom: 14px;
-  right: auto;
-  z-index: 60;
+  top: 70px;
+  right: 14px;
+  left: auto;
+  bottom: auto;
+  z-index: 13;
   font-family: "Chakra Petch", system-ui, sans-serif;
   /* Don't participate in mapWrap layout sizing */
   width: 0;
@@ -18,8 +19,10 @@
 
 .project-chat-fab {
   position: absolute;
-  left: 0;
-  bottom: 0;
+  top: 0;
+  right: 0;
+  left: auto;
+  bottom: auto;
   border: 2px solid var(--ink, #1a1a1a);
   background: var(--seed, #245c3a);
   color: #f7f3ea;
@@ -37,8 +40,10 @@
 
 .project-chat-panel {
   position: absolute;
-  left: 0;
-  bottom: 0;
+  top: 0;
+  right: 0;
+  left: auto;
+  bottom: auto;
   width: min(380px, calc(100vw - 28px));
   height: min(480px, calc(100vh - 120px));
   display: flex;
@@ -213,6 +218,36 @@
   padding: 0 14px;
   cursor: pointer;
   align-self: stretch;
+}
+
+@media (max-width: 768px) {
+  .project-chat-root {
+    top: calc(52px + env(safe-area-inset-top, 0px) + 8px);
+    right: max(8px, env(safe-area-inset-right, 0px));
+    left: auto;
+    bottom: auto;
+  }
+
+  .project-chat-fab {
+    min-height: 44px;
+    padding: 10px 12px;
+    font-size: 12px;
+  }
+
+  .project-chat-panel:not(.project-chat-panel--full) {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100vw;
+    height: min(70dvh, 520px);
+    max-width: none;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .project-chat-panel--full {
+    height: 100dvh;
+  }
 }
 
 .project-chat-send:disabled {

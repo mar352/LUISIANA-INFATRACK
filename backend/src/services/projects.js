@@ -60,6 +60,7 @@ function ensureProjectShape(p) {
     barangay: p.barangay ?? "",
     fundingSource: p.fundingSource ?? "",
     contractor: p.contractor ?? "",
+    officialUrl: p.officialUrl ? String(p.officialUrl) : "",
     lifecyclePhase: p.lifecyclePhase ?? "Planning",
     rotation: Number.isFinite(Number(p.rotation)) ? Number(p.rotation) : 0,
     modelScale: Number.isFinite(Number(p.modelScale)) ? Number(p.modelScale) : 1,
@@ -110,8 +111,18 @@ function loadFromDisk() {
   if (!fs.existsSync(DATA_PATH)) return null;
   try {
     const raw = JSON.parse(fs.readFileSync(DATA_PATH, "utf8"));
-    const projects = (raw.projects || []).map(ensureProjectShape);
+    const now = new Date().toISOString();
+    let repaired = false;
+    const projects = (raw.projects || []).map((p) => {
+      const shaped = ensureProjectShape(p);
+      if (repairSitePinSimulation(shaped, now)) repaired = true;
+      return shaped;
+    });
     nextId = raw.nextId ?? 1;
+    if (repaired) {
+      state = projects;
+      saveState();
+    }
     return projects;
   } catch (err) {
     console.warn("[projects] Failed to load data file, starting empty:", err.message);
@@ -193,7 +204,42 @@ function maybeMarkDelayed(project, nowIso) {
   }
 }
 
+function isSitePin(project) {
+  return Boolean(project?.siteMarkerOnly);
+}
+
+function wasAutoAdvancedSitePin(project) {
+  return (project.activityLog || []).some((a) => {
+    const msg = String(a?.message || "");
+    return (
+      msg.includes("automated start") ||
+      msg.includes("Progress reached 100% — marked Completed.")
+    );
+  });
+}
+
+/** Site pins are markup only — never treat them as construction progress. */
+function repairSitePinSimulation(project, nowIso) {
+  if (!isSitePin(project) || !wasAutoAdvancedSitePin(project)) return false;
+  if (project.status !== "Ongoing" && project.status !== "Completed") return false;
+
+  project.status = "Planned";
+  project.progress = 0;
+  project.activityLog = (project.activityLog || []).filter((a) => {
+    const msg = String(a?.message || "");
+    return (
+      !msg.includes("automated start") &&
+      !msg.includes("Progress reached 100% — marked Completed.")
+    );
+  });
+  logActivity(project, "Status restored to Planned (pinned site is not construction).");
+  project.updatedAt = nowIso;
+  return true;
+}
+
 function applyAutomationRules(project, nowIso) {
+  if (isSitePin(project)) return;
+
   const today = nowIso.slice(0, 10);
 
   updateMilestoneStatuses(project, nowIso);
@@ -252,6 +298,11 @@ export function tickProjects() {
   const now = new Date().toISOString();
 
   for (const p of projects) {
+    if (isSitePin(p)) {
+      repairSitePinSimulation(p, now);
+      continue;
+    }
+
     applyAutomationRules(p, now);
 
     if (p.status === "Ongoing" && !hasOpenDelayIssue(p)) {
@@ -392,6 +443,9 @@ export function updateProject(id, patch) {
   }
   if (patch.contractor !== undefined) {
     project.contractor = String(patch.contractor || "");
+  }
+  if (patch.officialUrl !== undefined) {
+    project.officialUrl = String(patch.officialUrl || "").trim();
   }
   if (patch.lifecyclePhase !== undefined) {
     project.lifecyclePhase = String(patch.lifecyclePhase || "Planning");

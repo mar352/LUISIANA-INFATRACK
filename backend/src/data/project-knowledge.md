@@ -7,7 +7,7 @@
 - Never write placeholders like `[city/town]` or `[city_name]`. Always say **Luisiana, Laguna** when referring to the location.
 
 ## What the product is
-INFA-TRACK (IMPACT-Luisiana) is a real-time **GIS infrastructure and disaster monitoring** web app for Luisiana LGU offices (MPDC, Engineering, Agriculture, Negosyo Center) plus a public Viewer.
+INFA-TRACK (IMPACT-Luisiana) is a real-time **GIS infrastructure and disaster monitoring** web app for Luisiana LGU offices (MPDC, Engineering, Agriculture, Negosyo Center, Barangay Officials) plus a public Viewer.
 
 ## Stack
 - Frontend: React + Vite + MapLibre GL + Three.js (GLB buildings) + Deck.gl
@@ -21,9 +21,10 @@ INFA-TRACK (IMPACT-Luisiana) is a real-time **GIS infrastructure and disaster mo
 - Live vs Offline chip: Live = Socket.IO connected to backend; Offline = backend not reachable
 
 ## Roles
-- MPDC, Engineer, Agriculture, Negosyo Center, Viewer
-- Seed accounts (typical): mpdc, engineer, agriculture, negosyo — password impact2024
+- MPDC, Engineer, Agriculture, Negosyo Center, Barangay Official, Viewer
+- Seed accounts (typical): mpdc, engineer, agriculture, negosyo, barangay — password impact2024
 - Viewer is read-only for 3D model transforms
+- Barangay Official submits barangay infrastructure requests only (no approve / no model placement)
 
 ## Map / layers / weather
 - OpenFreeMap Liberty vector basemap (openmaptiles)
@@ -41,8 +42,9 @@ INFA-TRACK (IMPACT-Luisiana) is a real-time **GIS infrastructure and disaster mo
 - Custom GLB upload via backend (large models supported up to ~500MB)
 
 ## Collaborative Planning
-- Top bar → Planning (roles with canSeePlanning)
+- Top bar → Planning (roles with canSeePlanning). Barangay Official sees **Requests**.
 - Workspace board: proposals by status (draft → submitted → in_review → recommended/approved/returned/rejected)
+- Barangay Official: + Request infrastructure → barangay_request card for MPDC review
 - Priority 1–5; assignees from accounts; committees (MDC, Infra, BAC, Agri, Zoning)
 - Comments with optional section/map anchors
 - Calendar: month grid + events (committee, hearing, deadline, site)

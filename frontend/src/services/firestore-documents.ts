@@ -12,6 +12,7 @@ import type {
   MunicipalDocument,
 } from "../types";
 import { DOCUMENT_CATEGORIES } from "../types";
+import { writeAudit } from "./firestore-audit";
 
 function stripUndefined<T extends Record<string, unknown>>(obj: T): Record<string, unknown> {
   const cleaned: Record<string, unknown> = {};
@@ -115,6 +116,14 @@ export async function createDocument(input: CreateDocumentInput): Promise<Munici
     updatedAt: now,
   });
   const ref = await addDoc(documentsCollection, payload);
+  void writeAudit({
+    action: "document.create",
+    category: "document",
+    summary: `Uploaded document “${input.title}”`,
+    entityType: "document",
+    entityId: ref.id,
+    entityName: input.title,
+  });
   return mapDocument(ref.id, payload);
 }
 
@@ -167,8 +176,23 @@ export async function addDocumentVersion(
     uploadedBy: next.uploadedBy,
     updatedAt: now,
   });
+  void writeAudit({
+    action: "document.version",
+    category: "document",
+    summary: `New version of “${docItem.title}” (v${docItem.version + 1})`,
+    entityType: "document",
+    entityId: docItem.id,
+    entityName: docItem.title,
+  });
 }
 
 export async function deleteDocument(id: string): Promise<void> {
   await deleteDoc(doc(db, "documents", id));
+  void writeAudit({
+    action: "document.delete",
+    category: "document",
+    summary: `Deleted document ${id}`,
+    entityType: "document",
+    entityId: id,
+  });
 }

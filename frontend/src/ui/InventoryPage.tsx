@@ -52,6 +52,7 @@ const ROLE_PERMISSIONS: Record<string, {
   Engineer:         { canEdit: true,  canArchive: true,  canSeeBudget: true,  canSeeArchived: true,  departmentFilter: "Engineering" },
   Agriculture:      { canEdit: false, canArchive: false, canSeeBudget: false, canSeeArchived: false, departmentFilter: "Agriculture" },
   "Negosyo Center": { canEdit: false, canArchive: false, canSeeBudget: false, canSeeArchived: false, departmentFilter: null },
+  "Barangay Official": { canEdit: false, canArchive: false, canSeeBudget: false, canSeeArchived: false, departmentFilter: null },
   Viewer:           { canEdit: false, canArchive: false, canSeeBudget: false, canSeeArchived: false, departmentFilter: null },
 };
 

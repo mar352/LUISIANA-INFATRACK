@@ -18,3 +18,5 @@ export const proposalsCollection = collection(db, "proposals");
 export const planningEventsCollection = collection(db, "planningEvents");
 export const planningMeetingsCollection = collection(db, "planningMeetings");
 export const documentsCollection = collection(db, "documents");
+export const auditLogsCollection = collection(db, "auditLogs");
+export const sessionsCollection = collection(db, "sessions");

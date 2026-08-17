@@ -290,6 +290,8 @@ export type Project = {
   barangay?: string;
   fundingSource?: string;
   contractor?: string;
+  /** Staff-set official page for this facility (https://…). */
+  officialUrl?: string;
   lifecyclePhase?: LifecyclePhase;
   archivedAt?: string | null;
   milestones: ProjectMilestone[];

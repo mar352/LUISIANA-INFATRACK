@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent, type SyntheticEvent } from "react";
 import maplibregl, { Map as MapLibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { CesiumMap, type CesiumMapHandle } from "./CesiumMap";
@@ -36,7 +36,7 @@ import { buildHeatmapPoints, type BBox, type HeatmapMetric } from "../lib/heatma
 import { formatGibsDate, getGibsLayerInfo, gibsWmtsTileUrl, type GibsLayerId } from "../lib/gibs";
 import {
   applyMapSunLighting,
-  dateFromSolarHour,
+  dateFromDisplaySolarHour,
   formatSolarHour,
   getCurrentSolarHour,
   getSunPosition,
@@ -67,15 +67,7 @@ import {
   type TerrainSource,
   type SatelliteSource 
 } from "../lib/terrain";
-import { 
-  fetchEONETEvents, 
-  filterEventsByRegion, 
-  getEventStats, 
-  getLatestGeometry,
-  calculateDistance,
-  EONET_CATEGORIES,
-  type EONETEvent 
-} from "../lib/eonet";
+import { calculateDistance } from "../lib/eonet";
 import {
   fetchTropicalSystems,
   getTropicalColor,
@@ -92,7 +84,19 @@ import {
   teardownEditStreetOverlay,
 } from "../lib/street-edit-overlay";
 import { snapLngLatToRoad } from "../lib/snap-to-road";
-import { LandingPage, LoginScreen, ROLE_CONFIGS, type UserRole } from "./Landing";
+import { LandingPage, LoginScreen, ROLE_CONFIGS, isBarangayOfficial, isMunicipalStaff, type UserRole } from "./Landing";
+import {
+  DEFAULT_INFRA_FILTER,
+  INFRA_CATEGORIES,
+  INFRA_DEPARTMENTS,
+  INFRA_STATUSES,
+  filterInfrastructure,
+  toggleListValue,
+  type InfraFilter,
+} from "../lib/infra-filter";
+import { BARANGAY_LIST } from "../types";
+import { earthquakeProneModel, type EarthquakeGridCell, type EarthquakeTrainStatus } from "../lib/ml-earthquake";
+import { classAdvice, classColor } from "../lib/earthquake-labels";
 import { ProjectMonitoringPanel } from "./ProjectMonitoringPanel";
 import { ThemeToggle } from "./ThemeToggle";
 import { ProjectChat } from "./ProjectChat";
@@ -100,11 +104,13 @@ import { HazardLegend } from "./HazardLegend";
 import { activeHazardFromToggles } from "../lib/hazard-overlays";
 import {
   seedAccounts,
-  getSessionFromCookie,
-  clearSessionCookie,
+  restoreSession,
+  logoutUser,
   sessionForRole,
   type SessionUser,
 } from "../services/auth";
+import { setAuditActor } from "../services/firestore-audit";
+import AuditPage from "./AuditPage";
 
 // ── Dashboard icons ────────────────────────────────────────────────────────────
 const IconClipboard = () => (
@@ -401,11 +407,108 @@ function buildEngineerPlanningNotices(
     .slice(0, 12);
 }
 
+/**
+ * Notices for the MPDC role.
+ *
+ * MPDC is the final approval authority so they need to see:
+ * - Any proposal newly submitted (waiting for them to open review / assign)
+ * - Proposals that reached "recommended" status (ready for their approve/reject decision)
+ * - Open botohan where they haven't voted yet
+ * - Proposals returned by them that were resubmitted (came back for re-review)
+ */
+function buildMpdcPlanningNotices(
+  proposals: PlanningProposal[],
+  session: SessionUser,
+): PanelNotice[] {
+  const username = session.username.toLowerCase();
+  const notices: PanelNotice[] = [];
+
+  for (const p of proposals) {
+    const votes = p.votes || [];
+    const hasVoted = votes.some((v) => v.username.toLowerCase() === username);
+    const yes = votes.filter((v) => v.choice === "yes").length;
+    const no = votes.filter((v) => v.choice === "no").length;
+    const abstain = votes.filter((v) => v.choice === "abstain").length;
+    const at = p.updatedAt || p.createdAt;
+
+    // Open botohan — MPDC hasn't voted yet.
+    if (p.status === "in_review" && !hasVoted) {
+      notices.push({
+        id: `${p.id}:botohan:${votes.length}`,
+        proposalId: p.id,
+        title: "Botohan open",
+        message: `"${p.title}" — cast your Yes / No / Abstain vote.`,
+        at,
+        kind: "botohan",
+      });
+      continue;
+    }
+
+    // Newly submitted — MPDC needs to open review and assign.
+    if (p.status === "submitted") {
+      notices.push({
+        id: `${p.id}:submitted:${at}`,
+        proposalId: p.id,
+        title: "New proposal submitted",
+        message: `"${p.title}" is waiting for review assignment.`,
+        at,
+        kind: "review",
+      });
+      continue;
+    }
+
+    // Recommended by committee — MPDC needs to approve or reject.
+    if (p.status === "recommended") {
+      const voteStr = votes.length ? ` · Botohan ${yes}Y / ${no}N / ${abstain}A` : "";
+      notices.push({
+        id: `${p.id}:recommended:${at}`,
+        proposalId: p.id,
+        title: "Ready for approval",
+        message: `"${p.title}" was recommended by the committee.${voteStr}`,
+        at,
+        kind: "assigned",
+      });
+      continue;
+    }
+
+    // Returned proposal that has been resubmitted — came back for re-review.
+    if (p.status === "submitted" && (p.approvals || []).some((a) => a.action === "returned")) {
+      notices.push({
+        id: `${p.id}:resubmitted:${at}`,
+        proposalId: p.id,
+        title: "Resubmitted after return",
+        message: `"${p.title}" was revised and resubmitted.`,
+        at,
+        kind: "returned",
+      });
+    }
+  }
+
+  return notices
+    .sort((a, b) => (b.at || "").localeCompare(a.at || ""))
+    .slice(0, 12);
+}
+
+// ── Engineer notices ─────────────────────────────────────────────────────────
 const DISMISSED_NOTICES_KEY = "infatrack_eng_dismissed_notices";
 
 function loadDismissedNoticeIds(): string[] {
   try {
     const raw = localStorage.getItem(DISMISSED_NOTICES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+// ── MPDC notices ─────────────────────────────────────────────────────────────
+const MPDC_DISMISSED_NOTICES_KEY = "infatrack_mpdc_dismissed_notices";
+
+function loadMpdcDismissedNoticeIds(): string[] {
+  try {
+    const raw = localStorage.getItem(MPDC_DISMISSED_NOTICES_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     return Array.isArray(parsed) ? parsed.map(String) : [];
@@ -423,7 +526,7 @@ export default function App() {
 
   const [currentSession, setCurrentSession] = useState<SessionUser | null>(null);
   const currentRole = currentSession?.role ?? null;
-  const [screen, setScreen] = useState<"landing" | "login" | "app" | "inventory" | "planning" | "documents" | "analytics" | "engagement" | "citizen">("landing");
+  const [screen, setScreen] = useState<"landing" | "login" | "app" | "inventory" | "planning" | "documents" | "analytics" | "engagement" | "citizen" | "audit">("landing");
   const roleConfig = currentRole ? ROLE_CONFIGS[currentRole] : null;
   /** Keep Cesium alive briefly after leaving the map so logout/home doesn't white-screen on WebGL teardown. */
   const [mapHold, setMapHold] = useState(false);
@@ -439,11 +542,14 @@ export default function App() {
     seedAccounts().catch((err) => console.warn("[Auth] Seed accounts failed:", err));
 
     if (cookieConsent === "accepted") {
-      const saved = getSessionFromCookie();
-      if (saved) {
-        setCurrentSession(saved);
-        setScreen("app");
-      }
+      restoreSession()
+        .then((saved) => {
+          if (!saved) return;
+          setAuditActor(saved);
+          setCurrentSession(saved);
+          setScreen(saved.role === "Barangay Official" ? "planning" : "app");
+        })
+        .catch((err) => console.warn("[Auth] restore session failed:", err));
     }
   }, []);
 
@@ -464,13 +570,14 @@ export default function App() {
     saveMapSettings(mapSettings);
   }, [mapSettings]);
   const [solarHour, setSolarHour] = useState(() => getCurrentSolarHour());
+  const [solarFollowPht, setSolarFollowPht] = useState(true);
   const [sunAzimuthDeg, setSunAzimuthDeg] = useState(() => {
-    const date = dateFromSolarHour(getCurrentSolarHour());
+    const date = dateFromDisplaySolarHour(getCurrentSolarHour());
     const pos = getSunPosition(LUISIANA_CENTER.lat, LUISIANA_CENTER.lon, date);
     return bearingDegFromSunCalcAzimuth(pos.azimuthRad);
   });
   const sunLighting = useMemo(() => {
-    const date = dateFromSolarHour(solarHour);
+    const date = dateFromDisplaySolarHour(solarHour);
     const astro = getSunPosition(LUISIANA_CENTER.lat, LUISIANA_CENTER.lon, date);
     const pos = sunPositionWithBearing(astro.altitudeRad, sunAzimuthDeg);
     const [dx, dy, dz] = sunDirectionFromPosition(pos);
@@ -488,11 +595,45 @@ export default function App() {
     };
   }, [solarHour, sunAzimuthDeg]);
 
-  const setSolarHourAndSyncAzimuth = (hour: number) => {
+  const setSolarHourAndSyncAzimuth = (hour: number, followPht = false) => {
+    setSolarFollowPht(followPht);
     setSolarHour(hour);
-    const date = dateFromSolarHour(hour);
+    const date = dateFromDisplaySolarHour(hour);
     const pos = getSunPosition(LUISIANA_CENTER.lat, LUISIANA_CENTER.lon, date);
     setSunAzimuthDeg(bearingDegFromSunCalcAzimuth(pos.azimuthRad));
+  };
+
+  const syncSolarToPht = () => {
+    setSolarHourAndSyncAzimuth(getCurrentSolarHour(), true);
+  };
+
+  useEffect(() => {
+    if (!solarFollowPht) return;
+    const tick = () => setSolarHourAndSyncAzimuth(getCurrentSolarHour(), true);
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [solarFollowPht]);
+
+  const solarOffPht = !solarFollowPht;
+
+  /** Keep Cesium camera still while Sun/Time overlay is being dragged. */
+  const setCesiumCameraInputs = (enabled: boolean) => {
+    cesiumMapRef.current?.setCameraInputsEnabled(enabled);
+  };
+
+  const stopMapPointer = (e: SyntheticEvent) => {
+    e.stopPropagation();
+  };
+
+  const freezeCameraOnPointerDown = (e: PointerEvent | MouseEvent) => {
+    e.stopPropagation();
+    setCesiumCameraInputs(false);
+  };
+
+  const unfreezeCameraOnPointerUp = (e: SyntheticEvent) => {
+    e.stopPropagation();
+    setCesiumCameraInputs(true);
   };
 
   // Drive MapLibre basemap light + hillshade + night veil from SunCalc
@@ -517,6 +658,11 @@ export default function App() {
   const [heatPoints, setHeatPoints] = useState<HeatPoint[]>([]);
   const [riskZones, setRiskZones] = useState<RiskZones | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [infraFilter, setInfraFilter] = useState<InfraFilter>(DEFAULT_INFRA_FILTER);
+  const filteredProjects = useMemo(
+    () => filterInfrastructure(Array.isArray(projects) ? projects : [], infraFilter),
+    [projects, infraFilter],
+  );
   const [placementMode, setPlacementMode] = useState(false);
   const [blockRemoverMode, setBlockRemoverMode] = useState(false);
   const [editMode, setEditMode] = useState(false);
@@ -540,15 +686,22 @@ export default function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
     typeof window !== "undefined" && window.matchMedia("(max-width: 1024px)").matches
   );
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [compactChrome, setCompactChrome] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(max-width: 768px)").matches,
+  );
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [planningNotices, setPlanningNotices] = useState<PanelNotice[]>([]);
   const [dismissedNoticeIds, setDismissedNoticeIds] = useState<string[]>(() => loadDismissedNoticeIds());
+  const [mpdcNotices, setMpdcNotices] = useState<PanelNotice[]>([]);
+  const [mpdcDismissedIds, setMpdcDismissedIds] = useState<string[]>(() => loadMpdcDismissedNoticeIds());
   const refreshPlanningNoticesRef = useRef<() => void>(() => {});
 
   // Set default tab based on role permissions
   useEffect(() => {
     if (roleConfig) {
       if (currentRole === "Engineer") setSidebarTab("notify");
+      else if (currentRole === "MPDC") setSidebarTab("notify");
       else if (roleConfig.canSeeWeather || roleConfig.canSeeLayers) setSidebarTab("climate");
       else if (roleConfig.canSeeRisk) setSidebarTab("risk");
       else if (roleConfig.canSeeProjects) setSidebarTab("projects");
@@ -573,12 +726,22 @@ export default function App() {
   // Collapse side panel by default on tablet/phone; full map first
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 1024px)");
+    const phone = window.matchMedia("(max-width: 768px)");
     const onChange = (e: MediaQueryListEvent) => {
       if (e.matches) setSidebarCollapsed(true);
     };
+    const onPhone = (e: MediaQueryListEvent) => {
+      setCompactChrome(e.matches);
+      if (!e.matches) setMoreMenuOpen(false);
+    };
     if (mq.matches) setSidebarCollapsed(true);
+    setCompactChrome(phone.matches);
     mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
+    phone.addEventListener("change", onPhone);
+    return () => {
+      mq.removeEventListener("change", onChange);
+      phone.removeEventListener("change", onPhone);
+    };
   }, []);
 
   // Overlay panel: keep the map canvas size fixed and ease camera padding so
@@ -651,19 +814,20 @@ export default function App() {
   const [glbModelsOpacity, setGlbModelsOpacity] = useState(1);
   const [gibsStatus, setGibsStatus] = useState<"loading" | "ok" | "unavailable">("loading");
 
-  // NASA EONET Natural Events
-  const [eonetEvents, setEonetEvents] = useState<EONETEvent[]>([]);
-  const [eonetEnabled, setEonetEnabled] = useState(false);
-  const [eonetLoading, setEonetLoading] = useState(false);
-  const [eonetCategories, setEonetCategories] = useState<string[]>(["wildfires", "severeStorms", "volcanoes", "earthquakes", "floods"]);
-  const [eonetRadius, setEonetRadius] = useState(1000); // km radius from Luisiana
-
-  // Tropical systems (Invest / TC / LPA-watch via RAMMB)
   const [tropicalEnabled, setTropicalEnabled] = useState(false);
   const [tropicalSystems, setTropicalSystems] = useState<TropicalSystem[]>([]);
   const [tropicalLoading, setTropicalLoading] = useState(false);
   const [tropicalDisclaimer, setTropicalDisclaimer] = useState("");
   const [tropicalError, setTropicalError] = useState<string | null>(null);
+
+  const [quakeModelEnabled, setQuakeModelEnabled] = useState(false);
+  const [quakeStatus, setQuakeStatus] = useState<EarthquakeTrainStatus>({
+    state: "idle",
+    message: "Off",
+    samples: 0,
+    accuracy: null,
+  });
+  const [quakeGrid, setQuakeGrid] = useState<EarthquakeGridCell[]>([]);
 
   // Google Street View mode — when active, clicking the map opens GSV in a new tab
   const [streetViewMode, setStreetViewMode] = useState(false);
@@ -673,10 +837,13 @@ export default function App() {
   // Keyboard shortcuts: +/- zoom, N = reset north, H = fly home
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const m = mapRef.current;
-      if (!m) return;
       // Don't fire when typing in an input
       if ((e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "TEXTAREA") return;
+      if (e.key === "h" || e.key === "H") {
+        cesiumMapRef.current?.flyHome();
+      }
+      const m = mapRef.current;
+      if (!m) return;
       if (e.key === "=" || e.key === "+") m.zoomIn({ duration: 300 });
       if (e.key === "-" || e.key === "_") m.zoomOut({ duration: 300 });
       if (e.key === "n" || e.key === "N") m.easeTo({ bearing: 0, pitch: 75, duration: 500 });
@@ -686,44 +853,6 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [toggles.satellite]);
 
-  // Fetch NASA EONET natural events
-  useEffect(() => {
-    if (!eonetEnabled) return;
-
-    const fetchEvents = async () => {
-      setEonetLoading(true);
-      try {
-        const response = await fetchEONETEvents({
-          status: "open",
-          limit: 500,
-          days: 30,
-        });
-
-        // Filter events by region (within radius of Luisiana)
-        const filtered = filterEventsByRegion(response.events, [121.5167, 14.1856], eonetRadius);
-        
-        // Further filter by selected categories
-        const categoryFiltered = filtered.filter(event =>
-          event.categories.some(cat => eonetCategories.includes(cat.id))
-        );
-
-        setEonetEvents(categoryFiltered);
-      } catch (error) {
-        console.error("Failed to fetch EONET events:", error);
-        setEonetEvents([]);
-      } finally {
-        setEonetLoading(false);
-      }
-    };
-
-    fetchEvents();
-    
-    // Refresh every 30 minutes
-    const interval = setInterval(fetchEvents, 30 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [eonetEnabled, eonetCategories, eonetRadius]);
-
-  // Fetch West Pacific tropical systems (Invest / TC / LPA-watch)
   useEffect(() => {
     if (!tropicalEnabled) return;
 
@@ -747,6 +876,29 @@ export default function App() {
     const interval = setInterval(loadTropical, 20 * 60 * 1000);
     return () => clearInterval(interval);
   }, [tropicalEnabled]);
+
+  useEffect(() => {
+    if (!quakeModelEnabled) {
+      setQuakeGrid([]);
+      setQuakeStatus({ state: "idle", message: "Off", samples: 0, accuracy: null });
+      return;
+    }
+    let cancelled = false;
+    void earthquakeProneModel
+      .ensureReady(setQuakeStatus)
+      .then(() => earthquakeProneModel.buildMapLayer())
+      .then((cells) => {
+        if (cancelled) return;
+        setQuakeGrid(cells);
+        setQuakeStatus({ ...earthquakeProneModel.status });
+      })
+      .catch((err) => {
+        console.error("Earthquake model failed:", err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [quakeModelEnabled]);
 
   const topRisk = useMemo(() => {
     const feats = riskZones?.features || [];
@@ -1658,10 +1810,12 @@ export default function App() {
     };
   }, []);
 
-  // Engineer Live Situation notifications (planning / botohan)
+  // Engineer + MPDC Live Situation notifications (planning / botohan)
   useEffect(() => {
-    if (currentRole !== "Engineer" || !currentSession) {
+    const isStaff = currentRole === "Engineer" || currentRole === "MPDC";
+    if (!isStaff || !currentSession) {
       setPlanningNotices([]);
+      setMpdcNotices([]);
       refreshPlanningNoticesRef.current = () => {};
       return;
     }
@@ -1671,10 +1825,17 @@ export default function App() {
       try {
         const list = await fetchProposalsOnce();
         if (cancelled) return;
-        setPlanningNotices(buildEngineerPlanningNotices(list, currentSession));
+        if (currentRole === "Engineer") {
+          setPlanningNotices(buildEngineerPlanningNotices(list, currentSession));
+        } else {
+          setMpdcNotices(buildMpdcPlanningNotices(list, currentSession));
+        }
       } catch (err) {
         console.warn("[Notices] Failed to load planning notifications:", err);
-        if (!cancelled) setPlanningNotices([]);
+        if (!cancelled) {
+          setPlanningNotices([]);
+          setMpdcNotices([]);
+        }
       }
     };
 
@@ -1717,6 +1878,38 @@ export default function App() {
       const next = [...new Set([...prev, ...activePlanningNotices.map((n) => n.id)])].slice(-80);
       try {
         localStorage.setItem(DISMISSED_NOTICES_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }
+
+  // MPDC notice derived state + dismiss helpers (parallel to Engineer above)
+  const activeMpdcNotices = useMemo(
+    () => mpdcNotices.filter((n) => !mpdcDismissedIds.includes(n.id)),
+    [mpdcNotices, mpdcDismissedIds],
+  );
+  const mpdcUnreadCount = activeMpdcNotices.length;
+
+  function dismissMpdcNotice(id: string) {
+    setMpdcDismissedIds((prev) => {
+      if (prev.includes(id)) return prev;
+      const next = [...prev, id].slice(-80);
+      try {
+        localStorage.setItem(MPDC_DISMISSED_NOTICES_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore quota */
+      }
+      return next;
+    });
+  }
+
+  function dismissAllMpdcNotices() {
+    setMpdcDismissedIds((prev) => {
+      const next = [...new Set([...prev, ...activeMpdcNotices.map((n) => n.id)])].slice(-80);
+      try {
+        localStorage.setItem(MPDC_DISMISSED_NOTICES_KEY, JSON.stringify(next));
       } catch {
         /* ignore */
       }
@@ -2082,7 +2275,8 @@ export default function App() {
     screen === "documents" ||
     screen === "analytics" ||
     screen === "inventory" ||
-    screen === "engagement";
+    screen === "engagement" ||
+    screen === "audit";
   /**
    * Once the globe has been created, never tear it down in-SPA.
    * Deferred Cesium destroy after logout painted Landing then white-screened.
@@ -2096,9 +2290,11 @@ export default function App() {
   }, [screen, staffOverlay]);
 
   function goHome() {
-    clearSessionCookie();
+    const leaving = currentSession;
+    setAuditActor(null);
     setCurrentSession(null);
     setScreen("landing");
+    void logoutUser(leaving);
   }
 
   const showCitizenShell = screen === "citizen" || citizenHold;
@@ -2125,8 +2321,9 @@ export default function App() {
       {screen === "login" && (
         <LoginScreen
           onLogin={(session) => {
+            setAuditActor(session);
             setCurrentSession(session);
-            setScreen("app");
+            setScreen(session.role === "Barangay Official" ? "planning" : "app");
           }}
           onBack={() => setScreen("landing")}
         />
@@ -2166,11 +2363,15 @@ export default function App() {
         />
       )}
 
-      {screen === "documents" && currentRole !== "Viewer" && (
+      {screen === "documents" && isMunicipalStaff(currentRole) && (
         <DocumentsPage onBack={() => setScreen("app")} session={currentSession} />
       )}
 
-      {screen === "analytics" && currentRole !== "Viewer" && (
+      {screen === "audit" && isMunicipalStaff(currentRole) && (
+        <AuditPage onBack={() => setScreen("app")} />
+      )}
+
+      {screen === "analytics" && isMunicipalStaff(currentRole) && (
         <AnalyticsPage onBack={() => setScreen("app")} projects={Array.isArray(projects) ? projects : []} />
       )}
 
@@ -2209,22 +2410,30 @@ export default function App() {
             gsh2014: toggles.hazardGsh2014,
           }}
           mapSettings={mapSettings}
-          eonetEnabled={eonetEnabled}
-          eonetEvents={eonetEvents}
           tropicalEnabled={tropicalEnabled}
           tropicalSystems={tropicalSystems}
-          projects={Array.isArray(projects) ? projects : []}
+          earthquakeEnabled={quakeModelEnabled}
+          earthquakeGrid={quakeGrid}
+          projects={filteredProjects}
+          clusteringEnabled={infraFilter.clustering}
           visible
           placementMode={
             (placementMode && currentRole === "Engineer") ||
             (placementMode && currentRole === "MPDC" && Boolean(pinProposal))
           }
+          editMode={editMode && currentRole === "Engineer"}
           placementTool={placementTool}
           placementColor={placementColor}
           onPlaceClick={openPlacementAt}
           onPlaceSketch={handlePlaceSketch}
-          readOnly={currentRole === "Viewer"}
-          canManipulateModels={currentRole === "Engineer"}
+          readOnly={currentRole === "Viewer" || isBarangayOfficial(currentRole)}
+          canManipulateModels={currentRole === "Engineer" || currentRole === "MPDC"}
+          canPromoteSitePin={currentRole === "Engineer"}
+          onProjectPatch={(projectId, patch) => {
+            setProjects((prev) =>
+              prev.map((p) => (p.id === projectId ? { ...p, ...patch } : p)),
+            );
+          }}
           canAddPhotos={currentRole === "MPDC" || currentRole === "Engineer"}
           onPhotosChange={(projectId, photos) => {
             setProjects((prev) =>
@@ -2301,28 +2510,7 @@ export default function App() {
         )}
 
         {placementToolbarOpen ? (
-          <div
-            className="placement-draw-toolbar"
-            style={{
-              position: "absolute",
-              top: 70,
-              left: "50%",
-              transform: "translateX(-50%)",
-              zIndex: 12,
-              background: "var(--cream)",
-              color: "var(--ink)",
-              padding: "10px 12px",
-              border: "2px solid var(--ink)",
-              boxShadow: "4px 4px 0 var(--shadow-accent)",
-              fontSize: 12,
-              fontFamily: '"Chakra Petch", sans-serif',
-              display: "flex",
-              flexDirection: "column",
-              gap: 8,
-              maxWidth: "min(560px, calc(100vw - 24px))",
-              minWidth: "min(320px, calc(100vw - 24px))",
-            }}
-          >
+          <div className="placement-draw-toolbar">
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <span style={{ lineHeight: 1.35, flex: 1, minWidth: 140 }}>
                 {pinProposal ? (
@@ -2573,7 +2761,7 @@ export default function App() {
           </div>
         ) : null}
 
-        <div className="topBar">
+        <div className={`topBar${moreMenuOpen ? " is-nav-open" : ""}`}>
           <div className="topBar-brand">
             <div className="topBar-brand-text">
               <div className="brand">
@@ -2581,6 +2769,12 @@ export default function App() {
               </div>
               <div className="sub">Real-Time GIS Infrastructure & Disaster Monitoring</div>
             </div>
+            <span
+              className="topBar-live-dot"
+              title={connected ? "Live" : "Offline"}
+              aria-label={connected ? "Live connection" : "Offline"}
+              style={{ background: connected ? "var(--accent)" : "rgba(255,77,79,0.9)" }}
+            />
           </div>
           <div className="topBar-toolbar">
             {roleConfig && (
@@ -2601,6 +2795,7 @@ export default function App() {
             <div className="chip chip-updates topBar-hide-mobile">Updates: 5s</div>
           </div>
           <div className="topBar-actions-primary">
+            <nav id="topBar-nav" className={`topBar-nav${moreMenuOpen ? " is-open" : ""}`} aria-label="App sections">
             {roleConfig?.canSeePlanning && currentRole !== "Viewer" && (
               <button
                 type="button"
@@ -2609,18 +2804,25 @@ export default function App() {
                   background: "linear-gradient(135deg, rgba(36,92,58,0.22), rgba(61,155,95,0.18))",
                   borderColor: "rgba(36,92,58,0.45)",
                 }}
-                onClick={() => setScreen("planning")}
+                onClick={() => {
+                  setMoreMenuOpen(false);
+                  setScreen("planning");
+                }}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
                   <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
                   <rect x="8" y="2" width="8" height="4" rx="1" />
                   <path d="M9 12h6M9 16h4" />
                 </svg>
-                <span className="topBar-exit-full">Planning</span>
-                <span className="topBar-exit-short">Plan</span>
+                <span className="topBar-exit-full">
+                  {isBarangayOfficial(currentRole) ? "Requests" : "Planning"}
+                </span>
+                <span className="topBar-exit-short">
+                  {isBarangayOfficial(currentRole) ? "Req" : "Plan"}
+                </span>
               </button>
             )}
-            {currentRole && currentRole !== "Viewer" && (
+            {isMunicipalStaff(currentRole) && (
               <button
                 type="button"
                 className="topBar-exit"
@@ -2628,7 +2830,10 @@ export default function App() {
                   background: "linear-gradient(135deg, rgba(120,90,40,0.2), rgba(180,140,60,0.15))",
                   borderColor: "rgba(140,110,50,0.45)",
                 }}
-                onClick={() => setScreen("documents")}
+                onClick={() => {
+                  setMoreMenuOpen(false);
+                  setScreen("documents");
+                }}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -2641,7 +2846,7 @@ export default function App() {
                 <span className="topBar-exit-short">Docs</span>
               </button>
             )}
-            {currentRole && currentRole !== "Viewer" && (
+            {isMunicipalStaff(currentRole) && (
               <button
                 type="button"
                 className="topBar-exit"
@@ -2649,7 +2854,10 @@ export default function App() {
                   background: "linear-gradient(135deg, rgba(36,92,58,0.18), rgba(108,142,191,0.2))",
                   borderColor: "rgba(60,100,80,0.45)",
                 }}
-                onClick={() => setScreen("analytics")}
+                onClick={() => {
+                  setMoreMenuOpen(false);
+                  setScreen("analytics");
+                }}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
                   <line x1="18" y1="20" x2="18" y2="10" />
@@ -2668,7 +2876,10 @@ export default function App() {
                   background: "linear-gradient(135deg, rgba(36,92,58,0.2), rgba(212,160,23,0.18))",
                   borderColor: "rgba(36,92,58,0.45)",
                 }}
-                onClick={() => setScreen("engagement")}
+                onClick={() => {
+                  setMoreMenuOpen(false);
+                  setScreen("engagement");
+                }}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
                   <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
@@ -2677,19 +2888,21 @@ export default function App() {
                 <span className="topBar-exit-short">Engage</span>
               </button>
             )}
-            {currentRole !== "Negosyo Center" && currentRole !== "Viewer" && (
+            {isMunicipalStaff(currentRole) && currentRole !== "Negosyo Center" && (
               <button
                 type="button"
                 className="topBar-exit"
                 style={{ background: "linear-gradient(135deg, rgba(59,130,246,0.2), rgba(139,92,246,0.2))", borderColor: "rgba(59,130,246,0.4)" }}
-                onClick={() => setScreen("inventory")}
+                onClick={() => {
+                  setMoreMenuOpen(false);
+                  setScreen("inventory");
+                }}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}><rect x="2" y="4" width="20" height="5" rx="1"/><path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9"/><path d="M10 13h4"/></svg>
                 <span className="topBar-exit-full">Inventory</span>
                 <span className="topBar-exit-short">Inv</span>
               </button>
             )}
-            <ThemeToggle iconOnly />
             {currentRole === "Viewer" && (
               <button
                 type="button"
@@ -2698,7 +2911,10 @@ export default function App() {
                   background: "linear-gradient(135deg, rgba(36,92,58,0.2), rgba(212,160,23,0.18))",
                   borderColor: "rgba(36,92,58,0.45)",
                 }}
-                onClick={() => setScreen("citizen")}
+                onClick={() => {
+                  setMoreMenuOpen(false);
+                  setScreen("citizen");
+                }}
               >
                 <span className="topBar-exit-full">Portal</span>
                 <span className="topBar-exit-short">Portal</span>
@@ -2709,6 +2925,7 @@ export default function App() {
                 type="button"
                 className="topBar-exit"
                 onClick={() => {
+                  setMoreMenuOpen(false);
                   goHome();
                 }}
               >
@@ -2716,11 +2933,69 @@ export default function App() {
                 <span className="topBar-exit-short">{currentRole === "Viewer" ? "Exit" : "Out"}</span>
               </button>
             )}
+            </nav>
+            {isMunicipalStaff(currentRole) && (
+              <button
+                type="button"
+                className="topBar-exit topBar-audit-btn"
+                title="Activity log and audit trail"
+                onClick={() => {
+                  setMoreMenuOpen(false);
+                  setScreen("audit");
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M12 8v4l2.5 1.5" />
+                  <circle cx="12" cy="12" r="9" />
+                </svg>
+                <span className="topBar-exit-full">Activity</span>
+                <span className="topBar-exit-short">Log</span>
+              </button>
+            )}
+            <ThemeToggle iconOnly />
+            <button
+              type="button"
+              className="topBar-moreBtn"
+              aria-expanded={moreMenuOpen}
+              aria-controls="topBar-nav"
+              onClick={() => setMoreMenuOpen((v) => !v)}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
+                {moreMenuOpen ? (
+                  <path d="M18 6L6 18M6 6l12 12" />
+                ) : (
+                  <>
+                    <line x1="4" y1="7" x2="20" y2="7" />
+                    <line x1="4" y1="12" x2="20" y2="12" />
+                    <line x1="4" y1="17" x2="20" y2="17" />
+                  </>
+                )}
+              </svg>
+              <span>{moreMenuOpen ? "Close" : "Menu"}</span>
+            </button>
           </div>
         </div>
+        {moreMenuOpen && (
+          <button
+            type="button"
+            className="topBar-nav-backdrop"
+            aria-label="Close menu"
+            onClick={() => setMoreMenuOpen(false)}
+          />
+        )}
 
-        {/* Sun bearing dial + time — one control for Cesium light/shadows */}
-        <div className="solar-map-controls" title="Sun bearing & time (Luisiana)">
+        {/* Sun bearing dial + time — isolated from Cesium canvas mouse drag */}
+        <div
+          className="solar-map-controls"
+          title="Sun bearing & time (Luisiana)"
+          onPointerDown={stopMapPointer}
+          onMouseDown={stopMapPointer}
+          onWheel={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+          }}
+          onContextMenu={stopMapPointer}
+        >
           <div className="solar-azimuth-wrap">
             <div className="solar-map-slider-label">
               <span>Sun</span>
@@ -2729,7 +3004,12 @@ export default function App() {
                 {!sunLighting.isDaylight ? " · night" : ""}
               </span>
             </div>
-            <SunAzimuthDial value={sunAzimuthDeg} onChange={setSunAzimuthDeg} size={108} />
+            <SunAzimuthDial
+              value={sunAzimuthDeg}
+              onChange={setSunAzimuthDeg}
+              size={compactChrome ? 76 : 108}
+              onDragStateChange={(dragging) => setCesiumCameraInputs(!dragging)}
+            />
             <div className="solar-azimuth-time">
               <div className="solar-map-slider-label">
                 <span>Time</span>
@@ -2739,17 +3019,84 @@ export default function App() {
                 type="range"
                 min={0}
                 max={24}
-                step={0.25}
+                step={1 / 3600}
                 value={solarHour}
                 aria-label="Solar time of day"
                 onChange={(e) => setSolarHourAndSyncAzimuth(Number(e.target.value))}
+                onPointerDown={freezeCameraOnPointerDown}
+                onPointerUp={unfreezeCameraOnPointerUp}
+                onPointerCancel={unfreezeCameraOnPointerUp}
+                onMouseUp={unfreezeCameraOnPointerUp}
               />
+              <button
+                type="button"
+                className={`solar-sync-pht${solarOffPht ? " is-active" : ""}`}
+                onClick={syncSolarToPht}
+                title="Reset sun time to the current hour in Asia/Manila"
+              >
+                Sync to PHT
+              </button>
             </div>
           </div>
         </div>
 
+        {currentRole === "Engineer" && (
+          <div
+            className={`map-edit-mode${editMode ? " is-on" : ""}`}
+            onPointerDown={stopMapPointer}
+            onMouseDown={stopMapPointer}
+          >
+            <button
+              type="button"
+              className="map-edit-mode-btn"
+              aria-pressed={editMode}
+              title={editMode ? "Turn off Edit Mode" : "Move an existing 3D model"}
+              onClick={() => {
+                setEditMode((v) => {
+                  const next = !v;
+                  if (next) {
+                    setSnapToRoad(true);
+                    setPlacementMode(false);
+                    setBlockRemoverMode(false);
+                  }
+                  return next;
+                });
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M5 9l-3 3 3 3" />
+                <path d="M9 5l3-3 3 3" />
+                <path d="M19 9l3 3-3 3" />
+                <path d="M9 19l3 3 3-3" />
+                <path d="M2 12h20" />
+                <path d="M12 2v20" />
+              </svg>
+              <span>{editMode ? "Editing" : "Edit models"}</span>
+            </button>
+            {editMode && (
+              <>
+                <span className="map-edit-mode-hint">Click a building to move it</span>
+                <button
+                  type="button"
+                  className="map-edit-mode-done"
+                  onClick={() => setEditMode(false)}
+                >
+                  Done
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
         {/* ── Map Controls ── */}
-        <div className="map-controls">
+        <div
+          className="map-controls"
+          onPointerDown={stopMapPointer}
+          onMouseDown={stopMapPointer}
+          onWheel={(e) => {
+            e.stopPropagation();
+          }}
+        >
           <button className="map-ctrl-btn" title="Zoom In (=)" type="button" onClick={() => cesiumMapRef.current?.zoomIn()}>+</button>
           <button className="map-ctrl-btn" title="Zoom Out (-)" type="button" onClick={() => cesiumMapRef.current?.zoomOut()}>−</button>
           <div className="map-ctrl-divider" />
@@ -2802,10 +3149,20 @@ export default function App() {
 
       </div>
 
+      {!sidebarCollapsed && (
+        <button
+          type="button"
+          className="sidePanel-backdrop"
+          aria-label="Close live situation panel"
+          onClick={() => setSidebarCollapsed(true)}
+        />
+      )}
       <button
         type="button"
         className={`sidePanel-edgeToggle${sidebarCollapsed ? " is-collapsed" : ""}${
           currentRole === "Engineer" && noticeUnreadCount > 0 ? " has-badge" : ""
+        }${
+          currentRole === "MPDC" && mpdcUnreadCount > 0 ? " has-badge" : ""
         }`}
         aria-label={sidebarCollapsed ? "Expand side panel" : "Collapse side panel"}
         title={
@@ -2825,6 +3182,9 @@ export default function App() {
         {currentRole === "Engineer" && noticeUnreadCount > 0 && (
           <span className="sidePanel-edgeBadge" aria-hidden>{noticeUnreadCount > 9 ? "9+" : noticeUnreadCount}</span>
         )}
+        {currentRole === "MPDC" && mpdcUnreadCount > 0 && (
+          <span className="sidePanel-edgeBadge" aria-hidden>{mpdcUnreadCount > 9 ? "9+" : mpdcUnreadCount}</span>
+        )}
       </button>
 
       <aside className={`sidePanel${sidebarCollapsed ? " is-collapsed" : ""}`} aria-hidden={sidebarCollapsed}>
@@ -2834,6 +3194,11 @@ export default function App() {
             {currentRole === "Engineer" && noticeUnreadCount > 0 && (
               <span className="sidePanel-titleBadge" aria-label={`${noticeUnreadCount} notifications`}>
                 {noticeUnreadCount}
+              </span>
+            )}
+            {currentRole === "MPDC" && mpdcUnreadCount > 0 && (
+              <span className="sidePanel-titleBadge" aria-label={`${mpdcUnreadCount} notifications`}>
+                {mpdcUnreadCount}
               </span>
             )}
           </div>
@@ -2861,6 +3226,18 @@ export default function App() {
               Notify
               {noticeUnreadCount > 0 && (
                 <span className="sidebar-tab-badge">{noticeUnreadCount > 9 ? "9+" : noticeUnreadCount}</span>
+              )}
+            </button>
+          )}
+          {currentRole === "MPDC" && (
+            <button
+              type="button"
+              className={`sidebar-tab${sidebarTab === "notify" ? " active" : ""}`}
+              onClick={() => setSidebarTab("notify")}
+            >
+              Notify
+              {mpdcUnreadCount > 0 && (
+                <span className="sidebar-tab-badge">{mpdcUnreadCount > 9 ? "9+" : mpdcUnreadCount}</span>
               )}
             </button>
           )}
@@ -2985,6 +3362,98 @@ export default function App() {
           </div>
         )}
 
+        {/* ── MPDC: Notifications ── */}
+        {sidebarTab === "notify" && currentRole === "MPDC" && (
+          <div style={{ marginBottom: 12 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+                marginBottom: 8,
+              }}
+            >
+              <div className="sectionTitle" style={{ margin: 0 }}>
+                Notifications
+              </div>
+              {activeMpdcNotices.length > 0 && (
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  style={{ fontSize: 11, padding: "4px 8px" }}
+                  onClick={dismissAllMpdcNotices}
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
+            <p style={{ margin: "0 0 10px", fontSize: 12, color: "var(--muted)", lineHeight: 1.45 }}>
+              Planning items requiring MPDC action — submissions, recommendations, and open botohan. Live updates.
+            </p>
+            {activeMpdcNotices.length ? (
+              <div className="miniList">
+                {activeMpdcNotices.map((n) => (
+                  <div
+                    key={n.id}
+                    className={`alert notice-card notice-${n.kind}`}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => {
+                      dismissMpdcNotice(n.id);
+                      setScreen("planning");
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        dismissMpdcNotice(n.id);
+                        setScreen("planning");
+                      }
+                    }}
+                  >
+                    <div className="t">{n.title}</div>
+                    <div className="m">{n.message}</div>
+                    <div className="meta">
+                      Updated {formatAgo(n.at)} · Open Planning
+                      <button
+                        type="button"
+                        className="notice-dismiss"
+                        aria-label="Dismiss notification"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          dismissMpdcNotice(n.id);
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="card" style={{ color: "var(--muted)", fontSize: 13 }}>
+                No open notifications. New submissions, committee recommendations, and botohan items will appear here.
+              </div>
+            )}
+            {roleConfig?.canSeeAlerts && alerts.length > 0 && (
+              <>
+                <div className="sectionTitle" style={{ marginTop: 16, marginBottom: 8 }}>
+                  Risk alerts
+                </div>
+                <div className="miniList">
+                  {alerts.slice(0, 3).map((a) => (
+                    <div key={a.id} className="alert">
+                      <div className="t">{a.title}</div>
+                      <div className="m">{a.message}</div>
+                      <div className="meta">Triggered: {formatAgo(a.triggeredAt)}</div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
         {/* ── Negosyo Center: Business Permit Panel ── */}
         {roleConfig?.canSeeBusinessPermits && (
           <div className="card" style={{ marginBottom: 12 }}>
@@ -3041,7 +3510,7 @@ export default function App() {
             Layers (LGU-Friendly Toggles)
           </div>
           <div className="hint" style={{ marginBottom: 10 }}>
-            3D tilt uses Map Settings draw distance around Luisiana — zoom out anytime for the full globe.
+            3D tilt uses Map Settings draw distance (fog) — the globe stays continuous, never a clipped square.
           </div>
 
           <div className="sectionTitle" style={{ marginBottom: 8, marginTop: 4, fontSize: 13 }}>
@@ -3215,7 +3684,7 @@ export default function App() {
             </div>
           ))}
 
-          {currentRole !== "Viewer" && (
+          {isMunicipalStaff(currentRole) && (
             <div style={{ marginBottom: 10, paddingLeft: 2 }}>
               <button
                 type="button"
@@ -3266,7 +3735,12 @@ export default function App() {
               </span>
             </div>
             <div className="solar-layers-bearing">
-              <SunAzimuthDial value={sunAzimuthDeg} onChange={setSunAzimuthDeg} size={112} />
+              <SunAzimuthDial
+                value={sunAzimuthDeg}
+                onChange={setSunAzimuthDeg}
+                size={112}
+                onDragStateChange={(dragging) => setCesiumCameraInputs(!dragging)}
+              />
               <div className="solar-azimuth-time" style={{ flex: 1, minWidth: 0 }}>
                 <div className="solar-map-slider-label">
                   <span>Time</span>
@@ -3277,12 +3751,24 @@ export default function App() {
                   className="solar-hour-slider"
                   min={0}
                   max={24}
-                  step={0.25}
+                  step={1 / 3600}
                   value={solarHour}
                   aria-label="Time of day for solar lighting"
                   onChange={(e) => setSolarHourAndSyncAzimuth(Number(e.target.value))}
+                  onPointerDown={freezeCameraOnPointerDown}
+                  onPointerUp={unfreezeCameraOnPointerUp}
+                  onPointerCancel={unfreezeCameraOnPointerUp}
+                  onMouseUp={unfreezeCameraOnPointerUp}
                   style={{ width: "100%" }}
                 />
+                <button
+                  type="button"
+                  className={`solar-sync-pht${solarOffPht ? " is-active" : ""}`}
+                  onClick={syncSolarToPht}
+                  title="Reset sun time to the current hour in Asia/Manila"
+                >
+                  Sync to PHT
+                </button>
                 <div className="hint" style={{ marginTop: 6 }}>
                   Dial = bearing (shadows). Slider = sun height / time of day.
                 </div>
@@ -3474,6 +3960,61 @@ export default function App() {
           {activeHazardLegend && <HazardLegend hazard={activeHazardLegend} variant="panel" />}
         </div>
 
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div className="sectionTitle" style={{ marginBottom: 8 }}>
+            Earthquake-prone model
+          </div>
+          <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12, lineHeight: 1.5 }}>
+            Solid dots = PHIVOLCS EIL 2014. Extra HIGH/MODERATE = TensorFlow prediction from
+            terrain/satellite (turn Satellite on for live DEM).
+          </div>
+          <div className="toggleRow" style={{ marginBottom: 10 }}>
+            <div>
+              <label>Show earthquake-prone grid</label>
+              <div className="hint">2014 sheet stays; the model only adds guesses between those points</div>
+            </div>
+            <div
+              className={`switch ${quakeModelEnabled ? "on" : ""}`}
+              role="switch"
+              aria-checked={quakeModelEnabled}
+              onClick={() => setQuakeModelEnabled((v) => !v)}
+            />
+          </div>
+          {quakeModelEnabled && (
+            <div style={{ fontSize: 11, color: "var(--ink-soft)", lineHeight: 1.5 }}>
+              {quakeStatus.state === "loading" || quakeStatus.state === "training"
+                ? quakeStatus.message
+                : quakeStatus.state === "failed"
+                  ? `Failed: ${quakeStatus.message}`
+                  : quakeStatus.state === "ready"
+                    ? `Ready · ${quakeStatus.samples} labels${
+                        quakeStatus.accuracy != null
+                          ? ` · acc ${(quakeStatus.accuracy * 100).toFixed(0)}%`
+                          : ""
+                      }`
+                    : quakeStatus.message}
+              <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {(["SAFE", "LOW", "MODERATE", "HIGH"] as const).map((c) => (
+                  <span key={c} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                    <span
+                      style={{
+                        width: 10,
+                        height: 10,
+                        background: classColor(c),
+                        border: "1px solid var(--ink)",
+                      }}
+                    />
+                    {c}
+                  </span>
+                ))}
+              </div>
+              <div style={{ marginTop: 6, color: "var(--muted)" }}>
+                Click a cell for class. Pin a site to see {classAdvice("HIGH")} vs {classAdvice("SAFE")}.
+              </div>
+            </div>
+          )}
+        </div>
+
         {roleConfig?.canSeeAlerts && <>
         <div style={{ marginBottom: 8 }} className="sectionTitle">
           Real-Time Alerts
@@ -3504,6 +4045,106 @@ export default function App() {
         {/* ── Projects Tab ── */}
         {sidebarTab === "projects" && (
           <>
+        <div className="card infra-filter">
+          <div className="sectionTitle" style={{ marginBottom: 10 }}>
+            Filter &amp; cluster
+          </div>
+          <div className="infra-filter-count">
+            Showing <strong>{filteredProjects.length}</strong> of {projects.length} sites
+          </div>
+          <input
+            className="infra-filter-search"
+            type="search"
+            placeholder="Search name, barangay, type…"
+            value={infraFilter.query}
+            onChange={(e) => setInfraFilter((f) => ({ ...f, query: e.target.value }))}
+          />
+          <div className="infra-filter-label">Status</div>
+          <div className="infra-filter-chips">
+            {INFRA_STATUSES.map((s) => (
+              <button
+                key={s}
+                type="button"
+                className={`infra-chip${infraFilter.statuses.includes(s) ? " is-on" : ""}`}
+                style={
+                  infraFilter.statuses.includes(s)
+                    ? { borderColor: PROJECT_STATUS_COLORS[s], color: PROJECT_STATUS_COLORS[s] }
+                    : undefined
+                }
+                onClick={() =>
+                  setInfraFilter((f) => ({ ...f, statuses: toggleListValue(f.statuses, s) }))
+                }
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+          <div className="infra-filter-label">Type</div>
+          <div className="infra-filter-chips">
+            {INFRA_CATEGORIES.map((c) => (
+              <button
+                key={c}
+                type="button"
+                className={`infra-chip${infraFilter.categories.includes(c) ? " is-on" : ""}`}
+                onClick={() =>
+                  setInfraFilter((f) => ({ ...f, categories: toggleListValue(f.categories, c) }))
+                }
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+          <div className="infra-filter-row">
+            <label>
+              Office
+              <select
+                value={infraFilter.department}
+                onChange={(e) =>
+                  setInfraFilter((f) => ({
+                    ...f,
+                    department: e.target.value as InfraFilter["department"],
+                  }))
+                }
+              >
+                <option value="">All offices</option>
+                {INFRA_DEPARTMENTS.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Barangay
+              <select
+                value={infraFilter.barangay}
+                onChange={(e) => setInfraFilter((f) => ({ ...f, barangay: e.target.value }))}
+              >
+                <option value="">All barangays</option>
+                {BARANGAY_LIST.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <label className="infra-filter-cluster">
+            <input
+              type="checkbox"
+              checked={infraFilter.clustering}
+              onChange={(e) => setInfraFilter((f) => ({ ...f, clustering: e.target.checked }))}
+            />
+            Cluster nearby sites when zoomed out
+          </label>
+          <button
+            type="button"
+            className="infra-filter-reset"
+            onClick={() => setInfraFilter(DEFAULT_INFRA_FILTER)}
+          >
+            Reset filters
+          </button>
+        </div>
         {/* ── Engineer: Place Infrastructure Models ── */}
         {currentRole === "Engineer" && (
           <div className="card" style={{ marginBottom: 12 }}>
@@ -3515,8 +4156,12 @@ export default function App() {
             <button
               onClick={() => {
                 setPlacementMode((v) => {
-                  if (!v) setBlockRemoverMode(false);
-                  return !v;
+                  const next = !v;
+                  if (next) {
+                    setBlockRemoverMode(false);
+                    setEditMode(false);
+                  }
+                  return next;
                 });
               }}
               style={{
@@ -3539,28 +4184,6 @@ export default function App() {
                   Enable Placement Mode
                 </span>
               )}
-            </button>
-
-            {/* Edit Mode — glowing streets */}
-            <button
-              type="button"
-              onClick={() => {
-                setEditMode((v) => {
-                  const next = !v;
-                  if (next) setSnapToRoad(true);
-                  return next;
-                });
-              }}
-              style={{
-                width: "100%", cursor: "pointer", padding: "10px 0",
-                borderRadius: 2, fontWeight: 700, fontSize: 13,
-                border: editMode ? "1px solid rgba(0,243,255,0.7)" : "1px solid var(--stroke)",
-                background: editMode ? "rgba(0,243,255,0.12)" : "var(--cream-deep)",
-                color: editMode ? "#00c8d4" : "var(--muted)",
-                marginBottom: 10,
-              }}
-            >
-              {editMode ? "Edit Mode ON — Streets highlighted" : "Enable Edit Mode"}
             </button>
 
             {/* Snap to Road */}
@@ -3750,11 +4373,11 @@ export default function App() {
 
         {roleConfig?.canSeeProjects && (
           <ProjectMonitoringPanel
-            projects={projects}
+            projects={filteredProjects}
             currentRole={currentRole}
             mapRef={mapRef}
             cesiumMapRef={cesiumMapRef}
-            readOnly={currentRole === "Viewer"}
+            readOnly={currentRole === "Viewer" || isBarangayOfficial(currentRole)}
           />
         )}
         </>
@@ -4079,229 +4702,6 @@ export default function App() {
           </div>
         )}
 
-        {/* ── Events Tab (NASA EONET Natural Events) ── */}
-        {sidebarTab === "events" && roleConfig?.canSeeLayers && (
-          <div className="card" style={{ marginBottom: 12 }}>
-            <div className="sectionTitle" style={{ marginBottom: 8 }}>
-              🌍 NASA Natural Event Tracker
-            </div>
-            <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12, lineHeight: 1.5 }}>
-              Real-time natural events from NASA EONET - Wildfires, Storms, Volcanoes, Earthquakes, and more
-            </div>
-
-            {/* Enable/Disable Toggle */}
-            <div className="toggleRow" style={{ marginBottom: 16 }}>
-              <div>
-                <label>Enable Event Tracking</label>
-                <div className="hint">Show natural events on map</div>
-              </div>
-              <div
-                className={`switch ${eonetEnabled ? "on" : ""}`}
-                role="switch"
-                aria-checked={eonetEnabled}
-                onClick={() => setEonetEnabled(!eonetEnabled)}
-              />
-            </div>
-
-            {/* Event Statistics */}
-            {eonetEnabled && eonetEvents.length > 0 && (
-              <div style={{ marginBottom: 16, padding: 12, background: "rgba(255,100,100,0.08)", border: "1px solid rgba(255,100,100,0.15)", borderRadius: 2 }}>
-                <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
-                  Active Events Nearby
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
-                  {Object.entries(getEventStats(eonetEvents)).map(([catId, count]) => {
-                    const cat = EONET_CATEGORIES[catId];
-                    if (!cat) return null;
-                    return (
-                      <div key={catId} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
-                        <span style={{ fontSize: 14 }}>{cat.icon}</span>
-                        <span style={{ color: "var(--ink-soft)" }}>{count}</span>
-                        <span style={{ color: "var(--muted)" }}>{cat.title}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Category Filters */}
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
-                Event Categories
-              </div>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {Object.entries(EONET_CATEGORIES).map(([id, cat]) => {
-                  const isSelected = eonetCategories.includes(id);
-                  return (
-                    <button
-                      key={id}
-                      onClick={() => {
-                        if (isSelected) {
-                          setEonetCategories(eonetCategories.filter(c => c !== id));
-                        } else {
-                          setEonetCategories([...eonetCategories, id]);
-                        }
-                      }}
-                      style={{
-                        cursor: "pointer",
-                        borderRadius: 2,
-                        padding: "7px 12px",
-                        fontSize: 11,
-                        fontWeight: 600,
-                        border: `1px solid ${cat.color}40`,
-                        background: isSelected ? `${cat.color}30` : "rgba(0,0,0,0.15)",
-                        color: isSelected ? cat.color : "var(--muted)",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 4,
-                      }}
-                    >
-                      <span>{cat.icon}</span>
-                      <span>{cat.title}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Radius Control */}
-            <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--stroke2)" }}>
-              <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
-                <span className="pill">Search Radius</span>
-                <input
-                  type="range"
-                  min={100}
-                  max={5000}
-                  step={100}
-                  value={eonetRadius}
-                  onChange={(e) => setEonetRadius(Number(e.target.value))}
-                  style={{ flex: 1 }}
-                />
-                <span style={{ fontSize: 11, color: "var(--muted)", minWidth: 60 }}>
-                  {eonetRadius} km
-                </span>
-              </div>
-            </div>
-
-            {/* Status Indicator */}
-            {eonetLoading && (
-              <div style={{ marginTop: 12, fontSize: 11, color: "rgba(255,215,0,0.85)", display: "flex", alignItems: "center", gap: 6 }}>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "rgba(255,215,0,0.85)", animation: "pulse 1.5s infinite" }} />
-                Loading events...
-              </div>
-            )}
-            {!eonetLoading && eonetEnabled && eonetEvents.length === 0 && (
-              <div style={{ marginTop: 12, fontSize: 11, color: "rgba(61,155,95,0.85)" }}>
-                ✓ No active events in your area
-              </div>
-            )}
-            {!eonetLoading && eonetEnabled && eonetEvents.length > 0 && (
-              <div style={{ marginTop: 12, fontSize: 11, color: "rgba(255,100,100,0.85)", display: "flex", alignItems: "center", gap: 6 }}>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "rgba(255,100,100,0.85)" }} />
-                {eonetEvents.length} active event{eonetEvents.length !== 1 ? 's' : ''} tracked
-              </div>
-            )}
-
-            {/* Event List */}
-            {eonetEnabled && eonetEvents.length > 0 && (
-              <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--stroke2)" }}>
-                <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
-                  📍 Event Locations
-                </div>
-                <div style={{ maxHeight: 300, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
-                  {eonetEvents.slice(0, 20).map((event) => {
-                    const geometry = getLatestGeometry(event);
-                    const category = event.categories[0];
-                    const catInfo = EONET_CATEGORIES[category?.id];
-                    const distance = geometry ? Math.round(
-                      calculateDistance(14.1856, 121.5167, geometry.coordinates[1], geometry.coordinates[0])
-                    ) : 0;
-
-                    return (
-                      <div
-                        key={event.id}
-                        onClick={() => {
-                          if (!geometry) return;
-                          const [lon, lat] = geometry.coordinates;
-                          cesiumMapRef.current?.flyToLonLat(lon, lat, 80_000);
-                          // Keep MapLibre in sync if it ever becomes visible again.
-                          mapRef.current?.flyTo({
-                            center: [lon, lat],
-                            zoom: 8,
-                            duration: 2000,
-                          });
-                        }}
-                        style={{
-                          padding: 10,
-                          background: "rgba(0,0,0,0.20)",
-                          border: `1px solid ${catInfo?.color || '#888'}30`,
-                          borderRadius: 2,
-                          cursor: "pointer",
-                          transition: "all 0.2s ease",
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = "rgba(0,0,0,0.35)";
-                          e.currentTarget.style.borderColor = `${catInfo?.color || '#888'}60`;
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = "rgba(0,0,0,0.20)";
-                          e.currentTarget.style.borderColor = `${catInfo?.color || '#888'}30`;
-                        }}
-                      >
-                        <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-                          <span style={{ fontSize: 18, flexShrink: 0 }}>{catInfo?.icon || '📍'}</span>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--ink)", marginBottom: 4, lineHeight: 1.3 }}>
-                              {event.title}
-                            </div>
-                            {event.description && (
-                              <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 4, lineHeight: 1.3 }}>
-                                {event.description}
-                              </div>
-                            )}
-                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", fontSize: 10, color: "var(--muted)" }}>
-                              <span style={{ color: catInfo?.color || '#888' }}>
-                                {category?.title || 'Unknown'}
-                              </span>
-                              <span>•</span>
-                              <span>{distance.toLocaleString()} km away</span>
-                              {geometry?.magnitudeValue && (
-                                <>
-                                  <span>•</span>
-                                  <span>{geometry.magnitudeValue.toLocaleString()} {geometry.magnitudeUnit}</span>
-                                </>
-                              )}
-                            </div>
-                            {geometry?.date && (
-                              <div style={{ fontSize: 9, color: "var(--muted2)", marginTop: 4 }}>
-                                Updated: {new Date(geometry.date).toLocaleDateString()} {new Date(geometry.date).toLocaleTimeString()}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                {eonetEvents.length > 20 && (
-                  <div style={{ marginTop: 8, fontSize: 10, color: "var(--muted2)", textAlign: "center" }}>
-                    Showing 20 of {eonetEvents.length} events
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Info Box */}
-            <div style={{ marginTop: 16, padding: 12, background: "rgba(255,100,100,0.08)", border: "1px solid rgba(255,100,100,0.15)", borderRadius: 2 }}>
-              <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.6 }}>
-                💡 <strong>About:</strong> NASA EONET provides near real-time natural event data. Events are updated every 30 minutes. Click on map markers for details.
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── Tropical systems (Invest / TC / LPA-watch) ── */}
         {sidebarTab === "events" && roleConfig?.canSeeLayers && (
           <div className="card" style={{ marginBottom: 12 }}>
             <div className="sectionTitle" style={{ marginBottom: 8 }}>
@@ -4459,37 +4859,14 @@ export default function App() {
       {/* Placement Modal - Enter Building Details */}
       {showPlacementModal && pendingPlacement && (
         <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 10000,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            background: "var(--overlay)",
-            backdropFilter: "none",
-          }}
+          className="placement-modal"
           onClick={() => {
             setShowPlacementModal(false);
             setPendingPlacement(null);
           }}
         >
           <div
-            style={{
-              background: "var(--cream)",
-              border: "3px solid var(--ink)",
-              borderRadius: 0,
-              padding: "24px 28px",
-              maxWidth: 500,
-              width: "90%",
-              maxHeight: "85vh",
-              overflowY: "auto",
-              boxShadow: "8px 8px 0 var(--shadow-accent)",
-              color: "var(--ink)",
-              position: "relative",
-              fontFamily: '"Chakra Petch", sans-serif',
-            }}
-            className="modal-content-scroll"
+            className="placement-modal-panel modal-content-scroll"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Close button */}

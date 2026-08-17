@@ -381,6 +381,24 @@
   min-width: 0;
 }
 
+@media (max-width: 768px) {
+  .dms-top {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .dms-top-actions {
+    width: 100%;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+
+  .dms-page {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
 @media (max-width: 900px) {
   .dms-layout.has-detail {
     grid-template-columns: 1fr;

@@ -29,6 +29,7 @@ import type {
 } from "../types";
 import { backendUrl } from "../lib/api";
 import { computeRecommendation } from "../lib/planning-recommend";
+import { writeAudit } from "./firestore-audit";
 
 function stripUndefinedDeep(value: unknown): unknown {
   if (value === undefined) return undefined;
@@ -178,6 +179,14 @@ export async function createProposal(
   });
   const ref = await addDoc(proposalsCollection, payload);
   await notifyPlanningUpdate("proposal:create");
+  void writeAudit({
+    action: "planning.create",
+    category: "planning",
+    summary: `Created proposal “${input.title || ref.id}”`,
+    entityType: "proposal",
+    entityId: ref.id,
+    entityName: input.title,
+  });
   return mapProposal(ref.id, payload);
 }
 
@@ -195,11 +204,28 @@ export async function updateProposal(
   // Firestore rejects nested `undefined` (e.g. empty approval.note).
   await updateDoc(ref, data);
   await notifyPlanningUpdate("proposal:update");
+  void writeAudit({
+    action: patch.status ? "planning.status" : "planning.update",
+    category: "planning",
+    summary: patch.status
+      ? `Proposal ${id} status → ${patch.status}`
+      : `Updated proposal ${id}`,
+    entityType: "proposal",
+    entityId: id,
+    entityName: patch.title,
+  });
 }
 
 export async function deleteProposal(id: string): Promise<void> {
   await deleteDoc(doc(db, "proposals", id));
   await notifyPlanningUpdate("proposal:delete");
+  void writeAudit({
+    action: "planning.delete",
+    category: "planning",
+    summary: `Deleted proposal ${id}`,
+    entityType: "proposal",
+    entityId: id,
+  });
 }
 
 export function subscribeToComments(

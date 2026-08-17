@@ -31,9 +31,9 @@ const STORAGE_KEY = "infatrack-map-settings-v1";
 
 /** Screen-space error: higher = fewer tiles / faster. */
 export function terrainQualityToSse(q: TerrainQuality): number {
-  if (q === "low") return 9;
-  if (q === "high") return 4;
-  return 7.5;
+  if (q === "low") return 12;
+  if (q === "high") return 6;
+  return 9;
 }
 
 /** Cesium shadowMap knobs for Low / Medium / High. */

@@ -53,6 +53,16 @@
   text-overflow: ellipsis;
 }
 
+.place-info-link {
+  color: var(--seed, #245c3a);
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.place-info-link:hover {
+  text-decoration: underline;
+}
+
 .place-panel-icon-btn {
   border: 1px solid var(--stroke, rgba(0, 0, 0, 0.2));
   background: transparent;
@@ -150,6 +160,44 @@
 
 .place-panel-type {
   margin-bottom: 12px;
+}
+
+.place-build-confirm {
+  margin: 0 0 14px;
+  padding: 12px;
+  border: 2px solid var(--ink, #1a1a1a);
+  background: #fff8e8;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.place-build-confirm strong {
+  font-size: 14px;
+  color: var(--ink, #1a1a1a);
+}
+
+.place-build-confirm p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ink-soft, #333);
+}
+
+.place-build-confirm-btn {
+  cursor: pointer;
+  border: 2px solid var(--ink, #1a1a1a);
+  background: var(--seed, #245c3a);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 12px;
+}
+
+.place-build-confirm-btn:disabled {
+  opacity: 0.65;
+  cursor: wait;
 }
 
 .place-panel-tabs {
@@ -251,16 +299,16 @@
 }
 
 .place-info-ico {
-  width: 36px;
+  width: 28px;
   height: 28px;
   flex-shrink: 0;
   display: grid;
   place-items: center;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
   color: var(--seed, #245c3a);
+}
+
+.place-info-ico svg {
+  display: block;
 }
 
 .place-info-main {
@@ -477,17 +525,52 @@
   color: var(--muted, #666);
 }
 
-@media (max-width: 720px) {
-  .place-panel {
+@media (max-width: 1024px) {
+  .place-panel,
+  .cesium-pick-chrome.has-hud .place-panel {
     top: auto;
     left: 0;
     right: 0;
-    bottom: 0;
     width: 100%;
-    max-height: 55vh;
+    max-width: none;
+    bottom: var(--pick-hud-offset, 148px);
+    max-height: min(42dvh, calc(100dvh - 220px));
+    height: auto;
     border-left: none;
     border-right: none;
     border-bottom: none;
+    box-shadow: 0 -6px 0 var(--shadow-accent, rgba(36, 92, 58, 0.25));
+  }
+
+  .place-panel-hero {
+    height: 96px;
+  }
+
+  .place-panel-title {
+    font-size: 1.15rem;
+  }
+}
+
+@media (max-width: 720px) {
+  .place-panel-search-text {
+    font-size: 12px;
+  }
+
+  .place-panel-hero.placeholder,
+  .place-panel-hero {
+    height: 72px;
+  }
+}
+
+@media (max-width: 1024px) and (max-height: 560px) {
+  .place-panel,
+  .cesium-pick-chrome.has-hud .place-panel {
+    max-height: min(34dvh, calc(100dvh - 180px));
+  }
+
+  .place-panel-hero,
+  .place-panel-hero.placeholder {
+    display: none;
   }
 }
 

@@ -1201,6 +1201,24 @@
   }
 }
 
+@media (max-width: 768px) {
+  .planning-top {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .planning-top-right {
+    width: 100%;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+
+  .planning-page {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
 @media (max-width: 960px) {
   .planning-board-layout.has-detail {
     grid-template-columns: 1fr;

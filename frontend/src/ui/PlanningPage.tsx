@@ -18,6 +18,7 @@ import {
   PLANNING_STATUS_WORKSPACE_LABELS,
 } from "../types";
 import type { PublicAccount, SessionUser } from "../services/auth";
+import { isBarangayOfficial } from "./Landing";
 import { listAccounts } from "../services/auth";
 import {
   addComment,
@@ -74,6 +75,12 @@ const SECTION_ANCHORS = ["Summary", "Location", "Priority", "Other"] as const;
 
 /** Office accounts shown in assignee pickers (no Viewer, no scroller needed). */
 const OFFICE_ASSIGNEE_ROLES = ["MPDC", "Engineer", "Agriculture", "Negosyo Center"] as const;
+/** MPDC owns zoning / siting review — always on the card. */
+const MPDC_ASSIGNEE = "mpdc";
+
+function withMpdcAssignee(list: string[]): string[] {
+  return list.includes(MPDC_ASSIGNEE) ? list : [MPDC_ASSIGNEE, ...list];
+}
 
 const FALLBACK_OFFICE_ACCOUNTS: PublicAccount[] = [
   {
@@ -195,6 +202,7 @@ function buildMonthGrid(monthStart: Date) {
 export default function PlanningPage({ onBack, session, onPinSite }: Props) {
   const role = session?.role ?? null;
   const perms = getPlanningPermissions(role);
+  const barangayOnly = isBarangayOfficial(role);
 
   const [tab, setTab] = useState<Tab>("board");
   const [proposals, setProposals] = useState<PlanningProposal[]>([]);
@@ -220,7 +228,7 @@ export default function PlanningPage({ onBack, session, onPinSite }: Props) {
   const [message, setMessage] = useState<string | null>(null);
 
   const [accounts, setAccounts] = useState<PublicAccount[]>([]);
-  const [draftAssignees, setDraftAssignees] = useState<string[]>([]);
+  const [draftAssignees, setDraftAssignees] = useState<string[]>([MPDC_ASSIGNEE]);
   const [draftCommitteeId, setDraftCommitteeId] = useState("");
 
   const [showCreate, setShowCreate] = useState(false);
@@ -232,7 +240,9 @@ export default function PlanningPage({ onBack, session, onPinSite }: Props) {
   const [draftBarangay, setDraftBarangay] = useState("");
   const [draftPriority, setDraftPriority] = useState<1 | 2 | 3 | 4 | 5>(3);
   const [draftRequestKind, setDraftRequestKind] =
-    useState<PlanningRequestKind>("office_proposal");
+    useState<PlanningRequestKind>(
+      isBarangayOfficial(session?.role) ? "barangay_request" : "office_proposal",
+    );
   const [draftAttachments, setDraftAttachments] = useState<string[]>([]);
 
   const [needsDraft, setNeedsDraft] = useState<PlanningNeedsAssessment>({});
@@ -408,6 +418,10 @@ export default function PlanningPage({ onBack, session, onPinSite }: Props) {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return proposals.filter((p) => {
+      if (barangayOnly) {
+        if ((p.requestKind || "office_proposal") !== "barangay_request") return false;
+        if (session?.username && p.submitter?.username !== session.username) return false;
+      }
       if (filterDept && p.department !== filterDept) return false;
       if (filterStatus && p.status !== filterStatus) return false;
       if (filterBarangay && (p.barangay || "") !== filterBarangay) return false;
@@ -419,7 +433,7 @@ export default function PlanningPage({ onBack, session, onPinSite }: Props) {
         (p.barangay || "").toLowerCase().includes(q)
       );
     });
-  }, [proposals, filterDept, filterStatus, filterBarangay, filterKind, search]);
+  }, [proposals, filterDept, filterStatus, filterBarangay, filterKind, search, barangayOnly, session?.username]);
 
   async function patchProposal(
     proposal: PlanningProposal,
@@ -492,7 +506,10 @@ export default function PlanningPage({ onBack, session, onPinSite }: Props) {
       setMessage("Title is required.");
       return;
     }
-    if (draftRequestKind === "barangay_request" && !draftBarangay) {
+    const kind: PlanningRequestKind = barangayOnly
+      ? "barangay_request"
+      : draftRequestKind;
+    if (kind === "barangay_request" && !draftBarangay) {
       setMessage("Barangay is required for barangay infrastructure requests.");
       return;
     }
@@ -513,9 +530,9 @@ export default function PlanningPage({ onBack, session, onPinSite }: Props) {
           role: session.role,
           department: session.department,
         },
-        assignees: draftAssignees,
+        assignees: withMpdcAssignee(draftAssignees),
         committeeId: draftCommitteeId || null,
-        requestKind: draftRequestKind,
+        requestKind: kind,
         needsAssessment: null,
         attachments: draftAttachments,
       });
@@ -524,9 +541,9 @@ export default function PlanningPage({ onBack, session, onPinSite }: Props) {
       setDraftSummary("");
       setDraftBarangay("");
       setDraftPriority(3);
-      setDraftRequestKind("office_proposal");
+      setDraftRequestKind(barangayOnly ? "barangay_request" : "office_proposal");
       setDraftAttachments([]);
-      setDraftAssignees([]);
+      setDraftAssignees([MPDC_ASSIGNEE]);
       setDraftCommitteeId("");
       setSelectedId(created.id);
       setMessage(submit ? "Request / proposal submitted." : "Draft saved.");
@@ -548,7 +565,7 @@ export default function PlanningPage({ onBack, session, onPinSite }: Props) {
     if (!perms.canAssign) return;
     setBusy(true);
     try {
-      await patchProposal(proposal, { assignees: next });
+      await patchProposal(proposal, { assignees: withMpdcAssignee(next) });
     } catch (err) {
       console.error(err);
       setMessage("Failed to update assignees.");
@@ -925,7 +942,9 @@ export default function PlanningPage({ onBack, session, onPinSite }: Props) {
             ← Map
           </button>
           <div>
-            <div className="planning-brand">Collaborative Planning</div>
+            <div className="planning-brand">
+              {barangayOnly ? "Infrastructure Requests" : "Collaborative Planning"}
+            </div>
             <div className="planning-sub">
               {session
                 ? `${session.username} · ${session.role}`
@@ -948,7 +967,9 @@ export default function PlanningPage({ onBack, session, onPinSite }: Props) {
       </header>
 
       <nav className="planning-tabs">
-        {(["board", "calendar", "meetings"] as Tab[]).map((t) => (
+        {(
+          (barangayOnly ? (["board"] as Tab[]) : (["board", "calendar", "meetings"] as Tab[]))
+        ).map((t) => (
           <button
             key={t}
             type="button"
@@ -994,10 +1015,11 @@ export default function PlanningPage({ onBack, session, onPinSite }: Props) {
             <div className="planning-toolbar">
               <input
                 className="planning-input"
-                placeholder="Search proposals…"
+                placeholder={barangayOnly ? "Search your requests…" : "Search proposals…"}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
+              {!barangayOnly && (
               <select
                 className="planning-input"
                 value={filterDept}
@@ -1009,6 +1031,7 @@ export default function PlanningPage({ onBack, session, onPinSite }: Props) {
                 <option value="Agriculture">Agriculture</option>
                 <option value="Negosyo Center">Negosyo Center</option>
               </select>
+              )}
               <select
                 className="planning-input"
                 value={filterStatus}
@@ -1035,6 +1058,7 @@ export default function PlanningPage({ onBack, session, onPinSite }: Props) {
                   </option>
                 ))}
               </select>
+              {!barangayOnly && (
               <select
                 className="planning-input"
                 value={filterKind}
@@ -1046,21 +1070,23 @@ export default function PlanningPage({ onBack, session, onPinSite }: Props) {
                 <option value="barangay_request">Barangay request</option>
                 <option value="office_proposal">Office proposal</option>
               </select>
+              )}
               {perms.canCreate && (
                 <button
                   type="button"
                   className="planning-btn primary"
                   onClick={() => setShowCreate(true)}
                 >
-                  + Submit proposal
+                  {barangayOnly ? "+ Request infrastructure" : "+ Submit proposal"}
                 </button>
               )}
             </div>
 
             {!selected && !loading && (
               <p className="planning-board-hint">
-                Multi-user workspace — submit proposals, prioritize, review in committee, then approve
-                to create a map project. Cards refresh automatically for other offices.
+                {barangayOnly
+                  ? "File a barangay infrastructure request. MPDC and Engineering will review, prioritize, and approve it."
+                  : "Multi-user workspace — submit proposals, prioritize, review in committee, then approve to create a map project. Cards refresh automatically for other offices."}
               </p>
             )}
 
@@ -1754,25 +1780,34 @@ export default function PlanningPage({ onBack, session, onPinSite }: Props) {
                     <label>Assignees</label>
                     {perms.canAssign ? (
                       <div className="planning-check-list planning-check-list--offices">
-                        {officeAccounts.map((acc) => (
+                        {officeAccounts.map((acc) => {
+                          const isMpdc = acc.username === MPDC_ASSIGNEE;
+                          return (
                           <label key={acc.username} className="planning-check">
                             <input
                               type="checkbox"
-                              checked={selected.assignees?.includes(acc.username) ?? false}
-                              disabled={busy}
-                              onChange={() =>
+                              checked={
+                                isMpdc ||
+                                (selected.assignees?.includes(acc.username) ?? false)
+                              }
+                              disabled={busy || isMpdc}
+                              onChange={() => {
+                                if (isMpdc) return;
                                 handleAssigneesChange(
                                   selected,
                                   toggleAssignee(selected.assignees || [], acc.username),
-                                )
-                              }
+                                );
+                              }}
                             />
                             <span>
                               {acc.label}
-                              <span className="planning-check-user"> · {acc.role}</span>
+                              <span className="planning-check-user">
+                                {isMpdc ? " · zoning / review" : ` · ${acc.role}`}
+                              </span>
                             </span>
                           </label>
-                        ))}
+                          );
+                        })}
                       </div>
                     ) : (
                       <div>
@@ -2086,9 +2121,18 @@ export default function PlanningPage({ onBack, session, onPinSite }: Props) {
             aria-labelledby="planning-create-title"
           >
             <div className="planning-modal-head">
-              <h2 id="planning-create-title">Submit proposal</h2>
+              <h2 id="planning-create-title">
+                {barangayOnly ? "Request infrastructure" : "Submit proposal"}
+              </h2>
             </div>
             <div className="planning-modal-body">
+              {barangayOnly ? (
+                <p className="planning-board-hint" style={{ margin: "0 0 10px" }}>
+                  This goes to MPDC as a <strong>barangay infrastructure request</strong>.
+                  Pick the barangay and describe what you need built.
+                </p>
+              ) : (
+                <>
               <label>Request type</label>
               <select
                 className="planning-input"
@@ -2100,6 +2144,8 @@ export default function PlanningPage({ onBack, session, onPinSite }: Props) {
                 <option value="office_proposal">Office proposal</option>
                 <option value="barangay_request">Barangay infrastructure request</option>
               </select>
+                </>
+              )}
               <label>Title</label>
               <input
                 className="planning-input"
@@ -2174,22 +2220,35 @@ export default function PlanningPage({ onBack, session, onPinSite }: Props) {
                 ))}
               </select>
               <label>Assignees</label>
+              <p className="planning-board-hint" style={{ margin: "0 0 8px" }}>
+                MPDC is assigned automatically — they handle zoning and siting review.
+                Other offices are optional.
+              </p>
               <div className="planning-check-list planning-check-list--offices">
-                {officeAccounts.map((acc) => (
+                {officeAccounts.map((acc) => {
+                  const isMpdc = acc.username === MPDC_ASSIGNEE;
+                  return (
                   <label key={acc.username} className="planning-check">
                     <input
                       type="checkbox"
-                      checked={draftAssignees.includes(acc.username)}
-                      onChange={() =>
-                        setDraftAssignees((prev) => toggleAssignee(prev, acc.username))
-                      }
+                      checked={isMpdc || draftAssignees.includes(acc.username)}
+                      disabled={isMpdc}
+                      onChange={() => {
+                        if (isMpdc) return;
+                        setDraftAssignees((prev) =>
+                          withMpdcAssignee(toggleAssignee(prev, acc.username)),
+                        );
+                      }}
                     />
                     <span>
                       {acc.label}
-                      <span className="planning-check-user"> · {acc.role}</span>
+                      <span className="planning-check-user">
+                        {isMpdc ? " · zoning / review" : ` · ${acc.role}`}
+                      </span>
                     </span>
                   </label>
-                ))}
+                  );
+                })}
               </div>
               <label>Supporting documents (optional)</label>
               {draftAttachments.length > 0 && (
@@ -2243,7 +2302,7 @@ export default function PlanningPage({ onBack, session, onPinSite }: Props) {
                   disabled={busy}
                   onClick={() => handleCreateProposal(true)}
                 >
-                  Submit
+                  {barangayOnly ? "Submit request" : "Submit"}
                 </button>
                 <button
                   type="button"

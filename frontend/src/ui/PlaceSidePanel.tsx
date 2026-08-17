@@ -1,8 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import type { Project, ProjectPhoto, ProjectPhotoKind } from "../types";
 import { MODEL_CATALOG, PROJECT_STATUS_COLORS, PROJECT_STATUS_LABELS } from "../types";
+import { classAdvice, classColor } from "../lib/earthquake-labels";
+import {
+  isDualSummary,
+  type EarthquakeDualSummary,
+  type EarthquakeSiteScore,
+} from "../lib/ml-earthquake";
 import { backendUrl, deleteProjectPhoto, uploadProjectPhoto } from "../lib/api";
+import { resolveOfficialLinks } from "../lib/infra-official-links";
 import "./PlaceSidePanel.css";
 
 type Tab = "overview" | "progress" | "activity" | "about";
@@ -20,6 +27,11 @@ type Props = {
   onClose: () => void;
   onEdit?: () => void;
   onToggleLock?: () => void;
+  /** Engineer: convert this site pin into the Under Construction GLB. */
+  canPromoteSitePin?: boolean;
+  startConstructionBusy?: boolean;
+  onStartConstruction?: () => void;
+  earthquakeScore?: EarthquakeSiteScore | EarthquakeDualSummary | null;
 };
 
 function statusLabel(status: Project["status"]) {
@@ -36,6 +48,59 @@ function photoKindOf(photo: ProjectPhoto): ProjectPhotoKind {
   return photo.kind === "site" ? "site" : "progress";
 }
 
+function InfoSvg({ children }: { children: ReactNode }) {
+  return (
+    <span className="place-info-ico" aria-hidden>
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        {children}
+      </svg>
+    </span>
+  );
+}
+
+const IcoPin = () => (
+  <InfoSvg>
+    <path d="M12 21s7-5.4 7-11a7 7 0 1 0-14 0c0 5.6 7 11 7 11z" />
+    <circle cx="12" cy="10" r="2.2" />
+  </InfoSvg>
+);
+const IcoLink = () => (
+  <InfoSvg>
+    <path d="M10 13a5 5 0 0 0 7.07 0l1.41-1.41a5 5 0 0 0-7.07-7.07L10 5.93" />
+    <path d="M14 11a5 5 0 0 0-7.07 0L5.52 12.41a5 5 0 0 0 7.07 7.07L14 18.07" />
+  </InfoSvg>
+);
+const IcoLock = () => (
+  <InfoSvg>
+    <rect x="5" y="11" width="14" height="10" rx="2" />
+    <path d="M8 11V8a4 4 0 0 1 8 0v3" />
+  </InfoSvg>
+);
+const IcoDate = () => (
+  <InfoSvg>
+    <rect x="3" y="5" width="18" height="16" rx="2" />
+    <path d="M8 3v4M16 3v4M3 10h18" />
+  </InfoSvg>
+);
+const IcoBudget = () => (
+  <InfoSvg>
+    <circle cx="12" cy="12" r="8" />
+    <path d="M12 7v10M9.5 9.5c.6-1 1.6-1.5 2.5-1.5 1.4 0 2.5.8 2.5 2s-1.1 2-2.5 2H11c-1.4 0-2.5.8-2.5 2s1.1 2 2.5 2c.9 0 1.9-.5 2.5-1.5" />
+  </InfoSvg>
+);
+const IcoType = () => (
+  <InfoSvg>
+    <path d="M4 20V9l8-5 8 5v11" />
+    <path d="M9 20v-6h6v6" />
+  </InfoSvg>
+);
+const IcoId = () => (
+  <InfoSvg>
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <path d="M7 10h4M7 14h10" />
+  </InfoSvg>
+);
+
 export function PlaceSidePanel({
   project,
   map = null,
@@ -46,6 +111,10 @@ export function PlaceSidePanel({
   onClose,
   onEdit,
   onToggleLock,
+  canPromoteSitePin = false,
+  startConstructionBusy = false,
+  onStartConstruction,
+  earthquakeScore = null,
 }: Props) {
   const [tab, setTab] = useState<Tab>("overview");
   const [copied, setCopied] = useState(false);
@@ -64,6 +133,8 @@ export function PlaceSidePanel({
   const heroPhoto = sitePhotos[0] ?? progressPhotos[0];
   const coords = `${project.location.lat.toFixed(5)}, ${project.location.lon.toFixed(5)}`;
   const showPhotoEdit = Boolean(canAddPhotos);
+  const showStartBuild = Boolean(canPromoteSitePin && project.siteMarkerOnly && onStartConstruction);
+  const officialLinks = resolveOfficialLinks(project);
 
   useEffect(() => {
     setTab("overview");
@@ -302,6 +373,81 @@ export function PlaceSidePanel({
           </div>
           <div className="place-panel-type">{project.department}</div>
 
+          {earthquakeScore && (
+            <div className="place-build-confirm" style={{ background: "#f4f7f4" }}>
+              {isDualSummary(earthquakeScore) ? (
+                <>
+                  <strong>Earthquake site</strong>
+                  <p style={{ marginBottom: 6 }}>
+                    <span style={{ fontSize: 10, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                      Old · PHIVOLCS EIL 2014
+                    </span>
+                    <br />
+                    {earthquakeScore.official ? (
+                      <>
+                        <b style={{ color: classColor(earthquakeScore.official.cls) }}>
+                          {earthquakeScore.official.cls}
+                        </b>
+                        {" — "}
+                        {classAdvice(earthquakeScore.official.cls)}. PEIS{" "}
+                        {earthquakeScore.official.shakeClass.toUpperCase()} · EIL{" "}
+                        {earthquakeScore.official.eilClass}.
+                      </>
+                    ) : (
+                      "No nearby 2014 sheet pixel."
+                    )}
+                  </p>
+                  <p>
+                    <span style={{ fontSize: 10, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                      Prediction · terrain / satellite
+                    </span>
+                    <br />
+                    {earthquakeScore.predicted ? (
+                      <>
+                        <b style={{ color: classColor(earthquakeScore.predicted.cls) }}>
+                          {earthquakeScore.predicted.cls}
+                        </b>
+                        {" — "}
+                        {classAdvice(earthquakeScore.predicted.cls)}.{" "}
+                        {Math.round(earthquakeScore.predicted.confidence * 100)}% confidence.
+                      </>
+                    ) : (
+                      "Model not ready."
+                    )}
+                  </p>
+                </>
+              ) : (
+                <>
+              <strong style={{ color: classColor(earthquakeScore.cls) }}>
+                Earthquake site: {earthquakeScore.cls}
+              </strong>
+              <p>
+                {classAdvice(earthquakeScore.cls)}. PEIS {earthquakeScore.shakeClass.toUpperCase()} · EIL{" "}
+                {earthquakeScore.eilClass}. Trained from PHIVOLCS maps — not a live quake feed.
+              </p>
+                </>
+              )}
+            </div>
+          )}
+
+          {showStartBuild && (
+            <div className="place-build-confirm">
+              <strong>Itatayo na ba ito?</strong>
+              <p>
+                Lalabas ang Under Construction model sa pin. Ikaw pa rin ang maglalagay — move,
+                rotate, at scale.
+              </p>
+              <button
+                type="button"
+                className="place-build-confirm-btn"
+                disabled={startConstructionBusy}
+                onClick={onStartConstruction}
+              >
+                {startConstructionBusy ? "Sineset…" : "Oo, itayo na"}
+              </button>
+            </div>
+          )}
+
           <div className="place-panel-tabs" role="tablist">
             {(
               [
@@ -378,9 +524,7 @@ export function PlaceSidePanel({
           {tab === "overview" && (
             <div className="place-panel-section">
               <div className="place-info-row">
-                <span className="place-info-ico" aria-hidden>
-                  Pin
-                </span>
+                <IcoPin />
                 <div>
                   <div className="place-info-main">{coords}</div>
                   <div className="place-info-sub">
@@ -388,11 +532,26 @@ export function PlaceSidePanel({
                   </div>
                 </div>
               </div>
+              {officialLinks.length > 0 &&
+                officialLinks.map((link) => (
+                  <div className="place-info-row" key={link.url}>
+                    <IcoLink />
+                    <div>
+                      <a
+                        className="place-info-main place-info-link"
+                        href={link.url}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {link.label}
+                      </a>
+                      <div className="place-info-sub">Official page — opens in a new tab</div>
+                    </div>
+                  </div>
+                ))}
               {project.budgetTotal != null && project.budgetTotal > 0 && (
                 <div className="place-info-row">
-                  <span className="place-info-ico" aria-hidden>
-                    ₱
-                  </span>
+                  <IcoBudget />
                   <div>
                     <div className="place-info-main">
                       {(project.budgetSpent ?? 0).toLocaleString()} /{" "}
@@ -404,9 +563,7 @@ export function PlaceSidePanel({
               )}
               {(project.startDate || project.targetEndDate) && (
                 <div className="place-info-row">
-                  <span className="place-info-ico" aria-hidden>
-                    Date
-                  </span>
+                  <IcoDate />
                   <div>
                     <div className="place-info-main">
                       {project.startDate ?? "—"} → {project.targetEndDate ?? "—"}
@@ -417,9 +574,7 @@ export function PlaceSidePanel({
               )}
               {project.modelLocked && (
                 <div className="place-info-row">
-                  <span className="place-info-ico" aria-hidden>
-                    Lock
-                  </span>
+                  <IcoLock />
                   <div>
                     <div className="place-info-main">
                       {project.siteMarkerOnly ? "Site pin on map" : "Model locked on map"}
@@ -434,9 +589,7 @@ export function PlaceSidePanel({
               )}
               {project.siteMarkerOnly && !project.modelLocked && (
                 <div className="place-info-row">
-                  <span className="place-info-ico" aria-hidden>
-                    Pin
-                  </span>
+                  <IcoPin />
                   <div>
                     <div className="place-info-main">Site pin on map</div>
                     <div className="place-info-sub">Map marker only — no 3D model yet</div>
@@ -496,18 +649,14 @@ export function PlaceSidePanel({
                   "Municipal infrastructure asset tracked in INFA-TRACK Luisiana."}
               </p>
               <div className="place-info-row">
-                <span className="place-info-ico" aria-hidden>
-                  ▣
-                </span>
+                <IcoType />
                 <div>
                   <div className="place-info-main">{project.type}</div>
                   <div className="place-info-sub">Asset classification</div>
                 </div>
               </div>
               <div className="place-info-row">
-                <span className="place-info-ico" aria-hidden>
-                  ID
-                </span>
+                <IcoId />
                 <div>
                   <div className="place-info-main">{project.id}</div>
                   <div className="place-info-sub">

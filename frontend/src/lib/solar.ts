@@ -80,6 +80,55 @@ export function dateFromSolarHour(hourFractional: number, baseDate?: Date): Date
 }
 
 /**
+ * TIME-slider hour when the sun should meet the horizon (before 6:00 PM).
+ * Real Luisiana sunset is ~6:15–6:20 PM; we compress the afternoon so
+ * golden hour + sundown land on the slider before 6.
+ */
+export const DISPLAY_SUNSET_HOUR = 17.75; // 5:45 PM
+
+function phFractionalHour(date: Date): number {
+  const ph = new Date(date.getTime() + PH_OFFSET_MS);
+  return ph.getUTCHours() + ph.getUTCMinutes() / 60 + ph.getUTCSeconds() / 3600;
+}
+
+/**
+ * Map TIME-slider hour → astronomy hour (Luisiana).
+ * Morning/noon stay 1:1; afternoon is stretched so display sunset ≈ real sunset.
+ */
+export function astroHourFromDisplayHour(
+  displayHour: number,
+  baseDate?: Date,
+  lat: number = LUISIANA_CENTER.lat,
+  lon: number = LUISIANA_CENTER.lon,
+): number {
+  const h = ((displayHour % 24) + 24) % 24;
+  const noonDate = dateFromSolarHour(12, baseDate);
+  const times = SunCalc.getTimes(noonDate, lat, lon);
+  const realSunset = phFractionalHour(times.sunset);
+
+  if (h <= 12) return h;
+
+  const displaySpan = DISPLAY_SUNSET_HOUR - 12;
+  const realSpan = Math.max(0.5, realSunset - 12);
+
+  if (h <= DISPLAY_SUNSET_HOUR) {
+    const t = (h - 12) / displaySpan;
+    return 12 + t * realSpan;
+  }
+
+  // Past display sunset: continue into night 1:1 past real sunset.
+  return realSunset + (h - DISPLAY_SUNSET_HOUR);
+}
+
+/** Date used for sky / sun / shadows from the TIME slider (early dusk remapped). */
+export function dateFromDisplaySolarHour(
+  displayHour: number,
+  baseDate?: Date,
+): Date {
+  return dateFromSolarHour(astroHourFromDisplayHour(displayHour, baseDate), baseDate);
+}
+
+/**
  * Astronomical sun position for a place and instant.
  * SunCalc v2 returns altitude/azimuth in **degrees** (azimuth clockwise from north).
  * We normalize to radians + legacy south-based azimuth for the rest of the app.
@@ -181,14 +230,16 @@ export function shadowGroundOffset(pos: SunPosition): [number, number] | null {
   return [-dx / len, -dy / len];
 }
 
-/** Display solar hour as 12-hour clock with AM/PM (e.g. 2:30 PM). */
+/** Display solar hour as 12-hour clock with seconds and AM/PM (e.g. 2:30:08 PM). */
 export function formatSolarHour(hour: number): string {
   const h24 = ((hour % 24) + 24) % 24;
   const hh24 = Math.floor(h24);
-  const mm = Math.floor((h24 - hh24) * 60);
+  const mins = (h24 - hh24) * 60;
+  const mm = Math.floor(mins);
+  const ss = Math.floor((mins - mm) * 60);
   const period = hh24 >= 12 ? "PM" : "AM";
   const hh12 = hh24 % 12 === 0 ? 12 : hh24 % 12;
-  return `${hh12}:${String(mm).padStart(2, "0")} ${period}`;
+  return `${hh12}:${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")} ${period}`;
 }
 
 export const SUN_NIGHT_VEIL_SOURCE = "sun-night-veil";

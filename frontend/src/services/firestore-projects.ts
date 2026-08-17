@@ -9,6 +9,7 @@ import {
 } from "firebase/firestore";
 import { db, projectsCollection } from "../firebase";
 import type { Project } from "../types";
+import { writeAudit } from "./firestore-audit";
 
 /** Firestore rejects `undefined`; omit those fields and normalize optionals. */
 function sanitizeProjectForFirestore(project: Partial<Project> & { id: string }) {
@@ -80,6 +81,14 @@ export function subscribeToArchivedProjects(
 export async function addProjectToFirestore(project: Project) {
   const ref = doc(projectsCollection, project.id);
   await setDoc(ref, sanitizeProjectForFirestore(project));
+  void writeAudit({
+    action: "project.create",
+    category: "project",
+    summary: `Created project “${project.name}”`,
+    entityType: "project",
+    entityId: project.id,
+    entityName: project.name,
+  });
 }
 
 export async function updateProjectInFirestore(
@@ -96,21 +105,50 @@ export async function updateProjectInFirestore(
     if (value !== undefined) cleaned[key] = value;
   }
   await updateDoc(ref, cleaned);
+  void writeAudit({
+    action: "project.update",
+    category: "project",
+    summary: `Updated project ${id}${patch.name ? ` (“${patch.name}”)` : ""}${patch.status ? ` → ${patch.status}` : ""}`,
+    entityType: "project",
+    entityId: id,
+    entityName: patch.name,
+  });
 }
 
 export async function archiveProject(id: string) {
   const ref = doc(db, "projects", id);
   await updateDoc(ref, { archivedAt: new Date().toISOString() });
+  void writeAudit({
+    action: "project.archive",
+    category: "project",
+    summary: `Archived project ${id}`,
+    entityType: "project",
+    entityId: id,
+  });
 }
 
 export async function restoreProject(id: string) {
   const ref = doc(db, "projects", id);
   await updateDoc(ref, { archivedAt: null });
+  void writeAudit({
+    action: "project.restore",
+    category: "project",
+    summary: `Restored project ${id}`,
+    entityType: "project",
+    entityId: id,
+  });
 }
 
 export async function deleteProjectFromFirestore(id: string) {
   const ref = doc(db, "projects", id);
   await deleteDoc(ref);
+  void writeAudit({
+    action: "project.delete",
+    category: "project",
+    summary: `Deleted project ${id}`,
+    entityType: "project",
+    entityId: id,
+  });
 }
 
 export async function seedFirestoreFromBackend(projects: Project[]) {

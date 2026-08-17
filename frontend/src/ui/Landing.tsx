@@ -1,7 +1,26 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { ThemeToggle } from "./ThemeToggle";
 
-export type UserRole = "MPDC" | "Engineer" | "Agriculture" | "Negosyo Center" | "Viewer";
+export type UserRole =
+  | "MPDC"
+  | "Engineer"
+  | "Agriculture"
+  | "Negosyo Center"
+  | "Barangay Official"
+  | "Viewer";
+
+export function isBarangayOfficial(role: UserRole | null | undefined): boolean {
+  return role === "Barangay Official";
+}
+
+export function isMunicipalStaff(role: UserRole | null | undefined): boolean {
+  return (
+    role === "MPDC" ||
+    role === "Engineer" ||
+    role === "Agriculture" ||
+    role === "Negosyo Center"
+  );
+}
 
 export interface RoleConfig {
   label: string;
@@ -70,6 +89,19 @@ export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
     canSeePlanning: true,
     canSeeEngagement: false,
   },
+  "Barangay Official": {
+    label: "Barangay Official",
+    color: "#6B4F2A",
+    description: "Barangay hall — submit infrastructure requests for MPDC review",
+    canSeeWeather: true,
+    canSeeLayers: true,
+    canSeeRisk: true,
+    canSeeProjects: true,
+    canSeeAlerts: false,
+    canSeeBusinessPermits: false,
+    canSeePlanning: true,
+    canSeeEngagement: false,
+  },
   Viewer: {
     label: "Public Viewer",
     color: "#3D9B5F",
@@ -90,6 +122,7 @@ export const ROLE_CREDENTIALS: Record<string, UserRole> = {
   engineer: "Engineer",
   agriculture: "Agriculture",
   negosyo: "Negosyo Center",
+  barangay: "Barangay Official",
 };
 
 type FeatureIcon = "map" | "cloud" | "alert" | "building" | "bell" | "clipboard";
@@ -212,7 +245,7 @@ const PageOverview = ({
         <div className="ed-list">
           {[
             { icon: <IconMap />, title: "Real-Time GIS Mapping", desc: "Interactive maps with live overlays, satellite imagery, and custom layers for spatial analysis." },
-            { icon: <IconAlert />, title: "Disaster Risk Monitoring", desc: "Weather tracking, flood posture, and risk scoring to keep barangays ahead of events." },
+            { icon: <IconAlert />, title: "Safe-site hazard layers", desc: "PHIVOLCS overlays, slope, and climate data so you can place infrastructure on safer ground." },
             { icon: <IconBuilding />, title: "Infrastructure Tracking", desc: "Municipal projects, construction progress, and assets in one continuous register." },
             { icon: <IconClipboard />, title: "Business Permit System", desc: "Permit processing, application status, and compliance without scattered spreadsheets." },
           ].map((f, i) => (
@@ -498,26 +531,24 @@ export function LoginScreen({
     setError("");
 
     try {
-      const { authenticateUser } = await import("../services/auth");
-      const session = await authenticateUser(username, password);
-      if (session) {
-        onLogin(session);
+      const { authenticateUserSecure } = await import("../services/auth");
+      const result = await authenticateUserSecure(username, password);
+      if (result.ok) {
+        onLogin(result.session);
+      } else if (result.error === "locked") {
+        const until = result.lockedUntil ? new Date(result.lockedUntil) : null;
+        const when = until && Number.isFinite(until.getTime())
+          ? until.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+          : "later";
+        setError(`Account locked after too many failed attempts. Try again after ${when}.`);
+      } else if (result.error === "unavailable") {
+        setError("Sign-in service is unavailable. Check your connection and try again.");
       } else {
-        setError("Invalid credentials. Please try again.");
+        setError("Invalid username or password.");
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error("[Auth] Login error:", err);
-      const fallbackRole = ROLE_CREDENTIALS[username.toLowerCase().trim()];
-      if (fallbackRole && password === "impact2024") {
-        const { sessionForRole, setSessionCookie } = await import("../services/auth");
-        const session = sessionForRole(fallbackRole, username.toLowerCase().trim());
-        if (localStorage.getItem("infatrack_cookie_consent") === "accepted") {
-          setSessionCookie(session);
-        }
-        onLogin(session);
-      } else {
-        setError("Login failed. Check your connection and try again.");
-      }
+      setError("Sign-in failed. Check your connection and try again.");
     }
     setLoading(false);
   }
@@ -549,7 +580,7 @@ export function LoginScreen({
                 value={username}
                 autoFocus
                 onChange={(e) => { setUsername(e.target.value); setError(""); }}
-                placeholder="mpdc / engineer / agriculture / negosyo"
+                placeholder="mpdc / engineer / agriculture / negosyo / barangay"
               />
             </div>
             <div className="field">

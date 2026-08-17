@@ -13,10 +13,11 @@ export function getDocumentPermissions(role: UserRole | null): DocumentPermissio
     return { canView: false, canUpload: false, canEdit: false, canDelete: false };
   }
   const isViewer = role === "Viewer";
+  const isBarangay = role === "Barangay Official";
   return {
     canView: true,
-    canUpload: !isViewer,
-    canEdit: !isViewer,
-    canDelete: !isViewer,
+    canUpload: !isViewer && !isBarangay,
+    canEdit: !isViewer && !isBarangay,
+    canDelete: !isViewer && !isBarangay,
   };
 }

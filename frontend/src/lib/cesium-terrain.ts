@@ -13,9 +13,9 @@ export const LUISIANA_TERRAIN_EXAGGERATION = 1.35;
 
 /**
  * Higher = fewer terrain tiles / smoother camera (default Cesium is 2).
- * 5–6 reads fine for LGU overview; still tilts into hills.
+ * 8–10 stays readable for LGU overview and keeps pan/zoom usable.
  */
-export const LUISIANA_TERRAIN_SSE = 7.5;
+export const LUISIANA_TERRAIN_SSE = 9;
 
 /**
  * Prefer Cesium World Terrain when an Ion token is set; otherwise ArcGIS World Elevation.
@@ -47,34 +47,42 @@ export async function createLuisianaTerrainProvider(): Promise<Cesium.TerrainPro
 export function applyTerrainPerfSettings(
   viewer: Cesium.Viewer,
   enabled: boolean,
-  opts?: { screenSpaceError?: number },
+  opts?: { screenSpaceError?: number; satelliteOn?: boolean },
 ) {
   const globe = viewer.scene.globe as Cesium.Globe & {
     maximumScreenSpaceError?: number;
     loadingDescendantLimit?: number;
     preloadSiblings?: boolean;
+    preloadAncestors?: boolean;
+    tileCacheSize?: number;
     terrainExaggeration?: number;
     terrainExaggerationRelativeHeight?: number;
+    dynamicAtmosphereLightingFromSun?: boolean;
   };
 
   if (enabled) {
     globe.maximumScreenSpaceError = opts?.screenSpaceError ?? LUISIANA_TERRAIN_SSE;
     // Don't prefetch as aggressively while the camera moves.
-    globe.loadingDescendantLimit = 4;
+    globe.loadingDescendantLimit = 2;
     globe.preloadSiblings = false;
+    globe.preloadAncestors = false;
+    if (typeof globe.tileCacheSize === "number") globe.tileCacheSize = 80;
     globe.terrainExaggeration = LUISIANA_TERRAIN_EXAGGERATION;
     globe.terrainExaggerationRelativeHeight = 0;
     globe.depthTestAgainstTerrain = true;
-    // Keep atmosphere day/night in sync with the scene light / sun.
+    // Keep sun-driven atmosphere so night / dawn actually go dark (incl. satellite).
     globe.dynamicAtmosphereLighting = true;
+    globe.dynamicAtmosphereLightingFromSun = true;
   } else {
     globe.maximumScreenSpaceError = 2;
     globe.loadingDescendantLimit = 20;
     globe.preloadSiblings = true;
+    globe.preloadAncestors = true;
     globe.terrainExaggeration = 1;
     globe.terrainExaggerationRelativeHeight = 0;
     globe.depthTestAgainstTerrain = false;
     globe.dynamicAtmosphereLighting = true;
+    globe.dynamicAtmosphereLightingFromSun = true;
   }
 }
 
