@@ -1,12 +1,11 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { MapboxOverlay } from "@deck.gl/mapbox";
 import { HeatmapLayer } from "@deck.gl/aggregation-layers";
-import { PolygonLayer, ColumnLayer, ScatterplotLayer, IconLayer } from "@deck.gl/layers";
+import { PolygonLayer, ColumnLayer, ScatterplotLayer } from "@deck.gl/layers";
 import { AmbientLight, DirectionalLight, LightingEffect } from "@deck.gl/core";
 import type { HeatPoint, WeatherSnapshot } from "../types";
 import { generateSolarGrid, getSolarColor, type SolarDataPoint } from "../lib/solar";
 import { generateSlopeGrid, type SlopePoint } from "../lib/slope";
-import { type EONETEvent, getLatestGeometry, getEventColor, getEventIcon, formatEventInfo } from "../lib/eonet";
 import { getRiskColor, type RiskPrediction } from "../lib/ml-risk";
 
 type Props = {
@@ -20,8 +19,6 @@ type Props = {
   enabledSolar?: boolean;
   solarHour?: number;
   enabledSlope?: boolean;
-  enabledEONET?: boolean;
-  eonetEvents?: EONETEvent[];
   enabledAIRisk?: boolean;
   aiRiskPredictions?: Array<{ position: [number, number]; prediction: RiskPrediction }>;
 };
@@ -191,14 +188,11 @@ export function DeckGLOverlay({
   enabledSolar = false,
   solarHour = 12,
   enabledSlope = false,
-  enabledEONET = false,
-  eonetEvents = [],
   enabledAIRisk = false,
   aiRiskPredictions = [],
 }: Props) {
   const overlayRef = useRef<MapboxOverlay | null>(null);
   const [deckBuildings, setDeckBuildings] = useState<DeckBuilding[]>([]);
-  const [hoveredEvent, setHoveredEvent] = useState<{ event: EONETEvent; x: number; y: number } | null>(null);
   const [hoveredRisk, setHoveredRisk] = useState<{ prediction: RiskPrediction; x: number; y: number } | null>(null);
   
   // Cache for AI risk heatmap data to prevent recomputation
@@ -275,15 +269,16 @@ export function DeckGLOverlay({
     if (!shadowsEnabled) return undefined;
     const [sx, sy, sz] = sunLightPosition ?? [0, -70, 100];
     const ambient = new AmbientLight({ color: [255, 255, 255], intensity: 0.45 });
+    const hasCasters = deckBuildings.length > 0;
+    // Depth-only shadow maps only when casters exist — skips empty cascade passes.
     const sun = new DirectionalLight({
       color: [255, 244, 224],
       intensity: 1.8,
       direction: [-sx, -sy, -Math.max(15, sz)],
-      // deck.gl shadow-map pass for non-raytraced dynamic shadows
-      _shadow: true,
+      _shadow: hasCasters,
     } as any);
     return new LightingEffect({ ambientLight: ambient, sunlight: sun });
-  }, [sunLightPosition, shadowsEnabled]);
+  }, [sunLightPosition, shadowsEnabled, deckBuildings.length]);
 
   const buildingMaterial = useMemo(
     () => ({
@@ -344,60 +339,6 @@ export function DeckGLOverlay({
           },
           updateTriggers: {
             getPosition: [aiRiskPredictions.length],
-          },
-        })
-      );
-    }
-
-    // NASA EONET Natural Events Layer
-    if (enabledEONET && eonetEvents.length > 0) {
-      const validEvents = eonetEvents
-        .map(event => {
-          const geometry = getLatestGeometry(event);
-          if (!geometry || geometry.type !== 'Point') return null;
-          return { event, geometry };
-        })
-        .filter(Boolean);
-
-      out.push(
-        new ScatterplotLayer({
-          id: "eonet-events",
-          data: validEvents,
-          pickable: true,
-          opacity: 0.9,
-          stroked: true,
-          filled: true,
-          radiusScale: 1,
-          radiusMinPixels: 8,
-          radiusMaxPixels: 40,
-          lineWidthMinPixels: 2,
-          getPosition: (d: any) => [...d.geometry.coordinates, 0],
-          getRadius: (d: any) => {
-            // Size based on magnitude if available
-            const mag = d.geometry.magnitudeValue || 1000;
-            return Math.min(50000, Math.max(5000, mag * 5));
-          },
-          getFillColor: (d: any) => {
-            const color = getEventColor(d.event);
-            const rgb = parseInt(color.slice(1), 16);
-            return [(rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255, 200];
-          },
-          getLineColor: [255, 255, 255, 255],
-          onHover: (info: any) => {
-            if (info.object && info.x !== undefined && info.y !== undefined) {
-              setHoveredEvent({
-                event: info.object.event,
-                x: info.x,
-                y: info.y,
-              });
-            } else {
-              setHoveredEvent(null);
-            }
-          },
-          updateTriggers: {
-            getPosition: [eonetEvents.length],
-            getRadius: [eonetEvents.length],
-            getFillColor: [eonetEvents.length],
           },
         })
       );
@@ -479,7 +420,9 @@ export function DeckGLOverlay({
       );
     }
 
-    if (shadowsEnabled) {
+    // Shadow receiver only when we actually cast (extruded deck buildings).
+    // Avoids a full-municipality shadow-map draw with zero casters.
+    if (shadowsEnabled && deckBuildings.length > 0) {
       out.push(
         new PolygonLayer<{ polygon: [number, number][] }>({
           id: "luisiana-shadow-receiver",
@@ -490,7 +433,6 @@ export function DeckGLOverlay({
           extruded: false,
           wireframe: false,
           getPolygon: (d) => d.polygon,
-          // Extremely subtle receiver so basemap stays visible.
           getFillColor: [255, 255, 255, 16],
           material: {
             ambient: 0.65,
@@ -537,7 +479,7 @@ export function DeckGLOverlay({
     }
 
     return out;
-  }, [enabledHeatmap, heatPoints, pulse, shadowsEnabled, deckBuildings, buildingMaterial, enabledSolar, solarData, solarHour, enabledSlope, slopeData, enabledEONET, eonetEvents, enabledAIRisk, aiRiskPredictions]);
+  }, [enabledHeatmap, heatPoints, pulse, shadowsEnabled, deckBuildings, buildingMaterial, enabledSolar, solarData, solarHour, enabledSlope, slopeData, enabledAIRisk, aiRiskPredictions]);
 
   useEffect(() => {
     if (!map) return;
@@ -562,90 +504,6 @@ export function DeckGLOverlay({
   return (
     <>
       <WeatherCanvasOverlay enabled={enabledWeather} weather={weather} />
-      
-      {/* EONET Event Tooltip */}
-      {hoveredEvent && (
-        <div
-          style={{
-            position: "absolute",
-            left: hoveredEvent.x + 10,
-            top: hoveredEvent.y + 10,
-            pointerEvents: "none",
-            zIndex: 1000,
-            background: "var(--cream)",
-            backdropFilter: "none",
-            border: `2px solid ${getEventColor(hoveredEvent.event)}`,
-            borderRadius: 0,
-            padding: "12px 16px",
-            maxWidth: 320,
-            boxShadow: "8px 8px 0 var(--shadow-accent)",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 8 }}>
-            <span style={{ fontSize: 24 }}>{getEventIcon(hoveredEvent.event)}</span>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", marginBottom: 4, lineHeight: 1.3 }}>
-                {hoveredEvent.event.title}
-              </div>
-              {hoveredEvent.event.description && (
-                <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 6, lineHeight: 1.4 }}>
-                  {hoveredEvent.event.description}
-                </div>
-              )}
-            </div>
-          </div>
-          
-          <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span style={{ color: "var(--muted)" }}>Category:</span>
-              <span style={{ color: getEventColor(hoveredEvent.event), fontWeight: 600 }}>
-                {hoveredEvent.event.categories[0]?.title || "Unknown"}
-              </span>
-            </div>
-            
-            {(() => {
-              const geometry = getLatestGeometry(hoveredEvent.event);
-              if (geometry?.magnitudeValue && geometry?.magnitudeUnit) {
-                return (
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span style={{ color: "var(--muted)" }}>Magnitude:</span>
-                    <span style={{ color: "var(--ink-soft)", fontWeight: 600 }}>
-                      {geometry.magnitudeValue.toLocaleString()} {geometry.magnitudeUnit}
-                    </span>
-                  </div>
-                );
-              }
-              return null;
-            })()}
-            
-            {(() => {
-              const geometry = getLatestGeometry(hoveredEvent.event);
-              if (geometry?.date) {
-                return (
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span style={{ color: "var(--muted)" }}>Updated:</span>
-                    <span style={{ color: "var(--muted)", fontSize: 10 }}>
-                      {new Date(geometry.date).toLocaleDateString()} {new Date(geometry.date).toLocaleTimeString()}
-                    </span>
-                  </div>
-                );
-              }
-              return null;
-            })()}
-            
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span style={{ color: "var(--muted)" }}>Status:</span>
-              <span style={{ color: hoveredEvent.event.closed ? "rgba(150,150,150,0.85)" : "rgba(255,100,100,0.95)", fontWeight: 600 }}>
-                {hoveredEvent.event.closed ? "Closed" : "Active"}
-              </span>
-            </div>
-          </div>
-          
-          <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--stroke)", fontSize: 9, color: "var(--muted2)", textAlign: "center" }}>
-            Click event in sidebar to fly to location
-          </div>
-        </div>
-      )}
 
       {/* AI Risk Prediction Tooltip */}
       {hoveredRisk && (

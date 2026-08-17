@@ -49,6 +49,8 @@ export type ModelType =
   | "school"
   | "hospital"
   | "barangay_hall"
+  | "municipal_hall"
+  | "rhu"
   | "road"
   | "bridge"
   | "water_tank"
@@ -57,6 +59,28 @@ export type ModelType =
   | "evacuation_center"
   | "construction"
   | "custom";
+
+/** Placement / site markup drawn on the map (not a GLB). */
+export type MapSketchKind = "pin" | "line" | "area";
+
+/** Tools available in the placement toolbar (includes erase for OSM blocks). */
+export type PlacementTool = MapSketchKind | "erase";
+
+export type MapSketch = {
+  kind: MapSketchKind;
+  color: string;
+  /** Vertices in order. Pin = 1; line ≥ 2; area ≥ 3. */
+  coordinates: { lon: number; lat: number }[];
+};
+
+export const MAP_SKETCH_COLORS = [
+  "#c47a1a",
+  "#245c3a",
+  "#1d4e89",
+  "#b42318",
+  "#7a3e9d",
+  "#0f766e",
+] as const;
 
 export const MODEL_CATALOG: {
   type: ModelType;
@@ -67,6 +91,8 @@ export const MODEL_CATALOG: {
   glb: string;        // path under /models/
   scale: number;      // world-space scale multiplier
 }[] = [
+  { type: "municipal_hall",    label: "Municipal Hall",     icon: "municipal_hall",    category: "Building",        description: "Luisiana Municipal Hall",                      glb: "municipal-office.glb",   scale: 1   },
+  { type: "rhu",               label: "Rural Health Unit",  icon: "rhu",               category: "Building",        description: "Luisiana Rural Health Unit (RHU)",            glb: "rural-health-unit.glb",  scale: 1   },
   { type: "office",            label: "Office / Admin",      icon: "office",            category: "Building",        description: "Multi-floor office or admin building",        glb: "building.glb",      scale: 80  },
   { type: "school",            label: "School",              icon: "school",            category: "Building",        description: "Elementary or high school building",          glb: "building.glb",      scale: 100 },
   { type: "hospital",          label: "Health Center",       icon: "hospital",          category: "Building",        description: "Barangay health center or hospital",          glb: "Hospital.glb",      scale: 90  },
@@ -148,10 +174,14 @@ export type ProjectIssue = {
   resolvedAt?: string;
 };
 
+export type ProjectPhotoKind = "site" | "progress";
+
 export type ProjectPhoto = {
   id: string;
   url: string;
   caption?: string;
+  /** site = Overview gallery; progress = Progress Photos tab / monitoring. */
+  kind?: ProjectPhotoKind;
   milestoneId?: string | null;
   uploadedAt: string;
 };
@@ -159,6 +189,70 @@ export type ProjectPhoto = {
 export type ProjectActivity = {
   at: string;
   message: string;
+};
+
+/** Citizen-facing project (public API DTO). */
+export type PublicProject = {
+  id: string;
+  name: string;
+  modelType: ModelType;
+  type: "Municipal Project" | "Private Building" | "Agricultural Structure";
+  department: "MPDC" | "Engineering" | "Agriculture" | "Negosyo Center";
+  status: ProjectStatus;
+  progress: number;
+  location: { lat: number; lon: number };
+  description?: string;
+  startDate?: string | null;
+  targetEndDate?: string | null;
+  barangay?: string | null;
+  fundingSource?: string | null;
+  lifecyclePhase?: LifecyclePhase | null;
+  customModelUrl?: string | null;
+  rotation?: number;
+  modelScale?: number;
+  modelHeight?: number;
+  milestones: ProjectMilestone[];
+  issues: Array<{
+    id: string;
+    kind: "delay" | "issue";
+    title: string;
+    reportedAt: string;
+    resolvedAt?: string | null;
+    open: boolean;
+  }>;
+  photos: ProjectPhoto[];
+  openIssueCount: number;
+  updatedAt: string;
+};
+
+export type EngagementKind = "feedback" | "issue" | "suggestion";
+export type EngagementStatus = "new" | "reviewing" | "resolved" | "dismissed";
+
+export type EngagementSubmission = {
+  id: string;
+  kind: EngagementKind;
+  title: string;
+  body: string;
+  category: string;
+  projectId?: string | null;
+  lng?: number | null;
+  lat?: number | null;
+  barangay?: string | null;
+  contactName?: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+  status: EngagementStatus;
+  createdAt: string;
+  staffNote?: string | null;
+  updatedAt?: string;
+};
+
+export type EngagementPublicStats = {
+  total: number;
+  byKind: Record<EngagementKind, number>;
+  byStatus: Record<EngagementStatus, number>;
+  open: number;
+  closed: number;
 };
 
 export type Project = {
@@ -173,6 +267,20 @@ export type Project = {
   rotation?: number;
   /** User-adjusted multiplier for the map GLB model. */
   modelScale?: number;
+  /**
+   * Height above ground in meters. Use 0 (default) to clamp to terrain — no elevation float.
+   */
+  modelHeight?: number;
+  /** When true, model cannot be moved / rotated / scaled on the map. */
+  modelLocked?: boolean;
+  /**
+   * MPDC site pin only — show a map marker, do not load a GLB until Engineering places a model.
+   */
+  siteMarkerOnly?: boolean;
+  /** Map markup from placement tools (pin / line / area). */
+  mapSketch?: MapSketch | null;
+  /** Marker / sketch stroke color (hex). */
+  markerColor?: string;
   customModelUrl?: string;
   description?: string;
   startDate?: string | null;
@@ -182,6 +290,8 @@ export type Project = {
   barangay?: string;
   fundingSource?: string;
   contractor?: string;
+  /** Staff-set official page for this facility (https://…). */
+  officialUrl?: string;
   lifecyclePhase?: LifecyclePhase;
   archivedAt?: string | null;
   milestones: ProjectMilestone[];
@@ -286,6 +396,28 @@ export type PlanningApproval = {
   at: string;
 };
 
+/** Committee botohan (yes / no / abstain) on a proposal under review. */
+export type PlanningVoteChoice = "yes" | "no" | "abstain";
+
+export type PlanningVote = {
+  username: string;
+  role: string;
+  choice: PlanningVoteChoice;
+  note?: string;
+  at: string;
+};
+
+export type PlanningRequestKind = "barangay_request" | "office_proposal";
+
+export type PlanningNeedsAssessment = {
+  populationServed?: string;
+  hazardExposure?: string;
+  existingInfra?: string;
+  urgencyNote?: string;
+  assessedBy?: string;
+  assessedAt?: string;
+};
+
 export type PlanningProposal = {
   id: string;
   title: string;
@@ -300,6 +432,14 @@ export type PlanningProposal = {
   assignees: string[];
   committeeId?: string | null;
   approvals: PlanningApproval[];
+  /** Inter-office botohan / poll tallies. */
+  votes?: PlanningVote[];
+  /** Barangay infrastructure request vs office-originated proposal. */
+  requestKind?: PlanningRequestKind;
+  needsAssessment?: PlanningNeedsAssessment | null;
+  recommendationScore?: number | null;
+  recommendationReasons?: string[];
+  attachments?: string[];
   createdAt: string;
   updatedAt: string;
 };
@@ -350,6 +490,17 @@ export const PLANNING_STATUS_LABELS: Record<PlanningProposalStatus, string> = {
   rejected: "Rejected",
 };
 
+/** Plain-language column headers for the Planning Workspace board. */
+export const PLANNING_STATUS_WORKSPACE_LABELS: Record<PlanningProposalStatus, string> = {
+  draft: "Draft",
+  submitted: "Submitted",
+  in_review: "Under review",
+  recommended: "Recommended",
+  approved: "Approved",
+  returned: "Returned",
+  rejected: "Rejected",
+};
+
 export const PLANNING_STATUS_COLORS: Record<PlanningProposalStatus, string> = {
   draft: "#9b9b9b",
   submitted: "#6c8ebf",
@@ -359,4 +510,65 @@ export const PLANNING_STATUS_COLORS: Record<PlanningProposalStatus, string> = {
   returned: "#d4a017",
   rejected: "#e05252",
 };
+
+/** Municipal document categories for the Document Management System. */
+export type DocumentCategory =
+  | "CLUP"
+  | "CDP"
+  | "LDIP"
+  | "AIP"
+  | "infrastructure_plan"
+  | "engineering_drawing"
+  | "permit"
+  | "feasibility_study";
+
+export type DocumentVersionEntry = {
+  version: number;
+  fileUrl: string;
+  fileName: string;
+  mimeType: string;
+  uploadedBy: string;
+  uploadedAt: string;
+};
+
+export type MunicipalDocument = {
+  id: string;
+  title: string;
+  category: DocumentCategory;
+  description: string;
+  year: number;
+  barangay?: string;
+  tags: string[];
+  fileUrl: string;
+  fileName: string;
+  mimeType: string;
+  version: number;
+  previousVersions: DocumentVersionEntry[];
+  uploadedBy: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export const DOCUMENT_CATEGORY_LABELS: Record<DocumentCategory, string> = {
+  CLUP: "CLUP",
+  CDP: "CDP",
+  LDIP: "LDIP",
+  AIP: "AIP",
+  infrastructure_plan: "Infrastructure plan",
+  engineering_drawing: "Engineering drawing",
+  permit: "Permit",
+  feasibility_study: "Feasibility study",
+};
+
+export const DOCUMENT_CATEGORIES: DocumentCategory[] = [
+  "CLUP",
+  "CDP",
+  "LDIP",
+  "AIP",
+  "infrastructure_plan",
+  "engineering_drawing",
+  "permit",
+  "feasibility_study",
+];
+
 

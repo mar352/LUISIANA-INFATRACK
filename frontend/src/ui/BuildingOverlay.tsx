@@ -19,10 +19,19 @@ import { MODEL_CATALOG, PROJECT_STATUS_COLORS, PROJECT_STATUS_LABELS } from "../
 import { patchProject, backendUrl } from "../lib/api";
 import { updateProjectInFirestore } from "../services/firestore-projects";
 import { snapLngLatToRoad } from "../lib/snap-to-road";
+import { PlaceSidePanel } from "./PlaceSidePanel";
+import {
+  BUILDING_GLB_MIN_ZOOM,
+  disposeGltfCache,
+  disposeObject3D,
+  isInPaddedViewport,
+} from "../lib/three-dispose";
 
 const LAYER_ID = "glb-buildings";
 const HIT_RADIUS_PX = 32;
 const ORIGIN_NORMALIZED_KEY = "__infatrackOriginNormalized";
+/** Soft view pad so twins stream in before they hit the screen edge. */
+const STREAM_PAD_FRAC = 0.45;
 
 function hexToThree(hex: string): THREE.Color {
   return new THREE.Color(hex);
@@ -194,8 +203,13 @@ type Props = {
   /** 0–1 opacity for GLB project blocks */
   opacity?: number;
   readOnly?: boolean;
+  /** Engineer / MPDC can add photos from the left place panel. */
+  canAddPhotos?: boolean;
   /** When true, left-drag snaps position + yaw to nearby roads. */
   snapToRoad?: boolean;
+  /** MapLibre/Three sun vector (+x east, +y south, +z up), from SunCalc. */
+  sunLightPosition?: [number, number, number];
+  sunIsDaylight?: boolean;
   onBuildingClick?: (hit: boolean) => void;
   onDeleteBuilding?: (projectId: string) => void;
 };
@@ -213,16 +227,55 @@ type ModelState = {
   projectId: string;
   projectName: string;
   status: Project["status"];
+  modelLocked: boolean;
   /** Axis-aligned bounds in model-local space (identity transform). */
   localBBox: THREE.Box3;
 };
 
-export function BuildingOverlay({ map, projects, visible, opacity = 1, readOnly = false, snapToRoad = false, onBuildingClick, onDeleteBuilding }: Props) {
+const DEFAULT_SUN: [number, number, number] = [50, -70, 100];
+
+export function BuildingOverlay({
+  map,
+  projects,
+  visible,
+  opacity = 1,
+  readOnly = false,
+  canAddPhotos = false,
+  snapToRoad = false,
+  sunLightPosition = DEFAULT_SUN,
+  sunIsDaylight = true,
+  onBuildingClick,
+  onDeleteBuilding,
+}: Props) {
   const gltfCache = useRef<Map<string, THREE.Group>>(new Map());
   const statesRef = useRef<ModelState[]>([]);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const cameraRef = useRef<THREE.Camera>(new THREE.Camera());
   const sceneRef = useRef<THREE.Scene | null>(null);
+  const sunLightRef = useRef<THREE.DirectionalLight | null>(null);
+  const ambientLightRef = useRef<THREE.AmbientLight | null>(null);
+  const sunPosRef = useRef(sunLightPosition);
+  useEffect(() => { sunPosRef.current = sunLightPosition; }, [sunLightPosition]);
+  useEffect(() => {
+    const sun = sunLightRef.current;
+    const amb = ambientLightRef.current;
+    if (!sun || !amb) return;
+    const [x, y, z] = sunLightPosition;
+    sun.position.set(x, y, z);
+    sun.castShadow = false;
+    if (sunIsDaylight) {
+      sun.intensity = 1.55;
+      sun.color.set(0xfff4e0);
+      amb.intensity = 0.85;
+      amb.color.set(0xffffff);
+    } else {
+      sun.intensity = 0.25;
+      sun.color.set(0x8899bb);
+      amb.intensity = 0.35;
+      amb.color.set(0x667799);
+    }
+    map?.triggerRepaint();
+  }, [sunLightPosition, sunIsDaylight, map]);
   const lastMapMatrixRef = useRef<THREE.Matrix4 | null>(null);
   const lastRenderArgsRef = useRef<any>(null);
   const layerAddedRef = useRef(false);
@@ -271,6 +324,11 @@ export function BuildingOverlay({ map, projects, visible, opacity = 1, readOnly 
   const [transformDirty, setTransformDirty] = useState(false);
   const [transformSaving, setTransformSaving] = useState(false);
   const [transformMessage, setTransformMessage] = useState<string | null>(null);
+  const transformDirtyRef = useRef(false);
+  const transformSavingRef = useRef(false);
+  const saveTransformRef = useRef<(() => Promise<void>) | null>(null);
+  useEffect(() => { transformDirtyRef.current = transformDirty; }, [transformDirty]);
+  useEffect(() => { transformSavingRef.current = transformSaving; }, [transformSaving]);
   
   // Hover state for tooltip
   const [hoveredBuilding, setHoveredBuilding] = useState<{ name: string; status: string; x: number; y: number } | null>(null);
@@ -288,9 +346,19 @@ export function BuildingOverlay({ map, projects, visible, opacity = 1, readOnly 
 
     const fullReset = () => {
       removeLayer();
+      // Explicit GPU GC when projects layer is hidden / unmounted
+      for (const s of statesRef.current) {
+        sceneRef.current?.remove(s.scene);
+        disposeObject3D(s.scene);
+      }
+      disposeGltfCache(gltfCache.current);
+      statesRef.current = [];
       sceneRef.current = null;
       rendererRef.current = null;
-      statesRef.current = [];
+      sunLightRef.current = null;
+      ambientLightRef.current = null;
+      lastSelIdxRef.current = -2;
+      lastAppliedOpacityRef.current = -1;
     };
 
     if (!visible) {
@@ -301,15 +369,21 @@ export function BuildingOverlay({ map, projects, visible, opacity = 1, readOnly 
     const createSceneAndLayer = () => {
       if (layerAddedRef.current) return;
 
-      // Build a fresh scene with just lights
+      // Build a fresh scene with just lights (direction updated from SunCalc)
       const scene = new THREE.Scene();
-      scene.add(new THREE.AmbientLight(0xffffff, 1.1));
-      const sun = new THREE.DirectionalLight(0xfff4e0, 1.6);
-      sun.position.set(50, -70, 100).normalize();
+      const ambient = new THREE.AmbientLight(0xffffff, 0.85);
+      scene.add(ambient);
+      ambientLightRef.current = ambient;
+      const [sx, sy, sz] = sunPosRef.current;
+      const sun = new THREE.DirectionalLight(0xfff4e0, 1.55);
+      sun.position.set(sx, sy, sz);
+      sun.castShadow = false;
       scene.add(sun);
-      const sun2 = new THREE.DirectionalLight(0xffffff, 0.7);
-      sun2.position.set(-40, 50, 80).normalize();
-      scene.add(sun2);
+      sunLightRef.current = sun;
+      const fill = new THREE.DirectionalLight(0xffffff, 0.45);
+      fill.position.set(-40, 50, 80).normalize();
+      fill.castShadow = false;
+      scene.add(fill);
       sceneRef.current = scene;
 
       // Re-add any existing model scenes (e.g. after terrain/style reload)
@@ -334,6 +408,9 @@ export function BuildingOverlay({ map, projects, visible, opacity = 1, readOnly 
           // Keep linear→sRGB output only so exported GLB colors stay faithful.
           r.toneMapping = THREE.NoToneMapping;
           r.toneMappingExposure = 1;
+          // Shadow maps on the shared MapLibre context explode models at high zoom —
+          // keep directional sun lighting only.
+          r.shadowMap.enabled = false;
           rendererRef.current = r;
         },
 
@@ -342,9 +419,23 @@ export function BuildingOverlay({ map, projects, visible, opacity = 1, readOnly 
           const scene = sceneRef.current;
           if (!renderer || !scene) return;
 
-          const mainMatrix: ArrayLike<number> | undefined =
-            args?.defaultProjectionData?.mainMatrix ??
-            args?.modelViewProjectionMatrix;
+          // Sync with MapLibre's live custom-layer projection every frame
+          // (equivalent to map.getMatrix() / transform custom-layer matrix).
+          // Critical during easeTo(padding) so GLBs stay locked to lat/lng.
+          const transform = (map as any).transform;
+          let mainMatrix: ArrayLike<number> | undefined;
+          if (typeof transform?.getProjectionDataForCustomLayer === "function") {
+            try {
+              mainMatrix = transform.getProjectionDataForCustomLayer(true)?.mainMatrix;
+            } catch {
+              /* fall through */
+            }
+          }
+          if (!mainMatrix) {
+            mainMatrix =
+              args?.defaultProjectionData?.mainMatrix ??
+              args?.modelViewProjectionMatrix;
+          }
           if (!mainMatrix) return;
 
           for (let i = 0; i < 16; i++) _vp64.current[i] = Number(mainMatrix[i]);
@@ -354,6 +445,13 @@ export function BuildingOverlay({ map, projects, visible, opacity = 1, readOnly 
 
           const states = statesRef.current;
           if (states.length === 0) return;
+
+          const zoom = map.getZoom();
+          // Zoom LOD: skip heavy digital twins when viewing large areas
+          if (zoom < BUILDING_GLB_MIN_ZOOM) {
+            renderer.resetState();
+            return;
+          }
 
           // Relative-to-eye: re-center VP around camera mercator so Float32
           // doesn't swim when panning/rotating/zooming.
@@ -421,13 +519,20 @@ export function BuildingOverlay({ map, projects, visible, opacity = 1, readOnly 
           const camera = cameraRef.current;
           camera.matrixAutoUpdate = false;
 
-          // MapLibre pattern: bake each model's mercator transform into the
-          // camera projection and render one model at a time.
+          // Stable MapLibre pattern: bake each model's mercator transform into the
+          // camera projection and render one model at a time (identity model matrix).
+          // World-space + shadow maps caused explode/disappear glitches at high zoom.
           for (let i = 0; i < states.length; i++) {
             const t = states[i];
+            const isSelected = i === selIdx;
+
+            if (!isSelected && !isInPaddedViewport(map, t.lng, t.lat, STREAM_PAD_FRAC)) {
+              continue;
+            }
 
             for (const other of states) other.scene.visible = false;
             t.scene.visible = true;
+            t.scene.frustumCulled = false;
             t.scene.matrixAutoUpdate = false;
             t.scene.matrix.identity();
             t.scene.updateMatrixWorld(true);
@@ -437,14 +542,11 @@ export function BuildingOverlay({ map, projects, visible, opacity = 1, readOnly 
               { lng: t.lng, lat: t.lat },
               altitude,
             );
-            const manual = manuallyMovedRef.current.has(t.projectId);
-            const tx = manual ? t.translateX : mc.x;
-            const ty = manual ? t.translateY : mc.y;
+            const tx = mc.x;
+            const ty = mc.y;
             const tz = mc.z ?? 0;
-            if (!manual) {
-              t.translateX = tx;
-              t.translateY = ty;
-            }
+            t.translateX = tx;
+            t.translateY = ty;
             t.translateZ = tz;
 
             const finalScale = t.baseScale * t.scaleMultiplier;
@@ -468,6 +570,7 @@ export function BuildingOverlay({ map, projects, visible, opacity = 1, readOnly 
           }
 
           for (const t of states) t.scene.visible = true;
+          renderer.resetState();
         },
       };
 
@@ -488,8 +591,16 @@ export function BuildingOverlay({ map, projects, visible, opacity = 1, readOnly 
     // (happens when terrain is toggled via setTerrain())
     map.on("style.load", createSceneAndLayer);
 
+    const onMapResize = () => {
+      // Keep custom layer drawing with the latest viewport matrix while the
+      // canvas size changes (right panel open/close).
+      map.triggerRepaint();
+    };
+    map.on("resize", onMapResize);
+
     return () => {
       map.off("style.load", createSceneAndLayer as any);
+      map.off("resize", onMapResize);
       fullReset();
     };
   }, [map, visible]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -519,10 +630,11 @@ export function BuildingOverlay({ map, projects, visible, opacity = 1, readOnly 
       neededGlbs.map((glb) => new Promise<void>((resolve) => {
         if (gltfCache.current.has(glb)) { resolve(); return; }
         
-        // Determine if this is a custom model URL or a standard model path
-        const modelPath = glb.startsWith('http') || glb.startsWith('/uploads/') 
-          ? glb 
-          : `/models/${glb}`;
+        // Absolute URLs (/uploads/..., /models/...) or http — else catalog filename under /models/
+        const modelPath =
+          glb.startsWith("http") || glb.startsWith("/")
+            ? glb
+            : `/models/${glb}`;
         
         loader.load(
           modelPath,
@@ -541,13 +653,19 @@ export function BuildingOverlay({ map, projects, visible, opacity = 1, readOnly 
       // Ensure scene exists (may not if layer hasn't been added yet)
       if (!sceneRef.current) {
         const scene = new THREE.Scene();
-        scene.add(new THREE.AmbientLight(0xffffff, 1.1));
-        const sun = new THREE.DirectionalLight(0xfff4e0, 1.6);
-        sun.position.set(50, -70, 100).normalize();
+        const ambient = new THREE.AmbientLight(0xffffff, 0.85);
+        scene.add(ambient);
+        ambientLightRef.current = ambient;
+        const [sx, sy, sz] = sunPosRef.current;
+        const sun = new THREE.DirectionalLight(0xfff4e0, 1.55);
+        sun.position.set(sx, sy, sz);
+        sun.castShadow = false;
         scene.add(sun);
-        const sun2 = new THREE.DirectionalLight(0xffffff, 0.7);
-        sun2.position.set(-40, 50, 80).normalize();
-        scene.add(sun2);
+        sunLightRef.current = sun;
+        const fill = new THREE.DirectionalLight(0xffffff, 0.45);
+        fill.position.set(-40, 50, 80).normalize();
+        fill.castShadow = false;
+        scene.add(fill);
         sceneRef.current = scene;
       }
 
@@ -595,11 +713,14 @@ export function BuildingOverlay({ map, projects, visible, opacity = 1, readOnly 
           model.scale.set(1, 1, 1);
           model.matrix.identity();
           model.matrixAutoUpdate = false;
+          model.frustumCulled = false;
           // Clone materials so selection emissive/opacity don't leak across
           // instances — but keep the GLB's original colors untouched.
           model.traverse((obj) => {
             const mesh = obj as THREE.Mesh;
             if (!mesh.isMesh) return;
+            mesh.frustumCulled = false;
+            mesh.castShadow = false;
             if (Array.isArray(mesh.material)) {
               mesh.material = mesh.material.map((m) => m.clone());
             } else if (mesh.material) {
@@ -655,15 +776,36 @@ export function BuildingOverlay({ map, projects, visible, opacity = 1, readOnly 
           projectId: p.id,
           projectName: p.name,
           status: p.status,
+          modelLocked: Boolean(p.modelLocked),
           localBBox,
         });
       }
 
-      // Remove Three.js objects for projects that no longer exist
+      // Remove + dispose GPU for projects that no longer exist
       const newIds = new Set(newStates.map(s => s.projectId));
       for (const old of statesRef.current) {
         if (!newIds.has(old.projectId)) {
           scene.remove(old.scene);
+          disposeObject3D(old.scene);
+          manuallyMovedRef.current.delete(old.projectId);
+        }
+      }
+
+      // Drop unused GLB prototypes from GPU when no project references them
+      const liveGlbs = new Set(
+        projects
+          .filter((p) => p?.location?.lon && p?.location?.lat)
+          .map((p) => {
+            if (p.modelType === "custom" && p.customModelUrl) return p.customModelUrl;
+            const cat = MODEL_CATALOG.find((m) => m.type === (p.modelType ?? "office"));
+            return cat?.glb ?? "building.glb";
+          }),
+      );
+      for (const key of [...gltfCache.current.keys()]) {
+        if (!liveGlbs.has(key)) {
+          const proto = gltfCache.current.get(key);
+          if (proto) disposeObject3D(proto);
+          gltfCache.current.delete(key);
         }
       }
 
@@ -772,6 +914,8 @@ export function BuildingOverlay({ map, projects, visible, opacity = 1, readOnly 
       if (readOnlyRef.current) return;
       const idx = selectedIdxRef.current;
       if (idx < 0) return;
+      const selected = statesRef.current[idx];
+      if (selected?.modelLocked) return;
       const rect = canvas.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
       const px = (e.clientX - rect.left) * dpr;
@@ -913,11 +1057,17 @@ export function BuildingOverlay({ map, projects, visible, opacity = 1, readOnly 
     };
 
     const onMouseUp = (e: MouseEvent) => {
+      const wasMoving = e.button === 0 && isMoving;
+      const wasRotating = e.button === 2 && isDragging;
       if (e.button === 0 && isMoving) { isMoving = false; map.dragPan.enable(); }
       if (e.button === 2) {
         isDragging = false;
         map.dragRotate.enable();
         map.touchPitch?.enable?.();
+      }
+      // Persist map placement immediately so reload keeps the new spot
+      if ((wasMoving || wasRotating) && (didMove || transformDirtyRef.current)) {
+        void saveTransformRef.current?.();
       }
     };
 
@@ -925,12 +1075,12 @@ export function BuildingOverlay({ map, projects, visible, opacity = 1, readOnly 
       if (readOnlyRef.current) return;
       const idx = selectedIdxRef.current;
       if (idx < 0) return;
+      const s = statesRef.current[idx];
+      if (!s || s.modelLocked) return;
       const rect = canvas.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
       const px = (e.clientX - rect.left) * dpr;
       const py = (e.clientY - rect.top) * dpr;
-      const s = statesRef.current[idx];
-      if (!s) return;
       const sc = mercatorToScreen(s.translateX, s.translateY, s.translateZ);
       if (!sc) return;
       if ((sc.x - px) ** 2 + (sc.y - py) ** 2 > (HIT_RADIUS_PX * 4) ** 2) return;
@@ -940,6 +1090,10 @@ export function BuildingOverlay({ map, projects, visible, opacity = 1, readOnly 
       map.triggerRepaint();
       e.preventDefault();
       e.stopPropagation();
+      window.clearTimeout((onWheel as any)._saveTimer);
+      (onWheel as any)._saveTimer = window.setTimeout(() => {
+        void saveTransformRef.current?.();
+      }, 450);
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
@@ -1021,7 +1175,7 @@ export function BuildingOverlay({ map, projects, visible, opacity = 1, readOnly 
   async function handleSaveTransform() {
     const idx = selectedIdxRef.current;
     const state = statesRef.current[idx];
-    if (!state || transformSaving) return;
+    if (!state || transformSavingRef.current || state.modelLocked) return;
 
     const rotation = THREE.MathUtils.radToDeg(state.rotateZ);
     const patch: Partial<Project> = {
@@ -1030,6 +1184,7 @@ export function BuildingOverlay({ map, projects, visible, opacity = 1, readOnly 
       modelScale: state.scaleMultiplier,
     };
 
+    transformSavingRef.current = true;
     setTransformSaving(true);
     setTransformMessage(null);
     try {
@@ -1044,6 +1199,11 @@ export function BuildingOverlay({ map, projects, visible, opacity = 1, readOnly 
         }
       }
 
+      // Keep mercator pin aligned with saved lng/lat across reloads
+      manuallyMovedRef.current.set(state.projectId, {
+        x: state.translateX,
+        y: state.translateY,
+      });
       setTransformDirty(false);
       setTransformMessage("Position saved");
       window.setTimeout(() => setTransformMessage(null), 2200);
@@ -1051,6 +1211,49 @@ export function BuildingOverlay({ map, projects, visible, opacity = 1, readOnly 
       console.error("Failed to save 3D model transform:", err);
       setTransformMessage("Save failed");
     } finally {
+      transformSavingRef.current = false;
+      setTransformSaving(false);
+    }
+  }
+
+  saveTransformRef.current = () => handleSaveTransform();
+
+  async function handleToggleLock() {
+    const idx = selectedIdxRef.current;
+    const state = statesRef.current[idx];
+    if (!state || transformSavingRef.current) return;
+    // Save placement before locking so it doesn't snap back after reload
+    if (!state.modelLocked && transformDirtyRef.current) {
+      await handleSaveTransform();
+    }
+    const next = !state.modelLocked;
+    transformSavingRef.current = true;
+    setTransformSaving(true);
+    setTransformMessage(null);
+    try {
+      try {
+        await patchProject(state.projectId, { modelLocked: next });
+      } catch (backendError) {
+        try {
+          await updateProjectInFirestore(state.projectId, { modelLocked: next });
+        } catch {
+          throw backendError;
+        }
+      }
+      state.modelLocked = next;
+      if (next) {
+        setTransformDirty(false);
+        setTransformMessage("Locked");
+      } else {
+        setTransformMessage("Unlocked");
+      }
+      window.setTimeout(() => setTransformMessage(null), 2200);
+      map?.triggerRepaint();
+    } catch (err) {
+      console.error("Failed to toggle model lock:", err);
+      setTransformMessage("Lock failed");
+    } finally {
+      transformSavingRef.current = false;
       setTransformSaving(false);
     }
   }
@@ -1059,6 +1262,24 @@ export function BuildingOverlay({ map, projects, visible, opacity = 1, readOnly 
 
   return (
     <>
+      {sel && project && (
+        <PlaceSidePanel
+          project={{ ...project, modelLocked: sel.modelLocked }}
+          map={map}
+          readOnly={readOnly}
+          canAddPhotos={canAddPhotos}
+          onClose={() => {
+            setSelectedIdx(-1);
+            selectedIdxRef.current = -1;
+            setShowModal(false);
+            setHoveredBuilding(null);
+            map?.triggerRepaint();
+          }}
+          onEdit={() => openModal("edit")}
+          onToggleLock={() => void handleToggleLock()}
+        />
+      )}
+
       {/* Hover Tooltip */}
       {hoveredBuilding && selectedIdx < 0 && (
         <div
@@ -1341,19 +1562,19 @@ export function BuildingOverlay({ map, projects, visible, opacity = 1, readOnly 
               <div style={{ marginBottom: 20 }}>
                 <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>
                   Progress Photos
-                  {(project.photos?.length ?? 0) > 0 && (
+                  {(project.photos ?? []).filter((p) => p.kind !== "site").length > 0 && (
                     <span style={{ marginLeft: 6, fontWeight: 700, color: "var(--seed)" }}>
-                      ({project.photos.length})
+                      ({(project.photos ?? []).filter((p) => p.kind !== "site").length})
                     </span>
                   )}
                 </div>
-                {(project.photos?.length ?? 0) === 0 ? (
+                {(project.photos ?? []).filter((p) => p.kind !== "site").length === 0 ? (
                   <div style={{ fontSize: 12, color: "var(--muted2)", lineHeight: 1.5 }}>
                     No progress photos uploaded yet.
                   </div>
                 ) : (
                   <div className="project-photo-grid building-modal-photos">
-                    {project.photos.map((photo) => (
+                    {(project.photos ?? []).filter((p) => p.kind !== "site").map((photo) => (
                       <a
                         key={photo.id}
                         href={backendUrl(photo.url)}
@@ -1416,22 +1637,6 @@ export function BuildingOverlay({ map, projects, visible, opacity = 1, readOnly 
             <span style={{ color: "var(--ink)", fontWeight: 600, fontSize: 14, flex: 1 }}>
               {sel.projectName}
             </span>
-            <button
-              onClick={() => openModal("view")}
-              style={{
-                cursor: "pointer", background: "var(--cream-deep)", border: "2px solid var(--primary)",
-                color: "var(--primary)", fontSize: 11, padding: "6px 12px", borderRadius: 0, fontWeight: 700,
-                display: "flex", alignItems: "center", gap: 5,
-                fontFamily: '"Chakra Petch", sans-serif',
-              }}
-              title="View Details"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                <circle cx="12" cy="12" r="3"/>
-              </svg>
-              View
-            </button>
             {!readOnly && (
             <button
               onClick={() => openModal("edit")}
@@ -1468,44 +1673,70 @@ export function BuildingOverlay({ map, projects, visible, opacity = 1, readOnly 
             display: "flex", gap: 12, fontSize: 11, color: "var(--muted2)",
             borderTop: "1px solid var(--stroke2)", paddingTop: 8, width: "100%",
           }}>
-            <span>Left-drag: Move</span>
-            <span>Right-drag: Rotate</span>
-            <span>Scroll: Scale</span>
-            {snapToRoad && <span style={{ color: "#00c8d4" }}>Snap to road</span>}
+            {sel.modelLocked ? (
+              <span style={{ color: "#c47a1a", fontWeight: 600 }}>Locked — unlock to move / rotate / scale</span>
+            ) : (
+              <>
+                <span>Left-drag: Move</span>
+                <span>Right-drag: Rotate</span>
+                <span>Scroll: Scale</span>
+                {snapToRoad && <span style={{ color: "#00c8d4" }}>Snap to road</span>}
+              </>
+            )}
           </div>
           )}
 
           {/* Action row */}
           {!readOnly && (
-          <div style={{ display: "flex", gap: 8, width: "100%", paddingTop: 2 }}>
+          <div style={{ display: "flex", gap: 8, width: "100%", paddingTop: 2, flexWrap: "wrap" }}>
             <button
               type="button"
-              onClick={handleSaveTransform}
-              disabled={transformSaving || !transformDirty}
+              onClick={() => void handleToggleLock()}
+              disabled={transformSaving}
               style={{
-                cursor: transformSaving || !transformDirty ? "default" : "pointer",
-                flex: 1,
+                cursor: transformSaving ? "default" : "pointer",
+                flex: "1 1 90px",
                 padding: "8px 10px",
                 borderRadius: 0,
-                background: transformDirty ? "var(--seed)" : "var(--cream-deep)",
+                background: sel.modelLocked ? "rgba(196,122,26,0.18)" : "var(--cream-deep)",
                 border: "2px solid var(--ink)",
                 color: "var(--ink)",
                 fontSize: 12,
                 fontWeight: 700,
-                opacity: transformSaving || !transformDirty ? 0.65 : 1,
+                opacity: transformSaving ? 0.65 : 1,
               }}
-              title="Save map position, rotation, and scale"
+              title={sel.modelLocked ? "Unlock model so it can be moved" : "Lock model in place"}
+            >
+              {sel.modelLocked ? "Unlock" : "Lock"}
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveTransform}
+              disabled={transformSaving || !transformDirty || sel.modelLocked}
+              style={{
+                cursor: transformSaving || !transformDirty || sel.modelLocked ? "default" : "pointer",
+                flex: "1 1 110px",
+                padding: "8px 10px",
+                borderRadius: 0,
+                background: transformDirty && !sel.modelLocked ? "var(--seed)" : "var(--cream-deep)",
+                border: "2px solid var(--ink)",
+                color: "var(--ink)",
+                fontSize: 12,
+                fontWeight: 700,
+                opacity: transformSaving || !transformDirty || sel.modelLocked ? 0.65 : 1,
+              }}
+              title={sel.modelLocked ? "Unlock before saving position" : "Save map position, rotation, and scale"}
             >
               {transformSaving
                 ? "Saving…"
                 : transformMessage ??
-                  (transformDirty ? "Save Position" : "Saved")}
+                  (sel.modelLocked ? "Locked" : transformDirty ? "Save Position" : "Saved")}
             </button>
-            {!confirmDelete ? (
+            {onDeleteBuilding && (!confirmDelete ? (
               <button
                 onClick={() => setConfirmDelete(true)}
                 style={{
-                  cursor: "pointer", flex: 1, padding: "8px 0", borderRadius: 0,
+                  cursor: "pointer", flex: "1 1 120px", padding: "8px 0", borderRadius: 0,
                   background: "rgba(255,77,79,0.15)", border: "1px solid rgba(255,77,79,0.3)",
                   color: "#ff4d4f", fontSize: 12, fontWeight: 600,
                   display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
@@ -1560,7 +1791,7 @@ export function BuildingOverlay({ map, projects, visible, opacity = 1, readOnly 
                   </div>
                 </div>
               </>
-            )}
+            ))}
           </div>
           )}
         </div>

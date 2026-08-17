@@ -90,6 +90,15 @@ npm run dev
 
 Then open the Vite URL shown in the terminal (usually `http://localhost:5173`).
 
+### In-app help chatbot (Ollama / Llama)
+
+The map screen includes a **Help** chat (floating widget; expand to fullscreen). It answers **only** questions about INFA-TRACK Luisiana via local Ollama.
+
+1. Install [Ollama](https://ollama.com) and keep it running.
+2. Pull a model: `ollama pull llama3.2:1b` (default; or `ollama pull tinyllama` / `llama3.2` if you prefer)
+3. Start the backend (local or Docker). Docker backends use `OLLAMA_BASE_URL=http://host.docker.internal:11434` so the container can reach Ollama on your PC.
+4. Optional env: `OLLAMA_MODEL`, `OLLAMA_BASE_URL` (default `http://127.0.0.1:11434` for local Node).
+
 ### Map token
 This project uses Mapbox for the base map. Create a Mapbox token and set it in:
 - Docker: root `.env` as `VITE_MAPBOX_TOKEN=...`

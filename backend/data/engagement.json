@@ -1,0 +1,41 @@
+{
+  "submissions": [
+    {
+      "id": "E2",
+      "kind": "feedback",
+      "title": "dsdasd",
+      "body": "dsadsad",
+      "category": "adasdsad",
+      "projectId": null,
+      "lng": null,
+      "lat": null,
+      "barangay": "San Pedro",
+      "contactName": "dsdasd",
+      "contactEmail": "maraldrei@gmail.com",
+      "contactPhone": "dsdasd",
+      "status": "new",
+      "createdAt": "2026-08-08T09:08:53.238Z",
+      "staffNote": "adsadasdas",
+      "updatedAt": "2026-08-08T10:47:44.929Z"
+    },
+    {
+      "id": "E1",
+      "kind": "feedback",
+      "title": "dasdasd",
+      "body": "sadsadsa",
+      "category": "dasdasd",
+      "projectId": null,
+      "lng": null,
+      "lat": null,
+      "barangay": "San Isidro",
+      "contactName": "dsadsa",
+      "contactEmail": "maraldrei@gmail.com",
+      "contactPhone": "dasdsad",
+      "status": "new",
+      "createdAt": "2026-08-08T09:08:26.775Z",
+      "staffNote": null,
+      "updatedAt": "2026-08-08T09:08:26.775Z"
+    }
+  ],
+  "nextId": 3
+}

@@ -57,7 +57,7 @@ export const TERRAIN_SOURCES = {
 export const SATELLITE_SOURCES = {
   esri: {
     name: "ESRI World Imagery",
-    tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+    tiles: ["https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
     maxzoom: 19,
     tileSize: 256,
     attribution: "© Esri",
@@ -151,8 +151,8 @@ export function createHillshadeLayer(intensity: number = 0.35) {
       "hillshade-shadow-color": "rgba(0, 0, 0, 0.8)",
       "hillshade-highlight-color": "rgba(255, 255, 255, 0.6)",
       "hillshade-accent-color": "rgba(255, 255, 255, 0.2)",
-      "hillshade-illumination-direction": 315, // Northwest
-      "hillshade-illumination-anchor": "viewport",
+      "hillshade-illumination-direction": 315,
+      "hillshade-illumination-anchor": "map",
     },
   };
 }

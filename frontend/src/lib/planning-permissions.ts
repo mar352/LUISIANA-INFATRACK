@@ -9,6 +9,7 @@ export type PlanningPermissions = {
   canAssign: boolean;
   canRecommend: boolean;
   canApprove: boolean;
+  canVote: boolean;
   canManageCalendar: boolean;
   canManageMeetings: boolean;
 };
@@ -23,12 +24,14 @@ export function getPlanningPermissions(role: UserRole | null): PlanningPermissio
       canAssign: false,
       canRecommend: false,
       canApprove: false,
+      canVote: false,
       canManageCalendar: false,
       canManageMeetings: false,
     };
   }
 
   const isViewer = role === "Viewer";
+  const isBarangay = role === "Barangay Official";
   const isMpdC = role === "MPDC";
   const isCommittee = role === "MPDC" || role === "Engineer" || role === "Agriculture";
 
@@ -40,8 +43,9 @@ export function getPlanningPermissions(role: UserRole | null): PlanningPermissio
     canAssign: isMpdC,
     canRecommend: isCommittee,
     canApprove: isMpdC,
-    canManageCalendar: !isViewer,
-    canManageMeetings: isMpdC || role === "Engineer",
+    canVote: !isViewer && !isBarangay,
+    canManageCalendar: !isViewer && !isBarangay,
+    canManageMeetings: (isMpdC || role === "Engineer") && !isBarangay,
   };
 }
 
@@ -51,6 +55,10 @@ export function allowedStatusTransitions(
   role: UserRole | null,
 ): PlanningProposalStatus[] {
   if (!role || role === "Viewer") return [];
+  if (role === "Barangay Official") {
+    if (status === "draft" || status === "returned") return ["submitted"];
+    return [];
+  }
 
   const perms = getPlanningPermissions(role);
   const next: PlanningProposalStatus[] = [];

@@ -1,18 +1,63 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent, type SyntheticEvent } from "react";
 import maplibregl, { Map as MapLibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { DeckGLOverlay } from "./DeckOverlay";
-import { BuildingOverlay } from "./BuildingOverlay";
+import { CesiumMap, type CesiumMapHandle } from "./CesiumMap";
 import InventoryPage from "./InventoryPage";
 import PlanningPage from "./PlanningPage";
+import DocumentsPage from "./DocumentsPage";
+import AnalyticsPage from "./AnalyticsPage";
+import CitizenPortal from "./CitizenPortal";
+import EngagementPage from "./EngagementPage";
 import { addProjectToFirestore } from "../services/firestore-projects";
-import type { AlertItem, HeatPoint, Project, RiskZones, WeatherSnapshot, ProjectStatus } from "../types";
-import { MODEL_CATALOG, type ModelType, PROJECT_STATUS_COLORS } from "../types";
+import type {
+  AlertItem,
+  HeatPoint,
+  MapSketch,
+  MapSketchKind,
+  PlacementTool,
+  PlanningProposal,
+  Project,
+  RiskZones,
+  WeatherSnapshot,
+  ProjectStatus,
+} from "../types";
+import {
+  MAP_SKETCH_COLORS,
+  MODEL_CATALOG,
+  PLANNING_STATUS_LABELS,
+  type ModelType,
+  PROJECT_STATUS_COLORS,
+} from "../types";
 import { connectRealtime } from "../lib/realtime";
 import { BACKEND_URL, backendUrl } from "../lib/api";
+import { fetchProposalsOnce, updateProposal } from "../services/firestore-planning";
+import { departmentForRole } from "../lib/planning-permissions";
 import { buildHeatmapPoints, type BBox, type HeatmapMetric } from "../lib/heatmap";
-import { formatGibsDate, gibsWmtsTileUrl, type GibsLayerId } from "../lib/gibs";
-import { getCurrentSolarHour } from "../lib/solar";
+import { formatGibsDate, getGibsLayerInfo, gibsWmtsTileUrl, type GibsLayerId } from "../lib/gibs";
+import {
+  applyMapSunLighting,
+  dateFromDisplaySolarHour,
+  formatSolarHour,
+  getCurrentSolarHour,
+  getSunPosition,
+  bearingDegFromSunCalcAzimuth,
+  sunPositionWithBearing,
+  sunDirectionFromPosition,
+  shadowGroundOffset,
+  shadowStretchFromAltitude,
+  daylightRasterScale,
+  ensureNightVeilLayer,
+  LUISIANA_CENTER,
+} from "../lib/solar";
+import {
+  DEFAULT_MAP_SETTINGS,
+  loadMapSettings,
+  saveMapSettings,
+  type MapSettings,
+  type ShadowQuality,
+  type TerrainQuality,
+} from "../lib/map-settings";
+import { SunAzimuthDial } from "./SunAzimuthDial";
 import { 
   getTerrainSource, 
   getSatelliteSource, 
@@ -22,22 +67,15 @@ import {
   type TerrainSource,
   type SatelliteSource 
 } from "../lib/terrain";
-import { 
-  fetchEONETEvents, 
-  filterEventsByRegion, 
-  getEventStats, 
-  getLatestGeometry,
-  calculateDistance,
-  EONET_CATEGORIES,
-  type EONETEvent 
-} from "../lib/eonet";
-import { 
-  TerrainRiskModel, 
-  generateSyntheticTrainingData,
-  getRiskColor,
-  getRiskDescription,
-  type RiskPrediction 
-} from "../lib/ml-risk";
+import { calculateDistance } from "../lib/eonet";
+import {
+  fetchTropicalSystems,
+  getTropicalColor,
+  getTropicalIcon,
+  getTropicalStageMeta,
+  type TropicalSystem,
+} from "../lib/tropical-systems";
+import { detectOpenMapTilesSourceId, stadiaStyleUrl } from "../lib/stadia";
 import {
   ensureEditStreetLayers,
   setEditStreetVisible,
@@ -46,16 +84,33 @@ import {
   teardownEditStreetOverlay,
 } from "../lib/street-edit-overlay";
 import { snapLngLatToRoad } from "../lib/snap-to-road";
-import { LandingPage, LoginScreen, ROLE_CONFIGS, type UserRole } from "./Landing";
+import { LandingPage, LoginScreen, ROLE_CONFIGS, isBarangayOfficial, isMunicipalStaff, type UserRole } from "./Landing";
+import {
+  DEFAULT_INFRA_FILTER,
+  INFRA_CATEGORIES,
+  INFRA_DEPARTMENTS,
+  INFRA_STATUSES,
+  filterInfrastructure,
+  toggleListValue,
+  type InfraFilter,
+} from "../lib/infra-filter";
+import { BARANGAY_LIST } from "../types";
+import { earthquakeProneModel, type EarthquakeGridCell, type EarthquakeTrainStatus } from "../lib/ml-earthquake";
+import { classAdvice, classColor } from "../lib/earthquake-labels";
 import { ProjectMonitoringPanel } from "./ProjectMonitoringPanel";
 import { ThemeToggle } from "./ThemeToggle";
+import { ProjectChat } from "./ProjectChat";
+import { HazardLegend } from "./HazardLegend";
+import { activeHazardFromToggles } from "../lib/hazard-overlays";
 import {
   seedAccounts,
-  getSessionFromCookie,
-  clearSessionCookie,
+  restoreSession,
+  logoutUser,
   sessionForRole,
   type SessionUser,
 } from "../services/auth";
+import { setAuditActor } from "../services/firestore-audit";
+import AuditPage from "./AuditPage";
 
 // ── Dashboard icons ────────────────────────────────────────────────────────────
 const IconClipboard = () => (
@@ -104,6 +159,16 @@ const ModelIcons: Record<string, React.FC<{ size?: number; color?: string }>> = 
       <path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-4h6v4"/><path d="M9 10h.01"/><path d="M15 10h.01"/>
     </svg>
   ),
+  municipal_hall: ({ size = 18, color = "currentColor" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 21h18"/><path d="M4 21V10l8-6 8 6v11"/><path d="M9 21v-6h6v6"/><path d="M12 4v3"/><path d="M8 14h.01"/><path d="M16 14h.01"/>
+    </svg>
+  ),
+  rhu: ({ size = 18, color = "currentColor" }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 21h18"/><path d="M5 21V9l7-5 7 5v12"/><path d="M12 11v6"/><path d="M9 14h6"/>
+    </svg>
+  ),
   evacuation_center: ({ size = 18, color = "currentColor" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
@@ -144,41 +209,46 @@ const ModelIcons: Record<string, React.FC<{ size?: number; color?: string }>> = 
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined;
 
-// OpenFreeMap Liberty — free vector tiles with OSM building footprints + heights.
-// No API key needed. Buildings have render_height / render_min_height properties.
-const VECTOR_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
+// Stadia Maps Outdoors — OpenMapTiles schema (buildings + landcover). API key optional on localhost.
+const VECTOR_STYLE_URL = stadiaStyleUrl();
 
 type LayerToggles = {
   satellite: boolean;
-  streetMap: boolean;
   terrain: boolean;
   heatmap: boolean;
   weather: boolean;
   gibsPrecip: boolean;
   risk: boolean;
   projects: boolean;
+  buildingBlocks: boolean;
   stormTrack: boolean;
+  hazardEil2010: boolean;
+  hazardEq2014: boolean;
+  hazardGsh2014: boolean;
 };
 
 const DEFAULT_TOGGLES: LayerToggles = {
   satellite: false,
-  streetMap: false,
   terrain: false,
   heatmap: false,
   weather: false,
   gibsPrecip: false,
   risk: false,
   projects: true,
+  buildingBlocks: true,
   stormTrack: false,
+  hazardEil2010: false,
+  hazardEq2014: false,
+  hazardGsh2014: false,
 };
 
-const BUILDING_EXTRUSION_OPACITY_DEFAULT = 0.9;
+const BUILDING_EXTRUSION_OPACITY_DEFAULT = 1;
 
 /**
  * The REAL 3D blocks on this app:
  *   layer id:     "3d-buildings"
  *   type:         fill-extrusion
- *   source:       "openmaptiles"  (OpenFreeMap Liberty vector tiles)
+ *   source:       OpenMapTiles vector (usually "openmaptiles" — Stadia / OMT)
  *   source-layer: "building"
  *
  * Do NOT confuse with:
@@ -186,8 +256,17 @@ const BUILDING_EXTRUSION_OPACITY_DEFAULT = 0.9;
  *   - "glb-buildings"  (Three.js custom layer for project GLBs)
  */
 const BUILDING_EXTRUSION_LAYER = "3d-buildings";
-const BUILDING_VECTOR_SOURCE = "openmaptiles";
 const BUILDING_SOURCE_LAYER = "building";
+
+/** Flat / style-provided building layers to strip before our extrusion (Stadia, Liberty, …). */
+const FLAT_BUILDING_LAYER_IDS = [
+  "building",
+  "building-top",
+  "building-3d",
+  "buildings",
+  "building-street",
+  "building-number",
+];
 
 /** Set opacity/visibility on our extrusion and base-style building extrusions. */
 function applyBuildingExtrusionOpacity(map: MapLibreMap, opacity: number) {
@@ -242,16 +321,217 @@ function formatAgo(iso: string) {
   return `${m}m ago`;
 }
 
+type PanelNotice = {
+  id: string;
+  proposalId: string;
+  title: string;
+  message: string;
+  at: string;
+  kind: "botohan" | "returned" | "review" | "assigned" | "update";
+};
+
+function buildEngineerPlanningNotices(
+  proposals: PlanningProposal[],
+  session: SessionUser,
+): PanelNotice[] {
+  const username = session.username.toLowerCase();
+  const dept = departmentForRole(session.role);
+  const notices: PanelNotice[] = [];
+
+  for (const p of proposals) {
+    const isDept = p.department === dept;
+    const isAssignee = (p.assignees || []).some((a) => a.toLowerCase() === username);
+    const votes = p.votes || [];
+    const hasVoted = votes.some((v) => v.username.toLowerCase() === username);
+    const yes = votes.filter((v) => v.choice === "yes").length;
+    const no = votes.filter((v) => v.choice === "no").length;
+    const abstain = votes.filter((v) => v.choice === "abstain").length;
+    const statusLabel = PLANNING_STATUS_LABELS[p.status] || p.status;
+    const at = p.updatedAt || p.createdAt;
+
+    if (p.status === "in_review" && !hasVoted) {
+      notices.push({
+        id: `${p.id}:botohan:${votes.length}`,
+        proposalId: p.id,
+        title: "Botohan open",
+        message: `"${p.title}" — cast your Yes / No / Abstain vote.`,
+        at,
+        kind: "botohan",
+      });
+      continue;
+    }
+
+    if (!isDept && !isAssignee) continue;
+
+    if (p.status === "returned") {
+      notices.push({
+        id: `${p.id}:returned:${at}`,
+        proposalId: p.id,
+        title: "Returned for revision",
+        message: `"${p.title}" was returned. Update and resubmit.`,
+        at,
+        kind: "returned",
+      });
+      continue;
+    }
+
+    if (isAssignee && (p.status === "submitted" || p.status === "in_review")) {
+      notices.push({
+        id: `${p.id}:assigned:${p.status}:${votes.length}`,
+        proposalId: p.id,
+        title: "Assigned to you",
+        message: `"${p.title}" · ${statusLabel}${votes.length ? ` · Botohan ${yes}Y / ${no}N / ${abstain}A` : ""}`,
+        at,
+        kind: "assigned",
+      });
+      continue;
+    }
+
+    if (isDept && (p.status === "submitted" || p.status === "in_review" || p.status === "recommended")) {
+      notices.push({
+        id: `${p.id}:${p.status}:${votes.length}`,
+        proposalId: p.id,
+        title: statusLabel,
+        message:
+          p.status === "in_review" && votes.length
+            ? `"${p.title}" · Botohan ${yes}Y / ${no}N / ${abstain}A`
+            : `"${p.title}" needs Engineering attention.`,
+        at,
+        kind: p.status === "in_review" ? "review" : "update",
+      });
+    }
+  }
+
+  return notices
+    .sort((a, b) => (b.at || "").localeCompare(a.at || ""))
+    .slice(0, 12);
+}
+
+/**
+ * Notices for the MPDC role.
+ *
+ * MPDC is the final approval authority so they need to see:
+ * - Any proposal newly submitted (waiting for them to open review / assign)
+ * - Proposals that reached "recommended" status (ready for their approve/reject decision)
+ * - Open botohan where they haven't voted yet
+ * - Proposals returned by them that were resubmitted (came back for re-review)
+ */
+function buildMpdcPlanningNotices(
+  proposals: PlanningProposal[],
+  session: SessionUser,
+): PanelNotice[] {
+  const username = session.username.toLowerCase();
+  const notices: PanelNotice[] = [];
+
+  for (const p of proposals) {
+    const votes = p.votes || [];
+    const hasVoted = votes.some((v) => v.username.toLowerCase() === username);
+    const yes = votes.filter((v) => v.choice === "yes").length;
+    const no = votes.filter((v) => v.choice === "no").length;
+    const abstain = votes.filter((v) => v.choice === "abstain").length;
+    const at = p.updatedAt || p.createdAt;
+
+    // Open botohan — MPDC hasn't voted yet.
+    if (p.status === "in_review" && !hasVoted) {
+      notices.push({
+        id: `${p.id}:botohan:${votes.length}`,
+        proposalId: p.id,
+        title: "Botohan open",
+        message: `"${p.title}" — cast your Yes / No / Abstain vote.`,
+        at,
+        kind: "botohan",
+      });
+      continue;
+    }
+
+    // Newly submitted — MPDC needs to open review and assign.
+    if (p.status === "submitted") {
+      notices.push({
+        id: `${p.id}:submitted:${at}`,
+        proposalId: p.id,
+        title: "New proposal submitted",
+        message: `"${p.title}" is waiting for review assignment.`,
+        at,
+        kind: "review",
+      });
+      continue;
+    }
+
+    // Recommended by committee — MPDC needs to approve or reject.
+    if (p.status === "recommended") {
+      const voteStr = votes.length ? ` · Botohan ${yes}Y / ${no}N / ${abstain}A` : "";
+      notices.push({
+        id: `${p.id}:recommended:${at}`,
+        proposalId: p.id,
+        title: "Ready for approval",
+        message: `"${p.title}" was recommended by the committee.${voteStr}`,
+        at,
+        kind: "assigned",
+      });
+      continue;
+    }
+
+    // Returned proposal that has been resubmitted — came back for re-review.
+    if (p.status === "submitted" && (p.approvals || []).some((a) => a.action === "returned")) {
+      notices.push({
+        id: `${p.id}:resubmitted:${at}`,
+        proposalId: p.id,
+        title: "Resubmitted after return",
+        message: `"${p.title}" was revised and resubmitted.`,
+        at,
+        kind: "returned",
+      });
+    }
+  }
+
+  return notices
+    .sort((a, b) => (b.at || "").localeCompare(a.at || ""))
+    .slice(0, 12);
+}
+
+// ── Engineer notices ─────────────────────────────────────────────────────────
+const DISMISSED_NOTICES_KEY = "infatrack_eng_dismissed_notices";
+
+function loadDismissedNoticeIds(): string[] {
+  try {
+    const raw = localStorage.getItem(DISMISSED_NOTICES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+// ── MPDC notices ─────────────────────────────────────────────────────────────
+const MPDC_DISMISSED_NOTICES_KEY = "infatrack_mpdc_dismissed_notices";
+
+function loadMpdcDismissedNoticeIds(): string[] {
+  try {
+    const raw = localStorage.getItem(MPDC_DISMISSED_NOTICES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
 export default function App() {
   const mapRef = useRef<MapLibreMap | null>(null);
   const mapDivRef = useRef<HTMLDivElement | null>(null);
   // Separate state so React re-renders overlays when the map instance is ready
   const [mapInstance, setMapInstance] = useState<MapLibreMap | null>(null);
+  const cesiumMapRef = useRef<CesiumMapHandle | null>(null);
 
   const [currentSession, setCurrentSession] = useState<SessionUser | null>(null);
   const currentRole = currentSession?.role ?? null;
-  const [screen, setScreen] = useState<"landing" | "login" | "app" | "inventory" | "planning">("landing");
+  const [screen, setScreen] = useState<"landing" | "login" | "app" | "inventory" | "planning" | "documents" | "analytics" | "engagement" | "citizen" | "audit">("landing");
   const roleConfig = currentRole ? ROLE_CONFIGS[currentRole] : null;
+  /** Keep Cesium alive briefly after leaving the map so logout/home doesn't white-screen on WebGL teardown. */
+  const [mapHold, setMapHold] = useState(false);
+  /** Same for Citizen Portal globe — unmounting it after Home was white-screening Landing. */
+  const [citizenHold, setCitizenHold] = useState(false);
 
   const [cookieConsent, setCookieConsent] = useState<"pending" | "accepted" | "declined">(() => {
     const stored = localStorage.getItem("infatrack_cookie_consent");
@@ -262,11 +542,14 @@ export default function App() {
     seedAccounts().catch((err) => console.warn("[Auth] Seed accounts failed:", err));
 
     if (cookieConsent === "accepted") {
-      const saved = getSessionFromCookie();
-      if (saved) {
-        setCurrentSession(saved);
-        setScreen("app");
-      }
+      restoreSession()
+        .then((saved) => {
+          if (!saved) return;
+          setAuditActor(saved);
+          setCurrentSession(saved);
+          setScreen(saved.role === "Barangay Official" ? "planning" : "app");
+        })
+        .catch((err) => console.warn("[Auth] restore session failed:", err));
     }
   }, []);
 
@@ -282,11 +565,106 @@ export default function App() {
 
   const [connected, setConnected] = useState(false);
   const [toggles, setToggles] = useState<LayerToggles>(DEFAULT_TOGGLES);
+  const [mapSettings, setMapSettings] = useState<MapSettings>(() => loadMapSettings());
+  useEffect(() => {
+    saveMapSettings(mapSettings);
+  }, [mapSettings]);
+  const [solarHour, setSolarHour] = useState(() => getCurrentSolarHour());
+  const [solarFollowPht, setSolarFollowPht] = useState(true);
+  const [sunAzimuthDeg, setSunAzimuthDeg] = useState(() => {
+    const date = dateFromDisplaySolarHour(getCurrentSolarHour());
+    const pos = getSunPosition(LUISIANA_CENTER.lat, LUISIANA_CENTER.lon, date);
+    return bearingDegFromSunCalcAzimuth(pos.azimuthRad);
+  });
+  const sunLighting = useMemo(() => {
+    const date = dateFromDisplaySolarHour(solarHour);
+    const astro = getSunPosition(LUISIANA_CENTER.lat, LUISIANA_CENTER.lon, date);
+    const pos = sunPositionWithBearing(astro.altitudeRad, sunAzimuthDeg);
+    const [dx, dy, dz] = sunDirectionFromPosition(pos);
+    const lightPosition: [number, number, number] = pos.isDaylight
+      ? [dx * 100, dy * 100, Math.max(12, dz * 100)]
+      : [dx * 40, dy * 40, Math.max(8, Math.abs(dz) * 20)];
+    return {
+      pos,
+      lightPosition,
+      altitudeRad: pos.altitudeRad,
+      azimuthRad: pos.azimuthRad,
+      isDaylight: pos.isDaylight,
+      stretch: shadowStretchFromAltitude(pos.altitudeRad),
+      groundOffset: shadowGroundOffset(pos),
+    };
+  }, [solarHour, sunAzimuthDeg]);
+
+  const setSolarHourAndSyncAzimuth = (hour: number, followPht = false) => {
+    setSolarFollowPht(followPht);
+    setSolarHour(hour);
+    const date = dateFromDisplaySolarHour(hour);
+    const pos = getSunPosition(LUISIANA_CENTER.lat, LUISIANA_CENTER.lon, date);
+    setSunAzimuthDeg(bearingDegFromSunCalcAzimuth(pos.azimuthRad));
+  };
+
+  const syncSolarToPht = () => {
+    setSolarHourAndSyncAzimuth(getCurrentSolarHour(), true);
+  };
+
+  useEffect(() => {
+    if (!solarFollowPht) return;
+    const tick = () => setSolarHourAndSyncAzimuth(getCurrentSolarHour(), true);
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [solarFollowPht]);
+
+  const solarOffPht = !solarFollowPht;
+
+  /** Keep Cesium camera still while Sun/Time overlay is being dragged. */
+  const setCesiumCameraInputs = (enabled: boolean) => {
+    cesiumMapRef.current?.setCameraInputsEnabled(enabled);
+  };
+
+  const stopMapPointer = (e: SyntheticEvent) => {
+    e.stopPropagation();
+  };
+
+  const freezeCameraOnPointerDown = (e: PointerEvent | MouseEvent) => {
+    e.stopPropagation();
+    setCesiumCameraInputs(false);
+  };
+
+  const unfreezeCameraOnPointerUp = (e: SyntheticEvent) => {
+    e.stopPropagation();
+    setCesiumCameraInputs(true);
+  };
+
+  // Drive MapLibre basemap light + hillshade + night veil from SunCalc
+  useEffect(() => {
+    const map = mapInstance ?? mapRef.current;
+    if (!map) return;
+    const apply = () => {
+      applyMapSunLighting(map as any, sunLighting.pos, {
+        showHillshade: true,
+        beforeVeilId: BUILDING_EXTRUSION_LAYER,
+        satelliteOn: toggles.satellite,
+      });
+    };
+    if (map.isStyleLoaded()) apply();
+    else map.once("style.load", apply);
+    map.on("style.load", apply);
+    return () => {
+      map.off("style.load", apply);
+    };
+  }, [mapInstance, sunLighting, toggles.satellite]);
   const [weather, setWeather] = useState<WeatherSnapshot | null>(null);
   const [heatPoints, setHeatPoints] = useState<HeatPoint[]>([]);
   const [riskZones, setRiskZones] = useState<RiskZones | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [infraFilter, setInfraFilter] = useState<InfraFilter>(DEFAULT_INFRA_FILTER);
+  const filteredProjects = useMemo(
+    () => filterInfrastructure(Array.isArray(projects) ? projects : [], infraFilter),
+    [projects, infraFilter],
+  );
   const [placementMode, setPlacementMode] = useState(false);
+  const [blockRemoverMode, setBlockRemoverMode] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [snapToRoad, setSnapToRoad] = useState(true);
   const [selectedModel, setSelectedModel] = useState<ModelType>("office");
@@ -294,43 +672,134 @@ export default function App() {
   const [placingName, setPlacingName] = useState("");
   const [customModelFile, setCustomModelFile] = useState<File | null>(null);
   const [customModelPreview, setCustomModelPreview] = useState<string | null>(null);
-  const [sidebarTab, setSidebarTab] = useState<"layers" | "risk" | "projects" | "climate" | "events" | "ai-risk">("climate");
+  /** Approved proposal waiting for MPDC to click the map and pin the site. */
+  const [pinProposal, setPinProposal] = useState<PlanningProposal | null>(null);
+  const pinProposalRef = useRef<PlanningProposal | null>(null);
+  const [placementTool, setPlacementTool] = useState<PlacementTool>("pin");
+  const [placementColor, setPlacementColor] = useState<string>(MAP_SKETCH_COLORS[0]);
+
+  const placementToolbarOpen =
+    (pinProposal && currentRole === "MPDC" && screen === "app") ||
+    (placementMode && currentRole === "Engineer" && screen === "app");
+  const eraseBlocksActive = placementToolbarOpen && placementTool === "erase";
+  const [sidebarTab, setSidebarTab] = useState<"notify" | "layers" | "risk" | "projects" | "climate" | "events">("climate");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
     typeof window !== "undefined" && window.matchMedia("(max-width: 1024px)").matches
   );
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [compactChrome, setCompactChrome] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(max-width: 768px)").matches,
+  );
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
+  const [planningNotices, setPlanningNotices] = useState<PanelNotice[]>([]);
+  const [dismissedNoticeIds, setDismissedNoticeIds] = useState<string[]>(() => loadDismissedNoticeIds());
+  const [mpdcNotices, setMpdcNotices] = useState<PanelNotice[]>([]);
+  const [mpdcDismissedIds, setMpdcDismissedIds] = useState<string[]>(() => loadMpdcDismissedNoticeIds());
+  const refreshPlanningNoticesRef = useRef<() => void>(() => {});
 
   // Set default tab based on role permissions
   useEffect(() => {
     if (roleConfig) {
-      if (roleConfig.canSeeWeather || roleConfig.canSeeLayers) setSidebarTab("climate");
+      if (currentRole === "Engineer") setSidebarTab("notify");
+      else if (currentRole === "MPDC") setSidebarTab("notify");
+      else if (roleConfig.canSeeWeather || roleConfig.canSeeLayers) setSidebarTab("climate");
       else if (roleConfig.canSeeRisk) setSidebarTab("risk");
       else if (roleConfig.canSeeProjects) setSidebarTab("projects");
     }
+    if (currentRole !== "Engineer") {
+      setBlockRemoverMode(false);
+      setEditMode(false);
+    }
+    if (currentRole !== "MPDC") {
+      setPinProposal(null);
+      pinProposalRef.current = null;
+    }
+    if (currentRole !== "Engineer" && currentRole !== "MPDC") {
+      setPlacementMode(false);
+    }
   }, [currentRole]);
+
+  useEffect(() => {
+    pinProposalRef.current = pinProposal;
+  }, [pinProposal]);
 
   // Collapse side panel by default on tablet/phone; full map first
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 1024px)");
+    const phone = window.matchMedia("(max-width: 768px)");
     const onChange = (e: MediaQueryListEvent) => {
       if (e.matches) setSidebarCollapsed(true);
     };
+    const onPhone = (e: MediaQueryListEvent) => {
+      setCompactChrome(e.matches);
+      if (!e.matches) setMoreMenuOpen(false);
+    };
     if (mq.matches) setSidebarCollapsed(true);
+    setCompactChrome(phone.matches);
     mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
+    phone.addEventListener("change", onPhone);
+    return () => {
+      mq.removeEventListener("change", onChange);
+      phone.removeEventListener("change", onPhone);
+    };
   }, []);
 
-  // MapLibre needs a resize after the panel width animates
+  // Overlay panel: keep the map canvas size fixed and ease camera padding so
+  // custom 3D models stay locked to lat/lng/altitude (no mid-animation resize).
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    const timers = [50, 280, 420].map((ms) =>
-      window.setTimeout(() => {
-        try { map.resize(); } catch { /* map may be gone */ }
-      }, ms)
-    );
-    return () => timers.forEach(clearTimeout);
-  }, [sidebarCollapsed]);
+    const map = mapRef.current ?? mapInstance;
+    if (!map || screen !== "app") return;
+
+    const durationMs = 280;
+    const isNarrow = window.matchMedia("(max-width: 1024px)").matches;
+    const panelEl = document.querySelector(".sidePanel") as HTMLElement | null;
+    const rect = panelEl?.getBoundingClientRect();
+    const measuredW = rect && rect.width > 0 ? Math.round(rect.width) : Math.max(320, Math.min(352, Math.round(window.innerWidth * 0.22)));
+    const measuredH = rect && rect.height > 0
+      ? Math.round(rect.height)
+      : Math.min(Math.round(window.innerHeight * 0.58), Math.max(0, window.innerHeight - 52));
+
+    const padding = sidebarCollapsed
+      ? { top: 0, bottom: 0, left: 0, right: 0 }
+      : isNarrow
+        ? { top: 0, bottom: measuredH, left: 0, right: 0 }
+        : { top: 0, bottom: 0, left: 0, right: measuredW };
+
+    try {
+      map.easeTo({
+        padding,
+        duration: durationMs,
+        essential: true,
+      });
+    } catch {
+      /* map may not be ready */
+    }
+
+    // Keep projection matrices fresh while padding eases.
+    // Custom layer re-reads map matrix each frame via getProjectionDataForCustomLayer.
+    const start = performance.now();
+    let raf = 0;
+    const tick = (now: number) => {
+      try {
+        map.triggerRepaint();
+      } catch {
+        /* map may be gone */
+      }
+      if (now - start < durationMs + 80) {
+        raf = window.requestAnimationFrame(tick);
+      } else {
+        try {
+          map.resize();
+          map.triggerRepaint();
+        } catch {
+          /* ignore */
+        }
+      }
+    };
+    raf = window.requestAnimationFrame(tick);
+
+    return () => window.cancelAnimationFrame(raf);
+  }, [sidebarCollapsed, screen, mapInstance]);
   const [heatMetric, setHeatMetric] = useState<HeatmapMetric>("combined");
   const [viewport, setViewport] = useState<{ bbox: BBox; zoom: number } | null>(null);
   const [gibsLayer, setGibsLayer] = useState<GibsLayerId>("IMERG_Precipitation_Rate");
@@ -345,167 +814,91 @@ export default function App() {
   const [glbModelsOpacity, setGlbModelsOpacity] = useState(1);
   const [gibsStatus, setGibsStatus] = useState<"loading" | "ok" | "unavailable">("loading");
 
-  // NASA EONET Natural Events
-  const [eonetEvents, setEonetEvents] = useState<EONETEvent[]>([]);
-  const [eonetEnabled, setEonetEnabled] = useState(false);
-  const [eonetLoading, setEonetLoading] = useState(false);
-  const [eonetCategories, setEonetCategories] = useState<string[]>(["wildfires", "severeStorms", "volcanoes", "earthquakes", "floods"]);
-  const [eonetRadius, setEonetRadius] = useState(1000); // km radius from Luisiana
+  const [tropicalEnabled, setTropicalEnabled] = useState(false);
+  const [tropicalSystems, setTropicalSystems] = useState<TropicalSystem[]>([]);
+  const [tropicalLoading, setTropicalLoading] = useState(false);
+  const [tropicalDisclaimer, setTropicalDisclaimer] = useState("");
+  const [tropicalError, setTropicalError] = useState<string | null>(null);
 
-  // AI Risk Analysis
-  const [aiRiskEnabled, setAiRiskEnabled] = useState(false);
-  const [aiRiskLoading, setAiRiskLoading] = useState(false);
-  const [aiRiskTrained, setAiRiskTrained] = useState(false);
-  const [aiRiskPredictions, setAiRiskPredictions] = useState<any[]>([]);
-  const [aiRiskModel, setAiRiskModel] = useState<any>(null);
-  const [aiRiskAutoTraining, setAiRiskAutoTraining] = useState(false);
+  const [quakeModelEnabled, setQuakeModelEnabled] = useState(false);
+  const [quakeStatus, setQuakeStatus] = useState<EarthquakeTrainStatus>({
+    state: "idle",
+    message: "Off",
+    samples: 0,
+    accuracy: null,
+  });
+  const [quakeGrid, setQuakeGrid] = useState<EarthquakeGridCell[]>([]);
 
   // Google Street View mode — when active, clicking the map opens GSV in a new tab
   const [streetViewMode, setStreetViewMode] = useState(false);
 
-  // Auto-train AI model on app load
-  useEffect(() => {
-    if (screen !== 'app' || aiRiskAutoTraining || aiRiskTrained) return;
-
-    const autoTrainModel = async () => {
-      setAiRiskAutoTraining(true);
-      setAiRiskLoading(true);
-      
-      try {
-        console.log('🤖 Auto-training AI Risk Model...');
-        
-        // Try to load existing model first
-        const { TerrainRiskModel } = await import('../lib/ml-risk');
-        const model = new TerrainRiskModel();
-        
-        try {
-          await model.loadModel('luisiana-risk-model');
-          console.log('✅ Loaded existing trained model');
-          setAiRiskModel(model);
-          setAiRiskTrained(true);
-        } catch (loadError) {
-          // No existing model, train new one
-          console.log('📚 Training new model with 2000 samples...');
-          const { generateSyntheticTrainingData } = await import('../lib/ml-risk');
-          const trainingData = generateSyntheticTrainingData(2000);
-          
-          await model.train(trainingData, 50); // 50 epochs for better accuracy
-          await model.saveModel('luisiana-risk-model');
-          
-          console.log('✅ Model trained and saved successfully!');
-          setAiRiskModel(model);
-          setAiRiskTrained(true);
-        }
-      } catch (error) {
-        console.error('❌ Auto-training failed:', error);
-      } finally {
-        setAiRiskLoading(false);
-        setAiRiskAutoTraining(false);
-      }
-    };
-
-    // Start auto-training after 2 seconds (let app load first)
-    const timer = setTimeout(autoTrainModel, 2000);
-    return () => clearTimeout(timer);
-  }, [screen, aiRiskAutoTraining, aiRiskTrained]);
-
-  // Map bearing for compass display
-  const [mapBearing, setMapBearing] = useState(-15);
+  // Map bearing tracked by CameraCompass (live rotate/pitch sync)
 
   // Keyboard shortcuts: +/- zoom, N = reset north, H = fly home
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const m = mapRef.current;
-      if (!m) return;
       // Don't fire when typing in an input
       if ((e.target as HTMLElement).tagName === "INPUT" || (e.target as HTMLElement).tagName === "TEXTAREA") return;
+      if (e.key === "h" || e.key === "H") {
+        cesiumMapRef.current?.flyHome();
+      }
+      const m = mapRef.current;
+      if (!m) return;
       if (e.key === "=" || e.key === "+") m.zoomIn({ duration: 300 });
       if (e.key === "-" || e.key === "_") m.zoomOut({ duration: 300 });
-      if (e.key === "n" || e.key === "N") m.easeTo({ bearing: 0, pitch: 62, duration: 500 });
-      if (e.key === "h" || e.key === "H") m.flyTo({ center: [CENTER.lon, CENTER.lat], zoom: CENTER.zoom, pitch: toggles.terrain ? 62 : 30, bearing: -15, duration: 1200, essential: true });
+      if (e.key === "n" || e.key === "N") m.easeTo({ bearing: 0, pitch: 75, duration: 500 });
+      if (e.key === "h" || e.key === "H") m.flyTo({ center: [CENTER.lon, CENTER.lat], zoom: CENTER.zoom, pitch: toggles.satellite ? 75 : 30, bearing: -15, duration: 1200, essential: true });
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggles.terrain]);
+  }, [toggles.satellite]);
 
-  // Fetch NASA EONET natural events
   useEffect(() => {
-    if (!eonetEnabled) return;
+    if (!tropicalEnabled) return;
 
-    const fetchEvents = async () => {
-      setEonetLoading(true);
+    const loadTropical = async () => {
+      setTropicalLoading(true);
       try {
-        const response = await fetchEONETEvents({
-          status: "open",
-          limit: 500,
-          days: 30,
-        });
-
-        // Filter events by region (within radius of Luisiana)
-        const filtered = filterEventsByRegion(response.events, [121.5167, 14.1856], eonetRadius);
-        
-        // Further filter by selected categories
-        const categoryFiltered = filtered.filter(event =>
-          event.categories.some(cat => eonetCategories.includes(cat.id))
-        );
-
-        setEonetEvents(categoryFiltered);
+        const response = await fetchTropicalSystems();
+        setTropicalSystems(response.systems ?? []);
+        setTropicalDisclaimer(response.disclaimer ?? "");
+        setTropicalError(response.error ?? null);
       } catch (error) {
-        console.error("Failed to fetch EONET events:", error);
-        setEonetEvents([]);
+        console.error("Failed to fetch tropical systems:", error);
+        setTropicalSystems([]);
+        setTropicalError(error instanceof Error ? error.message : "Failed to load");
       } finally {
-        setEonetLoading(false);
+        setTropicalLoading(false);
       }
     };
 
-    fetchEvents();
-    
-    // Refresh every 30 minutes
-    const interval = setInterval(fetchEvents, 30 * 60 * 1000);
+    loadTropical();
+    const interval = setInterval(loadTropical, 20 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [eonetEnabled, eonetCategories, eonetRadius]);
+  }, [tropicalEnabled]);
 
-  // Generate AI Risk Predictions
   useEffect(() => {
-    if (!aiRiskEnabled || !aiRiskModel) return;
-
-    const generatePredictions = async () => {
-      setAiRiskLoading(true);
-      try {
-        const { generateRiskGrid, updateGridWithWeather } = await import('../lib/risk-grid');
-        
-        // Generate smaller grid (20x20 = 441 points) - lighter and faster
-        let grid = generateRiskGrid(20);
-        
-        // Update with current weather if available
-        if (weather) {
-          grid = updateGridWithWeather(grid, {
-            rainfallMm: weather.rainfallMm,
-            humidityPct: weather.humidityPct || 70,
-          });
-        }
-        
-        // Generate predictions for all grid points
-        const predictions = await aiRiskModel.predictBatch(grid.map((p: any) => p.features));
-        
-        // Combine with positions
-        const predictionData = grid.map((point: any, i: number) => ({
-          position: point.position,
-          prediction: predictions[i],
-        }));
-        
-        setAiRiskPredictions(predictionData);
-        console.log(`✅ Generated ${predictionData.length} risk predictions`);
-      } catch (error) {
-        console.error("Failed to generate predictions:", error);
-        setAiRiskPredictions([]);
-      } finally {
-        setAiRiskLoading(false);
-      }
+    if (!quakeModelEnabled) {
+      setQuakeGrid([]);
+      setQuakeStatus({ state: "idle", message: "Off", samples: 0, accuracy: null });
+      return;
+    }
+    let cancelled = false;
+    void earthquakeProneModel
+      .ensureReady(setQuakeStatus)
+      .then(() => earthquakeProneModel.buildMapLayer())
+      .then((cells) => {
+        if (cancelled) return;
+        setQuakeGrid(cells);
+        setQuakeStatus({ ...earthquakeProneModel.status });
+      })
+      .catch((err) => {
+        console.error("Earthquake model failed:", err);
+      });
+    return () => {
+      cancelled = true;
     };
-
-    generatePredictions();
-  }, [aiRiskEnabled, aiRiskModel, weather]);
+  }, [quakeModelEnabled]);
 
   const topRisk = useMemo(() => {
     const feats = riskZones?.features || [];
@@ -517,14 +910,19 @@ export default function App() {
   }, [riskZones]);
 
   // Clear map when leaving the app screen
+  // Tear down MapLibre when leaving the app screen
   useEffect(() => {
     if (screen !== "app" && mapRef.current) {
       mapRef.current.remove();
       mapRef.current = null;
+      setMapInstance(null);
     }
   }, [screen]);
 
+  // MapLibre retired — Cesium globe is the primary map. Keep init gated off.
   useEffect(() => {
+    const ENABLE_MAPLIBRE = false;
+    if (!ENABLE_MAPLIBRE) return;
     if (!mapDivRef.current || mapRef.current) return;
     if (screen !== "app") return; // Only initialize when on app screen
 
@@ -535,7 +933,10 @@ export default function App() {
       zoom: CENTER.zoom,
       pitch: 30,
       bearing: -15,
-      attributionControl: false,
+      // Shadowmap-style near-horizon tilt (MapLibre default clamp is 60°)
+      maxPitch: 85,
+      // Keep Stadia / OpenMapTiles / OSM attribution visible (required by tile providers)
+      attributionControl: { compact: true },
       canvasContextAttributes: { antialias: true }, // required for three.js custom layers
     });
 
@@ -548,7 +949,6 @@ export default function App() {
         bbox: { west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth() },
         zoom: map.getZoom(),
       });
-      setMapBearing(map.getBearing());
     };
 
     map.on("load", () => {
@@ -558,32 +958,50 @@ export default function App() {
       // Project blocks = status-colored fill-extrusion (height from progress).
       // GLB models are rendered separately by BuildingOverlay.
 
-      // Remove Liberty's flat building fills; we use our own 3D extrusions.
-      if (map.getLayer("building")) map.removeLayer("building");
-      if (map.getLayer("building-top")) map.removeLayer("building-top");
+      const buildingVectorSource = detectOpenMapTilesSourceId(map);
+
+      // Remove flat style building fills (Stadia Outdoors / Liberty names); we use 3D extrusions.
+      for (const id of FLAT_BUILDING_LAYER_IDS) {
+        if (map.getLayer(id)) map.removeLayer(id);
+      }
+      for (const layer of [...(map.getStyle()?.layers ?? [])].reverse()) {
+        if (layer.id === BUILDING_EXTRUSION_LAYER) continue;
+        const sourceLayer = (layer as any)["source-layer"];
+        if (
+          sourceLayer === BUILDING_SOURCE_LAYER &&
+          (layer.type === "fill" || layer.type === "fill-extrusion") &&
+          map.getLayer(layer.id)
+        ) {
+          map.removeLayer(layer.id);
+        }
+      }
 
       // Context OSM buildings — always visible; opacity slider does NOT touch these.
       // Z-fight with GLBs is handled by clearDepth in BuildingOverlay + hole filter.
-      map.addLayer({
-        id: BUILDING_EXTRUSION_LAYER,
-        type: "fill-extrusion",
-        source: BUILDING_VECTOR_SOURCE,
-        "source-layer": BUILDING_SOURCE_LAYER,
-        minzoom: 12,
-        paint: {
-          "fill-extrusion-color": "#a8b0b8",
-          "fill-extrusion-height": [
-            "interpolate", ["linear"], ["zoom"],
-            12, 0,
-            13, ["coalesce", ["get", "render_height"], 6],
-          ],
-          "fill-extrusion-base": [
-            "coalesce", ["get", "render_min_height"], 0,
-          ],
-          "fill-extrusion-opacity": BUILDING_EXTRUSION_OPACITY_DEFAULT,
-          "fill-extrusion-vertical-gradient": false,
-        },
-      } as any);
+      if (map.getSource(buildingVectorSource) && !map.getLayer(BUILDING_EXTRUSION_LAYER)) {
+        map.addLayer({
+          id: BUILDING_EXTRUSION_LAYER,
+          type: "fill-extrusion",
+          source: buildingVectorSource,
+          "source-layer": BUILDING_SOURCE_LAYER,
+          minzoom: 12,
+          paint: {
+            "fill-extrusion-color": "#a8b0b8",
+            "fill-extrusion-height": [
+              "interpolate", ["linear"], ["zoom"],
+              12, 0,
+              13, ["coalesce", ["get", "render_height"], 6],
+            ],
+            "fill-extrusion-base": [
+              "coalesce", ["get", "render_min_height"], 0,
+            ],
+            "fill-extrusion-opacity": BUILDING_EXTRUSION_OPACITY_DEFAULT,
+            "fill-extrusion-vertical-gradient": false,
+          },
+        } as any);
+      } else if (!map.getSource(buildingVectorSource)) {
+        console.warn("[Map] OpenMapTiles vector source missing; 3d-buildings skipped");
+      }
 
       // Project location dots — GLB models rendered by BuildingOverlay
       map.addSource("project-footprints", {
@@ -612,20 +1030,6 @@ export default function App() {
         },
       });
 
-      // ── OSM Street Map raster source ──
-      // Guard every addSource: the terrain/satellite/street toggle effects run on
-      // "style.load" (fires before "load") and may have created these already.
-      // An unguarded duplicate addSource throws and kills the rest of this handler.
-      if (!map.getSource("osm-street")) {
-        map.addSource("osm-street", {
-          type: "raster",
-          tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
-          tileSize: 256,
-          maxzoom: 19,
-          attribution: "© OpenStreetMap contributors",
-        } as any);
-      }
-
       // ── Satellite imagery source (Enhanced WebGL with multiple providers) ──
       if (!map.getSource("satellite")) {
         const satelliteSource = getSatelliteSource("esri");
@@ -651,7 +1055,7 @@ export default function App() {
       }
 
       // ── Apply WebGL optimizations for better performance ──
-      applyWebGLOptimizations(map, "balanced");
+      applyWebGLOptimizations(map, "performance");
 
       // ── Sky: MapLibre OSS does not support type "sky" (Mapbox-only) — skip ──
 
@@ -666,6 +1070,9 @@ export default function App() {
       } catch (e) {
         console.warn("Hillshade layer not supported:", e);
       }
+
+      // Night veil — above rasters/hillshade, below 3d-buildings (opacity driven by sun)
+      ensureNightVeilLayer(map as any, BUILDING_EXTRUSION_LAYER);
 
       // ── GIBS precipitation (added before satellite so satellite sits on top) ──
       if (!map.getSource("gibs-imerg")) {
@@ -689,22 +1096,10 @@ export default function App() {
         } as any);
       }
 
-      // OSM Street / Satellite — insert before 3d-buildings when that layer exists
+      // Satellite — insert before 3d-buildings when that layer exists
       const beforeBuildings = map.getLayer(BUILDING_EXTRUSION_LAYER)
         ? BUILDING_EXTRUSION_LAYER
         : undefined;
-
-      if (!map.getLayer("osm-street-layer")) {
-        map.addLayer(
-          {
-            id: "osm-street-layer",
-            type: "raster",
-            source: "osm-street",
-            paint: { "raster-opacity": 0 },
-          } as any,
-          beforeBuildings
-        );
-      }
 
       if (!map.getLayer("satellite-layer")) {
         map.addLayer(
@@ -885,7 +1280,7 @@ export default function App() {
       mapRef.current = null;
       setMapInstance(null);
     };
-  }, [screen]); // Re-initialize when screen changes to "app"
+  }, [screen]); // MapLibre init gated off — Cesium is primary
 
   // ── Placement mode: click on map to place a model ──────────────────────────
   const placementModeRef = useRef(false);
@@ -991,25 +1386,162 @@ export default function App() {
         }
       }
 
-      // Show modal to enter building details
-      setPendingPlacement({ lng, lat });
-      const catalog = MODEL_CATALOG.find((m) => m.type === selectedModelRef.current);
-      setModalProjectName(placingNameRef.current.trim() || `${catalog?.label ?? selectedModelRef.current}`);
-      setModalProjectType(
-        catalog?.category === "Agriculture" ? "Agricultural Structure" :
-        catalog?.category === "Infrastructure" ? "Municipal Project" :
-        catalog?.category === "Construction" ? "Municipal Project" : "Private Building"
-      );
-      setModalDepartment("Engineering");
-      setModalStatus("Planned");
-      setModalProgress(0);
-      setModalDescription(catalog?.description || "");
-      setShowPlacementModal(true);
+      openPlacementAt({ lng, lat });
     };
 
     map.on("click", handleClick);
     return () => { map.off("click", handleClick); };
   }, [mapRef.current]);
+
+  /** Open the placement details modal at a clicked lat/lng (MapLibre or Cesium). */
+  function openPlacementAt({ lng, lat }: { lng: number; lat: number }) {
+    const pendingPin = pinProposalRef.current;
+    if (pendingPin && currentRole === "MPDC") {
+      void placeApprovedProposalAt(pendingPin, lng, lat, {
+        kind: "pin",
+        color: placementColor,
+        coordinates: [{ lon: lng, lat }],
+      });
+      return;
+    }
+
+    setPendingPlacement({ lng, lat });
+    const catalog = MODEL_CATALOG.find((m) => m.type === selectedModelRef.current);
+    setModalProjectName(placingNameRef.current.trim() || `${catalog?.label ?? selectedModelRef.current}`);
+    setModalProjectType(
+      catalog?.category === "Agriculture" ? "Agricultural Structure" :
+      catalog?.category === "Infrastructure" ? "Municipal Project" :
+      catalog?.category === "Construction" ? "Municipal Project" : "Private Building"
+    );
+    setModalDepartment("Engineering");
+    setModalStatus("Planned");
+    setModalProgress(0);
+    setModalDescription(catalog?.description || "");
+    setShowPlacementModal(true);
+  }
+
+  function handlePlaceSketch(sketch: MapSketch) {
+    const pendingPin = pinProposalRef.current;
+    const first = sketch.coordinates[0];
+    if (!first) return;
+    if (pendingPin && currentRole === "MPDC") {
+      void placeApprovedProposalAt(pendingPin, first.lon, first.lat, sketch);
+      return;
+    }
+    // Engineer free placement: use sketch centroid / first point for the GLB modal.
+    openPlacementAt({ lng: first.lon, lat: first.lat });
+  }
+
+  function startPinSite(proposal: PlanningProposal) {
+    setPinProposal(proposal);
+    pinProposalRef.current = proposal;
+    setPlacingName(proposal.title);
+    setSelectedModel("office");
+    setModalDepartment(proposal.department);
+    setPlacementTool("pin");
+    setPlacementColor(MAP_SKETCH_COLORS[0]);
+    setPlacementMode(true);
+    setBlockRemoverMode(false);
+    setEditMode(false);
+    setSidebarCollapsed(true);
+    setStreetViewMode(false);
+    setScreen("app");
+  }
+
+  async function placeApprovedProposalAt(
+    proposal: PlanningProposal,
+    lng: number,
+    lat: number,
+    sketch?: MapSketch | null,
+  ) {
+    const now = new Date().toISOString();
+    const dept = proposal.department;
+    const mapSketch: MapSketch = sketch ?? {
+      kind: "pin",
+      color: placementColor,
+      coordinates: [{ lon: lng, lat }],
+    };
+    const body = {
+      name: proposal.title,
+      modelType: "office" as ModelType,
+      type: "Municipal Project" as const,
+      department: dept,
+      status: "Planned" as ProjectStatus,
+      progress: 0,
+      description: proposal.summary,
+      barangay: proposal.barangay,
+      fundingSource: "LGU",
+      contractor:
+        dept === "Engineering"
+          ? "Municipal Engineering Office"
+          : dept === "Agriculture"
+            ? "Municipal Agriculture Office"
+            : dept === "Negosyo Center"
+              ? "Negosyo Center"
+              : "Municipal Planning & Development Coordinator",
+      location: { lat, lon: lng },
+      rotation: 0,
+      modelLocked: true,
+      siteMarkerOnly: true,
+      mapSketch,
+      markerColor: mapSketch.color,
+      lifecyclePhase: "Planning",
+    };
+
+    try {
+      let linkedId: string;
+      try {
+        const res = await fetch(backendUrl("/api/projects"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const { project } = await res.json();
+        linkedId = project.id as string;
+        addProjectToFirestore(project).catch(() => undefined);
+      } catch {
+        const fallback = {
+          id:
+            typeof crypto !== "undefined" && "randomUUID" in crypto
+              ? crypto.randomUUID()
+              : `plan-${Date.now()}`,
+          ...body,
+          milestones: [],
+          issues: [],
+          photos: [],
+          activityLog: [
+            {
+              at: now,
+              message: `Site markup drawn by MPDC from approved proposal ${proposal.id}.`,
+            },
+          ],
+          updatedAt: now,
+          archivedAt: null,
+        } as Project;
+        linkedId = fallback.id;
+        await addProjectToFirestore(fallback);
+        setProjects((prev) => [fallback, ...prev]);
+      }
+
+      await updateProposal(proposal.id, {
+        status: "approved",
+        linkedProjectId: linkedId,
+        location: { lat, lon: lng },
+      });
+
+      setPinProposal(null);
+      pinProposalRef.current = null;
+      setPlacementMode(false);
+      cesiumMapRef.current?.flyToLonLat(lng, lat, 2500);
+      window.alert(
+        `Site markup saved for “${proposal.title}” (${mapSketch.kind}, no 3D model).`,
+      );
+    } catch (err) {
+      console.error(err);
+      window.alert("Failed to pin site. Please try again.");
+    }
+  }
 
   // Function to actually place the building after modal submission
   const handlePlaceBuilding = async () => {
@@ -1047,7 +1579,7 @@ export default function App() {
       let customModelUrl: string | undefined;
       if (selectedModelRef.current === "custom" && customModelFileRef.current) {
         const file = customModelFileRef.current;
-        const maxMb = 200;
+        const maxMb = 500;
         if (file.size > maxMb * 1024 * 1024) {
           alert(`Model is too large (${(file.size / (1024 * 1024)).toFixed(1)}MB). Maximum is ${maxMb}MB.`);
           return;
@@ -1093,6 +1625,13 @@ export default function App() {
             startDate: modalStartDate || undefined,
             targetEndDate: modalTargetEndDate || undefined,
             budgetTotal: modalBudgetTotal ? Number(modalBudgetTotal) : undefined,
+            fundingSource: "LGU",
+            contractor:
+              modalDepartment === "Engineering"
+                ? "Municipal Engineering Office"
+                : modalDepartment === "Agriculture"
+                  ? "Municipal Agriculture Office"
+                  : modalDepartment || "LGU Implementing Office",
             location: { lat, lon: lng },
             rotation: placementRotationRef.current,
             customModelUrl,
@@ -1136,17 +1675,23 @@ export default function App() {
     }
   };
 
-  // ESC key to close placement modal
+  // ESC key to close placement modal / cancel MPDC site pin
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && showPlacementModal) {
+      if (e.key !== "Escape") return;
+      if (showPlacementModal) {
         setShowPlacementModal(false);
         setPendingPlacement(null);
+      }
+      if (pinProposal) {
+        setPinProposal(null);
+        pinProposalRef.current = null;
+        setPlacementMode(false);
       }
     };
     window.addEventListener("keydown", handleEsc);
     return () => window.removeEventListener("keydown", handleEsc);
-  }, [showPlacementModal]);
+  }, [showPlacementModal, pinProposal]);
 
   function upsertGibsLayer(args: { layer: GibsLayerId; date: string; opacity: number; visible: boolean }) {
     const map = mapRef.current;
@@ -1252,13 +1797,125 @@ export default function App() {
 
     socket.on("weather:update", (w) => setWeather(w));
     socket.on("risk:update", (z) => setRiskZones(z.zones));
-    socket.on("projects:update", (p) => setProjects(p.projects));
+    socket.on("projects:update", (p) => {
+      setProjects(Array.isArray(p?.projects) ? p.projects : []);
+    });
     socket.on("alerts:new", (a) => setAlerts((prev) => [a, ...prev].slice(0, 8)));
+    socket.on("planning:update", () => {
+      refreshPlanningNoticesRef.current();
+    });
 
     return () => {
       socket.disconnect();
     };
   }, []);
+
+  // Engineer + MPDC Live Situation notifications (planning / botohan)
+  useEffect(() => {
+    const isStaff = currentRole === "Engineer" || currentRole === "MPDC";
+    if (!isStaff || !currentSession) {
+      setPlanningNotices([]);
+      setMpdcNotices([]);
+      refreshPlanningNoticesRef.current = () => {};
+      return;
+    }
+
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const list = await fetchProposalsOnce();
+        if (cancelled) return;
+        if (currentRole === "Engineer") {
+          setPlanningNotices(buildEngineerPlanningNotices(list, currentSession));
+        } else {
+          setMpdcNotices(buildMpdcPlanningNotices(list, currentSession));
+        }
+      } catch (err) {
+        console.warn("[Notices] Failed to load planning notifications:", err);
+        if (!cancelled) {
+          setPlanningNotices([]);
+          setMpdcNotices([]);
+        }
+      }
+    };
+
+    refreshPlanningNoticesRef.current = () => {
+      void refresh();
+    };
+    void refresh();
+    const interval = window.setInterval(() => {
+      void refresh();
+    }, 20_000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      refreshPlanningNoticesRef.current = () => {};
+    };
+  }, [currentRole, currentSession]);
+
+  const activePlanningNotices = useMemo(
+    () => planningNotices.filter((n) => !dismissedNoticeIds.includes(n.id)),
+    [planningNotices, dismissedNoticeIds],
+  );
+  const noticeUnreadCount = activePlanningNotices.length;
+
+  function dismissNotice(id: string) {
+    setDismissedNoticeIds((prev) => {
+      if (prev.includes(id)) return prev;
+      const next = [...prev, id].slice(-80);
+      try {
+        localStorage.setItem(DISMISSED_NOTICES_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore quota */
+      }
+      return next;
+    });
+  }
+
+  function dismissAllNotices() {
+    setDismissedNoticeIds((prev) => {
+      const next = [...new Set([...prev, ...activePlanningNotices.map((n) => n.id)])].slice(-80);
+      try {
+        localStorage.setItem(DISMISSED_NOTICES_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }
+
+  // MPDC notice derived state + dismiss helpers (parallel to Engineer above)
+  const activeMpdcNotices = useMemo(
+    () => mpdcNotices.filter((n) => !mpdcDismissedIds.includes(n.id)),
+    [mpdcNotices, mpdcDismissedIds],
+  );
+  const mpdcUnreadCount = activeMpdcNotices.length;
+
+  function dismissMpdcNotice(id: string) {
+    setMpdcDismissedIds((prev) => {
+      if (prev.includes(id)) return prev;
+      const next = [...prev, id].slice(-80);
+      try {
+        localStorage.setItem(MPDC_DISMISSED_NOTICES_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore quota */
+      }
+      return next;
+    });
+  }
+
+  function dismissAllMpdcNotices() {
+    setMpdcDismissedIds((prev) => {
+      const next = [...new Set([...prev, ...activeMpdcNotices.map((n) => n.id)])].slice(-80);
+      try {
+        localStorage.setItem(MPDC_DISMISSED_NOTICES_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }
 
   // Heatmap engine (Zoom Earth feel): regenerate points from live signals + viewport.
   useEffect(() => {
@@ -1355,8 +2012,12 @@ export default function App() {
       }
 
       if (map.getLayer("satellite-layer")) {
-        // Fade in/out via opacity so the transition is smooth
-        map.setPaintProperty("satellite-layer", "raster-opacity", toggles.satellite ? 1 : 0);
+        // Fade in/out via opacity; night dims via daylightRasterScale
+        map.setPaintProperty(
+          "satellite-layer",
+          "raster-opacity",
+          toggles.satellite ? daylightRasterScale(sunLighting.pos) : 0,
+        );
       }
 
       const opacity = toggles.satellite
@@ -1367,7 +2028,7 @@ export default function App() {
 
     if (map.isStyleLoaded()) applySatellite();
     else map.once("style.load", applySatellite);
-  }, [toggles.satellite, buildingExtrusionOpacity, mapInstance]);
+  }, [toggles.satellite, buildingExtrusionOpacity, mapInstance, sunLighting.pos]);
 
   // Keep fill-extrusion opacity synced with the slider (and after style reload).
   useEffect(() => {
@@ -1390,55 +2051,6 @@ export default function App() {
       map.off("style.load", apply);
     };
   }, [mapInstance, buildingExtrusionOpacity, toggles.satellite]);
-
-  // OSM Street Map toggle
-  useEffect(() => {
-    const map = mapInstance ?? mapRef.current;
-    if (!map) return;
-
-    const applyStreet = () => {
-      if (!map.getSource("osm-street")) {
-        try {
-          map.addSource("osm-street", {
-            type: "raster",
-            tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
-            tileSize: 256,
-            maxzoom: 19,
-            attribution: "© OpenStreetMap contributors",
-          } as any);
-        } catch {
-          // source may be in-flight during style load
-        }
-      }
-
-      if (!map.getLayer("osm-street-layer") && map.getSource("osm-street")) {
-        try {
-          map.addLayer(
-            {
-              id: "osm-street-layer",
-              type: "raster",
-              source: "osm-street",
-              paint: { "raster-opacity": 0 },
-            } as any,
-            map.getLayer("satellite-layer")
-              ? "satellite-layer"
-              : map.getLayer("3d-buildings")
-                ? "3d-buildings"
-                : undefined
-          );
-        } catch {
-          // layer may already exist
-        }
-      }
-
-      if (map.getLayer("osm-street-layer")) {
-        map.setPaintProperty("osm-street-layer", "raster-opacity", toggles.streetMap ? 1 : 0);
-      }
-    };
-
-    if (map.isStyleLoaded()) applyStreet();
-    else map.once("style.load", applyStreet);
-  }, [toggles.streetMap, mapInstance]);
 
   // Google Street View mode — click map to open GSV in new tab
   const streetViewModeRef = useRef(false);
@@ -1490,7 +2102,7 @@ export default function App() {
       }
 
       try {
-        if (toggles.terrain) {
+        if (toggles.satellite) {
           // Dynamic exaggeration based on zoom level for optimal visualization
           const currentZoom = map.getZoom();
           const exaggeration = calculateTerrainExaggeration(currentZoom);
@@ -1499,7 +2111,7 @@ export default function App() {
             source: "terrain-dem", 
             exaggeration: exaggeration 
           });
-          map.easeTo({ pitch: 62, duration: 600 });
+          map.easeTo({ pitch: 75, duration: 600 });
           
           // Show hillshade when terrain is enabled
           if (map.getLayer("hillshade")) {
@@ -1509,9 +2121,10 @@ export default function App() {
           (map as any).setTerrain(null);
           map.easeTo({ pitch: 30, duration: 600 });
           
-          // Hide hillshade when terrain is disabled
+          // Keep hillshade visible — solar time drives illumination on the DEM
+          // even when the 3D terrain mesh is off
           if (map.getLayer("hillshade")) {
-            map.setLayoutProperty("hillshade", "visibility", "none");
+            map.setLayoutProperty("hillshade", "visibility", "visible");
           }
         }
       } catch {
@@ -1524,7 +2137,7 @@ export default function App() {
 
     // Update exaggeration on zoom change
     const handleZoom = () => {
-      if (!toggles.terrain) return;
+      if (!toggles.satellite) return;
       const currentZoom = map.getZoom();
       const exaggeration = calculateTerrainExaggeration(currentZoom);
       try {
@@ -1541,7 +2154,7 @@ export default function App() {
     return () => {
       map.off("zoomend", handleZoom);
     };
-  }, [toggles.terrain, mapInstance]);
+  }, [toggles.satellite, mapInstance]);
 
   // Keep project/municipal holes in the basemap building extrusion layer.
   useEffect(() => {
@@ -1647,6 +2260,46 @@ export default function App() {
     return { high, mod, low, total: feats.length };
   }, [riskZones]);
 
+  const activeHazardLegend = useMemo(
+    () =>
+      activeHazardFromToggles({
+        hazardEil2010: toggles.hazardEil2010,
+        hazardEq2014: toggles.hazardEq2014,
+        hazardGsh2014: toggles.hazardGsh2014,
+      }),
+    [toggles.hazardEil2010, toggles.hazardEq2014, toggles.hazardGsh2014],
+  );
+
+  const staffOverlay =
+    screen === "planning" ||
+    screen === "documents" ||
+    screen === "analytics" ||
+    screen === "inventory" ||
+    screen === "engagement" ||
+    screen === "audit";
+  /**
+   * Once the globe has been created, never tear it down in-SPA.
+   * Deferred Cesium destroy after logout painted Landing then white-screened.
+   */
+  const showMapShell = screen === "app" || staffOverlay || mapHold;
+  const parkMapShell = showMapShell && screen !== "app";
+
+  useEffect(() => {
+    if (screen === "app" || staffOverlay) setMapHold(true);
+    if (screen === "citizen") setCitizenHold(true);
+  }, [screen, staffOverlay]);
+
+  function goHome() {
+    const leaving = currentSession;
+    setAuditActor(null);
+    setCurrentSession(null);
+    setScreen("landing");
+    void logoutUser(leaving);
+  }
+
+  const showCitizenShell = screen === "citizen" || citizenHold;
+  const parkCitizenShell = showCitizenShell && screen !== "citizen";
+
   return (
     <div
       className={`appShell${
@@ -1657,9 +2310,9 @@ export default function App() {
       {screen === "landing" && (
         <LandingPage
           onEnter={() => setScreen("login")}
-          onViewMap={() => {
+          onPublicPortal={() => {
             setCurrentSession(sessionForRole("Viewer"));
-            setScreen("app");
+            setScreen("citizen");
           }}
         />
       )}
@@ -1668,61 +2321,149 @@ export default function App() {
       {screen === "login" && (
         <LoginScreen
           onLogin={(session) => {
+            setAuditActor(session);
             setCurrentSession(session);
-            setScreen("app");
+            setScreen(session.role === "Barangay Official" ? "planning" : "app");
           }}
           onBack={() => setScreen("landing")}
         />
       )}
 
-      {/* Inventory Page */}
+      {showCitizenShell && (
+        <div
+          className={parkCitizenShell ? "app-shell-parked" : undefined}
+          aria-hidden={parkCitizenShell}
+          style={parkCitizenShell ? undefined : { position: "relative", zIndex: 10000 }}
+        >
+          <CitizenPortal
+            onBack={goHome}
+            onOpenLiveMap={() => {
+              setCurrentSession(sessionForRole("Viewer"));
+              setSidebarCollapsed(false);
+              setScreen("app");
+            }}
+          />
+        </div>
+      )}
+
+      {/* Inventory / Planning / Documents / Analytics — overlays; map stays parked underneath */}
       {screen === "inventory" && (
         <InventoryPage
           onBack={() => setScreen("app")}
-          backendProjects={projects}
+          backendProjects={Array.isArray(projects) ? projects : []}
           currentRole={currentRole}
         />
       )}
 
-      {screen === "planning" && (
-        <PlanningPage onBack={() => setScreen("app")} session={currentSession} />
+      {screen === "planning" && currentRole !== "Viewer" && (
+        <PlanningPage
+          onBack={() => setScreen("app")}
+          session={currentSession}
+          onPinSite={currentRole === "MPDC" ? startPinSite : undefined}
+        />
       )}
 
-      {/* Main app - only render when logged in */}
-      {screen === "app" && <>
-      <div className="mapWrap">
-        <div className="map" ref={mapDivRef} style={{ cursor: placementMode ? "crosshair" : undefined }} />
+      {screen === "documents" && isMunicipalStaff(currentRole) && (
+        <DocumentsPage onBack={() => setScreen("app")} session={currentSession} />
+      )}
 
-        <DeckGLOverlay
-          map={mapInstance}
-          enabledHeatmap={toggles.heatmap && !toggles.gibsPrecip}
-          heatPoints={heatPoints}
-          enabledWeather={toggles.weather}
-          weather={weather}
-          shadowsEnabled={toggles.terrain}
-          sunLightPosition={[0, -70, 100]}
-          enabledEONET={eonetEnabled}
-          eonetEvents={eonetEvents}
-          enabledAIRisk={aiRiskEnabled}
-          aiRiskPredictions={aiRiskPredictions}
-        />
+      {screen === "audit" && isMunicipalStaff(currentRole) && (
+        <AuditPage onBack={() => setScreen("app")} />
+      )}
 
-        <BuildingOverlay
-          map={mapInstance}
-          projects={projects}
-          visible={toggles.projects}
-          opacity={glbModelsOpacity}
-          readOnly={currentRole === "Viewer"}
-          snapToRoad={snapToRoad && (editMode || placementMode)}
-          onBuildingClick={(hit) => { buildingHitRef.current = hit; }}
-          onDeleteBuilding={currentRole === "Viewer" ? undefined : async (projectId) => {
-            try {
-              await fetch(backendUrl(`/api/projects/${projectId}`), { method: "DELETE" });
-            } catch (err) {
-              console.error("Failed to delete project:", err);
-            }
+      {screen === "analytics" && isMunicipalStaff(currentRole) && (
+        <AnalyticsPage onBack={() => setScreen("app")} projects={Array.isArray(projects) ? projects : []} />
+      )}
+
+      {screen === "engagement" && roleConfig?.canSeeEngagement && (
+        <EngagementPage
+          onBack={() => setScreen("app")}
+          onFlyTo={(lon, lat) => {
+            window.setTimeout(() => {
+              cesiumMapRef.current?.flyToLonLat(lon, lat, 2500);
+            }, 100);
           }}
         />
+      )}
+
+      {/* Main map shell — stays alive while staff overlays are open */}
+      {showMapShell && (
+      <div
+        className={parkMapShell ? "app-shell-parked" : undefined}
+        aria-hidden={parkMapShell}
+      >
+      <>
+      <div className="mapWrap">
+        <CesiumMap
+          ref={cesiumMapRef}
+          solarHour={solarHour}
+          sunAzimuthDeg={sunAzimuthDeg}
+          buildingBlocksVisible={toggles.buildingBlocks}
+          blockRemoverActive={
+            (blockRemoverMode && currentRole === "Engineer") || eraseBlocksActive
+          }
+          terrainEnabled={toggles.satellite}
+          satellite={toggles.satellite}
+          hazardOverlays={{
+            eil2010: toggles.hazardEil2010,
+            eq2014: toggles.hazardEq2014,
+            gsh2014: toggles.hazardGsh2014,
+          }}
+          mapSettings={mapSettings}
+          tropicalEnabled={tropicalEnabled}
+          tropicalSystems={tropicalSystems}
+          earthquakeEnabled={quakeModelEnabled}
+          earthquakeGrid={quakeGrid}
+          projects={filteredProjects}
+          clusteringEnabled={infraFilter.clustering}
+          visible
+          placementMode={
+            (placementMode && currentRole === "Engineer") ||
+            (placementMode && currentRole === "MPDC" && Boolean(pinProposal))
+          }
+          editMode={editMode && currentRole === "Engineer"}
+          placementTool={placementTool}
+          placementColor={placementColor}
+          onPlaceClick={openPlacementAt}
+          onPlaceSketch={handlePlaceSketch}
+          readOnly={currentRole === "Viewer" || isBarangayOfficial(currentRole)}
+          canManipulateModels={currentRole === "Engineer" || currentRole === "MPDC"}
+          canPromoteSitePin={currentRole === "Engineer"}
+          onProjectPatch={(projectId, patch) => {
+            setProjects((prev) =>
+              prev.map((p) => (p.id === projectId ? { ...p, ...patch } : p)),
+            );
+          }}
+          canAddPhotos={currentRole === "MPDC" || currentRole === "Engineer"}
+          onPhotosChange={(projectId, photos) => {
+            setProjects((prev) =>
+              prev.map((p) => (p.id === projectId ? { ...p, photos } : p)),
+            );
+          }}
+          gibs={{
+            enabled: toggles.gibsPrecip && gibsStatus === "ok",
+            layer: gibsLayer,
+            date: gibsDate,
+            opacity: gibsOpacity,
+          }}
+          onDeleteBuilding={
+            currentRole === "Engineer"
+              ? async (projectId) => {
+                  try {
+                    await fetch(backendUrl(`/api/projects/${projectId}`), { method: "DELETE" });
+                  } catch (err) {
+                    console.error("Failed to delete project:", err);
+                  }
+                }
+              : undefined
+          }
+        />
+
+        <ProjectChat />
+
+        {activeHazardLegend && screen === "app" && (
+          <HazardLegend hazard={activeHazardLegend} variant="map" />
+        )}
 
         {/* Google Street View mode indicator */}
         {streetViewMode && (
@@ -1768,7 +2509,259 @@ export default function App() {
           </div>
         )}
 
-        <div className="topBar">
+        {placementToolbarOpen ? (
+          <div className="placement-draw-toolbar">
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <span style={{ lineHeight: 1.35, flex: 1, minWidth: 140 }}>
+                {pinProposal ? (
+                  <>
+                    <b>Draw site</b> for <b>{pinProposal.title}</b> — pin / draw / area / erase blocks
+                  </>
+                ) : (
+                  <>
+                    <b>Place tools</b> — pin, draw, color, or delete OSM blocks
+                  </>
+                )}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setPinProposal(null);
+                  pinProposalRef.current = null;
+                  setPlacementMode(false);
+                  setBlockRemoverMode(false);
+                  setPlacementTool("pin");
+                  cesiumMapRef.current?.clearSketch();
+                }}
+                style={{
+                  cursor: "pointer",
+                  flexShrink: 0,
+                  background: "var(--cream-deep)",
+                  border: "2px solid var(--ink)",
+                  color: "var(--ink)",
+                  padding: "6px 10px",
+                  fontSize: 11,
+                  fontWeight: 700,
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+              {(
+                [
+                  ["pin", "Pin"],
+                  ["line", "Draw"],
+                  ["area", "Area"],
+                  ["erase", "Delete blocks"],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => {
+                    setPlacementTool(id);
+                    cesiumMapRef.current?.clearSketch();
+                    if (id === "erase") {
+                      setBlockRemoverMode(true);
+                    } else {
+                      setBlockRemoverMode(false);
+                    }
+                  }}
+                  style={{
+                    cursor: "pointer",
+                    padding: "6px 10px",
+                    fontWeight: 700,
+                    border: "2px solid var(--ink)",
+                    background:
+                      placementTool === id
+                        ? id === "erase"
+                          ? "rgba(255,77,79,0.35)"
+                          : "var(--seed)"
+                        : "var(--cream-deep)",
+                    color: "var(--ink)",
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+              {placementTool !== "erase" && (
+                <>
+                  <span style={{ width: 1, height: 22, background: "var(--stroke)", margin: "0 4px" }} />
+                  {MAP_SKETCH_COLORS.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      title={c}
+                      aria-label={`Color ${c}`}
+                      onClick={() => setPlacementColor(c)}
+                      style={{
+                        width: 22,
+                        height: 22,
+                        borderRadius: 0,
+                        cursor: "pointer",
+                        background: c,
+                        border:
+                          placementColor === c
+                            ? "3px solid var(--ink)"
+                            : "2px solid rgba(0,0,0,0.35)",
+                      }}
+                    />
+                  ))}
+                  <input
+                    type="color"
+                    value={placementColor}
+                    aria-label="Custom color"
+                    onChange={(e) => setPlacementColor(e.target.value)}
+                    style={{
+                      width: 28,
+                      height: 22,
+                      padding: 0,
+                      border: "2px solid var(--ink)",
+                      cursor: "pointer",
+                    }}
+                  />
+                </>
+              )}
+            </div>
+
+            {placementTool === "erase" && (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <span style={{ color: "var(--muted)", fontSize: 11 }}>
+                  Click gray OSM building blocks to remove them from the map.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => cesiumMapRef.current?.restoreRemovedBlocks()}
+                  style={{
+                    cursor: "pointer",
+                    padding: "5px 10px",
+                    border: "2px solid var(--ink)",
+                    background: "var(--cream-deep)",
+                    fontWeight: 700,
+                  }}
+                >
+                  Restore all blocks
+                </button>
+              </div>
+            )}
+
+            {placementTool === "line" && (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <span style={{ color: "var(--muted)", fontSize: 11 }}>
+                  Hold and drag to draw. Release pauses — press Finish to save.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    cesiumMapRef.current?.undoSketchVertex();
+                  }}
+                  style={{
+                    cursor: "pointer",
+                    padding: "5px 8px",
+                    border: "1px solid var(--stroke)",
+                    background: "var(--cream-deep)",
+                    fontWeight: 600,
+                  }}
+                >
+                  Undo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    cesiumMapRef.current?.clearSketch();
+                  }}
+                  style={{
+                    cursor: "pointer",
+                    padding: "5px 8px",
+                    border: "1px solid var(--stroke)",
+                    background: "var(--cream-deep)",
+                    fontWeight: 600,
+                  }}
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const ok = cesiumMapRef.current?.finishSketch() ?? false;
+                    if (!ok) {
+                      window.alert("Draw a longer stroke first (need at least 2 points).");
+                    }
+                  }}
+                  style={{
+                    cursor: "pointer",
+                    padding: "5px 10px",
+                    border: "2px solid var(--ink)",
+                    background: "var(--seed)",
+                    fontWeight: 800,
+                  }}
+                >
+                  Finish
+                </button>
+              </div>
+            )}
+
+            {placementTool === "area" && (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <span style={{ color: "var(--muted)", fontSize: 11 }}>
+                  Click map to add points (≥3). Double-click last point or Finish.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    cesiumMapRef.current?.undoSketchVertex();
+                  }}
+                  style={{
+                    cursor: "pointer",
+                    padding: "5px 8px",
+                    border: "1px solid var(--stroke)",
+                    background: "var(--cream-deep)",
+                    fontWeight: 600,
+                  }}
+                >
+                  Undo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    cesiumMapRef.current?.clearSketch();
+                  }}
+                  style={{
+                    cursor: "pointer",
+                    padding: "5px 8px",
+                    border: "1px solid var(--stroke)",
+                    background: "var(--cream-deep)",
+                    fontWeight: 600,
+                  }}
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const ok = cesiumMapRef.current?.finishSketch() ?? false;
+                    if (!ok) {
+                      window.alert("Need at least 3 points for an area.");
+                    }
+                  }}
+                  style={{
+                    cursor: "pointer",
+                    padding: "5px 10px",
+                    border: "2px solid var(--ink)",
+                    background: "var(--seed)",
+                    fontWeight: 800,
+                  }}
+                >
+                  Finish
+                </button>
+              </div>
+            )}
+          </div>
+        ) : null}
+
+        <div className={`topBar${moreMenuOpen ? " is-nav-open" : ""}`}>
           <div className="topBar-brand">
             <div className="topBar-brand-text">
               <div className="brand">
@@ -1776,6 +2769,12 @@ export default function App() {
               </div>
               <div className="sub">Real-Time GIS Infrastructure & Disaster Monitoring</div>
             </div>
+            <span
+              className="topBar-live-dot"
+              title={connected ? "Live" : "Offline"}
+              aria-label={connected ? "Live connection" : "Offline"}
+              style={{ background: connected ? "var(--accent)" : "rgba(255,77,79,0.9)" }}
+            />
           </div>
           <div className="topBar-toolbar">
             {roleConfig && (
@@ -1796,7 +2795,8 @@ export default function App() {
             <div className="chip chip-updates topBar-hide-mobile">Updates: 5s</div>
           </div>
           <div className="topBar-actions-primary">
-            {roleConfig?.canSeePlanning && (
+            <nav id="topBar-nav" className={`topBar-nav${moreMenuOpen ? " is-open" : ""}`} aria-label="App sections">
+            {roleConfig?.canSeePlanning && currentRole !== "Viewer" && (
               <button
                 type="button"
                 className="topBar-exit"
@@ -1804,118 +2804,374 @@ export default function App() {
                   background: "linear-gradient(135deg, rgba(36,92,58,0.22), rgba(61,155,95,0.18))",
                   borderColor: "rgba(36,92,58,0.45)",
                 }}
-                onClick={() => setScreen("planning")}
+                onClick={() => {
+                  setMoreMenuOpen(false);
+                  setScreen("planning");
+                }}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
                   <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
                   <rect x="8" y="2" width="8" height="4" rx="1" />
                   <path d="M9 12h6M9 16h4" />
                 </svg>
-                <span className="topBar-exit-full">Planning</span>
-                <span className="topBar-exit-short">Plan</span>
+                <span className="topBar-exit-full">
+                  {isBarangayOfficial(currentRole) ? "Requests" : "Planning"}
+                </span>
+                <span className="topBar-exit-short">
+                  {isBarangayOfficial(currentRole) ? "Req" : "Plan"}
+                </span>
               </button>
             )}
-            {currentRole !== "Negosyo Center" && currentRole !== "Viewer" && (
+            {isMunicipalStaff(currentRole) && (
+              <button
+                type="button"
+                className="topBar-exit"
+                style={{
+                  background: "linear-gradient(135deg, rgba(120,90,40,0.2), rgba(180,140,60,0.15))",
+                  borderColor: "rgba(140,110,50,0.45)",
+                }}
+                onClick={() => {
+                  setMoreMenuOpen(false);
+                  setScreen("documents");
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                  <line x1="16" y1="13" x2="8" y2="13" />
+                  <line x1="16" y1="17" x2="8" y2="17" />
+                  <polyline points="10 9 9 9 8 9" />
+                </svg>
+                <span className="topBar-exit-full">Documents</span>
+                <span className="topBar-exit-short">Docs</span>
+              </button>
+            )}
+            {isMunicipalStaff(currentRole) && (
+              <button
+                type="button"
+                className="topBar-exit"
+                style={{
+                  background: "linear-gradient(135deg, rgba(36,92,58,0.18), rgba(108,142,191,0.2))",
+                  borderColor: "rgba(60,100,80,0.45)",
+                }}
+                onClick={() => {
+                  setMoreMenuOpen(false);
+                  setScreen("analytics");
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
+                  <line x1="18" y1="20" x2="18" y2="10" />
+                  <line x1="12" y1="20" x2="12" y2="4" />
+                  <line x1="6" y1="20" x2="6" y2="14" />
+                </svg>
+                <span className="topBar-exit-full">Analytics</span>
+                <span className="topBar-exit-short">Stats</span>
+              </button>
+            )}
+            {roleConfig?.canSeeEngagement && (
+              <button
+                type="button"
+                className="topBar-exit"
+                style={{
+                  background: "linear-gradient(135deg, rgba(36,92,58,0.2), rgba(212,160,23,0.18))",
+                  borderColor: "rgba(36,92,58,0.45)",
+                }}
+                onClick={() => {
+                  setMoreMenuOpen(false);
+                  setScreen("engagement");
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
+                <span className="topBar-exit-full">Engagement</span>
+                <span className="topBar-exit-short">Engage</span>
+              </button>
+            )}
+            {isMunicipalStaff(currentRole) && currentRole !== "Negosyo Center" && (
               <button
                 type="button"
                 className="topBar-exit"
                 style={{ background: "linear-gradient(135deg, rgba(59,130,246,0.2), rgba(139,92,246,0.2))", borderColor: "rgba(59,130,246,0.4)" }}
-                onClick={() => setScreen("inventory")}
+                onClick={() => {
+                  setMoreMenuOpen(false);
+                  setScreen("inventory");
+                }}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}><rect x="2" y="4" width="20" height="5" rx="1"/><path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9"/><path d="M10 13h4"/></svg>
                 <span className="topBar-exit-full">Inventory</span>
                 <span className="topBar-exit-short">Inv</span>
               </button>
             )}
-            <ThemeToggle iconOnly />
+            {currentRole === "Viewer" && (
+              <button
+                type="button"
+                className="topBar-exit"
+                style={{
+                  background: "linear-gradient(135deg, rgba(36,92,58,0.2), rgba(212,160,23,0.18))",
+                  borderColor: "rgba(36,92,58,0.45)",
+                }}
+                onClick={() => {
+                  setMoreMenuOpen(false);
+                  setScreen("citizen");
+                }}
+              >
+                <span className="topBar-exit-full">Portal</span>
+                <span className="topBar-exit-short">Portal</span>
+              </button>
+            )}
             {currentRole && (
               <button
                 type="button"
                 className="topBar-exit"
                 onClick={() => {
-                  clearSessionCookie();
-                  setCurrentSession(null);
-                  setScreen("landing");
+                  setMoreMenuOpen(false);
+                  goHome();
                 }}
               >
                 <span className="topBar-exit-full">{currentRole === "Viewer" ? "Exit Map" : "Sign Out"}</span>
                 <span className="topBar-exit-short">{currentRole === "Viewer" ? "Exit" : "Out"}</span>
               </button>
             )}
+            </nav>
+            {isMunicipalStaff(currentRole) && (
+              <button
+                type="button"
+                className="topBar-exit topBar-audit-btn"
+                title="Activity log and audit trail"
+                onClick={() => {
+                  setMoreMenuOpen(false);
+                  setScreen("audit");
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M12 8v4l2.5 1.5" />
+                  <circle cx="12" cy="12" r="9" />
+                </svg>
+                <span className="topBar-exit-full">Activity</span>
+                <span className="topBar-exit-short">Log</span>
+              </button>
+            )}
+            <ThemeToggle iconOnly />
+            <button
+              type="button"
+              className="topBar-moreBtn"
+              aria-expanded={moreMenuOpen}
+              aria-controls="topBar-nav"
+              onClick={() => setMoreMenuOpen((v) => !v)}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
+                {moreMenuOpen ? (
+                  <path d="M18 6L6 18M6 6l12 12" />
+                ) : (
+                  <>
+                    <line x1="4" y1="7" x2="20" y2="7" />
+                    <line x1="4" y1="12" x2="20" y2="12" />
+                    <line x1="4" y1="17" x2="20" y2="17" />
+                  </>
+                )}
+              </svg>
+              <span>{moreMenuOpen ? "Close" : "Menu"}</span>
+            </button>
+          </div>
+        </div>
+        {moreMenuOpen && (
+          <button
+            type="button"
+            className="topBar-nav-backdrop"
+            aria-label="Close menu"
+            onClick={() => setMoreMenuOpen(false)}
+          />
+        )}
+
+        {/* Sun bearing dial + time — isolated from Cesium canvas mouse drag */}
+        <div
+          className="solar-map-controls"
+          title="Sun bearing & time (Luisiana)"
+          onPointerDown={stopMapPointer}
+          onMouseDown={stopMapPointer}
+          onWheel={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+          }}
+          onContextMenu={stopMapPointer}
+        >
+          <div className="solar-azimuth-wrap">
+            <div className="solar-map-slider-label">
+              <span>Sun</span>
+              <span className="solar-map-slider-time">
+                {Math.round(sunAzimuthDeg)}°
+                {!sunLighting.isDaylight ? " · night" : ""}
+              </span>
+            </div>
+            <SunAzimuthDial
+              value={sunAzimuthDeg}
+              onChange={setSunAzimuthDeg}
+              size={compactChrome ? 76 : 108}
+              onDragStateChange={(dragging) => setCesiumCameraInputs(!dragging)}
+            />
+            <div className="solar-azimuth-time">
+              <div className="solar-map-slider-label">
+                <span>Time</span>
+                <span className="solar-map-slider-time">{formatSolarHour(solarHour)}</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={24}
+                step={1 / 3600}
+                value={solarHour}
+                aria-label="Solar time of day"
+                onChange={(e) => setSolarHourAndSyncAzimuth(Number(e.target.value))}
+                onPointerDown={freezeCameraOnPointerDown}
+                onPointerUp={unfreezeCameraOnPointerUp}
+                onPointerCancel={unfreezeCameraOnPointerUp}
+                onMouseUp={unfreezeCameraOnPointerUp}
+              />
+              <button
+                type="button"
+                className={`solar-sync-pht${solarOffPht ? " is-active" : ""}`}
+                onClick={syncSolarToPht}
+                title="Reset sun time to the current hour in Asia/Manila"
+              >
+                Sync to PHT
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* ── Map Controls ── */}
-        <div className="map-controls">
-          {/* Zoom in */}
-          <button className="map-ctrl-btn" title="Zoom In (=)" onClick={() => mapRef.current?.zoomIn({ duration: 300 })}>+</button>
-          {/* Zoom out */}
-          <button className="map-ctrl-btn" title="Zoom Out (-)" onClick={() => mapRef.current?.zoomOut({ duration: 300 })}>−</button>
-          <div className="map-ctrl-divider" />
-          {/* Compass — rotates to show current bearing, click to reset north */}
-          <button
-            className="map-ctrl-btn"
-            title="Reset North"
-            onClick={() => mapRef.current?.easeTo({ bearing: 0, pitch: 62, duration: 500 })}
-            style={{ fontSize: 18 }}
+        {currentRole === "Engineer" && (
+          <div
+            className={`map-edit-mode${editMode ? " is-on" : ""}`}
+            onPointerDown={stopMapPointer}
+            onMouseDown={stopMapPointer}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M12 2 L14.5 9 L12 8 L9.5 9 Z"
-                fill="#ff4d4f"
-                transform={`rotate(${mapBearing}, 12, 12)`}
-              />
-              <path
-                d="M12 22 L9.5 15 L12 16 L14.5 15 Z"
-                fill="var(--muted2)"
-                transform={`rotate(${mapBearing}, 12, 12)`}
-              />
-            </svg>
-          </button>
+            <button
+              type="button"
+              className="map-edit-mode-btn"
+              aria-pressed={editMode}
+              title={editMode ? "Turn off Edit Mode" : "Move an existing 3D model"}
+              onClick={() => {
+                setEditMode((v) => {
+                  const next = !v;
+                  if (next) {
+                    setSnapToRoad(true);
+                    setPlacementMode(false);
+                    setBlockRemoverMode(false);
+                  }
+                  return next;
+                });
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M5 9l-3 3 3 3" />
+                <path d="M9 5l3-3 3 3" />
+                <path d="M19 9l3 3-3 3" />
+                <path d="M9 19l3 3 3-3" />
+                <path d="M2 12h20" />
+                <path d="M12 2v20" />
+              </svg>
+              <span>{editMode ? "Editing" : "Edit models"}</span>
+            </button>
+            {editMode && (
+              <>
+                <span className="map-edit-mode-hint">Click a building to move it</span>
+                <button
+                  type="button"
+                  className="map-edit-mode-done"
+                  onClick={() => setEditMode(false)}
+                >
+                  Done
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ── Map Controls ── */}
+        <div
+          className="map-controls"
+          onPointerDown={stopMapPointer}
+          onMouseDown={stopMapPointer}
+          onWheel={(e) => {
+            e.stopPropagation();
+          }}
+        >
+          <button className="map-ctrl-btn" title="Zoom In (=)" type="button" onClick={() => cesiumMapRef.current?.zoomIn()}>+</button>
+          <button className="map-ctrl-btn" title="Zoom Out (-)" type="button" onClick={() => cesiumMapRef.current?.zoomOut()}>−</button>
           <div className="map-ctrl-divider" />
-          {/* Fly home */}
           <button
             className="map-ctrl-btn"
             title="Fly to Luisiana"
-            onClick={() => mapRef.current?.flyTo({
-              center: [CENTER.lon, CENTER.lat],
-              zoom: CENTER.zoom,
-              pitch: 62,
-              bearing: -15,
-              duration: 1200,
-              essential: true,
-            })}
+            type="button"
+            onClick={() => cesiumMapRef.current?.flyHome()}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
               <polyline points="9 22 9 12 15 12 15 22"/>
             </svg>
           </button>
-          {/* Tilt toggle */}
           <button
             className="map-ctrl-btn"
             title="Toggle Tilt"
-            onClick={() => {
-              const m = mapRef.current;
-              if (!m) return;
-              const p = m.getPitch();
-              m.easeTo({ pitch: p > 10 ? 0 : 62, duration: 500 });
-            }}
+            type="button"
+            onClick={() => cesiumMapRef.current?.toggleTilt()}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M2 20 L12 4 L22 20"/>
               <line x1="2" y1="20" x2="22" y2="20"/>
             </svg>
           </button>
+          {currentRole === "Engineer" && (
+            <>
+              <div className="map-ctrl-divider" />
+              <button
+                className={`map-ctrl-btn${blockRemoverMode ? " is-active" : ""}`}
+                title={blockRemoverMode ? "Block remover ON — click a building to delete" : "Remove 3D block"}
+                type="button"
+                aria-pressed={blockRemoverMode}
+                onClick={() => {
+                  setBlockRemoverMode((v) => !v);
+                  if (!blockRemoverMode) setPlacementMode(false);
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <polyline points="3 6 5 6 21 6" />
+                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                  <path d="M10 11v6" />
+                  <path d="M14 11v6" />
+                  <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                </svg>
+              </button>
+            </>
+          )}
         </div>
 
       </div>
 
+      {!sidebarCollapsed && (
+        <button
+          type="button"
+          className="sidePanel-backdrop"
+          aria-label="Close live situation panel"
+          onClick={() => setSidebarCollapsed(true)}
+        />
+      )}
       <button
         type="button"
-        className={`sidePanel-edgeToggle${sidebarCollapsed ? " is-collapsed" : ""}`}
+        className={`sidePanel-edgeToggle${sidebarCollapsed ? " is-collapsed" : ""}${
+          currentRole === "Engineer" && noticeUnreadCount > 0 ? " has-badge" : ""
+        }${
+          currentRole === "MPDC" && mpdcUnreadCount > 0 ? " has-badge" : ""
+        }`}
         aria-label={sidebarCollapsed ? "Expand side panel" : "Collapse side panel"}
-        title={sidebarCollapsed ? "Expand panel" : "Collapse panel"}
+        title={
+          sidebarCollapsed
+            ? noticeUnreadCount > 0
+              ? `Expand panel · ${noticeUnreadCount} notification${noticeUnreadCount === 1 ? "" : "s"}`
+              : "Expand panel"
+            : "Collapse panel"
+        }
         onClick={() => setSidebarCollapsed((v) => !v)}
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -1923,11 +3179,29 @@ export default function App() {
             ? <polyline points="15 18 9 12 15 6" />
             : <polyline points="9 18 15 12 9 6" />}
         </svg>
+        {currentRole === "Engineer" && noticeUnreadCount > 0 && (
+          <span className="sidePanel-edgeBadge" aria-hidden>{noticeUnreadCount > 9 ? "9+" : noticeUnreadCount}</span>
+        )}
+        {currentRole === "MPDC" && mpdcUnreadCount > 0 && (
+          <span className="sidePanel-edgeBadge" aria-hidden>{mpdcUnreadCount > 9 ? "9+" : mpdcUnreadCount}</span>
+        )}
       </button>
 
       <aside className={`sidePanel${sidebarCollapsed ? " is-collapsed" : ""}`} aria-hidden={sidebarCollapsed}>
         <div className="sidePanel-head">
-          <div className="sectionTitle">Live Situation Panel</div>
+          <div className="sectionTitle">
+            Live Situation Panel
+            {currentRole === "Engineer" && noticeUnreadCount > 0 && (
+              <span className="sidePanel-titleBadge" aria-label={`${noticeUnreadCount} notifications`}>
+                {noticeUnreadCount}
+              </span>
+            )}
+            {currentRole === "MPDC" && mpdcUnreadCount > 0 && (
+              <span className="sidePanel-titleBadge" aria-label={`${mpdcUnreadCount} notifications`}>
+                {mpdcUnreadCount}
+              </span>
+            )}
+          </div>
           <button
             type="button"
             className="sidePanel-collapseBtn"
@@ -1943,6 +3217,30 @@ export default function App() {
 
         {/* Tab Navigation */}
         <div className="sidebar-tabs">
+          {currentRole === "Engineer" && (
+            <button
+              type="button"
+              className={`sidebar-tab${sidebarTab === "notify" ? " active" : ""}`}
+              onClick={() => setSidebarTab("notify")}
+            >
+              Notify
+              {noticeUnreadCount > 0 && (
+                <span className="sidebar-tab-badge">{noticeUnreadCount > 9 ? "9+" : noticeUnreadCount}</span>
+              )}
+            </button>
+          )}
+          {currentRole === "MPDC" && (
+            <button
+              type="button"
+              className={`sidebar-tab${sidebarTab === "notify" ? " active" : ""}`}
+              onClick={() => setSidebarTab("notify")}
+            >
+              Notify
+              {mpdcUnreadCount > 0 && (
+                <span className="sidebar-tab-badge">{mpdcUnreadCount > 9 ? "9+" : mpdcUnreadCount}</span>
+              )}
+            </button>
+          )}
           {(roleConfig?.canSeeWeather || roleConfig?.canSeeLayers) && (
             <button type="button" className={`sidebar-tab${sidebarTab === "climate" ? " active" : ""}`} onClick={() => setSidebarTab("climate")}>Climate</button>
           )}
@@ -1958,22 +3256,203 @@ export default function App() {
           {roleConfig?.canSeeLayers && (
             <button type="button" className={`sidebar-tab${sidebarTab === "events" ? " active" : ""}`} onClick={() => setSidebarTab("events")}>Events</button>
           )}
-          {roleConfig?.canSeeLayers && (
-            <button type="button" className={`sidebar-tab${sidebarTab === "ai-risk" ? " active" : ""}`} onClick={() => setSidebarTab("ai-risk")}>AI Risk</button>
-          )}
         </div>
 
         {currentRole === "Viewer" && (
           <div className="card viewer-banner" style={{ marginBottom: 12 }}>
-            <div className="sectionTitle" style={{ marginBottom: 4 }}>Public Map Viewer</div>
+            <div className="sectionTitle" style={{ marginBottom: 4 }}>Public Portal · Live Map</div>
             <p style={{ margin: 0, fontSize: 11, color: "var(--muted2)", lineHeight: 1.5 }}>
-              View-only mode — browse weather, risk, and projects without department sign-in.
+              View-only map with climate, layers, risk, and projects. Use <strong>Portal</strong> in the top bar for reporting, feedback, and transparency.
             </p>
           </div>
         )}
 
         {/* Tab Content */}
         <div className="sidePanel-body">
+
+        {/* ── Engineer: Notifications ── */}
+        {sidebarTab === "notify" && currentRole === "Engineer" && (
+          <div style={{ marginBottom: 12 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+                marginBottom: 8,
+              }}
+            >
+              <div className="sectionTitle" style={{ margin: 0 }}>
+                Notifications
+              </div>
+              {activePlanningNotices.length > 0 && (
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  style={{ fontSize: 11, padding: "4px 8px" }}
+                  onClick={dismissAllNotices}
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
+            <p style={{ margin: "0 0 10px", fontSize: 12, color: "var(--muted)", lineHeight: 1.45 }}>
+              Planning &amp; botohan items for Engineering. Live updates when the committee workspace changes.
+            </p>
+            {activePlanningNotices.length ? (
+              <div className="miniList">
+                {activePlanningNotices.map((n) => (
+                  <div
+                    key={n.id}
+                    className={`alert notice-card notice-${n.kind}`}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => {
+                      dismissNotice(n.id);
+                      setScreen("planning");
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        dismissNotice(n.id);
+                        setScreen("planning");
+                      }
+                    }}
+                  >
+                    <div className="t">{n.title}</div>
+                    <div className="m">{n.message}</div>
+                    <div className="meta">
+                      Updated {formatAgo(n.at)} · Open Planning
+                      <button
+                        type="button"
+                        className="notice-dismiss"
+                        aria-label="Dismiss notification"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          dismissNotice(n.id);
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="card" style={{ color: "var(--muted)", fontSize: 13 }}>
+                No open notifications. New botohan, returns, and Engineering assignments will show up here.
+              </div>
+            )}
+            {roleConfig?.canSeeAlerts && alerts.length > 0 && (
+              <>
+                <div className="sectionTitle" style={{ marginTop: 16, marginBottom: 8 }}>
+                  Risk alerts
+                </div>
+                <div className="miniList">
+                  {alerts.slice(0, 3).map((a) => (
+                    <div key={a.id} className="alert">
+                      <div className="t">{a.title}</div>
+                      <div className="m">{a.message}</div>
+                      <div className="meta">Triggered: {formatAgo(a.triggeredAt)}</div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ── MPDC: Notifications ── */}
+        {sidebarTab === "notify" && currentRole === "MPDC" && (
+          <div style={{ marginBottom: 12 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+                marginBottom: 8,
+              }}
+            >
+              <div className="sectionTitle" style={{ margin: 0 }}>
+                Notifications
+              </div>
+              {activeMpdcNotices.length > 0 && (
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  style={{ fontSize: 11, padding: "4px 8px" }}
+                  onClick={dismissAllMpdcNotices}
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
+            <p style={{ margin: "0 0 10px", fontSize: 12, color: "var(--muted)", lineHeight: 1.45 }}>
+              Planning items requiring MPDC action — submissions, recommendations, and open botohan. Live updates.
+            </p>
+            {activeMpdcNotices.length ? (
+              <div className="miniList">
+                {activeMpdcNotices.map((n) => (
+                  <div
+                    key={n.id}
+                    className={`alert notice-card notice-${n.kind}`}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => {
+                      dismissMpdcNotice(n.id);
+                      setScreen("planning");
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        dismissMpdcNotice(n.id);
+                        setScreen("planning");
+                      }
+                    }}
+                  >
+                    <div className="t">{n.title}</div>
+                    <div className="m">{n.message}</div>
+                    <div className="meta">
+                      Updated {formatAgo(n.at)} · Open Planning
+                      <button
+                        type="button"
+                        className="notice-dismiss"
+                        aria-label="Dismiss notification"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          dismissMpdcNotice(n.id);
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="card" style={{ color: "var(--muted)", fontSize: 13 }}>
+                No open notifications. New submissions, committee recommendations, and botohan items will appear here.
+              </div>
+            )}
+            {roleConfig?.canSeeAlerts && alerts.length > 0 && (
+              <>
+                <div className="sectionTitle" style={{ marginTop: 16, marginBottom: 8 }}>
+                  Risk alerts
+                </div>
+                <div className="miniList">
+                  {alerts.slice(0, 3).map((a) => (
+                    <div key={a.id} className="alert">
+                      <div className="t">{a.title}</div>
+                      <div className="m">{a.message}</div>
+                      <div className="meta">Triggered: {formatAgo(a.triggeredAt)}</div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {/* ── Negosyo Center: Business Permit Panel ── */}
         {roleConfig?.canSeeBusinessPermits && (
@@ -2030,6 +3509,153 @@ export default function App() {
           <div className="sectionTitle" style={{ marginBottom: 8 }}>
             Layers (LGU-Friendly Toggles)
           </div>
+          <div className="hint" style={{ marginBottom: 10 }}>
+            3D tilt uses Map Settings draw distance (fog) — the globe stays continuous, never a clipped square.
+          </div>
+
+          <div className="sectionTitle" style={{ marginBottom: 8, marginTop: 4, fontSize: 13 }}>
+            Map Settings
+          </div>
+          <div className="hint" style={{ marginBottom: 10 }}>
+            Tune performance and view. Saved on this device.
+          </div>
+
+          <div
+            className="extrusion-opacity-control"
+            style={{
+              display: "flex",
+              gap: 10,
+              alignItems: "center",
+              marginBottom: 10,
+              paddingLeft: 2,
+            }}
+          >
+            <span className="pill">Draw distance</span>
+            <input
+              type="range"
+              min={5}
+              max={50}
+              step={1}
+              value={mapSettings.drawDistanceKm}
+              aria-label="3D draw distance in kilometers"
+              onChange={(e) =>
+                setMapSettings((s) => ({ ...s, drawDistanceKm: Number(e.target.value) }))
+              }
+              style={{ flex: 1 }}
+            />
+            <span style={{ fontSize: 11, color: "var(--muted)", minWidth: 40 }}>
+              {mapSettings.drawDistanceKm} km
+            </span>
+          </div>
+
+          <div style={{ marginBottom: 10, paddingLeft: 2 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+              <span className="pill">Terrain quality</span>
+              <span style={{ fontSize: 11, color: "var(--muted)" }}>
+                {mapSettings.terrainQuality === "low"
+                  ? "Fastest"
+                  : mapSettings.terrainQuality === "high"
+                    ? "Sharpest"
+                    : "Balanced"}
+              </span>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {(["low", "medium", "high"] as TerrainQuality[]).map((q) => (
+                <button
+                  key={q}
+                  type="button"
+                  onClick={() => setMapSettings((s) => ({ ...s, terrainQuality: q }))}
+                  style={{
+                    cursor: "pointer",
+                    borderRadius: 2,
+                    padding: "6px 10px",
+                    fontSize: 12,
+                    textTransform: "capitalize",
+                    background: mapSettings.terrainQuality === q ? "var(--seed)" : "var(--cream-ink)",
+                    color: "var(--ink)",
+                    fontWeight: 700,
+                    border:
+                      mapSettings.terrainQuality === q ? "2px solid var(--ink)" : "1px solid var(--stroke)",
+                    boxShadow: mapSettings.terrainQuality === q ? "2px 2px 0 var(--ink)" : "none",
+                  }}
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="toggleRow">
+            <div>
+              <label>Shadows</label>
+              <div className="hint">Sun shadows on terrain &amp; models (day only)</div>
+            </div>
+            <div
+              className={`switch ${mapSettings.shadowsEnabled ? "on" : ""}`}
+              role="switch"
+              aria-checked={mapSettings.shadowsEnabled}
+              onClick={() => setMapSettings((s) => ({ ...s, shadowsEnabled: !s.shadowsEnabled }))}
+            />
+          </div>
+
+          <div style={{ marginBottom: 10, paddingLeft: 2, opacity: mapSettings.shadowsEnabled ? 1 : 0.55 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+              <span className="pill">Shadow quality</span>
+              <span style={{ fontSize: 11, color: "var(--muted)" }}>
+                {mapSettings.shadowQuality === "low"
+                  ? "250 m · 512"
+                  : mapSettings.shadowQuality === "high"
+                    ? "1000 m · 2048"
+                    : "500 m · 1024"}
+              </span>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {(["low", "medium", "high"] as ShadowQuality[]).map((q) => (
+                <button
+                  key={q}
+                  type="button"
+                  onClick={() => setMapSettings((s) => ({ ...s, shadowQuality: q }))}
+                  style={{
+                    cursor: "pointer",
+                    borderRadius: 2,
+                    padding: "6px 10px",
+                    fontSize: 12,
+                    textTransform: "capitalize",
+                    background: mapSettings.shadowQuality === q ? "var(--seed)" : "var(--cream-ink)",
+                    color: "var(--ink)",
+                    fontWeight: 700,
+                    border:
+                      mapSettings.shadowQuality === q ? "2px solid var(--ink)" : "1px solid var(--stroke)",
+                    boxShadow: mapSettings.shadowQuality === q ? "2px 2px 0 var(--ink)" : "none",
+                  }}
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="toggleRow">
+            <div>
+              <label>Horizon fog</label>
+              <div className="hint">Fades far terrain in 3D tilt (helps FPS)</div>
+            </div>
+            <div
+              className={`switch ${mapSettings.fogEnabled ? "on" : ""}`}
+              role="switch"
+              aria-checked={mapSettings.fogEnabled}
+              onClick={() => setMapSettings((s) => ({ ...s, fogEnabled: !s.fogEnabled }))}
+            />
+          </div>
+
+          <button
+            type="button"
+            className="btn"
+            style={{ fontSize: 11, padding: "4px 8px", marginBottom: 12 }}
+            onClick={() => setMapSettings({ ...DEFAULT_MAP_SETTINGS })}
+          >
+            Reset map settings
+          </button>
 
           {(
             [
@@ -2041,6 +3667,7 @@ export default function App() {
               { k: "weather", title: "Weather Overlay", hint: "Cloud field + rainfall feel" },
               { k: "stormTrack", title: "Storm Tracking", hint: "Drift line based on wind" },
               { k: "projects", title: "Infrastructure Projects", hint: "GLB models on map" },
+              { k: "buildingBlocks", title: "3D Blocks", hint: "Luisiana OSM building extrusions" },
             ] as const
           ).map((row) => (
             <div key={row.k} className="toggleRow">
@@ -2057,40 +3684,19 @@ export default function App() {
             </div>
           ))}
 
-          <div
-            className="extrusion-opacity-control"
-            style={{
-              display: "flex",
-              gap: 10,
-              alignItems: "center",
-              marginTop: 4,
-              marginBottom: 10,
-              paddingLeft: 2,
-            }}
-          >
-            <span className="pill">3D Blocks</span>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              value={buildingExtrusionOpacity}
-              aria-label="Basemap 3D building extrusion opacity"
-              onChange={(e) => {
-                const next = Number(e.target.value);
-                setBuildingExtrusionOpacity(next);
-                const map = mapRef.current ?? mapInstance;
-                if (map) {
-                  const opacity = toggles.satellite ? Math.min(next, 0.4) : next;
-                  applyBuildingExtrusionOpacity(map, opacity);
-                }
-              }}
-              style={{ flex: 1 }}
-            />
-            <span style={{ fontSize: 11, color: "var(--muted)", minWidth: 35 }}>
-              {Math.round(buildingExtrusionOpacity * 100)}%
-            </span>
-          </div>
+          {isMunicipalStaff(currentRole) && (
+            <div style={{ marginBottom: 10, paddingLeft: 2 }}>
+              <button
+                type="button"
+                className="btn"
+                style={{ fontSize: 11, padding: "4px 8px" }}
+                title="Restore all deleted OSM blocks"
+                onClick={() => cesiumMapRef.current?.restoreRemovedBlocks()}
+              >
+                Restore blocks
+              </button>
+            </div>
+          )}
 
           <div
             className="extrusion-opacity-control"
@@ -2120,17 +3726,54 @@ export default function App() {
             </span>
           </div>
 
-          <div className="toggleRow">
-            <div>
-              <label>NASA GIBS Precip</label>
-              <div className="hint">Satellite rainfall heatmap (low-res, daily)</div>
+          <div className="solar-time-control" style={{ marginBottom: 12, paddingLeft: 2 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
+              <span className="pill">Sun</span>
+              <span style={{ fontSize: 11, color: "var(--muted)", fontVariantNumeric: "tabular-nums" }}>
+                {Math.round(sunAzimuthDeg)}° · {formatSolarHour(solarHour)}
+                {sunLighting.isDaylight ? "" : " · night"}
+              </span>
             </div>
-            <div
-              className={`switch ${toggles.gibsPrecip ? "on" : ""}`}
-              role="switch"
-              aria-checked={toggles.gibsPrecip}
-              onClick={() => setToggles((t) => ({ ...t, gibsPrecip: !t.gibsPrecip }))}
-            />
+            <div className="solar-layers-bearing">
+              <SunAzimuthDial
+                value={sunAzimuthDeg}
+                onChange={setSunAzimuthDeg}
+                size={112}
+                onDragStateChange={(dragging) => setCesiumCameraInputs(!dragging)}
+              />
+              <div className="solar-azimuth-time" style={{ flex: 1, minWidth: 0 }}>
+                <div className="solar-map-slider-label">
+                  <span>Time</span>
+                  <span className="solar-map-slider-time">{formatSolarHour(solarHour)}</span>
+                </div>
+                <input
+                  type="range"
+                  className="solar-hour-slider"
+                  min={0}
+                  max={24}
+                  step={1 / 3600}
+                  value={solarHour}
+                  aria-label="Time of day for solar lighting"
+                  onChange={(e) => setSolarHourAndSyncAzimuth(Number(e.target.value))}
+                  onPointerDown={freezeCameraOnPointerDown}
+                  onPointerUp={unfreezeCameraOnPointerUp}
+                  onPointerCancel={unfreezeCameraOnPointerUp}
+                  onMouseUp={unfreezeCameraOnPointerUp}
+                  style={{ width: "100%" }}
+                />
+                <button
+                  type="button"
+                  className={`solar-sync-pht${solarOffPht ? " is-active" : ""}`}
+                  onClick={syncSolarToPht}
+                  title="Reset sun time to the current hour in Asia/Manila"
+                >
+                  Sync to PHT
+                </button>
+                <div className="hint" style={{ marginTop: 6 }}>
+                  Dial = bearing (shadows). Slider = sun height / time of day.
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="toggleRow" style={{ alignItems: "flex-start", flexWrap: "wrap" }}>
@@ -2182,24 +3825,6 @@ export default function App() {
 
           <div className="toggleRow">
             <div>
-              <label>Street Map</label>
-              <div className="hint">OpenStreetMap — clean roads, labels, POIs</div>
-            </div>
-            <div
-              className={`switch ${toggles.streetMap ? "on" : ""}`}
-              role="switch"
-              aria-checked={toggles.streetMap}
-              onClick={() =>
-                setToggles((t) => ({
-                  ...t,
-                  streetMap: !t.streetMap,
-                  satellite: t.streetMap ? t.satellite : false,
-                }))
-              }
-            />
-          </div>
-          <div className="toggleRow">
-            <div>
               <label>Street View</label>
               <div className="hint">Google — click map to view 360° street imagery</div>
             </div>
@@ -2213,37 +3838,19 @@ export default function App() {
           <div className="toggleRow">
             <div>
               <label>Satellite</label>
-              <div className="hint">ESRI World Imagery — damage validation</div>
+              <div className="hint">
+                HD aerial imagery + 3D terrain together — zoom in for rooftop detail
+              </div>
             </div>
             <div
               className={`switch ${toggles.satellite ? "on" : ""}`}
               role="switch"
               aria-checked={toggles.satellite}
               onClick={() =>
-                setToggles((t) => ({
-                  ...t,
-                  satellite: !t.satellite,
-                  streetMap: t.satellite ? t.streetMap : false,
-                  terrain: t.satellite ? t.terrain : false,
-                }))
-              }
-            />
-          </div>
-          <div className="toggleRow">
-            <div>
-              <label>3D Terrain</label>
-              <div className="hint">Elevation exaggeration — slope analysis</div>
-            </div>
-            <div
-              className={`switch ${toggles.terrain ? "on" : ""}`}
-              role="switch"
-              aria-checked={toggles.terrain}
-              onClick={() =>
-                setToggles((t) => ({
-                  ...t,
-                  terrain: !t.terrain,
-                  satellite: t.terrain ? t.satellite : false,
-                }))
+                setToggles((t) => {
+                  const next = !t.satellite;
+                  return { ...t, satellite: next, terrain: next };
+                })
               }
             />
           </div>
@@ -2286,6 +3893,128 @@ export default function App() {
           </div>
         </div>
 
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div className="sectionTitle" style={{ marginBottom: 8 }}>
+            Official map overlays (KMZ)
+          </div>
+          <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12, lineHeight: 1.5 }}>
+            Light high-res PHIVOLCS map tiles — turn on one at a time.
+          </div>
+          <div className="toggleRow" style={{ marginBottom: 10 }}>
+            <div>
+              <label>EIL 2010 landslide map</label>
+              <div className="hint">Earthquake-induced landslide</div>
+            </div>
+            <div
+              className={`switch ${toggles.hazardEil2010 ? "on" : ""}`}
+              role="switch"
+              aria-checked={toggles.hazardEil2010}
+              onClick={() =>
+                setToggles((t) => ({
+                  ...t,
+                  hazardEil2010: !t.hazardEil2010,
+                  hazardEq2014: false,
+                  hazardGsh2014: false,
+                }))
+              }
+            />
+          </div>
+          <div className="toggleRow" style={{ marginBottom: 10 }}>
+            <div>
+              <label>Earthquake 50K 2014 (EIL)</label>
+              <div className="hint">Earthquake-induced landslide</div>
+            </div>
+            <div
+              className={`switch ${toggles.hazardEq2014 ? "on" : ""}`}
+              role="switch"
+              aria-checked={toggles.hazardEq2014}
+              onClick={() =>
+                setToggles((t) => ({
+                  ...t,
+                  hazardEq2014: !t.hazardEq2014,
+                  hazardEil2010: false,
+                  hazardGsh2014: false,
+                }))
+              }
+            />
+          </div>
+          <div className="toggleRow" style={{ marginBottom: 10 }}>
+            <div>
+              <label>Ground Shaking 2014</label>
+              <div className="hint">PHIVOLCS ground shaking map</div>
+            </div>
+            <div
+              className={`switch ${toggles.hazardGsh2014 ? "on" : ""}`}
+              role="switch"
+              aria-checked={toggles.hazardGsh2014}
+              onClick={() =>
+                setToggles((t) => ({
+                  ...t,
+                  hazardGsh2014: !t.hazardGsh2014,
+                  hazardEil2010: false,
+                  hazardEq2014: false,
+                }))
+              }
+            />
+          </div>
+          {activeHazardLegend && <HazardLegend hazard={activeHazardLegend} variant="panel" />}
+        </div>
+
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div className="sectionTitle" style={{ marginBottom: 8 }}>
+            Earthquake-prone model
+          </div>
+          <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12, lineHeight: 1.5 }}>
+            Solid dots = PHIVOLCS EIL 2014. Extra HIGH/MODERATE = TensorFlow prediction from
+            terrain/satellite (turn Satellite on for live DEM).
+          </div>
+          <div className="toggleRow" style={{ marginBottom: 10 }}>
+            <div>
+              <label>Show earthquake-prone grid</label>
+              <div className="hint">2014 sheet stays; the model only adds guesses between those points</div>
+            </div>
+            <div
+              className={`switch ${quakeModelEnabled ? "on" : ""}`}
+              role="switch"
+              aria-checked={quakeModelEnabled}
+              onClick={() => setQuakeModelEnabled((v) => !v)}
+            />
+          </div>
+          {quakeModelEnabled && (
+            <div style={{ fontSize: 11, color: "var(--ink-soft)", lineHeight: 1.5 }}>
+              {quakeStatus.state === "loading" || quakeStatus.state === "training"
+                ? quakeStatus.message
+                : quakeStatus.state === "failed"
+                  ? `Failed: ${quakeStatus.message}`
+                  : quakeStatus.state === "ready"
+                    ? `Ready · ${quakeStatus.samples} labels${
+                        quakeStatus.accuracy != null
+                          ? ` · acc ${(quakeStatus.accuracy * 100).toFixed(0)}%`
+                          : ""
+                      }`
+                    : quakeStatus.message}
+              <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {(["SAFE", "LOW", "MODERATE", "HIGH"] as const).map((c) => (
+                  <span key={c} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                    <span
+                      style={{
+                        width: 10,
+                        height: 10,
+                        background: classColor(c),
+                        border: "1px solid var(--ink)",
+                      }}
+                    />
+                    {c}
+                  </span>
+                ))}
+              </div>
+              <div style={{ marginTop: 6, color: "var(--muted)" }}>
+                Click a cell for class. Pin a site to see {classAdvice("HIGH")} vs {classAdvice("SAFE")}.
+              </div>
+            </div>
+          )}
+        </div>
+
         {roleConfig?.canSeeAlerts && <>
         <div style={{ marginBottom: 8 }} className="sectionTitle">
           Real-Time Alerts
@@ -2316,6 +4045,106 @@ export default function App() {
         {/* ── Projects Tab ── */}
         {sidebarTab === "projects" && (
           <>
+        <div className="card infra-filter">
+          <div className="sectionTitle" style={{ marginBottom: 10 }}>
+            Filter &amp; cluster
+          </div>
+          <div className="infra-filter-count">
+            Showing <strong>{filteredProjects.length}</strong> of {projects.length} sites
+          </div>
+          <input
+            className="infra-filter-search"
+            type="search"
+            placeholder="Search name, barangay, type…"
+            value={infraFilter.query}
+            onChange={(e) => setInfraFilter((f) => ({ ...f, query: e.target.value }))}
+          />
+          <div className="infra-filter-label">Status</div>
+          <div className="infra-filter-chips">
+            {INFRA_STATUSES.map((s) => (
+              <button
+                key={s}
+                type="button"
+                className={`infra-chip${infraFilter.statuses.includes(s) ? " is-on" : ""}`}
+                style={
+                  infraFilter.statuses.includes(s)
+                    ? { borderColor: PROJECT_STATUS_COLORS[s], color: PROJECT_STATUS_COLORS[s] }
+                    : undefined
+                }
+                onClick={() =>
+                  setInfraFilter((f) => ({ ...f, statuses: toggleListValue(f.statuses, s) }))
+                }
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+          <div className="infra-filter-label">Type</div>
+          <div className="infra-filter-chips">
+            {INFRA_CATEGORIES.map((c) => (
+              <button
+                key={c}
+                type="button"
+                className={`infra-chip${infraFilter.categories.includes(c) ? " is-on" : ""}`}
+                onClick={() =>
+                  setInfraFilter((f) => ({ ...f, categories: toggleListValue(f.categories, c) }))
+                }
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+          <div className="infra-filter-row">
+            <label>
+              Office
+              <select
+                value={infraFilter.department}
+                onChange={(e) =>
+                  setInfraFilter((f) => ({
+                    ...f,
+                    department: e.target.value as InfraFilter["department"],
+                  }))
+                }
+              >
+                <option value="">All offices</option>
+                {INFRA_DEPARTMENTS.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Barangay
+              <select
+                value={infraFilter.barangay}
+                onChange={(e) => setInfraFilter((f) => ({ ...f, barangay: e.target.value }))}
+              >
+                <option value="">All barangays</option>
+                {BARANGAY_LIST.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <label className="infra-filter-cluster">
+            <input
+              type="checkbox"
+              checked={infraFilter.clustering}
+              onChange={(e) => setInfraFilter((f) => ({ ...f, clustering: e.target.checked }))}
+            />
+            Cluster nearby sites when zoomed out
+          </label>
+          <button
+            type="button"
+            className="infra-filter-reset"
+            onClick={() => setInfraFilter(DEFAULT_INFRA_FILTER)}
+          >
+            Reset filters
+          </button>
+        </div>
         {/* ── Engineer: Place Infrastructure Models ── */}
         {currentRole === "Engineer" && (
           <div className="card" style={{ marginBottom: 12 }}>
@@ -2325,7 +4154,16 @@ export default function App() {
 
             {/* Placement toggle */}
             <button
-              onClick={() => setPlacementMode((v) => !v)}
+              onClick={() => {
+                setPlacementMode((v) => {
+                  const next = !v;
+                  if (next) {
+                    setBlockRemoverMode(false);
+                    setEditMode(false);
+                  }
+                  return next;
+                });
+              }}
               style={{
                 width: "100%", cursor: "pointer", padding: "10px 0",
                 borderRadius: 2, fontWeight: 700, fontSize: 13,
@@ -2338,7 +4176,7 @@ export default function App() {
               {placementMode ? (
                 <span style={{ display: "flex", alignItems: "center", gap: 7, justifyContent: "center" }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
-                  Placement Mode ON — Click map to place
+                  Placement Mode ON — Click globe to place
                 </span>
               ) : (
                 <span style={{ display: "flex", alignItems: "center", gap: 7, justifyContent: "center" }}>
@@ -2346,28 +4184,6 @@ export default function App() {
                   Enable Placement Mode
                 </span>
               )}
-            </button>
-
-            {/* Edit Mode — glowing streets */}
-            <button
-              type="button"
-              onClick={() => {
-                setEditMode((v) => {
-                  const next = !v;
-                  if (next) setSnapToRoad(true);
-                  return next;
-                });
-              }}
-              style={{
-                width: "100%", cursor: "pointer", padding: "10px 0",
-                borderRadius: 2, fontWeight: 700, fontSize: 13,
-                border: editMode ? "1px solid rgba(0,243,255,0.7)" : "1px solid var(--stroke)",
-                background: editMode ? "rgba(0,243,255,0.12)" : "var(--cream-deep)",
-                color: editMode ? "#00c8d4" : "var(--muted)",
-                marginBottom: 10,
-              }}
-            >
-              {editMode ? "Edit Mode ON — Streets highlighted" : "Enable Edit Mode"}
             </button>
 
             {/* Snap to Road */}
@@ -2471,7 +4287,7 @@ export default function App() {
                 <div style={{ fontSize: 10, color: "var(--muted)", lineHeight: 1.45, marginBottom: 8 }}>
                   Colors must be on Principled BSDF Base Color (or image textures), not Viewport Display only.
                   SVG materials often export white — run scripts/blender_fix_materials_for_gltf.py in Blender before export.
-                  Max file size: 200MB (.glb / .gltf).
+                  Max file size: 500MB (.glb / .gltf).
                 </div>
                 <input
                   type="file"
@@ -2557,10 +4373,11 @@ export default function App() {
 
         {roleConfig?.canSeeProjects && (
           <ProjectMonitoringPanel
-            projects={projects}
+            projects={filteredProjects}
             currentRole={currentRole}
             mapRef={mapRef}
-            readOnly={currentRole === "Viewer"}
+            cesiumMapRef={cesiumMapRef}
+            readOnly={currentRole === "Viewer" || isBarangayOfficial(currentRole)}
           />
         )}
         </>
@@ -2680,27 +4497,17 @@ export default function App() {
               NASA GIBS Map Layers
             </div>
             <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12, lineHeight: 1.5 }}>
-              Optional map overlays — precipitation, temperature, imagery, atmosphere.
-            </div>
-
-            {/* Enable/Disable Toggle */}
-            <div className="toggleRow" style={{ marginBottom: 16 }}>
-              <div>
-                <label>Enable Climate Layer</label>
-                <div className="hint">Show NASA GIBS data on map</div>
-              </div>
-              <div
-                className={`switch ${toggles.gibsPrecip ? "on" : ""}`}
-                role="switch"
-                aria-checked={toggles.gibsPrecip}
-                onClick={() => setToggles((t) => ({ ...t, gibsPrecip: !t.gibsPrecip }))}
-              />
+              Precipitation follows Tropical Tracking (Events). Other overlays use the same on/off.
             </div>
 
             {/* Precipitation Layers */}
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 11, color: "rgba(61,155,95,0.85)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
                 ☔ Precipitation (Ulan)
+              </div>
+              <div className="hint" style={{ marginBottom: 8 }}>
+                Turns on/off with tropical tracking
+                {tropicalEnabled ? " · active" : " · off"}
               </div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {(
@@ -2895,389 +4702,140 @@ export default function App() {
           </div>
         )}
 
-        {/* ── Events Tab (NASA EONET Natural Events) ── */}
         {sidebarTab === "events" && roleConfig?.canSeeLayers && (
           <div className="card" style={{ marginBottom: 12 }}>
             <div className="sectionTitle" style={{ marginBottom: 8 }}>
-              🌍 NASA Natural Event Tracker
+              Tropical systems (Invest / TC)
             </div>
             <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12, lineHeight: 1.5 }}>
-              Real-time natural events from NASA EONET - Wildfires, Storms, Volcanoes, Earthquakes, and more
+              West Pacific Invests and named cyclones from RAMMB/CIRA. Invests inside the Philippine AOI are labeled LPA-watch.
             </div>
 
-            {/* Enable/Disable Toggle */}
             <div className="toggleRow" style={{ marginBottom: 16 }}>
               <div>
-                <label>Enable Event Tracking</label>
-                <div className="hint">Show natural events on map</div>
+                <label>Enable tropical tracking</label>
+                <div className="hint">Invest / TC tracks + NASA GIBS precip</div>
               </div>
               <div
-                className={`switch ${eonetEnabled ? "on" : ""}`}
+                className={`switch ${tropicalEnabled ? "on" : ""}`}
                 role="switch"
-                aria-checked={eonetEnabled}
-                onClick={() => setEonetEnabled(!eonetEnabled)}
+                aria-checked={tropicalEnabled}
+                onClick={() => {
+                  setTropicalEnabled((on) => {
+                    const next = !on;
+                    setToggles((t) => ({ ...t, gibsPrecip: next }));
+                    if (next) {
+                      setGibsLayer((layer) =>
+                        layer.startsWith("IMERG_") ? layer : "IMERG_Precipitation_Rate"
+                      );
+                    }
+                    return next;
+                  });
+                }}
               />
             </div>
 
-            {/* Event Statistics */}
-            {eonetEnabled && eonetEvents.length > 0 && (
-              <div style={{ marginBottom: 16, padding: 12, background: "rgba(255,100,100,0.08)", border: "1px solid rgba(255,100,100,0.15)", borderRadius: 2 }}>
-                <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
-                  Active Events Nearby
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
-                  {Object.entries(getEventStats(eonetEvents)).map(([catId, count]) => {
-                    const cat = EONET_CATEGORIES[catId];
-                    if (!cat) return null;
-                    return (
-                      <div key={catId} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
-                        <span style={{ fontSize: 14 }}>{cat.icon}</span>
-                        <span style={{ color: "var(--ink-soft)" }}>{count}</span>
-                        <span style={{ color: "var(--muted)" }}>{cat.title}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Category Filters */}
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
-                Event Categories
-              </div>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {Object.entries(EONET_CATEGORIES).map(([id, cat]) => {
-                  const isSelected = eonetCategories.includes(id);
-                  return (
-                    <button
-                      key={id}
-                      onClick={() => {
-                        if (isSelected) {
-                          setEonetCategories(eonetCategories.filter(c => c !== id));
-                        } else {
-                          setEonetCategories([...eonetCategories, id]);
-                        }
-                      }}
-                      style={{
-                        cursor: "pointer",
-                        borderRadius: 2,
-                        padding: "7px 12px",
-                        fontSize: 11,
-                        fontWeight: 600,
-                        border: `1px solid ${cat.color}40`,
-                        background: isSelected ? `${cat.color}30` : "rgba(0,0,0,0.15)",
-                        color: isSelected ? cat.color : "var(--muted)",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 4,
-                      }}
-                    >
-                      <span>{cat.icon}</span>
-                      <span>{cat.title}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Radius Control */}
-            <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--stroke2)" }}>
-              <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
-                <span className="pill">Search Radius</span>
-                <input
-                  type="range"
-                  min={100}
-                  max={5000}
-                  step={100}
-                  value={eonetRadius}
-                  onChange={(e) => setEonetRadius(Number(e.target.value))}
-                  style={{ flex: 1 }}
-                />
-                <span style={{ fontSize: 11, color: "var(--muted)", minWidth: 60 }}>
-                  {eonetRadius} km
-                </span>
-              </div>
-            </div>
-
-            {/* Status Indicator */}
-            {eonetLoading && (
-              <div style={{ marginTop: 12, fontSize: 11, color: "rgba(255,215,0,0.85)", display: "flex", alignItems: "center", gap: 6 }}>
+            {tropicalLoading && (
+              <div style={{ marginTop: 8, fontSize: 11, color: "rgba(255,215,0,0.85)", display: "flex", alignItems: "center", gap: 6 }}>
                 <div style={{ width: 8, height: 8, borderRadius: "50%", background: "rgba(255,215,0,0.85)", animation: "pulse 1.5s infinite" }} />
-                Loading events...
-              </div>
-            )}
-            {!eonetLoading && eonetEnabled && eonetEvents.length === 0 && (
-              <div style={{ marginTop: 12, fontSize: 11, color: "rgba(61,155,95,0.85)" }}>
-                ✓ No active events in your area
-              </div>
-            )}
-            {!eonetLoading && eonetEnabled && eonetEvents.length > 0 && (
-              <div style={{ marginTop: 12, fontSize: 11, color: "rgba(255,100,100,0.85)", display: "flex", alignItems: "center", gap: 6 }}>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "rgba(255,100,100,0.85)" }} />
-                {eonetEvents.length} active event{eonetEvents.length !== 1 ? 's' : ''} tracked
+                Loading tropical systems...
               </div>
             )}
 
-            {/* Event List */}
-            {eonetEnabled && eonetEvents.length > 0 && (
+            {!tropicalLoading && tropicalEnabled && tropicalError && (
+              <div style={{ marginTop: 8, fontSize: 11, color: "rgba(255,140,80,0.9)" }}>
+                {tropicalError}
+              </div>
+            )}
+
+            {!tropicalLoading && tropicalEnabled && !tropicalError && tropicalSystems.length === 0 && (
+              <div style={{ marginTop: 8, fontSize: 11, color: "rgba(61,155,95,0.85)" }}>
+                No active West Pacific systems reported
+              </div>
+            )}
+
+            {!tropicalLoading && tropicalEnabled && tropicalSystems.length > 0 && (
+              <div style={{ marginTop: 8, fontSize: 11, color: "rgba(240,160,48,0.9)", display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "rgba(240,160,48,0.9)" }} />
+                {tropicalSystems.length} system{tropicalSystems.length !== 1 ? "s" : ""} tracked
+              </div>
+            )}
+
+            {tropicalEnabled && tropicalSystems.length > 0 && (
               <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--stroke2)" }}>
                 <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
-                  📍 Event Locations
+                  Active systems
                 </div>
-                <div style={{ maxHeight: 300, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
-                  {eonetEvents.slice(0, 20).map((event) => {
-                    const geometry = getLatestGeometry(event);
-                    const category = event.categories[0];
-                    const catInfo = EONET_CATEGORIES[category?.id];
-                    const distance = geometry ? Math.round(
-                      calculateDistance(14.1856, 121.5167, geometry.coordinates[1], geometry.coordinates[0])
-                    ) : 0;
-
+                <div style={{ maxHeight: 320, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+                  {tropicalSystems.map((system) => {
+                    const color = getTropicalColor(system);
+                    const meta = getTropicalStageMeta(system.stage);
+                    const distance = Math.round(
+                      calculateDistance(14.1856, 121.5167, system.lat, system.lon),
+                    );
                     return (
                       <div
-                        key={event.id}
+                        key={system.id}
                         onClick={() => {
-                          if (geometry && mapRef.current) {
-                            mapRef.current.flyTo({
-                              center: [geometry.coordinates[0], geometry.coordinates[1]],
-                              zoom: 8,
-                              duration: 2000,
-                            });
-                          }
+                          cesiumMapRef.current?.flyToLonLat(system.lon, system.lat, 400_000);
+                          mapRef.current?.flyTo({
+                            center: [system.lon, system.lat],
+                            zoom: 5,
+                            duration: 2000,
+                          });
                         }}
                         style={{
                           padding: 10,
                           background: "rgba(0,0,0,0.20)",
-                          border: `1px solid ${catInfo?.color || '#888'}30`,
+                          border: `1px solid ${color}30`,
                           borderRadius: 2,
                           cursor: "pointer",
                           transition: "all 0.2s ease",
                         }}
                         onMouseEnter={(e) => {
                           e.currentTarget.style.background = "rgba(0,0,0,0.35)";
-                          e.currentTarget.style.borderColor = `${catInfo?.color || '#888'}60`;
+                          e.currentTarget.style.borderColor = `${color}60`;
                         }}
                         onMouseLeave={(e) => {
                           e.currentTarget.style.background = "rgba(0,0,0,0.20)";
-                          e.currentTarget.style.borderColor = `${catInfo?.color || '#888'}30`;
+                          e.currentTarget.style.borderColor = `${color}30`;
                         }}
                       >
                         <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-                          <span style={{ fontSize: 18, flexShrink: 0 }}>{catInfo?.icon || '📍'}</span>
+                          <span style={{ fontSize: 16, flexShrink: 0, color }}>{getTropicalIcon(system)}</span>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontSize: 11, fontWeight: 600, color: "var(--ink)", marginBottom: 4, lineHeight: 1.3 }}>
-                              {event.title}
+                              {system.label}
                             </div>
-                            {event.description && (
-                              <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 4, lineHeight: 1.3 }}>
-                                {event.description}
-                              </div>
-                            )}
                             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", fontSize: 10, color: "var(--muted)" }}>
-                              <span style={{ color: catInfo?.color || '#888' }}>
-                                {category?.title || 'Unknown'}
-                              </span>
+                              <span style={{ color }}>{meta.title}</span>
+                              <span>•</span>
+                              <span>{system.intensityKt} kt</span>
                               <span>•</span>
                               <span>{distance.toLocaleString()} km away</span>
-                              {geometry?.magnitudeValue && (
+                              {system.lpaWatch && (
                                 <>
                                   <span>•</span>
-                                  <span>{geometry.magnitudeValue.toLocaleString()} {geometry.magnitudeUnit}</span>
+                                  <span style={{ color: "#f0a030" }}>LPA-watch</span>
                                 </>
                               )}
                             </div>
-                            {geometry?.date && (
-                              <div style={{ fontSize: 9, color: "var(--muted2)", marginTop: 4 }}>
-                                Updated: {new Date(geometry.date).toLocaleDateString()} {new Date(geometry.date).toLocaleTimeString()}
-                              </div>
-                            )}
+                            <div style={{ fontSize: 9, color: "var(--muted2)", marginTop: 4 }}>
+                              Observed: {new Date(system.observedAt).toLocaleString()}
+                            </div>
                           </div>
                         </div>
                       </div>
                     );
                   })}
                 </div>
-                {eonetEvents.length > 20 && (
-                  <div style={{ marginTop: 8, fontSize: 10, color: "var(--muted2)", textAlign: "center" }}>
-                    Showing 20 of {eonetEvents.length} events
-                  </div>
-                )}
               </div>
             )}
 
-            {/* Info Box */}
-            <div style={{ marginTop: 16, padding: 12, background: "rgba(255,100,100,0.08)", border: "1px solid rgba(255,100,100,0.15)", borderRadius: 2 }}>
+            <div style={{ marginTop: 16, padding: 12, background: "rgba(240,160,48,0.08)", border: "1px solid rgba(240,160,48,0.18)", borderRadius: 2 }}>
               <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.6 }}>
-                💡 <strong>About:</strong> NASA EONET provides near real-time natural event data. Events are updated every 30 minutes. Click on map markers for details.
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── AI Risk Analysis Tab ── */}
-        {sidebarTab === "ai-risk" && roleConfig?.canSeeLayers && (
-          <div className="card" style={{ marginBottom: 12 }}>
-            <div className="sectionTitle" style={{ marginBottom: 8 }}>
-              🤖 AI-Powered Risk Analysis
-            </div>
-            <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12, lineHeight: 1.5 }}>
-              Machine learning model predicts landslide and flood risks based on terrain, weather, and historical data
-            </div>
-
-            {/* Model Status */}
-            <div style={{ marginBottom: 16, padding: 12, background: aiRiskTrained ? "rgba(61,155,95,0.08)" : aiRiskLoading ? "rgba(255,215,0,0.08)" : "rgba(255,215,0,0.08)", border: `1px solid ${aiRiskTrained ? "rgba(61,155,95,0.15)" : aiRiskLoading ? "rgba(255,215,0,0.15)" : "rgba(255,215,0,0.15)"}`, borderRadius: 2 }}>
-              <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
-                Model Status
-              </div>
-              <div style={{ fontSize: 12, color: "var(--ink-soft)" }}>
-                {aiRiskLoading ? (
-                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--seed)", animation: "pulse 1.5s infinite" }} />
-                    Auto-training model... (50 epochs)
-                  </span>
-                ) : aiRiskTrained ? (
-                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--seed)" }} />
-                    Model trained and ready (2000 samples)
-                  </span>
-                ) : (
-                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--seed)" }} />
-                    Initializing...
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Manual Train Button (only if auto-train failed) */}
-            {!aiRiskTrained && !aiRiskLoading && (
-              <div style={{ marginBottom: 16 }}>
-                <button
-                  onClick={async () => {
-                    setAiRiskLoading(true);
-                    try {
-                      const { TerrainRiskModel, generateSyntheticTrainingData } = await import('../lib/ml-risk');
-                      const model = new TerrainRiskModel();
-                      const trainingData = generateSyntheticTrainingData(2000);
-                      await model.train(trainingData, 50);
-                      await model.saveModel('luisiana-risk-model');
-                      setAiRiskModel(model);
-                      setAiRiskTrained(true);
-                      alert('✅ Model trained successfully!');
-                    } catch (error) {
-                      console.error('Training failed:', error);
-                      alert('❌ Training failed. Check console for details.');
-                    } finally {
-                      setAiRiskLoading(false);
-                    }
-                  }}
-                  style={{
-                    width: "100%",
-                    cursor: "pointer",
-                    padding: "12px",
-                    borderRadius: 2,
-                    background: "rgba(36,92,58,0.20)",
-                    border: "1px solid rgba(36,92,58,0.40)",
-                    color: "var(--ink)",
-                    fontSize: 13,
-                    fontWeight: 600,
-                  }}
-                >
-                  🚀 Retry Training
-                </button>
-              </div>
-            )}
-
-            {/* Enable/Disable Toggle */}
-            {aiRiskTrained && (
-              <div className="toggleRow" style={{ marginBottom: 16 }}>
-                <div>
-                  <label>Enable Risk Visualization</label>
-                  <div className="hint">Show AI predictions on map</div>
-                </div>
-                <div
-                  className={`switch ${aiRiskEnabled ? "on" : ""}`}
-                  role="switch"
-                  aria-checked={aiRiskEnabled}
-                  onClick={() => setAiRiskEnabled(!aiRiskEnabled)}
-                />
-              </div>
-            )}
-
-            {/* Risk Statistics */}
-            {aiRiskEnabled && aiRiskPredictions.length > 0 && (
-              <div style={{ marginBottom: 16, padding: 12, background: "rgba(36,92,58,0.08)", border: "1px solid rgba(36,92,58,0.15)", borderRadius: 2 }}>
-                <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
-                  Risk Analysis Summary
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
-                  {(() => {
-                    const safe = aiRiskPredictions.filter(p => p.riskLevel === 'SAFE').length;
-                    const low = aiRiskPredictions.filter(p => p.riskLevel === 'LOW').length;
-                    const moderate = aiRiskPredictions.filter(p => p.riskLevel === 'MODERATE').length;
-                    const high = aiRiskPredictions.filter(p => p.riskLevel === 'HIGH').length;
-                    const critical = aiRiskPredictions.filter(p => p.riskLevel === 'CRITICAL').length;
-                    const total = aiRiskPredictions.length;
-
-                    return (
-                      <>
-                        <div style={{ fontSize: 11 }}>
-                          <span style={{ color: "var(--seed)" }}>🟢 Safe:</span>
-                          <span style={{ color: "var(--ink-soft)", marginLeft: 6 }}>
-                            {((safe / total) * 100).toFixed(0)}%
-                          </span>
-                        </div>
-                        <div style={{ fontSize: 11 }}>
-                          <span style={{ color: "#90ee90" }}>🟡 Low:</span>
-                          <span style={{ color: "var(--ink-soft)", marginLeft: 6 }}>
-                            {((low / total) * 100).toFixed(0)}%
-                          </span>
-                        </div>
-                        <div style={{ fontSize: 11 }}>
-                          <span style={{ color: "var(--seed)" }}>🟡 Moderate:</span>
-                          <span style={{ color: "var(--ink-soft)", marginLeft: 6 }}>
-                            {((moderate / total) * 100).toFixed(0)}%
-                          </span>
-                        </div>
-                        <div style={{ fontSize: 11 }}>
-                          <span style={{ color: "#ffa500" }}>🟠 High:</span>
-                          <span style={{ color: "var(--ink-soft)", marginLeft: 6 }}>
-                            {((high / total) * 100).toFixed(0)}%
-                          </span>
-                        </div>
-                        <div style={{ fontSize: 11, gridColumn: "1 / -1" }}>
-                          <span style={{ color: "#ff4d4f" }}>🔴 Critical:</span>
-                          <span style={{ color: "var(--ink-soft)", marginLeft: 6 }}>
-                            {((critical / total) * 100).toFixed(0)}%
-                          </span>
-                        </div>
-                      </>
-                    );
-                  })()}
-                </div>
-              </div>
-            )}
-
-            {/* Features Info */}
-            <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--stroke2)" }}>
-              <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
-                📊 Analysis Features
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 11, color: "var(--muted)" }}>
-                <div>✓ Terrain slope and elevation</div>
-                <div>✓ Rainfall and soil moisture</div>
-                <div>✓ Vegetation density</div>
-                <div>✓ Distance to water bodies</div>
-                <div>✓ Historical disaster data</div>
-                <div>✓ Real-time weather integration</div>
-              </div>
-            </div>
-
-            {/* Info Box */}
-            <div style={{ marginTop: 16, padding: 12, background: "rgba(36,92,58,0.08)", border: "1px solid rgba(36,92,58,0.15)", borderRadius: 2 }}>
-              <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.6 }}>
-                💡 <strong>About:</strong> AI model uses deep learning to predict landslide and flood risks. Predictions are probabilistic and should be used as decision support, not sole determinant.
+                {tropicalDisclaimer ||
+                  "Positions from RAMMB/CIRA TC Realtime (JTWC-derived). Not an official PAGASA bulletin."}
               </div>
             </div>
           </div>
@@ -3294,42 +4852,21 @@ export default function App() {
           </div>
         )}
       </aside>
-      </>}
+      </>
+      </div>
+      )}
       
       {/* Placement Modal - Enter Building Details */}
       {showPlacementModal && pendingPlacement && (
         <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 10000,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            background: "var(--overlay)",
-            backdropFilter: "none",
-          }}
+          className="placement-modal"
           onClick={() => {
             setShowPlacementModal(false);
             setPendingPlacement(null);
           }}
         >
           <div
-            style={{
-              background: "var(--cream)",
-              border: "3px solid var(--ink)",
-              borderRadius: 0,
-              padding: "24px 28px",
-              maxWidth: 500,
-              width: "90%",
-              maxHeight: "85vh",
-              overflowY: "auto",
-              boxShadow: "8px 8px 0 var(--shadow-accent)",
-              color: "var(--ink)",
-              position: "relative",
-              fontFamily: '"Chakra Petch", sans-serif',
-            }}
-            className="modal-content-scroll"
+            className="placement-modal-panel modal-content-scroll"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Close button */}

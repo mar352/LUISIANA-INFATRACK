@@ -19,6 +19,7 @@ import {
   backendUrl,
 } from "../lib/api";
 import { downloadReportJson, printAccomplishmentReport } from "../lib/projectReport";
+import type { CesiumMapHandle } from "./CesiumMap";
 
 function formatPeso(n: number) {
   return new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: 0 }).format(n);
@@ -38,10 +39,17 @@ type Props = {
   projects: Project[];
   currentRole: string | null;
   mapRef: React.RefObject<MapLibreMap | null>;
+  cesiumMapRef?: React.RefObject<CesiumMapHandle | null>;
   readOnly?: boolean;
 };
 
-export function ProjectMonitoringPanel({ projects, currentRole, mapRef, readOnly = false }: Props) {
+export function ProjectMonitoringPanel({
+  projects,
+  currentRole,
+  mapRef,
+  cesiumMapRef,
+  readOnly = false,
+}: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [milestoneTitle, setMilestoneTitle] = useState("");
   const [milestoneDate, setMilestoneDate] = useState("");
@@ -70,14 +78,19 @@ export function ProjectMonitoringPanel({ projects, currentRole, mapRef, readOnly
 
   function openProject(p: Project) {
     setSelectedId(p.id);
-    mapRef.current?.flyTo({
-      center: [p.location.lon, p.location.lat],
-      zoom: 16,
-      pitch: 62,
-      bearing: -15,
-      duration: 1400,
-      essential: true,
-    });
+    // Primary globe is Cesium — fly to the placed model (uses live transform if available).
+    if (cesiumMapRef?.current) {
+      cesiumMapRef.current.flyToProject(p.id);
+    } else {
+      mapRef.current?.flyTo({
+        center: [p.location.lon, p.location.lat],
+        zoom: 16,
+        pitch: 75,
+        bearing: -15,
+        duration: 1400,
+        essential: true,
+      });
+    }
   }
 
   function closeProject() {
@@ -144,6 +157,7 @@ export function ProjectMonitoringPanel({ projects, currentRole, mapRef, readOnly
       await uploadProjectPhoto(selected.id, file, {
         caption: photoCaption || undefined,
         milestoneId: photoMilestoneId || null,
+        kind: "progress",
       });
       setPhotoCaption("");
       setPhotoMilestoneId("");
@@ -238,7 +252,7 @@ export function ProjectMonitoringPanel({ projects, currentRole, mapRef, readOnly
       <div className="card" style={{ marginBottom: 12 }}>
         <div className="sectionTitle" style={{ marginBottom: 8 }}>Project List</div>
         <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 8 }}>
-          Click a project to open details, photos, and reports.
+          Click a project to fly to its model and open details.
         </div>
         {filtered.length === 0 ? (
           <div style={{ fontSize: 12, color: "var(--muted2)", lineHeight: 1.5 }}>
@@ -530,12 +544,12 @@ export function ProjectMonitoringPanel({ projects, currentRole, mapRef, readOnly
 
           <div style={{ marginBottom: 12 }}>
             <div className="sectionTitle" style={{ fontSize: 11, marginBottom: 6 }}>Progress Photos</div>
-            {(selected.photos ?? []).length === 0 && (
+            {(selected.photos ?? []).filter((p) => p.kind !== "site").length === 0 && (
               <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 8 }}>No progress photos yet.</div>
             )}
-            {(selected.photos ?? []).length > 0 && (
+            {(selected.photos ?? []).filter((p) => p.kind !== "site").length > 0 && (
               <div className="project-photo-grid">
-                {(selected.photos ?? []).map((photo) => (
+                {(selected.photos ?? []).filter((p) => p.kind !== "site").map((photo) => (
                   <div key={photo.id} className="project-photo-item">
                     <a href={backendUrl(photo.url)} target="_blank" rel="noreferrer">
                       <img src={backendUrl(photo.url)} alt={photo.caption || "Progress photo"} />
