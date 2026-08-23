@@ -5,8 +5,8 @@
   display: flex;
   flex-direction: column;
   background:
-    radial-gradient(ellipse 80% 50% at 10% -10%, rgba(61, 155, 95, 0.12), transparent),
-    linear-gradient(180deg, #f3efe6 0%, #ebe6db 100%);
+    radial-gradient(ellipse 80% 50% at 10% -10%, rgba(255, 193, 7, 0.12), transparent),
+    linear-gradient(180deg, var(--cream) 0%, var(--cream-deep) 100%);
   color: var(--ink, #1a1a1a);
   font-family: var(--font, "Chakra Petch", system-ui, sans-serif);
 }
@@ -158,7 +158,7 @@
 }
 
 .audit-pill--auth { color: #1d4e89; }
-.audit-pill--project { color: #245c3a; }
+.audit-pill--project { color: var(--seed); }
 .audit-pill--planning { color: #7a3e9d; }
 .audit-pill--document { color: #8a5a12; }
 .audit-pill--engagement { color: #9a3412; }
@@ -170,7 +170,7 @@
 }
 
 [data-theme="dark"] .audit-page {
-  background: linear-gradient(180deg, #1a1f1c 0%, #121612 100%);
+  background: linear-gradient(180deg, #151c28 0%, #0f141c 100%);
   color: #e8e4da;
 }
 

@@ -18,7 +18,12 @@ import {
   fetchAccomplishmentReport,
   backendUrl,
 } from "../lib/api";
-import { downloadReportJson, printAccomplishmentReport } from "../lib/projectReport";
+import {
+  downloadAccomplishmentCsv,
+  downloadAccomplishmentExcel,
+  downloadReportJson,
+  printAccomplishmentReport,
+} from "../lib/projectReport";
 import type { CesiumMapHandle } from "./CesiumMap";
 
 function formatPeso(n: number) {
@@ -191,6 +196,20 @@ export function ProjectMonitoringPanel({
     }
   }
 
+  async function handleTypedReport(kind: "csv" | "excel") {
+    if (!selected) return;
+    setReportLoading(true);
+    try {
+      const { report } = await fetchAccomplishmentReport(selected.id);
+      if (kind === "csv") downloadAccomplishmentCsv(report, selected.name);
+      else downloadAccomplishmentExcel(report, selected.name);
+    } catch (err) {
+      console.error("Failed to generate report:", err);
+    } finally {
+      setReportLoading(false);
+    }
+  }
+
   async function handlePrintReport() {
     if (!selected) return;
     setReportLoading(true);
@@ -299,17 +318,9 @@ export function ProjectMonitoringPanel({
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
             <button
               type="button"
+              className="side-btn"
               onClick={closeProject}
-              style={{
-                cursor: "pointer",
-                padding: "6px 10px",
-                fontSize: 11,
-                fontWeight: 700,
-                border: "2px solid var(--ink)",
-                background: "var(--cream-deep)",
-                color: "var(--ink)",
-                flexShrink: 0,
-              }}
+              style={{ flexShrink: 0 }}
             >
               ← Back
             </button>
@@ -456,8 +467,9 @@ export function ProjectMonitoringPanel({
                 {!readOnly && m.status !== "done" && (
                   <button
                     type="button"
+                    className="side-btn is-primary"
                     onClick={() => completeMilestone(selected.id, m.id)}
-                    style={{ fontSize: 10, padding: "2px 6px", cursor: "pointer", border: "1px solid var(--stroke2)", background: "var(--cream-deep)" }}
+                    style={{ fontSize: 10, padding: "4px 10px" }}
                   >
                     Done
                   </button>
@@ -478,7 +490,7 @@ export function ProjectMonitoringPanel({
                 onChange={(e) => setMilestoneDate(e.target.value)}
                 style={{ padding: "6px", fontSize: 11, border: "1px solid var(--stroke2)" }}
               />
-              <button type="button" onClick={handleAddMilestone} style={{ padding: "6px 10px", fontSize: 11, cursor: "pointer" }}>
+              <button type="button" className="side-btn is-primary" onClick={handleAddMilestone}>
                 Add
               </button>
             </div>
@@ -502,8 +514,9 @@ export function ProjectMonitoringPanel({
                 {!readOnly && (
                 <button
                   type="button"
+                  className="side-btn"
                   onClick={() => resolveIssue(selected.id, i.id)}
-                  style={{ marginTop: 6, fontSize: 10, padding: "2px 8px", cursor: "pointer" }}
+                  style={{ marginTop: 6, fontSize: 10 }}
                 >
                   Resolve
                 </button>
@@ -535,7 +548,7 @@ export function ProjectMonitoringPanel({
               rows={2}
               style={{ width: "100%", marginTop: 6, padding: "6px", fontSize: 11, border: "1px solid var(--stroke2)", resize: "vertical" }}
             />
-            <button type="button" onClick={handleReportIssue} style={{ marginTop: 6, padding: "6px 10px", fontSize: 11, cursor: "pointer" }}>
+            <button type="button" className="side-btn is-primary" onClick={handleReportIssue} style={{ marginTop: 6 }}>
               Report
             </button>
             </>
@@ -610,22 +623,38 @@ export function ProjectMonitoringPanel({
             <p style={{ fontSize: 11, color: "var(--muted2)", margin: "0 0 8px", lineHeight: 1.5 }}>
               Export a summary of progress, milestones, budget, issues, and photos.
             </p>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <div className="side-seg">
               <button
                 type="button"
-                onClick={handleDownloadReport}
+                className="side-seg-btn"
+                onClick={() => void handleTypedReport("csv")}
                 disabled={reportLoading}
-                style={{ padding: "6px 10px", fontSize: 11, cursor: "pointer" }}
               >
-                Download JSON
+                CSV
               </button>
               <button
                 type="button"
+                className="side-seg-btn"
+                onClick={() => void handleTypedReport("excel")}
+                disabled={reportLoading}
+              >
+                Excel
+              </button>
+              <button
+                type="button"
+                className="side-seg-btn"
                 onClick={handlePrintReport}
                 disabled={reportLoading}
-                style={{ padding: "6px 10px", fontSize: 11, cursor: "pointer" }}
               >
-                Print / Save PDF
+                PDF
+              </button>
+              <button
+                type="button"
+                className="side-seg-btn"
+                onClick={handleDownloadReport}
+                disabled={reportLoading}
+              >
+                JSON
               </button>
             </div>
           </div>

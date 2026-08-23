@@ -9,7 +9,7 @@ import type {
   PlanningProposal,
   PlanningProposalStatus,
   PlanningRequestKind,
-  PlanningVoteChoice,
+  Project,
 } from "../types";
 import {
   BARANGAY_LIST,
@@ -67,6 +67,8 @@ type Props = {
   session: SessionUser | null;
   /** After approval, MPDC opens the map to pin where the building will stand. */
   onPinSite?: (proposal: PlanningProposal) => void;
+  /** Live map projects — used to boost scores that fill a barangay gap. */
+  projects?: Project[];
 };
 
 type AnchorKind = "none" | "section" | "map";
@@ -168,16 +170,6 @@ function attachmentHref(url: string) {
   return backendUrl(url);
 }
 
-function tallyVotes(votes: PlanningProposal["votes"] | undefined) {
-  const list = votes || [];
-  return {
-    yes: list.filter((v) => v.choice === "yes").length,
-    no: list.filter((v) => v.choice === "no").length,
-    abstain: list.filter((v) => v.choice === "abstain").length,
-    total: list.length,
-  };
-}
-
 function sameCalendarDay(iso: string, day: Date) {
   const d = new Date(iso);
   return (
@@ -199,7 +191,7 @@ function buildMonthGrid(monthStart: Date) {
   return cells;
 }
 
-export default function PlanningPage({ onBack, session, onPinSite }: Props) {
+function PlanningPage({ onBack, session, onPinSite, projects = [] }: Props) {
   const role = session?.role ?? null;
   const perms = getPlanningPermissions(role);
   const barangayOnly = isBarangayOfficial(role);
@@ -217,13 +209,13 @@ export default function PlanningPage({ onBack, session, onPinSite }: Props) {
   const [search, setSearch] = useState("");
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [confirmCloseDetail, setConfirmCloseDetail] = useState(false);
   const [comments, setComments] = useState<PlanningComment[]>([]);
   const [commentBody, setCommentBody] = useState("");
   const [commentAnchorKind, setCommentAnchorKind] = useState<AnchorKind>("none");
   const [commentSectionLabel, setCommentSectionLabel] = useState<string>("Summary");
   const [commentOtherLabel, setCommentOtherLabel] = useState("");
   const [decisionNote, setDecisionNote] = useState("");
-  const [voteNote, setVoteNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -276,6 +268,10 @@ export default function PlanningPage({ onBack, session, onPinSite }: Props) {
   const selectedIdRef = useRef(selectedId);
   tabRef.current = tab;
   selectedIdRef.current = selectedId;
+
+  useEffect(() => {
+    setConfirmCloseDetail(false);
+  }, [selectedId]);
 
   useEffect(() => {
     listAccounts()
@@ -440,7 +436,7 @@ export default function PlanningPage({ onBack, session, onPinSite }: Props) {
     patch: Partial<PlanningProposal>,
   ) {
     const merged = { ...proposal, ...patch };
-    const rec = computeRecommendation(merged);
+    const rec = computeRecommendation(merged, { projects });
     await updateProposal(proposal.id, {
       ...patch,
       recommendationScore: rec.score,
@@ -662,7 +658,7 @@ export default function PlanningPage({ onBack, session, onPinSite }: Props) {
     decision: PlanningApprovalDecision,
     nextStatus: PlanningProposalStatus,
   ) {
-    if (!session) return;
+    if (!session || !perms.canChangeStatus) return;
     setBusy(true);
     setMessage(null);
     try {
@@ -689,6 +685,8 @@ export default function PlanningPage({ onBack, session, onPinSite }: Props) {
 
   async function transitionStatus(proposal: PlanningProposal, next: PlanningProposalStatus) {
     if (!session) return;
+    const allowed = allowedStatusTransitions(proposal.status, role);
+    if (!allowed.includes(next)) return;
     const decisionMap: Partial<Record<PlanningProposalStatus, PlanningApprovalDecision>> = {
       recommended: "recommend",
       approved: "approve",
@@ -779,40 +777,6 @@ export default function PlanningPage({ onBack, session, onPinSite }: Props) {
     } catch (err) {
       console.error(err);
       setMessage("Failed to post comment.");
-    }
-    setBusy(false);
-  }
-
-  async function handleCastVote(proposal: PlanningProposal, choice: PlanningVoteChoice) {
-    if (!session || !perms.canVote) return;
-    if (proposal.status === "draft" || proposal.status === "rejected") {
-      setMessage("Botohan opens after the proposal is submitted.");
-      return;
-    }
-    setBusy(true);
-    setMessage(null);
-    try {
-      const note = voteNote.trim();
-      const vote = {
-        username: session.username,
-        role: session.role,
-        choice,
-        at: new Date().toISOString(),
-        ...(note ? { note } : {}),
-      };
-      const others = (proposal.votes || []).filter((v) => v.username !== session.username);
-      await updateProposal(proposal.id, { votes: [...others, vote] });
-      setVoteNote("");
-      setMessage(
-        choice === "yes"
-          ? "Vote recorded: Yes / Sang-ayon"
-          : choice === "no"
-            ? "Vote recorded: No / Tutol"
-            : "Vote recorded: Abstain",
-      );
-    } catch (err) {
-      console.error(err);
-      setMessage("Failed to record vote.");
     }
     setBusy(false);
   }
@@ -1010,7 +974,7 @@ export default function PlanningPage({ onBack, session, onPinSite }: Props) {
       )}
 
       {tab === "board" && (
-        <div className={`planning-board-layout${selected ? " has-detail" : ""}`}>
+        <div className="planning-board-layout">
           <section className="planning-board-main">
             <div className="planning-toolbar">
               <input
@@ -1140,15 +1104,6 @@ export default function PlanningPage({ onBack, session, onPinSite }: Props) {
                           <div className="planning-card-next">
                             Next: {nextActorHint(p.status).replace(/^Waiting on /, "")}
                           </div>
-                          {(() => {
-                            const t = tallyVotes(p.votes);
-                            if (t.total === 0) return null;
-                            return (
-                              <div className="planning-card-votes">
-                                Botohan · Oo {t.yes} · Hindi {t.no} · Abstain {t.abstain}
-                              </div>
-                            );
-                          })()}
                           <div className="planning-card-foot">
                             <span>Priority P{p.priority}</span>
                             <span>
@@ -1239,18 +1194,50 @@ export default function PlanningPage({ onBack, session, onPinSite }: Props) {
           </section>
 
           {selected && (
-          <aside className="planning-detail">
-            <div className="planning-detail-top">
-              <h2>{selected.title}</h2>
+          <div className="planning-modal-backdrop">
+          <aside
+            className="planning-modal planning-modal--detail planning-detail"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="planning-detail-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="planning-modal-head planning-detail-top">
+              <h2 id="planning-detail-title">{selected.title}</h2>
               <button
                 type="button"
                 className="planning-detail-close"
                 aria-label="Close proposal detail"
-                onClick={() => setSelectedId(null)}
+                onClick={() => setConfirmCloseDetail(true)}
               >
                 ×
               </button>
             </div>
+            {confirmCloseDetail && (
+              <div className="planning-close-confirm" role="alertdialog" aria-label="Close this request?">
+                <span>Close this request?</span>
+                <div className="planning-action-row">
+                  <button
+                    type="button"
+                    className="planning-btn"
+                    onClick={() => setConfirmCloseDetail(false)}
+                  >
+                    Stay
+                  </button>
+                  <button
+                    type="button"
+                    className="planning-btn primary"
+                    onClick={() => {
+                      setConfirmCloseDetail(false);
+                      setSelectedId(null);
+                    }}
+                  >
+                    Yes, close
+                  </button>
+                </div>
+              </div>
+            )}
+            <div className="planning-modal-body">
                 <div className="planning-detail-meta">
                   <span
                     className="planning-pill"
@@ -1345,100 +1332,6 @@ export default function PlanningPage({ onBack, session, onPinSite }: Props) {
                     <p>
                       Site already pinned · project <code>{selected.linkedProjectId}</code>
                     </p>
-                  </div>
-                )}
-
-                {selected.status !== "draft" && selected.status !== "rejected" && (
-                  <div className="planning-poll">
-                    <label>Botohan — committee poll</label>
-                    <p className="planning-muted" style={{ marginTop: 0 }}>
-                      Offices vote Yes / No / Abstain. One vote per account (pwedeng palitan).
-                    </p>
-                    {(() => {
-                      const t = tallyVotes(selected.votes);
-                      const mine = (selected.votes || []).find(
-                        (v) => v.username === session?.username,
-                      );
-                      return (
-                        <>
-                          <div className="planning-poll-tally">
-                            <span className="planning-poll-yes">Oo / Yes · {t.yes}</span>
-                            <span className="planning-poll-no">Hindi / No · {t.no}</span>
-                            <span className="planning-poll-abs">Abstain · {t.abstain}</span>
-                            <span className="planning-muted">
-                              {t.total} vote{t.total === 1 ? "" : "s"}
-                            </span>
-                          </div>
-                          {mine && (
-                            <p className="planning-muted">
-                              Your vote:{" "}
-                              <strong>
-                                {mine.choice === "yes"
-                                  ? "Yes"
-                                  : mine.choice === "no"
-                                    ? "No"
-                                    : "Abstain"}
-                              </strong>
-                              {mine.note ? ` — ${mine.note}` : ""}
-                            </p>
-                          )}
-                          {perms.canVote && (
-                            <>
-                              <input
-                                className="planning-input"
-                                placeholder="Optional note with your vote"
-                                value={voteNote}
-                                onChange={(e) => setVoteNote(e.target.value)}
-                              />
-                              <div className="planning-action-row">
-                                <button
-                                  type="button"
-                                  className={`planning-btn${mine?.choice === "yes" ? " primary" : ""}`}
-                                  disabled={busy}
-                                  onClick={() => void handleCastVote(selected, "yes")}
-                                >
-                                  Yes / Sang-ayon
-                                </button>
-                                <button
-                                  type="button"
-                                  className={`planning-btn${mine?.choice === "no" ? " danger" : ""}`}
-                                  disabled={busy}
-                                  onClick={() => void handleCastVote(selected, "no")}
-                                >
-                                  No / Tutol
-                                </button>
-                                <button
-                                  type="button"
-                                  className={`planning-btn${mine?.choice === "abstain" ? " primary" : ""}`}
-                                  disabled={busy}
-                                  onClick={() => void handleCastVote(selected, "abstain")}
-                                >
-                                  Abstain
-                                </button>
-                              </div>
-                            </>
-                          )}
-                          {(selected.votes?.length ?? 0) > 0 && (
-                            <ul className="planning-poll-list">
-                              {(selected.votes || [])
-                                .slice()
-                                .sort((a, b) => b.at.localeCompare(a.at))
-                                .map((v) => (
-                                  <li key={`${v.username}-${v.at}`}>
-                                    <strong>{v.username}</strong> ({v.role}) —{" "}
-                                    {v.choice === "yes"
-                                      ? "Yes"
-                                      : v.choice === "no"
-                                        ? "No"
-                                        : "Abstain"}
-                                    {v.note ? ` · ${v.note}` : ""} · {formatWhen(v.at)}
-                                  </li>
-                                ))}
-                            </ul>
-                          )}
-                        </>
-                      );
-                    })()}
                   </div>
                 )}
 
@@ -1560,16 +1453,13 @@ export default function PlanningPage({ onBack, session, onPinSite }: Props) {
                 {showDetailMore && (
                 <>
                 <div className="planning-recommend">
-                  <label>System suggestion</label>
+                  <label>Data-driven suggestion</label>
                   <div className="planning-recommend-score">
-                    {selected.recommendationScore ?? computeRecommendation(selected).score}
+                    {computeRecommendation(selected, { projects }).score}
                     <span>/ 100</span>
                   </div>
                   <ul className="planning-recommend-reasons">
-                    {(selected.recommendationReasons?.length
-                      ? selected.recommendationReasons
-                      : computeRecommendation(selected).reasons
-                    ).map((r) => (
+                    {computeRecommendation(selected, { projects }).reasons.map((r) => (
                       <li key={r}>{r}</li>
                     ))}
                   </ul>
@@ -1835,7 +1725,9 @@ export default function PlanningPage({ onBack, session, onPinSite }: Props) {
                     </ul>
                   </div>
                 )}
+            </div>
           </aside>
+          </div>
           )}
         </div>
       )}
@@ -2494,3 +2386,5 @@ export default function PlanningPage({ onBack, session, onPinSite }: Props) {
     </div>
   );
 }
+
+export default PlanningPage;

@@ -1,6 +1,6 @@
 .project-chat-root {
   position: absolute;
-  top: 70px;
+  top: calc(var(--map-hud-top, 48px) + 8px);
   right: 14px;
   left: auto;
   bottom: auto;
@@ -24,8 +24,8 @@
   left: auto;
   bottom: auto;
   border: 2px solid var(--ink, #1a1a1a);
-  background: var(--seed, #245c3a);
-  color: #f7f3ea;
+  background: var(--seed);
+  color: var(--on-burnt);
   font-weight: 700;
   font-size: 13px;
   padding: 12px 16px;
@@ -48,7 +48,7 @@
   height: min(480px, calc(100vh - 120px));
   display: flex;
   flex-direction: column;
-  background: var(--cream, #f3efe6);
+  background: var(--cream, var(--cream));
   color: var(--ink, #1a1a1a);
   border: 2px solid var(--ink, #1a1a1a);
   box-shadow: 6px 6px 0 rgba(0, 0, 0, 0.25);
@@ -104,7 +104,7 @@
 
 .project-chat-icon-btn {
   border: 1px solid var(--stroke, rgba(0, 0, 0, 0.2));
-  background: var(--cream-deep, #e8e0d2);
+  background: var(--cream-deep);
   color: var(--ink, #1a1a1a);
   width: 32px;
   height: 32px;
@@ -148,8 +148,8 @@
 
 .project-chat-bubble--user {
   align-self: flex-end;
-  background: var(--seed, #245c3a);
-  color: #f7f3ea;
+  background: var(--seed);
+  color: var(--on-burnt);
   border: 1px solid var(--ink, #1a1a1a);
 }
 
@@ -200,7 +200,7 @@
   flex: 1;
   resize: none;
   border: 1px solid var(--stroke, rgba(0, 0, 0, 0.2));
-  background: var(--cream-deep, #e8e0d2);
+  background: var(--cream-deep);
   color: var(--ink, #1a1a1a);
   padding: 8px 10px;
   font: inherit;
@@ -211,8 +211,8 @@
 
 .project-chat-send {
   border: 2px solid var(--ink, #1a1a1a);
-  background: var(--seed, #245c3a);
-  color: #f7f3ea;
+  background: var(--seed);
+  color: var(--on-burnt);
   font-weight: 700;
   font-size: 12px;
   padding: 0 14px;
@@ -258,7 +258,7 @@
 [data-theme="dark"] .project-chat-panel,
 [data-theme="dark"] .project-chat-header,
 [data-theme="dark"] .project-chat-compose {
-  background: #1a1f1c;
+  background: #151c28;
   color: #e8e4da;
 }
 

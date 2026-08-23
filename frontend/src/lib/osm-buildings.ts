@@ -1,8 +1,14 @@
 /**
  * Luisiana OSM building footprints for Cesium extrusion (municipality only).
+ * Clip with the real boundary polygon — the AABB box leaks into neighboring towns.
  */
 
 import { LUISIANA_BOUNDS } from "./luisiana-bounds";
+import {
+  isInsideLuisiana,
+  loadLuisianaRing,
+  type LonLat,
+} from "./luisiana-polygon";
 
 export type BuildingFootprint = {
   id?: string | number;
@@ -45,20 +51,50 @@ function heightFromTags(tags: Record<string, string> | undefined): number {
   return 8;
 }
 
-function ringInLuisiana(ring: number[][]): boolean {
-  for (const p of ring) {
-    const lon = p[0];
-    const lat = p[1];
-    if (
-      lon >= LUISIANA_BOUNDS.west &&
-      lon <= LUISIANA_BOUNDS.east &&
-      lat >= LUISIANA_BOUNDS.south &&
-      lat <= LUISIANA_BOUNDS.north
-    ) {
-      return true;
-    }
+function ringCentroid(ring: number[][]): [number, number] | null {
+  if (ring.length < 3) return null;
+  const closed =
+    ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1];
+  const n = closed ? ring.length - 1 : ring.length;
+  if (n < 3) return null;
+  let lon = 0;
+  let lat = 0;
+  for (let i = 0; i < n; i++) {
+    lon += ring[i][0];
+    lat += ring[i][1];
   }
-  return false;
+  return [lon / n, lat / n];
+}
+
+function inLuisianaBox(lon: number, lat: number): boolean {
+  return (
+    lon >= LUISIANA_BOUNDS.west &&
+    lon <= LUISIANA_BOUNDS.east &&
+    lat >= LUISIANA_BOUNDS.south &&
+    lat <= LUISIANA_BOUNDS.north
+  );
+}
+
+/** Centroid inside the AABB (cheap first pass before the polygon clip). */
+function ringInLuisianaBox(ring: number[][]): boolean {
+  const c = ringCentroid(ring);
+  return Boolean(c && inLuisianaBox(c[0], c[1]));
+}
+
+async function clipToMunicipality(list: BuildingFootprint[]): Promise<BuildingFootprint[]> {
+  let poly: LonLat[] | null = null;
+  try {
+    poly = await loadLuisianaRing();
+  } catch (err) {
+    console.warn("[osm-buildings] municipality ring missing, using box only:", err);
+  }
+  if (!poly || poly.length < 4) {
+    return list.filter((b) => ringInLuisianaBox(b.ring));
+  }
+  return list.filter((b) => {
+    const c = ringCentroid(b.ring);
+    return Boolean(c && isInsideLuisiana(c[0], c[1], poly));
+  });
 }
 
 function featuresFromGeoJSON(data: any): BuildingFootprint[] {
@@ -70,7 +106,7 @@ function featuresFromGeoJSON(data: any): BuildingFootprint[] {
     const heightM = Number(f.properties?.height) || 8;
     if (geom.type === "Polygon" && Array.isArray(geom.coordinates?.[0])) {
       const ring = closeRing(geom.coordinates[0].map((c: number[]) => [c[0], c[1]]));
-      if (ring.length >= 4 && ringInLuisiana(ring)) {
+      if (ring.length >= 4 && ringInLuisianaBox(ring)) {
         out.push({ id: f.id, ring, heightM });
       }
     } else if (geom.type === "MultiPolygon" && Array.isArray(geom.coordinates)) {
@@ -78,7 +114,7 @@ function featuresFromGeoJSON(data: any): BuildingFootprint[] {
         const outer = poly?.[0];
         if (!Array.isArray(outer)) continue;
         const ring = closeRing(outer.map((c: number[]) => [c[0], c[1]]));
-        if (ring.length >= 4 && ringInLuisiana(ring)) {
+        if (ring.length >= 4 && ringInLuisianaBox(ring)) {
           out.push({ id: f.id, ring, heightM });
         }
       }
@@ -94,7 +130,7 @@ function overpassToFootprints(data: any): BuildingFootprint[] {
     const heightM = heightFromTags(el.tags);
     if (el.type === "way" && Array.isArray(el.geometry) && el.geometry.length >= 4) {
       const ring = closeRing(el.geometry.map((g: { lon: number; lat: number }) => [g.lon, g.lat]));
-      if (ring.length >= 4 && ringInLuisiana(ring)) out.push({ id: el.id, ring, heightM });
+      if (ring.length >= 4 && ringInLuisianaBox(ring)) out.push({ id: el.id, ring, heightM });
     }
   }
   return out;
@@ -142,19 +178,19 @@ export async function fetchLuisianaBuildings(): Promise<BuildingFootprint[]> {
 
   inflight = (async () => {
     try {
-      const bundled = await fetchBundled();
+      const bundled = await clipToMunicipality(await fetchBundled());
       if (bundled.length > 0) {
         memory = bundled;
-        console.info(`[osm-buildings] ${bundled.length} from bundled ${BUNDLED_URL}`);
+        console.info(`[osm-buildings] ${bundled.length} inside municipality (${BUNDLED_URL})`);
         return bundled;
       }
     } catch (err) {
       console.warn("[osm-buildings] bundled failed:", err);
     }
     try {
-      const live = await fetchOverpass();
+      const live = await clipToMunicipality(await fetchOverpass());
       memory = live;
-      console.info(`[osm-buildings] ${live.length} from Overpass`);
+      console.info(`[osm-buildings] ${live.length} inside municipality (Overpass)`);
       return live;
     } catch (err) {
       console.warn("[osm-buildings] Overpass failed:", err);

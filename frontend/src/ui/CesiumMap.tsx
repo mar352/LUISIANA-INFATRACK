@@ -3,7 +3,7 @@
  * and MapLibre-parity edit: select / left-drag move / right-drag rotate / scroll scale.
  */
 
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import * as Cesium from "cesium";
 import "cesium/Build/Cesium/Widgets/widgets.css";
 import type { MapSketch, MapSketchKind, PlacementTool, Project, ProjectPhoto, ProjectStatus } from "../types";
@@ -14,7 +14,41 @@ import { updateProjectInFirestore } from "../services/firestore-projects";
 import { writeAudit } from "../services/firestore-audit";
 import { gibsWmtsTileUrl, GIBS_LAYERS, type GibsLayerId } from "../lib/gibs";
 import { createGibsHoverSampler, type GibsSampleResult } from "../lib/gibs-sample";
-import { getCachedGlbUrl } from "../lib/glb-cache";
+import {
+  clearGlbMemoryCache,
+  getGlbMemoryStats,
+  isCatalogGlbUrl,
+  isGlbCached,
+  prefetchGlbUrls,
+  resolveGlbUrlForAttach,
+  retainGlbUrls,
+  touchGlbCache,
+} from "../lib/glb-cache";
+import {
+  formatBytesShort,
+  gpuModelBudget,
+  modelLoadConcurrency,
+  modelLoadRadiusM,
+  modelUnloadRadiusM,
+} from "../lib/cesium-model-stream";
+import {
+  noteSceneFrame,
+  sceneIsLagging,
+  sceneIsStalling,
+  sceneTargetFrameRate,
+  setSceneCameraMoving,
+} from "../lib/cesium-frame-budget";
+import { attachCesiumMotionBlur, type MotionBlurHandle } from "../lib/cesium-motion-blur";
+import {
+  gizmoHandleToAxis,
+  pickGizmoHandle,
+  removeEditGizmo,
+  resizeEditGizmo,
+  setEditGizmoHover,
+  syncEditGizmo,
+  type EditAxis,
+  type EditTool,
+} from "../lib/cesium-edit-gizmo";
 import { fetchLuisianaBuildings, type BuildingFootprint } from "../lib/osm-buildings";
 import {
   applyTerrainPerfSettings,
@@ -38,7 +72,6 @@ import {
   OSM_RASTER_TILE_URL,
 } from "../lib/stadia";
 import { getSatelliteSource } from "../lib/terrain";
-import { PlaceSidePanel } from "./PlaceSidePanel";
 import { classAdvice, classColor } from "../lib/earthquake-labels";
 import {
   earthquakeProneModel,
@@ -47,6 +80,9 @@ import {
   type EarthquakeSiteScore,
 } from "../lib/ml-earthquake";
 import { registerTerrainSatSampler, type TerrainSatSample } from "../lib/terrain-sat-features";
+import { PlaceSidePanel } from "./PlaceSidePanel";
+import { GoogleHeatmapOverlay } from "./GoogleHeatmapOverlay";
+import { quakeHeatWeight } from "../lib/google-heatmap";
 import {
   formatTropicalInfo,
   getTropicalColor,
@@ -56,6 +92,19 @@ import {
 } from "../lib/tropical-systems";
 import { HAZARD_OVERLAYS, loadHazardTilesManifest } from "../lib/hazard-overlays";
 import { addLuisianaBoundary } from "../lib/luisiana-boundary";
+import { addBarangayOverlay, loadBarangayAreas, removeBarangayOverlay } from "../lib/barangay-overlay";
+import {
+  displayNameForProject,
+  hoverTypeLabel,
+  lookupPlaceName,
+  syncPlaceName,
+} from "../lib/place-name";
+import {
+  isInsideLuisiana,
+  loadLuisianaRing,
+  ringBounds,
+  type LonLat,
+} from "../lib/luisiana-polygon";
 
 /**
  * When pitched into local 3D and still near the ground, tighten fog / pan speed.
@@ -151,12 +200,8 @@ function ringSpanOk(ring: number[][]): boolean {
   return east - west < 0.012 && north - south < 0.012 && east > west && north > south;
 }
 
-/** Load full GLB only when camera is this close (meters). */
-const MODEL_LOAD_DIST_M = 4000;
-/** Drop GPU model (keep pin) when camera is farther than this. */
-const MODEL_UNLOAD_DIST_M = 7000;
-/** How many GLBs to decode at once — keep low so the PC doesn't melt. */
-const MODEL_LOAD_CONCURRENCY = 1;
+/** Don't flash the stream chip for cached attaches that finish instantly. */
+const MODEL_LOAD_UI_DELAY_MS = 280;
 /** Throttle map entity hover picks (ms). */
 const HOVER_PICK_THROTTLE_MS = 60;
 /** Only update hover tooltip screen position if cursor moved this many px. */
@@ -200,6 +245,87 @@ function flyCameraHome(viewer: Cesium.Viewer, duration = 1.2) {
 
 /** Never let the camera go under the ground (dark “underside / hell” view). */
 const MIN_CAMERA_HEIGHT_M = 35;
+
+/** Height above ellipsoid, or above DEM when satellite/terrain is on. */
+function cameraHeightAboveSurface(viewer: Cesium.Viewer): number {
+  const carto = viewer.camera.positionCartographic;
+  if (!carto) return MIN_CAMERA_HEIGHT_M;
+  const ellipsoidH = carto.height;
+  const terrainOn =
+    !!viewer.terrainProvider &&
+    !(viewer.terrainProvider instanceof Cesium.EllipsoidTerrainProvider);
+  if (terrainOn) {
+    try {
+      const sampled = viewer.scene.globe.getHeight(carto);
+      if (typeof sampled === "number" && Number.isFinite(sampled)) {
+        return Math.max(MIN_CAMERA_HEIGHT_M, ellipsoidH - sampled);
+      }
+    } catch {
+      /* DEM sample not ready */
+    }
+  }
+  return Math.max(MIN_CAMERA_HEIGHT_M, ellipsoidH);
+}
+
+/** Ground-plane WASD: W/S along heading, A/D strafe. Speed scales with altitude. */
+function moveCameraWasd(viewer: Cesium.Viewer, held: Set<string>, dt: number) {
+  if (dt <= 0) return;
+  const cam = viewer.camera;
+  const pos = cam.position;
+  const heading = cam.heading;
+  const agl = cameraHeightAboveSurface(viewer);
+  let speed = Math.min(520, Math.max(14, agl * 0.85));
+  if (held.has("shift")) speed *= 2.4;
+  const dist = speed * dt;
+  const sinH = Math.sin(heading);
+  const cosH = Math.cos(heading);
+  let east = 0;
+  let north = 0;
+  if (held.has("w")) {
+    north += cosH;
+    east += sinH;
+  }
+  if (held.has("s")) {
+    north -= cosH;
+    east -= sinH;
+  }
+  if (held.has("d")) {
+    north -= sinH;
+    east += cosH;
+  }
+  if (held.has("a")) {
+    north += sinH;
+    east -= cosH;
+  }
+  const len = Math.hypot(east, north);
+  if (len < 1e-8) return;
+  east = (east / len) * dist;
+  north = (north / len) * dist;
+  const enu = Cesium.Transforms.eastNorthUpToFixedFrame(pos);
+  const eastV = Cesium.Matrix4.getColumn(enu, 0, new Cesium.Cartesian3());
+  const northV = Cesium.Matrix4.getColumn(enu, 1, new Cesium.Cartesian3());
+  const delta = new Cesium.Cartesian3();
+  Cesium.Cartesian3.multiplyByScalar(eastV, east, eastV);
+  Cesium.Cartesian3.multiplyByScalar(northV, north, northV);
+  Cesium.Cartesian3.add(eastV, northV, delta);
+  cam.position = Cesium.Cartesian3.add(pos, delta, new Cesium.Cartesian3());
+
+  const carto = cam.positionCartographic;
+  if (!carto) return;
+  const sampled = viewer.scene.globe.getHeight(carto);
+  const ground = typeof sampled === "number" && Number.isFinite(sampled) ? sampled : 0;
+  const minHeight = Math.max(MIN_CAMERA_HEIGHT_M, ground + MIN_TERRAIN_CLEARANCE_M);
+  if (carto.height >= minHeight) return;
+  const up = Cesium.Cartesian3.normalize(
+    Cesium.Cartesian3.fromRadians(carto.longitude, carto.latitude),
+    new Cesium.Cartesian3(),
+  );
+  cam.position = Cesium.Cartesian3.add(
+    cam.position,
+    Cesium.Cartesian3.multiplyByScalar(up, minHeight - carto.height, new Cesium.Cartesian3()),
+    new Cesium.Cartesian3(),
+  );
+}
 /** Extra clearance above sampled DEM when collision tiles aren’t ready yet. */
 const MIN_TERRAIN_CLEARANCE_M = 40;
 /**
@@ -227,8 +353,8 @@ export type CesiumMapHandle = {
   restoreRemovedBlocks: () => void;
   /** Fly camera to lon/lat (used by Events list). */
   flyToLonLat: (lon: number, lat: number, heightM?: number) => void;
-  /** Select a project model and fly the camera to it. */
-  flyToProject: (projectId: string) => void;
+  /** Select a project model and fly the camera to it. False if the globe is not ready yet. */
+  flyToProject: (projectId: string) => boolean;
   /** Finish current line/area sketch (placement mode). */
   finishSketch: () => boolean;
   /** Remove last sketch vertex. */
@@ -237,6 +363,8 @@ export type CesiumMapHandle = {
   clearSketch: () => void;
   /** How many vertices in the current draft sketch. */
   getSketchVertexCount: () => number;
+  /** Snapshot of the live globe (PNG data URL) for printable maps / reports. */
+  captureMapPng: () => Promise<string | null>;
 };
 
 type PlaceClick = { lng: number; lat: number };
@@ -247,12 +375,63 @@ type LocalXform = {
   /** Meters above ground. 0 = clamp to terrain (no elevation). */
   heightM: number;
   rotationDeg: number;
+  pitchDeg: number;
+  rollDeg: number;
   scaleMultiplier: number;
   modelLocked: boolean;
   dirty: boolean;
   /** Keep local pose until projects prop matches after save. */
   pendingSync: boolean;
 };
+
+const MAX_EDIT_UNDO = 80;
+
+type EditPoseSnap = {
+  projectId: string;
+  lon: number;
+  lat: number;
+  heightM: number;
+  rotationDeg: number;
+  pitchDeg: number;
+  rollDeg: number;
+  scaleMultiplier: number;
+};
+
+function snapFromXform(projectId: string, xf: LocalXform): EditPoseSnap {
+  return {
+    projectId,
+    lon: xf.lon,
+    lat: xf.lat,
+    heightM: xf.heightM,
+    rotationDeg: xf.rotationDeg,
+    pitchDeg: xf.pitchDeg ?? 0,
+    rollDeg: xf.rollDeg ?? 0,
+    scaleMultiplier: xf.scaleMultiplier,
+  };
+}
+
+function poseSnapEqual(a: EditPoseSnap, b: EditPoseSnap): boolean {
+  return (
+    a.projectId === b.projectId &&
+    Math.abs(a.lon - b.lon) < 1e-8 &&
+    Math.abs(a.lat - b.lat) < 1e-8 &&
+    Math.abs(a.heightM - b.heightM) < 1e-4 &&
+    Math.abs(a.rotationDeg - b.rotationDeg) < 1e-3 &&
+    Math.abs(a.pitchDeg - b.pitchDeg) < 1e-3 &&
+    Math.abs(a.rollDeg - b.rollDeg) < 1e-3 &&
+    Math.abs(a.scaleMultiplier - b.scaleMultiplier) < 1e-4
+  );
+}
+
+function writeXformFromSnap(xf: LocalXform, snap: EditPoseSnap) {
+  xf.lon = snap.lon;
+  xf.lat = snap.lat;
+  xf.heightM = snap.heightM;
+  xf.rotationDeg = snap.rotationDeg;
+  xf.pitchDeg = snap.pitchDeg;
+  xf.rollDeg = snap.rollDeg;
+  xf.scaleMultiplier = snap.scaleMultiplier;
+}
 
 type Props = {
   solarHour: number;
@@ -275,6 +454,8 @@ type Props = {
   placementColor?: string;
   /** Fired when a sketch is completed (pin click, or finish line/area). */
   onPlaceSketch?: (sketch: MapSketch) => void;
+  /** Parent list / portal — a project pin or model was clicked. */
+  onProjectSelect?: (projectId: string) => void;
   readOnly?: boolean;
   /** Engineer only — unlock / move / rotate / scale / remove map models. */
   canManipulateModels?: boolean;
@@ -295,6 +476,8 @@ type Props = {
   };
   /** Layers toggle — hide/show Luisiana 3D blocks. */
   buildingBlocksVisible?: boolean;
+  /** Left-rail toggle — color-coded barangay areas. */
+  barangaysVisible?: boolean;
   /** Click a block to remove it (engineer tool). */
   blockRemoverActive?: boolean;
   /** Layers → 3D Terrain: elevation mesh on the globe. */
@@ -365,7 +548,27 @@ function applyCesiumShadowMap(viewer: Cesium.Viewer, quality: ShadowQuality) {
   sm.maximumDistance = cfg.maximumDistance;
   sm.size = cfg.size;
   sm.softShadows = cfg.softShadows;
-  sm.darkness = 0.35;
+  sm.darkness = 0.4;
+  sm.fadingEnabled = true;
+  sm.normalOffset = true;
+}
+
+/** Shadows only while the camera is over / next to Luisiana (not the whole globe). */
+function cameraOverLuisiana(viewer: Cesium.Viewer, ring: LonLat[] | null): boolean {
+  const carto = viewer.camera.positionCartographic;
+  if (!carto) return false;
+  if (carto.height > 8_000) return false;
+  const lon = Cesium.Math.toDegrees(carto.longitude);
+  const lat = Cesium.Math.toDegrees(carto.latitude);
+  if (ring && ring.length >= 4) {
+    if (isInsideLuisiana(lon, lat, ring)) return true;
+    const b = ringBounds(ring);
+    const pad = 0.02;
+    return lon >= b.west - pad && lon <= b.east + pad && lat >= b.south - pad && lat <= b.north + pad;
+  }
+  return (
+    lon >= 121.44 && lon <= 121.58 && lat >= 14.12 && lat <= 14.27
+  );
 }
 
 /**
@@ -374,17 +577,27 @@ function applyCesiumShadowMap(viewer: Cesium.Viewer, quality: ShadowQuality) {
  */
 function attachProjectGlbModel(
   ent: Cesium.Entity,
-  opts: { uri: string; scale: number; heightReference: Cesium.HeightReference },
+  opts: {
+    uri: string;
+    scale: number;
+    heightReference: Cesium.HeightReference;
+    /** Extra models past the budget skip the shadow pass so pan stays smooth. */
+    skipShadows?: boolean;
+  },
 ): void {
-  // Entity-level ENABLED so the model participates in the shadow map;
-  // pin-only entities use DISABLED to avoid billboard/point caster cost.
-  ent.shadows = new Cesium.ConstantProperty(Cesium.ShadowMode.ENABLED);
+  // Heavy authored halls (municipal-office / RHU) skip the shadow map —
+  // casting 100k+ tris into Cesium's shadow pass is what stalls the globe.
+  const heavy = /municipal-office|rural-health-unit/i.test(opts.uri);
+  const shadowMode =
+    heavy || opts.skipShadows ? Cesium.ShadowMode.DISABLED : Cesium.ShadowMode.ENABLED;
+  ent.shadows = new Cesium.ConstantProperty(shadowMode);
   ent.model = new Cesium.ModelGraphics({
     uri: opts.uri,
     scale: opts.scale,
     heightReference: opts.heightReference,
-    shadows: Cesium.ShadowMode.ENABLED,
+    shadows: shadowMode,
     runAnimations: false,
+    incrementallyLoadTextures: true,
     maximumScale: undefined,
     minimumPixelSize: 0,
   });
@@ -513,11 +726,16 @@ function pickGlobeLngLat(
   };
 }
 
+function viewerAlive(viewer: Cesium.Viewer | null | undefined): viewer is Cesium.Viewer {
+  return Boolean(viewer && !viewer.isDestroyed());
+}
+
 function applyProjectHoverVisual(
   viewer: Cesium.Viewer,
   project: Project,
   hovered: boolean,
 ) {
+  if (!viewerAlive(viewer)) return;
   const eid = entityIdFor(project.id);
   const ent = viewer.entities.getById(eid);
   if (!ent) return;
@@ -562,9 +780,9 @@ function quakePointSize(
   hovered = false,
   predicted = false,
 ): number {
-  const base = cls === "HIGH" ? 16 : cls === "MODERATE" ? 13 : 9;
-  const sized = predicted ? Math.max(8, base - 2) : base;
-  return hovered ? sized + 6 : sized;
+  const base = cls === "HIGH" ? 8 : cls === "MODERATE" ? 7 : 5;
+  const sized = predicted ? Math.max(4, base - 1) : base;
+  return hovered ? sized + 4 : sized;
 }
 
 function tropicalEntityId(systemId: string) {
@@ -655,6 +873,8 @@ function applyEntityPose(
   rotationDeg: number,
   scale: number,
   heightM = 0,
+  pitchDeg = 0,
+  rollDeg = 0,
 ) {
   // Z ≈ 0 → clamp to ground (no elevation float). Else relative to terrain.
   const onGround = Math.abs(heightM) < 1e-4;
@@ -669,7 +889,11 @@ function applyEntityPose(
   ent.orientation = new Cesium.ConstantProperty(
     Cesium.Transforms.headingPitchRollQuaternion(
       position,
-      new Cesium.HeadingPitchRoll(Cesium.Math.toRadians(-rotationDeg), 0, 0),
+      new Cesium.HeadingPitchRoll(
+        Cesium.Math.toRadians(-rotationDeg),
+        Cesium.Math.toRadians(pitchDeg),
+        Cesium.Math.toRadians(rollDeg),
+      ),
     ),
   );
   if (ent.model) {
@@ -689,6 +913,47 @@ function applyEntityPose(
   }
 }
 
+function gizmoScreenAngle(
+  viewer: Cesium.Viewer,
+  lon: number,
+  lat: number,
+  heightM: number,
+  mouse: Cesium.Cartesian2,
+): number | null {
+  const onGround = Math.abs(heightM) < 1e-4;
+  const z = onGround ? 1.2 : heightM + 1.2;
+  const origin = Cesium.Cartesian3.fromDegrees(lon, lat, z);
+  const win = Cesium.SceneTransforms.worldToWindowCoordinates(viewer.scene, origin);
+  if (!Cesium.defined(win) || !win) return null;
+  return Math.atan2(mouse.y - win.y, mouse.x - win.x);
+}
+
+function applyXformToEntity(ent: Cesium.Entity, p: Project, xf: LocalXform) {
+  applyEntityPose(
+    ent,
+    xf.lon,
+    xf.lat,
+    xf.rotationDeg,
+    modelScaleValue(p, xf.scaleMultiplier),
+    xf.heightM,
+    xf.pitchDeg ?? 0,
+    xf.rollDeg ?? 0,
+  );
+}
+
+function applyResolvedPlaceName(viewer: Cesium.Viewer, p: Project, name: string) {
+  if (!viewerAlive(viewer) || !name.trim()) return;
+  const ent = viewer.entities.getById(entityIdFor(p.id));
+  if (!ent) return;
+  ent.name = name;
+  if (ent.label) {
+    const isSitePin = Boolean(p.siteMarkerOnly);
+    (ent.label as Cesium.LabelGraphics).text = new Cesium.ConstantProperty(
+      isSitePin ? `📌 ${name}` : name,
+    );
+  }
+}
+
 /** Refresh pin vs label chrome after a site pin is promoted to a 3D model. */
 function applySitePinChrome(
   ent: Cesium.Entity,
@@ -700,6 +965,7 @@ function applySitePinChrome(
   },
 ) {
   const isSitePin = Boolean(p.siteMarkerOnly);
+  const displayName = p.name?.trim() || "Untitled site";
   if (ent.point) {
     const point = ent.point as Cesium.PointGraphics;
     point.pixelSize = new Cesium.ConstantProperty(isSitePin ? 16 : 10);
@@ -711,7 +977,7 @@ function applySitePinChrome(
   }
   if (ent.label) {
     const label = ent.label as Cesium.LabelGraphics;
-    label.text = new Cesium.ConstantProperty(isSitePin ? `📌 ${p.name}` : p.name);
+    label.text = new Cesium.ConstantProperty(isSitePin ? `📌 ${displayName}` : displayName);
     label.font = new Cesium.ConstantProperty(isSitePin ? "bold 13px sans-serif" : "12px sans-serif");
     label.pixelOffset = new Cesium.ConstantProperty(
       new Cesium.Cartesian2(0, isSitePin ? -22 : -18),
@@ -784,6 +1050,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     placementTool = "pin",
     placementColor = "#c47a1a",
     onPlaceSketch,
+    onProjectSelect,
     readOnly = false,
     canManipulateModels = false,
     canPromoteSitePin = false,
@@ -793,6 +1060,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     onDeleteBuilding,
     gibs,
     buildingBlocksVisible = true,
+    barangaysVisible = false,
     blockRemoverActive = false,
     terrainEnabled = false,
     satellite = false,
@@ -835,6 +1103,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     project: Project;
     x: number;
     y: number;
+    streetLabel: string | null;
   } | null>(null);
   const [hoveredQuake, setHoveredQuake] = useState<{
     cell: EarthquakeGridCell;
@@ -850,6 +1119,8 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
   const earthquakeEnabledRef = useRef(earthquakeEnabled);
   earthquakeEnabledRef.current = earthquakeEnabled;
   const hoveredProjectIdRef = useRef<string | null>(null);
+  const resolvedPlaceNameRef = useRef(new Map<string, string>());
+  const [, setPlaceNameTick] = useState(0);
   const buildingPrimitivesRef = useRef<Cesium.Primitive[]>([]);
   const buildingMaterialRef = useRef<Cesium.Material | null>(null);
   const buildingBlocksVisibleRef = useRef(buildingBlocksVisible);
@@ -863,6 +1134,8 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
   terrainEnabledRef.current = terrainEnabled;
   const mapSettingsRef = useRef(mapSettings);
   mapSettingsRef.current = mapSettings;
+  const sunIsDayRef = useRef(true);
+  const luisianaRingRef = useRef<LonLat[] | null>(null);
   const applyScopeRef = useRef<(() => void) | null>(null);
   const [removedBlockCount, setRemovedBlockCount] = useState(() => loadRemovedBlockIds().size);
   const [viewerReady, setViewerReady] = useState(0);
@@ -873,9 +1146,28 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
   const modelLoadQueueRef = useRef<string[]>([]);
   /** Ids currently fetching/decoding a GLB (not yet attached). */
   const modelLoadingIdsRef = useRef<Set<string>>(new Set());
+  /** Original absolute GLB URL per attached project — used to retain the RAM cache. */
+  const modelSourceUrlRef = useRef<Map<string, string>>(new Map());
+  const cameraMovingRef = useRef(false);
+  const motionBlurRef = useRef<MotionBlurHandle | null>(null);
+  const modelLoadUiDelayRef = useRef<number | null>(null);
+  const modelLoadUiVisibleRef = useRef(false);
+  const modelLoadUiPayloadRef = useRef<{
+    label: string;
+    remaining: number;
+    attached: number;
+    budget: number;
+    cacheLabel: string;
+  } | null>(null);
   const lodReconcileRef = useRef<(() => void) | null>(null);
   const tiltedRef = useRef(true);
   const xformsRef = useRef<Map<string, LocalXform>>(new Map());
+  const undoStackRef = useRef<EditPoseSnap[]>([]);
+  const redoStackRef = useRef<EditPoseSnap[]>([]);
+  const dragActiveRef = useRef(false);
+  const scaleUndoArmedRef = useRef(false);
+  const [undoDepth, setUndoDepth] = useState(0);
+  const [redoDepth, setRedoDepth] = useState(0);
   const projectsRef = useRef(projects);
   const clusteringEnabledRef = useRef(clusteringEnabled);
   const applyInfraClustersRef = useRef<() => void>(() => {});
@@ -883,9 +1175,14 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
   const selectedIdRef = useRef<string | null>(null);
   const placementModeRef = useRef(placementMode);
   const editModeRef = useRef(editMode);
+  const [editTool, setEditTool] = useState<EditTool>("move");
+  const [editAxis, setEditAxis] = useState<EditAxis>("free");
+  const editToolRef = useRef<EditTool>("move");
+  const editAxisRef = useRef<EditAxis>("free");
   const modelsFrozenRef = useRef(false);
   const onPlaceClickRef = useRef(onPlaceClick);
   const onPlaceSketchRef = useRef(onPlaceSketch);
+  const onProjectSelectRef = useRef(onProjectSelect);
   const placementToolRef = useRef(placementTool);
   const placementColorRef = useRef(placementColor);
   const sketchDraftRef = useRef<{ lon: number; lat: number }[]>([]);
@@ -936,7 +1233,10 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     active: boolean;
     label: string;
     remaining: number;
-  }>({ active: false, label: "", remaining: 0 });
+    attached: number;
+    budget: number;
+    cacheLabel: string;
+  }>({ active: false, label: "", remaining: 0, attached: 0, budget: gpuModelBudget(), cacheLabel: "" });
 
   useEffect(() => {
     projectsRef.current = projects;
@@ -951,13 +1251,28 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
   useEffect(() => {
     editModeRef.current = editMode;
   }, [editMode]);
+  useEffect(() => {
+    editToolRef.current = editTool;
+  }, [editTool]);
+  useEffect(() => {
+    editAxisRef.current = editAxis;
+  }, [editAxis]);
+  useEffect(() => {
+    if (!editMode) {
+      setEditTool("move");
+      setEditAxis("free");
+      scaleUndoArmedRef.current = false;
+      dragActiveRef.current = false;
+    }
+  }, [editMode]);
   modelsFrozenRef.current = placementMode || blockRemoverActive;
   useEffect(() => {
     onPlaceClickRef.current = onPlaceClick;
   }, [onPlaceClick]);
   useEffect(() => {
     onPlaceSketchRef.current = onPlaceSketch;
-  }, [onPlaceSketch]);
+    onProjectSelectRef.current = onProjectSelect;
+  }, [onPlaceSketch, onProjectSelect]);
   useEffect(() => {
     placementToolRef.current = placementTool;
   }, [placementTool]);
@@ -1100,14 +1415,18 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     zoomIn() {
       const viewer = viewerRef.current;
       if (!viewer || viewer.isDestroyed()) return;
-      const h = viewer.camera.positionCartographic.height;
-      viewer.camera.zoomIn(Math.max(50, h * 0.35));
+      const h = cameraHeightAboveSurface(viewer);
+      viewer.camera.zoomIn(Math.max(50, h * 0.48));
+      resizeEditGizmo(viewer);
+      viewer.scene.requestRender();
     },
     zoomOut() {
       const viewer = viewerRef.current;
       if (!viewer || viewer.isDestroyed()) return;
-      const h = viewer.camera.positionCartographic.height;
-      viewer.camera.zoomOut(Math.max(50, h * 0.35));
+      const h = cameraHeightAboveSurface(viewer);
+      viewer.camera.zoomOut(Math.max(50, h * 0.48));
+      resizeEditGizmo(viewer);
+      viewer.scene.requestRender();
     },
     flyHome() {
       const viewer = viewerRef.current;
@@ -1153,21 +1472,24 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     },
     flyToProject(projectId: string) {
       const viewer = viewerRef.current;
-      if (!viewer || viewer.isDestroyed()) return;
+      if (!viewer || viewer.isDestroyed()) return false;
       const p = projectsRef.current.find((x) => x.id === projectId);
-      if (!p) return;
+      if (!p?.location) return false;
       const xf = xformsRef.current.get(projectId);
       const lon = xf?.lon ?? p.location.lon;
       const lat = xf?.lat ?? p.location.lat;
-      if (!Number.isFinite(lon) || !Number.isFinite(lat)) return;
+      if (!Number.isFinite(lon) || !Number.isFinite(lat)) return false;
       setSelectedId(projectId);
       const ent = viewer.entities.getById(entityIdFor(projectId));
+      if (ent) ent.show = true;
       const scale = Math.max(0.5, xf?.scaleMultiplier ?? p.modelScale ?? 1);
       flyCameraToProjectTarget(viewer, lon, lat, {
-        entity: ent,
+        entity: ent && ent.show !== false ? ent : undefined,
         rangeM: Math.max(90, 160 * scale),
         duration: 1.15,
       });
+      window.setTimeout(() => lodReconcileRef.current?.(), 80);
+      return true;
     },
     finishSketch() {
       return finishSketchDraft();
@@ -1196,6 +1518,22 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     getSketchVertexCount() {
       return sketchDraftRef.current.length;
     },
+    captureMapPng() {
+      const viewer = viewerRef.current;
+      if (!viewer || viewer.isDestroyed()) return Promise.resolve(null);
+      motionBlurRef.current?.suppress();
+      return new Promise((resolve) => {
+        const remove = viewer.scene.postRender.addEventListener(() => {
+          if (typeof remove === "function") remove();
+          try {
+            resolve(viewer.scene.canvas.toDataURL("image/png"));
+          } catch {
+            resolve(null);
+          }
+        });
+        viewer.scene.requestRender();
+      });
+    },
   }));
 
   const ensureXform = useCallback((p: Project): LocalXform => {
@@ -1208,6 +1546,8 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         Math.abs(existing.lat - p.location.lat) < 1e-6 &&
         Math.abs(existing.heightM - (p.modelHeight ?? 0)) < 0.01 &&
         Math.abs(existing.rotationDeg - (p.rotation ?? 0)) < 0.05 &&
+        Math.abs((existing.pitchDeg ?? 0) - (p.rotationPitch ?? 0)) < 0.05 &&
+        Math.abs((existing.rollDeg ?? 0) - (p.rotationRoll ?? 0)) < 0.05 &&
         Math.abs(existing.scaleMultiplier - (p.modelScale ?? 1)) < 0.001;
       if (matches) {
         existing.pendingSync = false;
@@ -1223,6 +1563,8 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       lat: p.location.lat,
       heightM: p.modelHeight ?? 0,
       rotationDeg: p.rotation ?? 0,
+      pitchDeg: p.rotationPitch ?? 0,
+      rollDeg: p.rotationRoll ?? 0,
       scaleMultiplier: p.modelScale ?? 1,
       modelLocked: Boolean(p.modelLocked),
       dirty: false,
@@ -1233,7 +1575,10 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
   }, []);
 
   const setCameraInteractive = (viewer: Cesium.Viewer, enabled: boolean) => {
-    const c = viewer.scene.screenSpaceCameraController;
+    if (!viewer || viewer.isDestroyed()) return;
+    const scene = viewer.scene as Cesium.Scene | undefined;
+    const c = scene?.screenSpaceCameraController;
+    if (!c) return;
     c.enableRotate = enabled;
     c.enableTranslate = enabled;
     c.enableZoom = enabled;
@@ -1264,9 +1609,13 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       terrainShadows: Cesium.ShadowMode.RECEIVE_ONLY,
       shouldAnimate: false,
       scene3DOnly: true,
+      msaaSamples: 2,
       // OSM street basemap (Ion token stays for terrain only).
       baseLayer: false,
     });
+    // Keep imagery / GLB fetches from starving each other on weak GPUs.
+    Cesium.RequestScheduler.maximumRequests = 12;
+    Cesium.RequestScheduler.maximumRequestsPerServer = 6;
 
     // Ours is the only click handler — default pick/fly-to fights placement.
     viewer.screenSpaceEventHandler.removeInputAction(
@@ -1310,7 +1659,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       }
       // Never upscale the framebuffer for satellite — 2× DPR * DEM * imagery melts GPUs.
       viewer.resolutionScale = 1;
-      if (!on) applyScopeRef.current?.();
+      applyScopeRef.current?.();
     };
 
     const applySatVisibility = () => {
@@ -1424,6 +1773,15 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
 
     // Draw the Luisiana municipality boundary outline on the globe.
     void addLuisianaBoundary(viewer);
+    void loadLuisianaRing()
+      .then((ring) => {
+        if (viewer.isDestroyed()) return;
+        luisianaRingRef.current = ring;
+        applyScopeRef.current?.();
+      })
+      .catch((err) => {
+        console.warn("[CesiumMap] Luisiana ring for shadows/blocks failed:", err);
+      });
 
     // Fog + pan tuning in local 3D tilt (no cartographic clip — keeps full globe).
     viewer.scene.globe.cartographicLimitRectangle = Cesium.Rectangle.MAX_VALUE;
@@ -1435,9 +1793,11 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       if (!carto) return;
       // Pitch near -90° = top-down; greater (e.g. -35°) = 3D tilt.
       const pitch = viewer.camera.pitch;
+      const agl = cameraHeightAboveSurface(viewer);
+      const satOn = satelliteEnabledRef.current;
       const inLocal3d =
         pitch > MUNICIPAL_3D_PITCH_RAD &&
-        carto.height < MUNICIPAL_3D_MAX_HEIGHT_M;
+        agl < MUNICIPAL_3D_MAX_HEIGHT_M;
 
       const settings = mapSettingsRef.current;
       const frustum = viewer.camera.frustum as Cesium.PerspectiveFrustum;
@@ -1457,26 +1817,34 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       }
       tiltedRef.current = inLocal3d;
 
+      const wantShadows =
+        sunIsDayRef.current &&
+        mapSettingsRef.current.shadowsEnabled &&
+        cameraOverLuisiana(viewer, luisianaRingRef.current);
+      if (viewer.shadows !== wantShadows) {
+        viewer.shadows = wantShadows;
+      }
+
       // Slow pan/orbit in 3D tilt — especially near-horizon / low “street” angles.
       // (Left-drag rotates the globe; near the ground that feels like racing pan.)
       const camCtrl = viewer.scene.screenSpaceCameraController;
-      if (inLocal3d) {
-        // pitch: -90 top-down → 0 horizon. t≈0 top-down local, t≈1 looking along ground.
-        const t = Math.max(
-          0,
-          Math.min(1, (pitch - MUNICIPAL_3D_PITCH_RAD) / (0 - MUNICIPAL_3D_PITCH_RAD)),
-        );
-        const lowAlt = Math.max(0, Math.min(1, 1 - carto.height / 10_000));
-        // Much slower than Cesium default (0.1) — fine control for Luisiana streets.
-        camCtrl.maximumMovementRatio = 0.012 - 0.006 * Math.max(t, lowAlt * 0.9);
-        camCtrl.inertiaTranslate = 0.12;
-        camCtrl.inertiaSpin = 0.15;
-        camCtrl.inertiaZoom = 0.35;
+      const nearTown = agl < MUNICIPAL_3D_MAX_HEIGHT_M;
+      // Per-frame cap: at 60fps a 0.016 ratio ≈ a full-window fling per second.
+      // Left-drag rotate at street height then coasts to the horizon — keep it tight.
+      if (inLocal3d || (satOn && nearTown)) {
+        // Keep 3D orbit/tilt usable. Do not slow down as pitch goes toward the horizon —
+        // that made “getting a 3D view” crawl. Inertia stays low so a short pull stops.
+        camCtrl.maximumMovementRatio = 0.011;
+        camCtrl.inertiaTranslate = 0.06;
+        camCtrl.inertiaSpin = 0.06;
+        camCtrl.inertiaZoom = 0.28;
+        camCtrl.zoomFactor = satOn ? 5 : 7;
       } else {
-        camCtrl.maximumMovementRatio = 0.028;
-        camCtrl.inertiaTranslate = 0.3;
-        camCtrl.inertiaSpin = 0.35;
-        camCtrl.inertiaZoom = 0.5;
+        camCtrl.maximumMovementRatio = 0.016;
+        camCtrl.inertiaTranslate = 0.1;
+        camCtrl.inertiaSpin = 0.1;
+        camCtrl.inertiaZoom = 0.35;
+        camCtrl.zoomFactor = satOn ? 5 : 7;
       }
     };
     applyScopeRef.current = applyLuisianaScopeForCamera;
@@ -1487,12 +1855,26 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     // Render on demand — continuous redraw cooks weak GPUs while heavy GLBs stream in.
     viewer.scene.requestRenderMode = true;
     viewer.scene.maximumRenderTimeChange = Number.POSITIVE_INFINITY;
+    let lastFrameCap = 0;
+    const removeFrameNote = viewer.scene.postRender.addEventListener(() => {
+      if (viewer.isDestroyed()) return;
+      noteSceneFrame();
+      const cap = sceneTargetFrameRate();
+      if (cap === lastFrameCap) return;
+      lastFrameCap = cap;
+      viewer.targetFrameRate = cap > 0 ? cap : undefined;
+    });
+
+    motionBlurRef.current?.destroy();
+    motionBlurRef.current = attachCesiumMotionBlur(viewer);
+    motionBlurRef.current.setStrength((mapSettingsRef.current.motionBlur ?? 30) / 100);
 
     applyCesiumShadowMap(viewer, mapSettingsRef.current.shadowQuality);
 
     // Right-drag = change camera angle (tilt). Zoom only via scroll wheel / pinch.
     const camCtrl = viewer.scene.screenSpaceCameraController;
-    camCtrl.zoomEventTypes = [Cesium.CameraEventType.WHEEL, Cesium.CameraEventType.PINCH];
+    // Wheel zoom is handled in onWheel so pan can stay slow without clamping scroll.
+    camCtrl.zoomEventTypes = [Cesium.CameraEventType.PINCH];
     camCtrl.tiltEventTypes = [
       Cesium.CameraEventType.RIGHT_DRAG,
       Cesium.CameraEventType.MIDDLE_DRAG,
@@ -1502,10 +1884,11 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     // Keep orbit around world-up so tilt cannot roll/flip the globe.
     camCtrl.constrainedAxis = Cesium.Cartesian3.UNIT_Z;
     // Baseline; applyLuisianaScopeForCamera retunes for 3D / bottom view.
-    camCtrl.maximumMovementRatio = 0.028;
-    camCtrl.inertiaTranslate = 0.3;
-    camCtrl.inertiaSpin = 0.35;
-    camCtrl.inertiaZoom = 0.5;
+    camCtrl.maximumMovementRatio = 0.011;
+    camCtrl.inertiaTranslate = 0.06;
+    camCtrl.inertiaSpin = 0.06;
+    camCtrl.inertiaZoom = 0.28;
+    camCtrl.zoomFactor = 7;
     camCtrl.enableCollisionDetection = true;
     camCtrl.minimumZoomDistance = MIN_CAMERA_HEIGHT_M;
     camCtrl.maximumZoomDistance = 8_000_000;
@@ -1563,7 +1946,8 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       terrainQualityToSse(mapSettingsRef.current.terrainQuality);
     const onCamMoveStart = () => {
       if (viewer.isDestroyed() || !terrainEnabledRef.current) return;
-      viewer.scene.globe.maximumScreenSpaceError = terrainSseWhileIdle() * 1.8;
+      const boost = sceneIsLagging() ? 2.6 : 1.8;
+      viewer.scene.globe.maximumScreenSpaceError = terrainSseWhileIdle() * boost;
     };
     const onCamMoveEnd = () => {
       if (viewer.isDestroyed() || !terrainEnabledRef.current) return;
@@ -1605,6 +1989,22 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         const id = osmBuildingInstanceId(b.id, i);
         if (removed.has(id)) continue;
         if (b.ring.length < 4 || !ringSpanOk(b.ring)) continue;
+        const poly = luisianaRingRef.current;
+        if (poly && poly.length >= 4) {
+          let lon = 0;
+          let lat = 0;
+          let n = 0;
+          const closed =
+            b.ring[0][0] === b.ring[b.ring.length - 1][0] &&
+            b.ring[0][1] === b.ring[b.ring.length - 1][1];
+          const count = closed ? b.ring.length - 1 : b.ring.length;
+          for (let k = 0; k < count; k++) {
+            lon += b.ring[k][0];
+            lat += b.ring[k][1];
+            n++;
+          }
+          if (n < 3 || !isInsideLuisiana(lon / n, lat / n, poly)) continue;
+        }
         kept.push({ b, id });
       }
 
@@ -1745,6 +2145,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
             flat: false,
           }),
           asynchronous: true,
+          // Casters are municipality-clipped footprints only.
           shadows: Cesium.ShadowMode.CAST_ONLY,
           compressVertices: true,
           cull: true,
@@ -1786,7 +2187,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       position: Cesium.Cartesian3.fromDegrees(MUNICIPAL_OFFICE.lon, MUNICIPAL_OFFICE.lat),
       point: {
         pixelSize: 12,
-        color: Cesium.Color.fromCssColorString("#245c3a"),
+        color: Cesium.Color.fromCssColorString("#151c28"),
         outlineColor: Cesium.Color.WHITE,
         outlineWidth: 2,
         heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
@@ -1845,6 +2246,11 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
           /* ignore */
         }
         try {
+          removeFrameNote();
+        } catch {
+          /* ignore */
+        }
+        try {
           removeMoveEndSse();
         } catch {
           /* ignore */
@@ -1862,6 +2268,20 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         modelAttachedRef.current.clear();
         modelLoadingIdsRef.current.clear();
         modelLoadQueueRef.current = [];
+        modelSourceUrlRef.current.clear();
+        cameraMovingRef.current = false;
+        setSceneCameraMoving(false);
+        try {
+          if (!viewer.isDestroyed()) removeEditGizmo(viewer);
+        } catch {
+          /* ignore */
+        }
+        try {
+          motionBlurRef.current?.destroy();
+        } catch {
+          /* ignore */
+        }
+        motionBlurRef.current = null;
         gibsImageryRef.current = null;
         satelliteImageryRef.current = null;
         osmBasemapRef.current = null;
@@ -1874,6 +2294,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
             console.warn("[CesiumMap] viewer.destroy failed:", err);
           }
         }
+        clearGlbMemoryCache();
       } catch (err) {
         console.warn("[CesiumMap] viewer cleanup failed:", err);
       } finally {
@@ -2010,6 +2431,29 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();
   }, [buildingBlocksVisible, satellite, viewerReady]);
 
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer || viewer.isDestroyed() || !viewerReady) return;
+    if (!barangaysVisible) {
+      removeBarangayOverlay(viewer);
+      viewer.scene.requestRender();
+      return;
+    }
+    let cancelled = false;
+    void loadBarangayAreas()
+      .then((areas) => {
+        if (cancelled || viewer.isDestroyed()) return;
+        addBarangayOverlay(viewer, areas);
+      })
+      .catch((err) => {
+        console.warn("[CesiumMap] barangay overlay failed:", err);
+      });
+    return () => {
+      cancelled = true;
+      if (!viewer.isDestroyed()) removeBarangayOverlay(viewer);
+    };
+  }, [barangaysVisible, viewerReady]);
+
   // ── 3D Terrain (Ion World Terrain or ArcGIS elevation) ───────────────────
   useEffect(() => {
     const viewer = viewerRef.current;
@@ -2097,6 +2541,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
 
     // Shadow map quality preset (not tied to draw distance).
     applyCesiumShadowMap(viewer, mapSettings.shadowQuality);
+    motionBlurRef.current?.setStrength((mapSettings.motionBlur ?? 30) / 100);
 
     viewer.scene.requestRender();
   }, [mapSettings, terrainEnabled, viewerReady]);
@@ -2117,7 +2562,8 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         : undefined;
 
     const isDay = astro.isDaylight;
-    viewer.shadows = isDay && mapSettingsRef.current.shadowsEnabled;
+    sunIsDayRef.current = isDay;
+    applyScopeRef.current?.();
     // TIME slider → clock sun + procedural sky (no cubemap loads).
     applyCesiumAtmosphere(viewer, {
       isDay,
@@ -2346,12 +2792,14 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     };
 
     const clearTropicalVisual = (id: string) => {
+      if (!viewerAlive(viewer)) return;
       const ent = viewer.entities.getById(tropicalEntityId(id));
       if (ent?.point) ent.point.pixelSize = new Cesium.ConstantProperty(tropicalBasePx(id));
       if (ent?.label) ent.label.show = new Cesium.ConstantProperty(false);
     };
 
     const clearQuakeVisual = (id: string) => {
+      if (!viewerAlive(viewer)) return;
       const idx = Number(id);
       const cell = earthquakeGridRef.current[idx];
       const ent = viewer.entities.getById(quakeEntityId(idx));
@@ -2368,6 +2816,12 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     };
 
     const clearAllHover = (opts?: { render?: boolean }) => {
+      if (!viewerAlive(viewer)) {
+        lastKind = null;
+        lastId = null;
+        hoveredProjectIdRef.current = null;
+        return;
+      }
       const had = lastId != null || hoveredProjectIdRef.current != null;
       if (!had) return;
       if (lastKind === "tropical" && lastId) clearTropicalVisual(lastId);
@@ -2446,7 +2900,29 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         if (cell) setHoveredQuake({ cell, x, y });
       } else {
         const project = projectsRef.current.find((proj) => proj.id === hit.id);
-        if (project) setHoveredProject({ project, x, y });
+        if (project) {
+          const cached = resolvedPlaceNameRef.current.get(project.id) ??
+            (project.location
+              ? syncPlaceName(project.location.lat, project.location.lon)
+              : null);
+          setHoveredProject({ project, x, y, streetLabel: cached ?? null });
+          if (
+            !cached &&
+            project.location?.lat != null &&
+            project.location?.lon != null
+          ) {
+            const id = project.id;
+            void lookupPlaceName(project.location.lat, project.location.lon).then((found) => {
+              if (!found) return;
+              resolvedPlaceNameRef.current.set(id, found);
+              if (hoveredProjectIdRef.current === id) {
+                setHoveredProject((prev) =>
+                  prev && prev.project.id === id ? { ...prev, streetLabel: found } : prev,
+                );
+              }
+            });
+          }
+        }
       }
     };
 
@@ -2456,6 +2932,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         return;
       }
       if (freehandDrawingRef.current) return;
+      if (cameraMovingRef.current) return;
 
       const cam = viewer.scene.screenSpaceCameraController;
       if (!cam.enableRotate || !cam.enableTranslate) return;
@@ -2496,7 +2973,12 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     handler.setInputAction((move: { endPosition: Cesium.Cartesian2 }) => {
       pendingPos = move.endPosition.clone();
       const now = performance.now();
-      if (now - lastPickAt < HOVER_PICK_THROTTLE_MS) {
+      const hoverGap = sceneIsStalling()
+        ? 160
+        : sceneIsLagging()
+          ? 100
+          : HOVER_PICK_THROTTLE_MS;
+      if (now - lastPickAt < hoverGap) {
         if (!rafId) {
           rafId = window.requestAnimationFrame(() => {
             rafId = 0;
@@ -2515,9 +2997,19 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
 
     return () => {
       if (rafId) window.cancelAnimationFrame(rafId);
-      clearAllHover({ render: false });
-      canvas.removeEventListener("mouseleave", onLeave);
-      handler.destroy();
+      lastKind = null;
+      lastId = null;
+      hoveredProjectIdRef.current = null;
+      try {
+        canvas.removeEventListener("mouseleave", onLeave);
+      } catch {
+        /* canvas gone */
+      }
+      try {
+        handler.destroy();
+      } catch {
+        /* viewer gone */
+      }
     };
   }, [viewerReady, tropicalEnabled, earthquakeEnabled]);
 
@@ -2661,7 +3153,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         position,
         point: {
           pixelSize: quakePointSize(cell.cls, false, cell.source === "model"),
-          color: color.withAlpha(cell.source === "model" ? 0.72 : 0.92),
+          color: color.withAlpha(0.01),
           outlineColor:
             cell.source === "model"
               ? Cesium.Color.fromCssColorString("#111111")
@@ -2676,7 +3168,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
   }, [viewerReady, earthquakeEnabled, earthquakeGrid]);
 
   useEffect(() => {
-    if (!earthquakeEnabled || !selectedProject?.location) {
+    if (!selectedProject?.location) {
       setSiteQuakeScore(null);
       return;
     }
@@ -2692,7 +3184,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     return () => {
       cancelled = true;
     };
-  }, [earthquakeEnabled, selectedProject?.id, selectedProject?.location.lat, selectedProject?.location.lon]);
+  }, [selectedProject?.id, selectedProject?.location.lat, selectedProject?.location.lon]);
 
   useEffect(() => {
     if (!earthquakeEnabled || !selectedQuakeCell) {
@@ -2733,6 +3225,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         if (poly) viewer.entities.remove(poly);
         loadedIdsRef.current.delete(id);
         modelAttachedRef.current.delete(id);
+        modelSourceUrlRef.current.delete(id);
         xformsRef.current.delete(id);
         if (selectedIdRef.current === id) {
           setSelectedId(null);
@@ -2761,10 +3254,11 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         // Pin only — full GLB is attached later when the camera is nearby (cached),
         // unless this is an MPDC site marker (pin forever until Engineering places a model).
         const isSitePin = Boolean(p.siteMarkerOnly);
-        const pinColor = p.markerColor || p.mapSketch?.color || (isSitePin ? "#c47a1a" : "#245c3a");
+        const pinColor = p.markerColor || p.mapSketch?.color || (isSitePin ? "#c47a1a" : "#151c28");
+        const displayName = p.name?.trim() || "Untitled site";
         ent = viewer.entities.add({
           id: eid,
-          name: p.name,
+          name: displayName,
           position,
           orientation: Cesium.Transforms.headingPitchRollQuaternion(
             position,
@@ -2785,7 +3279,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
             ),
           },
           label: {
-            text: isSitePin ? `📌 ${p.name}` : p.name,
+            text: isSitePin ? `📌 ${displayName}` : displayName,
             font: isSitePin ? "bold 13px sans-serif" : "12px sans-serif",
             fillColor: Cesium.Color.WHITE,
             outlineColor: Cesium.Color.BLACK,
@@ -2807,14 +3301,14 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         });
         loadedIdsRef.current.add(p.id);
       } else {
-        applyEntityPose(ent, xf.lon, xf.lat, xf.rotationDeg, scale, xf.heightM);
+        applyXformToEntity(ent, p, xf);
         applySitePinChrome(ent, p, {
           isAttached: (id) => modelAttachedRef.current.has(id),
           isSelected: (id) => selectedIdRef.current === id,
           isHovered: (id) => hoveredProjectIdRef.current === id,
         });
         if (ent.point && (p.markerColor || p.mapSketch?.color)) {
-          const c = p.markerColor || p.mapSketch?.color || "#245c3a";
+          const c = p.markerColor || p.mapSketch?.color || "#151c28";
           ent.point.color = new Cesium.ConstantProperty(Cesium.Color.fromCssColorString(c));
         }
       }
@@ -2824,6 +3318,30 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     applyInfraClustersRef.current();
     viewer.scene.requestRender();
   }, [projects, viewerReady, ensureXform]);
+
+  // Street / barangay for hover subtitle (does not rename the structure).
+  useEffect(() => {
+    if (!viewerReady) return;
+    let cancelled = false;
+    const pending = projects.filter(
+      (p) =>
+        p.location?.lat != null &&
+        p.location?.lon != null &&
+        !resolvedPlaceNameRef.current.has(p.id),
+    );
+    void (async () => {
+      for (const p of pending) {
+        if (cancelled) return;
+        const found = await lookupPlaceName(p.location.lat, p.location.lon);
+        if (!found || cancelled) continue;
+        resolvedPlaceNameRef.current.set(p.id, found);
+      }
+      if (!cancelled) setPlaceNameTick((n) => n + 1);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projects, viewerReady]);
 
   useEffect(() => {
     const viewer = viewerRef.current;
@@ -2880,7 +3398,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
             position: Cesium.Cartesian3.fromDegrees(lon, lat),
             point: {
               pixelSize: 18 + Math.min(14, n),
-              color: Cesium.Color.fromCssColorString("#245c3a"),
+              color: Cesium.Color.fromCssColorString("#151c28"),
               outlineColor: Cesium.Color.WHITE,
               outlineWidth: 3,
               heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
@@ -3020,6 +3538,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
   }, [placementMode, placementTool, placementColor, sketchVertexCount, showFreehandEndBall, viewerReady]);
 
   // ── Distance LOD: attach/detach cached GLBs near the camera ──────────────
+  // Depends only on viewerReady — project ticks must not cancel in-flight decodes.
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer || viewer.isDestroyed() || !viewerReady) return;
@@ -3031,30 +3550,102 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       return Cesium.Cartesian3.distance(viewer.camera.positionWC, dest);
     };
 
+    const cameraHeightM = () => {
+      const carto = viewer.camera.positionCartographic;
+      return carto && Number.isFinite(carto.height) ? carto.height : 1_000;
+    };
+
+    const retainAttachedBytes = () => {
+      retainGlbUrls(modelSourceUrlRef.current.values());
+    };
+
     const detachModel = (projectId: string) => {
       const ent = viewer.entities.getById(entityIdFor(projectId));
-      if (!ent) return;
-      ent.model = undefined;
-      ent.shadows = new Cesium.ConstantProperty(Cesium.ShadowMode.DISABLED);
+      if (ent) {
+        ent.model = undefined;
+        ent.shadows = new Cesium.ConstantProperty(Cesium.ShadowMode.DISABLED);
+      }
       modelAttachedRef.current.delete(projectId);
+      modelSourceUrlRef.current.delete(projectId);
+      retainAttachedBytes();
       viewer.scene.requestRender();
     };
 
+    const hideLoadUi = () => {
+      if (modelLoadUiDelayRef.current != null) {
+        window.clearTimeout(modelLoadUiDelayRef.current);
+        modelLoadUiDelayRef.current = null;
+      }
+      modelLoadUiPayloadRef.current = null;
+      modelLoadUiVisibleRef.current = false;
+      setModelLoadUi({
+        active: false,
+        label: "",
+        remaining: 0,
+        attached: modelAttachedRef.current.size,
+        budget: gpuModelBudget(),
+        cacheLabel: "",
+      });
+    };
+
     const publishLoadUi = () => {
-      const loadingIds = [...modelLoadingIdsRef.current];
-      const remaining = loadingIds.length + modelLoadQueueRef.current.length;
+      const remaining =
+        modelLoadingIdsRef.current.size + modelLoadQueueRef.current.length;
+      const budget = gpuModelBudget();
+      const attached = modelAttachedRef.current.size;
+      const stats = getGlbMemoryStats();
       if (remaining <= 0) {
-        setModelLoadUi({ active: false, label: "", remaining: 0 });
+        if (modelLoadUiVisibleRef.current || modelLoadUiDelayRef.current != null) {
+          hideLoadUi();
+        }
         return;
       }
-      const currentId = loadingIds[0] ?? modelLoadQueueRef.current[0];
+      const currentId =
+        [...modelLoadingIdsRef.current][0] ?? modelLoadQueueRef.current[0];
       const p = currentId
         ? projectsRef.current.find((x) => x.id === currentId)
         : undefined;
-      setModelLoadUi({
-        active: true,
-        label: p?.name ? `Loading ${p.name}…` : "Loading 3D models…",
+      const payload = {
+        label: p ? `Streaming ${displayNameForProject(p)}` : "Streaming 3D models",
         remaining,
+        attached,
+        budget,
+        cacheLabel: `${formatBytesShort(stats.bytes)} cached of ${formatBytesShort(stats.budget)}`,
+      };
+      modelLoadUiPayloadRef.current = payload;
+      if (modelLoadUiVisibleRef.current) {
+        setModelLoadUi({ active: true, ...payload });
+        return;
+      }
+      if (modelLoadUiDelayRef.current != null) return;
+      modelLoadUiDelayRef.current = window.setTimeout(() => {
+        modelLoadUiDelayRef.current = null;
+        const next = modelLoadUiPayloadRef.current;
+        if (!next) return;
+        modelLoadUiVisibleRef.current = true;
+        setModelLoadUi({ active: true, ...next });
+      }, MODEL_LOAD_UI_DELAY_MS);
+    };
+
+    const slotsOpen = () => {
+      const budget = gpuModelBudget();
+      return (
+        budget -
+        modelAttachedRef.current.size -
+        modelLoadingIdsRef.current.size
+      );
+    };
+
+    const sortQueueNearest = () => {
+      const selected = selectedIdRef.current;
+      modelLoadQueueRef.current.sort((a, b) => {
+        if (a === selected) return -1;
+        if (b === selected) return 1;
+        const xa = xformsRef.current.get(a);
+        const xb = xformsRef.current.get(b);
+        if (!xa) return 1;
+        if (!xb) return -1;
+        return cameraDistanceTo(xa.lon, xa.lat) - cameraDistanceTo(xb.lon, xb.lat);
       });
     };
 
@@ -3078,26 +3669,36 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
 
       try {
         const abs = absoluteAssetUrl(projectModelUrl(p));
-        const uri = await getCachedGlbUrl(abs);
-        if (cancelled || viewer.isDestroyed()) return;
-
         const dist = cameraDistanceTo(xf.lon, xf.lat);
         const force = selectedIdRef.current === projectId;
-        if (!force && dist > MODEL_UNLOAD_DIST_M) return;
+        const unloadR = modelUnloadRadiusM(modelLoadRadiusM(cameraHeightM()));
+        if (!force && (unloadR <= 0 || dist > unloadR)) return;
+        if (!force && slotsOpen() < 0) return;
 
+        // Blob if already in RAM; otherwise the HTTP URL so Cesium streams instead
+        // of waiting for a 100MB+ ArrayBuffer before the first triangle.
+        const uri = resolveGlbUrlForAttach(abs);
         const onGround = Math.abs(xf.heightM) < 1e-4;
         const heightRef = onGround
           ? Cesium.HeightReference.CLAMP_TO_GROUND
           : Cesium.HeightReference.RELATIVE_TO_GROUND;
         const scale = modelScaleValue(p, xf.scaleMultiplier);
+        touchGlbCache(abs);
 
-        attachProjectGlbModel(ent, { uri, scale, heightReference: heightRef });
-        applyEntityPose(ent, xf.lon, xf.lat, xf.rotationDeg, scale, xf.heightM);
+        attachProjectGlbModel(ent, {
+          uri,
+          scale,
+          heightReference: heightRef,
+          skipShadows: modelAttachedRef.current.size >= 8,
+        });
+        applyXformToEntity(ent, p, xf);
         modelAttachedRef.current.add(projectId);
+        modelSourceUrlRef.current.set(projectId, abs);
         viewer.scene.requestRender();
       } catch (err) {
         console.warn("[CesiumMap] model attach failed:", projectId, err);
         modelAttachedRef.current.delete(projectId);
+        modelSourceUrlRef.current.delete(projectId);
       } finally {
         modelLoadingIdsRef.current.delete(projectId);
         publishLoadUi();
@@ -3105,10 +3706,17 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     };
 
     const pumpQueue = () => {
-      while (
-        modelLoadBusyRef.current < MODEL_LOAD_CONCURRENCY &&
-        modelLoadQueueRef.current.length > 0
-      ) {
+      if (cancelled || viewer.isDestroyed()) return;
+      if (cameraMovingRef.current) return;
+      sortQueueNearest();
+      while (modelLoadQueueRef.current.length > 0) {
+        const open = slotsOpen();
+        if (open <= 0) break;
+        const next = modelLoadQueueRef.current[0];
+        const p = next ? projectsRef.current.find((x) => x.id === next) : undefined;
+        const cached = next && p ? isGlbCached(absoluteAssetUrl(projectModelUrl(p))) : false;
+        const cap = modelLoadConcurrency(Boolean(cached));
+        if (modelLoadBusyRef.current >= cap) break;
         const id = modelLoadQueueRef.current.shift()!;
         if (
           modelAttachedRef.current.has(id) ||
@@ -3140,9 +3748,19 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
 
     const reconcileLod = () => {
       if (cancelled || viewer.isDestroyed()) return;
+      if (cameraMovingRef.current) return;
+      const height = cameraHeightM();
+      const loadR = modelLoadRadiusM(height);
+      const unloadR = modelUnloadRadiusM(loadR);
+      const budget = gpuModelBudget();
+      const selected = selectedIdRef.current;
       let changed = false;
-      const ids = [...loadedIdsRef.current];
-      for (const id of ids) {
+
+      type Scored = { id: string; dist: number; force: boolean };
+      const stay: Scored[] = [];
+      const want: Scored[] = [];
+
+      for (const id of [...loadedIdsRef.current]) {
         const p = projectsRef.current.find((x) => x.id === id);
         if (p?.siteMarkerOnly) {
           if (modelAttachedRef.current.has(id)) {
@@ -3154,44 +3772,131 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         const xf = xformsRef.current.get(id);
         if (!xf) continue;
         const dist = cameraDistanceTo(xf.lon, xf.lat);
-        const force = selectedIdRef.current === id;
+        const force = selected === id;
         const attached = modelAttachedRef.current.has(id);
-
-        if ((force || dist <= MODEL_LOAD_DIST_M) && !attached) {
-          enqueue(id);
-          changed = true;
-        } else if (!force && dist >= MODEL_UNLOAD_DIST_M && attached) {
-          // Don't unload while still decoding
-          if (!modelLoadQueueRef.current.includes(id)) {
+        if (attached) {
+          if (force || (unloadR > 0 && dist < unloadR)) {
+            stay.push({ id, dist, force });
+          } else {
             detachModel(id);
             changed = true;
           }
+        } else if (force || (loadR > 0 && dist <= loadR)) {
+          want.push({ id, dist, force });
         }
       }
+
+      stay.sort((a, b) => {
+        if (a.force !== b.force) return a.force ? -1 : 1;
+        return a.dist - b.dist;
+      });
+      if (stay.length > budget) {
+        for (const extra of stay.slice(budget)) {
+          if (extra.force) continue;
+          detachModel(extra.id);
+          changed = true;
+        }
+        stay.length = Math.min(stay.length, budget);
+      }
+
+      const keepIds = new Set(stay.map((s) => s.id));
+      modelLoadQueueRef.current = modelLoadQueueRef.current.filter((id) => {
+        if (keepIds.has(id) || modelAttachedRef.current.has(id)) return false;
+        return want.some((w) => w.id === id);
+      });
+
+      const free = budget - modelAttachedRef.current.size - modelLoadingIdsRef.current.size;
+      if (free > 0) {
+        want.sort((a, b) => {
+          if (a.force !== b.force) return a.force ? -1 : 1;
+          return a.dist - b.dist;
+        });
+        let slots = free;
+        for (const w of want) {
+          if (slots <= 0) break;
+          if (modelAttachedRef.current.has(w.id) || modelLoadingIdsRef.current.has(w.id)) {
+            continue;
+          }
+          enqueue(w.id);
+          slots -= 1;
+          changed = true;
+        }
+      }
+
+      retainAttachedBytes();
       if (changed) viewer.scene.requestRender();
     };
 
     reconcileLod();
     lodReconcileRef.current = reconcileLod;
-    const removeMove = viewer.camera.moveEnd.addEventListener(reconcileLod);
-    const interval = window.setInterval(reconcileLod, 1500);
+    const onMoveStart = () => {
+      cameraMovingRef.current = true;
+      setSceneCameraMoving(true);
+    };
+    const onMoveEnd = () => {
+      cameraMovingRef.current = false;
+      setSceneCameraMoving(false);
+      reconcileLod();
+      pumpQueue();
+    };
+    let lodChangedAt = 0;
+    const onCamChanged = () => {
+      if (cameraMovingRef.current || sceneIsLagging()) return;
+      const now = performance.now();
+      if (now - lodChangedAt < 220) return;
+      lodChangedAt = now;
+      reconcileLod();
+    };
+    const removeMoveStart = viewer.camera.moveStart.addEventListener(onMoveStart);
+    const removeMoveEnd = viewer.camera.moveEnd.addEventListener(onMoveEnd);
+    const removeCamChanged = viewer.camera.changed.addEventListener(onCamChanged);
+    const interval = window.setInterval(() => {
+      if (cameraMovingRef.current) return;
+      reconcileLod();
+    }, 1200);
 
     return () => {
       cancelled = true;
       lodReconcileRef.current = null;
       window.clearInterval(interval);
+      if (modelLoadUiDelayRef.current != null) {
+        window.clearTimeout(modelLoadUiDelayRef.current);
+        modelLoadUiDelayRef.current = null;
+      }
       modelLoadQueueRef.current = [];
       modelLoadingIdsRef.current.clear();
-      setModelLoadUi({ active: false, label: "", remaining: 0 });
-      if (typeof removeMove === "function") removeMove();
+      hideLoadUi();
+      if (typeof removeMoveStart === "function") removeMoveStart();
+      if (typeof removeMoveEnd === "function") removeMoveEnd();
+      if (typeof removeCamChanged === "function") removeCamChanged();
     };
-  }, [viewerReady, projects]);
+  }, [viewerReady]);
 
   // Force-load GLB when user selects a project (even if camera is far).
   useEffect(() => {
     if (!selectedId || !viewerReady) return;
     lodReconcileRef.current?.();
   }, [selectedId, viewerReady]);
+
+  // Project list changed — re-score nearby twins without cancelling in-flight loads.
+  useEffect(() => {
+    if (!viewerReady) return;
+    lodReconcileRef.current?.();
+  }, [projects, viewerReady]);
+
+  // Warm RAM cache for small catalog GLBs so the next attach is a blob URL, not a refetch.
+  useEffect(() => {
+    if (!viewerReady) return;
+    const urls = [
+      ...new Set(
+        projects
+          .filter((p) => p?.location?.lon && p?.location?.lat && !p.siteMarkerOnly)
+          .map((p) => absoluteAssetUrl(projectModelUrl(p))),
+      ),
+    ].filter(isCatalogGlbUrl);
+    if (urls.length === 0) return;
+    void prefetchGlbUrls(urls, 3);
+  }, [projects, viewerReady]);
 
   const persistTransform = useCallback(async (projectId: string) => {
     const xf = xformsRef.current.get(projectId);
@@ -3201,6 +3906,8 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     const patch: Partial<Project> = {
       location: { lat: xf.lat, lon: xf.lon },
       rotation: xf.rotationDeg,
+      rotationPitch: xf.pitchDeg ?? 0,
+      rotationRoll: xf.rollDeg ?? 0,
       modelScale: xf.scaleMultiplier,
       modelHeight: xf.heightM,
     };
@@ -3232,6 +3939,167 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     persistTransformRef.current = persistTransform;
   }, [persistTransform]);
 
+  const refreshEditGizmo = useCallback((resize = true) => {
+    const viewer = viewerRef.current;
+    if (!viewer || viewer.isDestroyed()) return;
+    const sel = selectedIdRef.current;
+    const xf = sel ? xformsRef.current.get(sel) : undefined;
+    const p = sel ? projectsRef.current.find((x) => x.id === sel) : undefined;
+    const show = Boolean(
+      editModeRef.current &&
+        canEditModelsRef.current &&
+        sel &&
+        xf &&
+        p &&
+        !p.siteMarkerOnly &&
+        !xf.modelLocked &&
+        !modelsFrozenRef.current,
+    );
+    const h = viewer.camera.positionCartographic?.height ?? 400;
+    try {
+      syncEditGizmo(viewer, {
+        show,
+        lon: xf?.lon ?? 0,
+        lat: xf?.lat ?? 0,
+        heightM: xf?.heightM ?? 0,
+        rotationDeg: xf?.rotationDeg ?? 0,
+        scaleMultiplier: xf?.scaleMultiplier ?? 1,
+        tool: editToolRef.current,
+        axis: editAxisRef.current,
+        cameraHeightM: h,
+        resize,
+      });
+      if (!viewer.isDestroyed()) viewer.scene.requestRender();
+    } catch (err) {
+      console.warn("[CesiumMap] gizmo sync skipped:", err);
+    }
+  }, []);
+  const refreshEditGizmoRef = useRef(refreshEditGizmo);
+  refreshEditGizmoRef.current = refreshEditGizmo;
+
+  const syncUndoUi = useCallback(() => {
+    setUndoDepth(undoStackRef.current.length);
+    setRedoDepth(redoStackRef.current.length);
+  }, []);
+
+  const pushEditUndo = useCallback(
+    (projectId: string) => {
+      if (!editModeRef.current) return;
+      const xf = xformsRef.current.get(projectId);
+      if (!xf || xf.modelLocked) return;
+      const snap = snapFromXform(projectId, xf);
+      const top = undoStackRef.current[undoStackRef.current.length - 1];
+      if (top && poseSnapEqual(top, snap)) return;
+      undoStackRef.current.push(snap);
+      if (undoStackRef.current.length > MAX_EDIT_UNDO) undoStackRef.current.shift();
+      redoStackRef.current = [];
+      syncUndoUi();
+    },
+    [syncUndoUi],
+  );
+
+  const dropEditUndoIfUnchanged = useCallback(
+    (projectId: string) => {
+      const xf = xformsRef.current.get(projectId);
+      const top = undoStackRef.current[undoStackRef.current.length - 1];
+      if (!xf || !top) return;
+      if (poseSnapEqual(top, snapFromXform(projectId, xf))) {
+        undoStackRef.current.pop();
+        syncUndoUi();
+      }
+    },
+    [syncUndoUi],
+  );
+
+  const applyEditPoseSnap = useCallback((snap: EditPoseSnap, message: string) => {
+    const xf = xformsRef.current.get(snap.projectId);
+    const p = projectsRef.current.find((x) => x.id === snap.projectId);
+    const viewer = viewerRef.current;
+    if (!xf || !p || xf.modelLocked) return false;
+    writeXformFromSnap(xf, snap);
+    xf.dirty = true;
+    if (viewer && !viewer.isDestroyed()) {
+      const ent = viewer.entities.getById(entityIdFor(snap.projectId));
+      if (ent) applyXformToEntity(ent, p, xf);
+      viewer.scene.requestRender();
+    }
+    if (selectedIdRef.current !== snap.projectId) setSelectedId(snap.projectId);
+    setTransformDirty(true);
+    setTransformMessage(message);
+    window.setTimeout(() => setTransformMessage(null), 1600);
+    bumpXform((n) => n + 1);
+    refreshEditGizmoRef.current(false);
+    if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = window.setTimeout(() => {
+      void persistTransformRef.current(snap.projectId);
+    }, 280);
+    return true;
+  }, []);
+
+  const undoEditPose = useCallback(() => {
+    if (!editModeRef.current || !canEditModelsRef.current || dragActiveRef.current) return;
+    const snap = undoStackRef.current.pop();
+    if (!snap) return;
+    const xf = xformsRef.current.get(snap.projectId);
+    if (!xf || xf.modelLocked) {
+      if (xf?.modelLocked) undoStackRef.current.push(snap);
+      syncUndoUi();
+      return;
+    }
+    const current = snapFromXform(snap.projectId, xf);
+    if (!poseSnapEqual(current, snap)) redoStackRef.current.push(current);
+    if (redoStackRef.current.length > MAX_EDIT_UNDO) redoStackRef.current.shift();
+    applyEditPoseSnap(snap, "Undone");
+    syncUndoUi();
+  }, [applyEditPoseSnap, syncUndoUi]);
+
+  const redoEditPose = useCallback(() => {
+    if (!editModeRef.current || !canEditModelsRef.current || dragActiveRef.current) return;
+    const snap = redoStackRef.current.pop();
+    if (!snap) return;
+    const xf = xformsRef.current.get(snap.projectId);
+    if (!xf || xf.modelLocked) {
+      if (xf?.modelLocked) redoStackRef.current.push(snap);
+      syncUndoUi();
+      return;
+    }
+    const current = snapFromXform(snap.projectId, xf);
+    if (!poseSnapEqual(current, snap)) {
+      undoStackRef.current.push(current);
+      if (undoStackRef.current.length > MAX_EDIT_UNDO) undoStackRef.current.shift();
+    }
+    applyEditPoseSnap(snap, "Redone");
+    syncUndoUi();
+  }, [applyEditPoseSnap, syncUndoUi]);
+
+  const pushEditUndoRef = useRef(pushEditUndo);
+  pushEditUndoRef.current = pushEditUndo;
+  const dropEditUndoIfUnchangedRef = useRef(dropEditUndoIfUnchanged);
+  dropEditUndoIfUnchangedRef.current = dropEditUndoIfUnchanged;
+  const undoEditPoseRef = useRef(undoEditPose);
+  undoEditPoseRef.current = undoEditPose;
+  const redoEditPoseRef = useRef(redoEditPose);
+  redoEditPoseRef.current = redoEditPose;
+
+  useEffect(() => {
+    refreshEditGizmo(true);
+  }, [refreshEditGizmo, selectedId, editMode, editTool, editAxis, viewerReady, modelsFrozen]);
+
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer || viewer.isDestroyed() || !viewerReady || !editMode) return;
+    const onCamChanged = () => {
+      resizeEditGizmo(viewer);
+    };
+    const onZoomEnd = () => refreshEditGizmoRef.current(true);
+    const remChanged = viewer.camera.changed.addEventListener(onCamChanged);
+    const rem = viewer.camera.moveEnd.addEventListener(onZoomEnd);
+    return () => {
+      if (typeof remChanged === "function") remChanged();
+      if (typeof rem === "function") rem();
+    };
+  }, [viewerReady, editMode]);
+
   // ── Pointer interactions: select / move / rotate / scale / place ─────────
   useEffect(() => {
     const viewer = viewerRef.current;
@@ -3239,8 +4107,17 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
 
     let moving = false;
     let rotating = false;
+    let scaling = false;
+    let dragAxis: EditAxis = "free";
     let didDrag = false;
     let lastX = 0;
+    let lastY = 0;
+    let lastAngle = 0;
+    let startLon = 0;
+    let startLat = 0;
+    let startH = 0;
+    let startRot = 0;
+    let startScale = 1;
     let suppressClick = false;
     /** ~2 m at equator — skip near-duplicate freehand samples. */
     const FREEHAND_MIN_DEG2 = 4e-10;
@@ -3273,14 +4150,47 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       }
       if (modelsFrozenRef.current || !editModeRef.current) return;
       if (!canEditModelsRef.current) return;
-      const hitId = pickProjectId(viewer, click.position);
       const sel = selectedIdRef.current;
-      if (!hitId || hitId !== sel) return;
-      const xf = xformsRef.current.get(hitId);
+      if (!sel) return;
+      const xf = xformsRef.current.get(sel);
       if (!xf || xf.modelLocked) return;
-      moving = true;
-      didDrag = false;
-      setCameraInteractive(viewer, false);
+      const tool = editToolRef.current;
+      const handle = pickGizmoHandle(viewer, click.position);
+      const hitId = pickProjectId(viewer, click.position);
+      const begin = (kind: "move" | "rotate" | "scale", axis: EditAxis) => {
+        moving = kind === "move";
+        rotating = kind === "rotate";
+        scaling = kind === "scale";
+        dragAxis = axis;
+        didDrag = false;
+        dragActiveRef.current = true;
+        lastX = click.position.x;
+        lastY = click.position.y;
+        startLon = xf.lon;
+        startLat = xf.lat;
+        startH = xf.heightM;
+        startRot = xf.rotationDeg;
+        startScale = xf.scaleMultiplier;
+        lastAngle = gizmoScreenAngle(viewer, xf.lon, xf.lat, xf.heightM, click.position) ?? 0;
+        pushEditUndoRef.current(sel);
+        setCameraInteractive(viewer, false);
+      };
+      if (handle) {
+        if (handle === "rotate-x" || handle === "rotate-y" || handle === "rotate-z") {
+          begin("rotate", gizmoHandleToAxis(handle));
+        } else if (handle === "scale" || handle === "scale-x" || handle === "scale-y" || handle === "scale-z") {
+          begin("scale", gizmoHandleToAxis(handle));
+        } else {
+          begin("move", gizmoHandleToAxis(handle));
+        }
+        return;
+      }
+      if (tool === "select") return;
+      if (hitId !== sel) return;
+      begin(
+        tool === "rotate" ? "rotate" : tool === "scale" ? "scale" : "move",
+        editAxisRef.current,
+      );
     }, Cesium.ScreenSpaceEventType.LEFT_DOWN);
 
     handler.setInputAction((click: { position: Cesium.Cartesian2 }) => {
@@ -3293,7 +4203,9 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       if (!xf || xf.modelLocked) return;
       rotating = true;
       didDrag = false;
+      dragActiveRef.current = true;
       lastX = click.position.x;
+      pushEditUndoRef.current(hitId);
       setCameraInteractive(viewer, false);
     }, Cesium.ScreenSpaceEventType.RIGHT_DOWN);
 
@@ -3318,7 +4230,29 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       if (modelsFrozenRef.current || !editModeRef.current) {
         moving = false;
         rotating = false;
+        scaling = false;
+        setEditGizmoHover(viewer, null);
         return;
+      }
+
+      if (!moving && !rotating && !scaling) {
+        const hover = pickGizmoHandle(viewer, move.endPosition);
+        setEditGizmoHover(viewer, hover);
+        if (hover) viewer.canvas.style.cursor = "pointer";
+        else if (viewer.canvas.style.cursor === "pointer") viewer.canvas.style.cursor = "";
+      } else if (moving || rotating || scaling) {
+        const prefix = rotating ? "rotate" : scaling ? "scale" : "move";
+        const h =
+          dragAxis === "x"
+            ? (`${prefix}-x` as const)
+            : dragAxis === "y"
+              ? (`${prefix}-y` as const)
+              : dragAxis === "z"
+                ? (`${prefix}-z` as const)
+                : scaling
+                  ? "scale"
+                  : null;
+        setEditGizmoHover(viewer, h);
       }
 
       const sel = selectedIdRef.current;
@@ -3329,29 +4263,82 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       const ent = viewer.entities.getById(entityIdFor(sel));
       if (!ent) return;
 
+      const pose = () => {
+        applyXformToEntity(ent, p, xf);
+        xf.dirty = true;
+        didDrag = true;
+        viewer.scene.requestRender();
+        setTransformDirty(true);
+        setTransformMessage(null);
+        bumpXform((n) => n + 1);
+        refreshEditGizmoRef.current(false);
+      };
+
       if (moving) {
-        const ll = pickGlobeLngLat(viewer, move.endPosition);
-        if (!ll) return;
-        xf.lon = ll.lng;
-        xf.lat = ll.lat;
-        xf.dirty = true;
-        didDrag = true;
-        applyEntityPose(ent, xf.lon, xf.lat, xf.rotationDeg, modelScaleValue(p, xf.scaleMultiplier), xf.heightM);
-        viewer.scene.requestRender();
-        setTransformDirty(true);
-        setTransformMessage(null);
-        bumpXform((n) => n + 1);
+        if (dragAxis === "z") {
+          const dy = lastY - move.endPosition.y;
+          lastY = move.endPosition.y;
+          xf.heightM = Math.max(-50, Math.min(500, xf.heightM + dy * 0.08));
+          pose();
+        } else if (dragAxis === "xz" || dragAxis === "yz") {
+          const dy = lastY - move.endPosition.y;
+          lastY = move.endPosition.y;
+          xf.heightM = Math.max(-50, Math.min(500, xf.heightM + dy * 0.08));
+          const ll = pickGlobeLngLat(viewer, move.endPosition);
+          if (ll) {
+            if (dragAxis === "xz") {
+              xf.lon = ll.lng;
+              xf.lat = startLat;
+            } else {
+              xf.lon = startLon;
+              xf.lat = ll.lat;
+            }
+          }
+          pose();
+        } else {
+          const ll = pickGlobeLngLat(viewer, move.endPosition);
+          if (!ll) return;
+          if (dragAxis === "x") {
+            xf.lon = ll.lng;
+            xf.lat = startLat;
+          } else if (dragAxis === "y") {
+            xf.lon = startLon;
+            xf.lat = ll.lat;
+          } else {
+            xf.lon = ll.lng;
+            xf.lat = ll.lat;
+          }
+          pose();
+        }
       } else if (rotating) {
-        const dx = move.endPosition.x - lastX;
-        lastX = move.endPosition.x;
-        xf.rotationDeg = (xf.rotationDeg - dx * 0.5 + 3600) % 360;
-        xf.dirty = true;
-        didDrag = true;
-        applyEntityPose(ent, xf.lon, xf.lat, xf.rotationDeg, modelScaleValue(p, xf.scaleMultiplier), xf.heightM);
-        viewer.scene.requestRender();
-        setTransformDirty(true);
-        setTransformMessage(null);
-        bumpXform((n) => n + 1);
+        const ang = gizmoScreenAngle(viewer, xf.lon, xf.lat, xf.heightM, move.endPosition);
+        if (ang == null) {
+          const dx = move.endPosition.x - lastX;
+          lastX = move.endPosition.x;
+          xf.rotationDeg = (xf.rotationDeg - dx * 0.5 + 3600) % 360;
+        } else {
+          let d = ((ang - lastAngle) * 180) / Math.PI;
+          if (d > 180) d -= 360;
+          if (d < -180) d += 360;
+          lastAngle = ang;
+          if (dragAxis === "x") {
+            xf.pitchDeg = Math.max(-85, Math.min(85, (xf.pitchDeg ?? 0) + d));
+          } else if (dragAxis === "y") {
+            xf.rollDeg = Math.max(-85, Math.min(85, (xf.rollDeg ?? 0) + d));
+          } else {
+            xf.rotationDeg = (xf.rotationDeg - d + 3600) % 360;
+          }
+        }
+        pose();
+      } else if (scaling) {
+        const dy = lastY - move.endPosition.y;
+        lastY = move.endPosition.y;
+        const factor = dy > 0 ? 1 + dy * 0.008 : 1 / (1 + Math.abs(dy) * 0.008);
+        xf.scaleMultiplier = Math.max(
+          SCALE_MULT_MIN,
+          Math.min(SCALE_MULT_MAX, xf.scaleMultiplier * factor),
+        );
+        pose();
       }
     }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
 
@@ -3369,26 +4356,36 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         }
         return;
       }
-      const was = moving || rotating;
+      const was = moving || rotating || scaling;
       const dragged = didDrag;
       moving = false;
       rotating = false;
+      scaling = false;
+      dragAxis = "free";
+      dragActiveRef.current = false;
       setCameraInteractive(viewer, true);
-      if (was && dragged && selectedIdRef.current) {
-        suppressClick = true;
-        void persistTransformRef.current(selectedIdRef.current);
+      if (was && selectedIdRef.current) {
+        if (dragged) {
+          suppressClick = true;
+          void persistTransformRef.current(selectedIdRef.current);
+        } else {
+          dropEditUndoIfUnchangedRef.current(selectedIdRef.current);
+        }
       }
     };
 
     handler.setInputAction(endDrag, Cesium.ScreenSpaceEventType.LEFT_UP);
     handler.setInputAction(endDrag, Cesium.ScreenSpaceEventType.RIGHT_UP);
 
+    const onGizmoLeave = () => setEditGizmoHover(viewer, null);
+    viewer.canvas.addEventListener("mouseleave", onGizmoLeave);
+
     handler.setInputAction((click: { position: Cesium.Cartesian2 }) => {
       if (suppressClick) {
         suppressClick = false;
         return;
       }
-      if (moving || rotating) return;
+      if (moving || rotating || scaling) return;
 
       // Block remover: click an OSM extrusion to delete it (persisted locally).
       if (
@@ -3454,6 +4451,10 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
 
       const hitId = pickProjectId(viewer, click.position);
       if (editModeRef.current && selectedIdRef.current) {
+        if (pickGizmoHandle(viewer, click.position)) {
+          viewer.selectedEntity = undefined;
+          return;
+        }
         const sel = selectedIdRef.current;
         if (hitId && hitId !== sel) {
           viewer.selectedEntity = undefined;
@@ -3498,6 +4499,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         setConfirmDelete(false);
         setEditOpen(false);
         setTransformDirty(Boolean(xformsRef.current.get(hitId)?.dirty));
+        onProjectSelectRef.current?.(hitId);
       } else if (tropicalHit) {
         setSelectedId(null);
         setSelectedTropicalId(tropicalHit);
@@ -3520,41 +4522,67 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       viewer.selectedEntity = undefined;
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
-    // Native wheel — Cesium's WHEEL delta is often 0/undefined, which made scale only grow.
+    // Native wheel — scale the selected model when the cursor is on it, else zoom the globe.
     const onWheel = (e: WheelEvent) => {
-      if (modelsFrozenRef.current || !editModeRef.current) return;
-      if (!canEditModelsRef.current) return;
-      const sel = selectedIdRef.current;
-      if (!sel) return;
-      const xf = xformsRef.current.get(sel);
-      const p = projectsRef.current.find((x) => x.id === sel);
-      if (!xf || !p || xf.modelLocked) return;
+      if (
+        !modelsFrozenRef.current &&
+        editModeRef.current &&
+        canEditModelsRef.current &&
+        selectedIdRef.current
+      ) {
+        const sel = selectedIdRef.current;
+        const xf = xformsRef.current.get(sel);
+        const p = projectsRef.current.find((x) => x.id === sel);
+        if (xf && p && !xf.modelLocked) {
+          const rect = viewer.canvas.getBoundingClientRect();
+          const pos = new Cesium.Cartesian2(e.clientX - rect.left, e.clientY - rect.top);
+          const overModel = pickProjectId(viewer, pos) === sel;
+          const overGizmo = Boolean(pickGizmoHandle(viewer, pos));
+          if (overModel || overGizmo) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!scaleUndoArmedRef.current) {
+              pushEditUndoRef.current(sel);
+              scaleUndoArmedRef.current = true;
+            }
+            const grow = e.deltaY < 0;
+            const step = e.ctrlKey || e.metaKey ? 1.35 : e.shiftKey ? 1.03 : 1.12;
+            const factor = grow ? step : 1 / step;
+            xf.scaleMultiplier = Math.max(
+              SCALE_MULT_MIN,
+              Math.min(SCALE_MULT_MAX, xf.scaleMultiplier * factor),
+            );
+            xf.dirty = true;
+            const ent = viewer.entities.getById(entityIdFor(sel));
+            if (ent) {
+              applyXformToEntity(ent, p, xf);
+              viewer.scene.requestRender();
+            }
+            setTransformDirty(true);
+            setTransformMessage(null);
+            bumpXform((n) => n + 1);
+            if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+            saveTimerRef.current = window.setTimeout(() => {
+              scaleUndoArmedRef.current = false;
+              void persistTransformRef.current(sel);
+            }, 450);
+            return;
+          }
+        }
+      }
 
       e.preventDefault();
       e.stopPropagation();
-
-      // deltaY < 0 = scroll up → grow; deltaY > 0 = scroll down → shrink
-      // Hold Shift for finer steps, Ctrl for coarse (big GLBs that need a lot of shrink).
-      const grow = e.deltaY < 0;
-      const step = e.ctrlKey || e.metaKey ? 1.35 : e.shiftKey ? 1.03 : 1.12;
-      const factor = grow ? step : 1 / step;
-      xf.scaleMultiplier = Math.max(
-        SCALE_MULT_MIN,
-        Math.min(SCALE_MULT_MAX, xf.scaleMultiplier * factor),
-      );
-      xf.dirty = true;
-      const ent = viewer.entities.getById(entityIdFor(sel));
-      if (ent) {
-        applyEntityPose(ent, xf.lon, xf.lat, xf.rotationDeg, modelScaleValue(p, xf.scaleMultiplier), xf.heightM);
-        viewer.scene.requestRender();
-      }
-      setTransformDirty(true);
-      setTransformMessage(null);
-      bumpXform((n) => n + 1);
-      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = window.setTimeout(() => {
-        void persistTransformRef.current(sel);
-      }, 450);
+      let dy = e.deltaY;
+      if (e.deltaMode === 1) dy *= 16;
+      if (e.deltaMode === 2) dy *= 800;
+      const mag = Math.min(1.6, Math.max(0.45, Math.abs(dy) / 90));
+      const h = cameraHeightAboveSurface(viewer);
+      const amount = Math.max(40, h * 0.32 * mag);
+      if (dy < 0) viewer.camera.zoomIn(amount);
+      else viewer.camera.zoomOut(amount);
+      resizeEditGizmo(viewer);
+      viewer.scene.requestRender();
     };
     viewer.canvas.addEventListener("wheel", onWheel, { passive: false });
 
@@ -3564,22 +4592,120 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     };
     viewer.canvas.addEventListener("contextmenu", onContextMenu);
 
+    const heldMove = new Set<string>();
+    let walkLastMs = 0;
     const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const typing =
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable);
       if (e.key === "Escape") {
         setSelectedId(null);
         setSelectedTropicalId(null);
         setConfirmDelete(false);
         setEditOpen(false);
+        setEditTool("select");
+        setEditAxis("free");
+        return;
+      }
+      const k = e.key.toLowerCase();
+      const numberField =
+        target instanceof HTMLInputElement && target.type === "number";
+      if ((e.ctrlKey || e.metaKey) && k === "z") {
+        if (typing && !numberField) return;
+        if (!editModeRef.current || !canEditModelsRef.current) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.shiftKey) redoEditPoseRef.current();
+        else undoEditPoseRef.current();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && k === "y") {
+        if (typing && !numberField) return;
+        if (!editModeRef.current || !canEditModelsRef.current) return;
+        e.preventDefault();
+        e.stopPropagation();
+        redoEditPoseRef.current();
+        return;
+      }
+      if (typing) return;
+      if (e.ctrlKey || e.metaKey) return;
+      if (k === "w" || k === "a" || k === "s" || k === "d") {
+        e.preventDefault();
+        heldMove.add(k);
+        if (e.shiftKey) heldMove.add("shift");
+        viewer.camera.cancelFlight();
+        viewer.scene.requestRender();
+        return;
+      }
+      if (e.key === "Shift") heldMove.add("shift");
+      if (!editModeRef.current || !canEditModelsRef.current) return;
+      if (k === "g") {
+        e.preventDefault();
+        setEditTool("move");
+      } else if (k === "r") {
+        e.preventDefault();
+        setEditTool("rotate");
+      } else if (k === "x" || k === "y" || k === "z") {
+        e.preventDefault();
+        const next: EditAxis = k === "x" ? "x" : k === "y" ? "y" : "z";
+        setEditAxis((prev) => (prev === next ? "free" : next));
       }
     };
-    window.addEventListener("keydown", onKeyDown);
+    const onKeyUp = (e: KeyboardEvent) => {
+      const k = e.key.toLowerCase();
+      heldMove.delete(k);
+      if (e.key === "Shift") heldMove.delete("shift");
+    };
+    const onBlurWalk = () => {
+      heldMove.clear();
+      walkLastMs = 0;
+    };
+    const onWalkTick = () => {
+      if (viewer.isDestroyed()) return;
+      const moving = heldMove.has("w") || heldMove.has("a") || heldMove.has("s") || heldMove.has("d");
+      if (!moving) {
+        walkLastMs = 0;
+        return;
+      }
+      const now = performance.now();
+      const dt = walkLastMs ? Math.min(0.05, (now - walkLastMs) / 1000) : 0.016;
+      walkLastMs = now;
+      moveCameraWasd(viewer, heldMove, dt);
+      viewer.scene.requestRender();
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlurWalk);
+    const removeWalkTick = viewer.scene.preUpdate.addEventListener(onWalkTick);
 
     return () => {
-      handler.destroy();
-      setCameraInteractive(viewer, true);
-      viewer.canvas.removeEventListener("wheel", onWheel);
-      viewer.canvas.removeEventListener("contextmenu", onContextMenu);
-      window.removeEventListener("keydown", onKeyDown);
+      try {
+        handler.destroy();
+      } catch {
+        /* already destroyed */
+      }
+      if (!viewer.isDestroyed()) {
+        setCameraInteractive(viewer, true);
+        try {
+          viewer.canvas.removeEventListener("wheel", onWheel);
+          viewer.canvas.removeEventListener("contextmenu", onContextMenu);
+          viewer.canvas.removeEventListener("mouseleave", onGizmoLeave);
+        } catch {
+          /* canvas gone with viewer */
+        }
+      }
+      window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlurWalk);
+      try {
+        removeWalkTick();
+      } catch {
+        /* listener already gone */
+      }
       if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
     };
   }, [viewerReady]);
@@ -3609,30 +4735,11 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       viewer.selectedEntity = undefined;
     }
     return () => {
-      if (!viewer.isDestroyed()) viewer.canvas.style.cursor = "";
+      if (viewerAlive(viewer)) viewer.canvas.style.cursor = "";
     };
   }, [placementMode, blockRemoverActive, placementTool, viewerReady]);
 
-  // While an unlocked model is selected, scroll scales it instead of zooming the camera.
-  useEffect(() => {
-    const viewer = viewerRef.current;
-    if (!viewer || viewer.isDestroyed() || !viewerReady) return;
-    const xf = selectedId ? xformsRef.current.get(selectedId) : undefined;
-    const scaleMode = Boolean(
-      selectedId &&
-        canEditModels &&
-        editMode &&
-        xf &&
-        !xf.modelLocked &&
-        !modelsFrozen,
-    );
-    viewer.scene.screenSpaceCameraController.enableZoom = !scaleMode;
-    return () => {
-      if (!viewer.isDestroyed()) {
-        viewer.scene.screenSpaceCameraController.enableZoom = true;
-      }
-    };
-  }, [selectedId, canEditModels, editMode, viewerReady, transformDirty, transformMessage, modelsFrozen]);
+  // Camera zoom stays on. Wheel scales a model only when the cursor is on it (see onWheel).
 
   useEffect(() => {
     setConfirmStartBuild(Boolean(canPromoteSitePin && selectedProject?.siteMarkerOnly));
@@ -3680,14 +4787,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
             isHovered: (id) => hoveredProjectIdRef.current === id,
           });
           if (xf) {
-            applyEntityPose(
-              ent,
-              xf.lon,
-              xf.lat,
-              xf.rotationDeg,
-              modelScaleValue(nextProject, xf.scaleMultiplier),
-              xf.heightM,
-            );
+            applyXformToEntity(ent, nextProject, xf);
           }
         }
       }
@@ -3797,6 +4897,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         await updateProjectInFirestore(selectedId, patch);
       }
       onProjectPatch?.(selectedId, patch);
+      const renamed = editDraft.name.trim();
       // Reflect new color + label on the Cesium entity immediately (no page reload needed).
       const viewer = viewerRef.current;
       if (viewer && !viewer.isDestroyed()) {
@@ -3807,11 +4908,8 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
               Cesium.Color.fromCssColorString(editDraft.markerColor),
             );
           }
-          if (ent.label && editDraft.name.trim()) {
-            const isSitePin = Boolean(currentProject?.siteMarkerOnly);
-            (ent.label as Cesium.LabelGraphics).text = new Cesium.ConstantProperty(
-              isSitePin ? `📌 ${editDraft.name.trim()}` : editDraft.name.trim(),
-            );
+          if (renamed && currentProject) {
+            applyResolvedPlaceName(viewer, { ...currentProject, name: renamed }, renamed);
           }
           viewer.scene.requestRender();
         }
@@ -3823,6 +4921,24 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       alert("Failed to save project details.");
     } finally {
       setEditSaving(false);
+    }
+  }
+
+  async function saveProjectName(name: string) {
+    if (!selectedId) return;
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const currentProject = projectsRef.current.find((p) => p.id === selectedId);
+    try {
+      await patchProject(selectedId, { name: trimmed });
+    } catch {
+      await updateProjectInFirestore(selectedId, { name: trimmed });
+    }
+    onProjectPatch?.(selectedId, { name: trimmed });
+    const viewer = viewerRef.current;
+    if (viewerAlive(viewer) && currentProject) {
+      applyResolvedPlaceName(viewer, { ...currentProject, name: trimmed }, trimmed);
+      viewer.scene.requestRender();
     }
   }
 
@@ -3843,16 +4959,22 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     });
   }
 
-  function commitLocalPose(projectId: string, next: Partial<LocalXform>, autoSave = false) {
+  function commitLocalPose(
+    projectId: string,
+    next: Partial<LocalXform>,
+    autoSave = false,
+    recordUndo = true,
+  ) {
     const xf = xformsRef.current.get(projectId);
     const p = projectsRef.current.find((x) => x.id === projectId);
     const viewer = viewerRef.current;
     if (!xf || !p || xf.modelLocked || !canEditModels || !editMode) return;
+    if (recordUndo) pushEditUndo(projectId);
     Object.assign(xf, next);
     xf.dirty = true;
     const ent = viewer && !viewer.isDestroyed() ? viewer.entities.getById(entityIdFor(projectId)) : undefined;
     if (ent) {
-      applyEntityPose(ent, xf.lon, xf.lat, xf.rotationDeg, modelScaleValue(p, xf.scaleMultiplier), xf.heightM);
+      applyXformToEntity(ent, p, xf);
       viewer?.scene.requestRender();
     }
     setTransformDirty(true);
@@ -3933,6 +5055,16 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       ? tropicalSystems.find((s) => s.id === selectedTropicalId) ?? null
       : null;
 
+  const quakeHeatSites = useMemo(
+    () =>
+      earthquakeGrid.map((c) => ({
+        lon: c.lon,
+        lat: c.lat,
+        weight: quakeHeatWeight(c.cls, c.confidence),
+      })),
+    [earthquakeGrid],
+  );
+
   if (!visible) return null;
 
   return (
@@ -3953,6 +5085,63 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
             cursor: placementMode ? "crosshair" : blockRemoverActive ? "cell" : undefined,
           }}
         />
+        {editMode && canEditModels && !modelsFrozen && (
+          <div
+            className="cesium-edit-tools"
+            role="toolbar"
+            aria-label="Edit tools"
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            {(
+              [
+                ["move", "Move"],
+                ["rotate", "Rotate"],
+                ["scale", "Size"],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                className={`cesium-edit-tool${editTool === id ? " is-on" : ""}`}
+                title={label}
+                aria-pressed={editTool === id}
+                onClick={() => setEditTool(id)}
+              >
+                {label}
+              </button>
+            ))}
+            <span className="cesium-edit-tools-split" aria-hidden="true" />
+            <button
+              type="button"
+              className="cesium-edit-tool"
+              title="Undo (Ctrl+Z)"
+              disabled={undoDepth === 0}
+              onClick={() => undoEditPose()}
+            >
+              Undo
+            </button>
+            <button
+              type="button"
+              className="cesium-edit-tool"
+              title="Redo (Ctrl+Shift+Z)"
+              disabled={redoDepth === 0}
+              onClick={() => redoEditPose()}
+            >
+              Redo
+            </button>
+          </div>
+        )}
+        {earthquakeEnabled && viewerReady > 0 && quakeHeatSites.length > 0 && (
+          <GoogleHeatmapOverlay
+            viewer={viewerRef.current}
+            sites={quakeHeatSites}
+            title="Earthquake-prone heatmap"
+            copy="Siting risk mula sa model + PHIVOLCS EIL 2014. Hindi live shaking."
+            lowLabel="LOW"
+            highLabel="HIGH · iwasan"
+          />
+        )}
         {gibsHover && gibs?.enabled && (
           <div
             role="status"
@@ -4117,10 +5306,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
           >
             <div style={{ fontWeight: 700, marginBottom: 4 }}>{hoveredProject.project.name}</div>
             <div style={{ opacity: 0.8, fontSize: 11, marginBottom: 6 }}>
-              {hoveredProject.project.siteMarkerOnly
-                ? "Pinned site"
-                : MODEL_CATALOG.find((m) => m.type === hoveredProject.project.modelType)?.label ??
-                  hoveredProject.project.type}
+              {hoveredProject.streetLabel || hoverTypeLabel(hoveredProject.project)}
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11 }}>
               <span style={{ opacity: 0.7 }}>Status</span>
@@ -4158,8 +5344,9 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
               <div className="cesium-model-loading-title">{modelLoadUi.label}</div>
               <div className="cesium-model-loading-sub">
                 {modelLoadUi.remaining > 1
-                  ? `${modelLoadUi.remaining} models in queue · cached after first load`
-                  : "Cached after first load · please wait"}
+                  ? `${modelLoadUi.remaining} nearby · ${modelLoadUi.attached}/${modelLoadUi.budget} in GPU`
+                  : `${modelLoadUi.attached}/${modelLoadUi.budget} models in view`}
+                {modelLoadUi.cacheLabel ? ` · ${modelLoadUi.cacheLabel}` : ""}
               </div>
             </div>
           </div>
@@ -4170,8 +5357,8 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         <div
           style={{
             position: "absolute",
-            top: 16,
-            left: 16,
+            top: "calc(var(--map-hud-top, 48px) + 8px)",
+            left: 68,
             zIndex: 12,
             width: 300,
             maxWidth: "min(300px, calc(100% - 32px))",
@@ -4246,8 +5433,8 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         <div
           style={{
             position: "absolute",
-            top: 16,
-            left: 16,
+            top: "calc(var(--map-hud-top, 48px) + 132px)",
+            left: 68,
             zIndex: 12,
             width: 280,
             maxWidth: "min(280px, calc(100% - 32px))",
@@ -4298,9 +5485,9 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
 
       <div
         ref={pickChromeRef}
-        className={`cesium-pick-chrome${selectedProject && !modelsFrozen ? " has-hud" : ""}`}
+        className={`cesium-pick-chrome${selectedProject && !modelsFrozen && editMode ? " has-hud" : ""}`}
       >
-      {panelProject && !modelsFrozen && !editMode && (
+      {panelProject && !modelsFrozen && !editMode && !readOnly && (
         <PlaceSidePanel
           project={panelProject}
           onFlyHere={flyToSelected}
@@ -4313,6 +5500,8 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
             setEditOpen(false);
           }}
           onEdit={canEditModels ? openEdit : undefined}
+          onRename={canEditModels ? saveProjectName : undefined}
+          locationLabel={resolvedPlaceNameRef.current.get(panelProject.id) ?? null}
           onToggleLock={
             editMode && canEditModels && !panelProject.siteMarkerOnly
               ? () => void handleToggleLock()
@@ -4325,11 +5514,11 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
               ? () => void handleStartConstruction()
               : undefined
           }
-          earthquakeScore={earthquakeEnabled ? siteQuakeScore : null}
+          earthquakeScore={siteQuakeScore}
         />
       )}
 
-      {selectedProject && !modelsFrozen && (
+      {selectedProject && !modelsFrozen && editMode && (
         <div
           ref={hudRef}
           className={`project-pick-hud${hudCollapsed ? " is-collapsed" : ""}`}
@@ -4397,12 +5586,17 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
                 value={selectedXform.lon}
                 title="Longitude (East / West)"
                 className="project-pick-hud-input"
+                onFocus={() => selectedId && pushEditUndo(selectedId)}
                 onChange={(e) => {
                   const lon = Number(e.target.value);
                   if (!Number.isFinite(lon) || !selectedId) return;
-                  commitLocalPose(selectedId, { lon });
+                  commitLocalPose(selectedId, { lon }, false, false);
                 }}
-                onBlur={() => selectedId && void persistTransform(selectedId)}
+                onBlur={() => {
+                  if (!selectedId) return;
+                  dropEditUndoIfUnchanged(selectedId);
+                  void persistTransform(selectedId);
+                }}
               />
               <button type="button" title="West −1 m" onClick={() => nudgeSelected(-1, 0, 0)} className="project-pick-hud-nudge">
                 −1m
@@ -4418,12 +5612,17 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
                 value={selectedXform.lat}
                 title="Latitude (North / South)"
                 className="project-pick-hud-input"
+                onFocus={() => selectedId && pushEditUndo(selectedId)}
                 onChange={(e) => {
                   const lat = Number(e.target.value);
                   if (!Number.isFinite(lat) || !selectedId) return;
-                  commitLocalPose(selectedId, { lat });
+                  commitLocalPose(selectedId, { lat }, false, false);
                 }}
-                onBlur={() => selectedId && void persistTransform(selectedId)}
+                onBlur={() => {
+                  if (!selectedId) return;
+                  dropEditUndoIfUnchanged(selectedId);
+                  void persistTransform(selectedId);
+                }}
               />
               <button type="button" title="South −1 m" onClick={() => nudgeSelected(0, -1, 0)} className="project-pick-hud-nudge">
                 −1m
@@ -4439,12 +5638,22 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
                 value={selectedXform.heightM}
                 title="Height above ground (m). Keep 0 for ground — no elevation."
                 className="project-pick-hud-input"
+                onFocus={() => selectedId && pushEditUndo(selectedId)}
                 onChange={(e) => {
                   const heightM = Number(e.target.value);
                   if (!Number.isFinite(heightM) || !selectedId) return;
-                  commitLocalPose(selectedId, { heightM: Math.max(-50, Math.min(500, heightM)) });
+                  commitLocalPose(
+                    selectedId,
+                    { heightM: Math.max(-50, Math.min(500, heightM)) },
+                    false,
+                    false,
+                  );
                 }}
-                onBlur={() => selectedId && void persistTransform(selectedId)}
+                onBlur={() => {
+                  if (!selectedId) return;
+                  dropEditUndoIfUnchanged(selectedId);
+                  void persistTransform(selectedId);
+                }}
               />
               <button
                 type="button"
@@ -4560,9 +5769,14 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
                 </span>
               ) : (
                 <>
-                  <span>Left-drag: Move</span>
-                  <span>Right-drag: Rotate</span>
-                  <span>Scroll: Scale (Ctrl = faster)</span>
+                  <span>
+                    {editTool === "rotate"
+                      ? "Rotate — drag left/right"
+                      : editTool === "scale"
+                        ? "Size — drag up/down, or scroll on the model"
+                        : "Move — drag the building"}
+                  </span>
+                  <span>Esc deselect · Ctrl+Z undo · Ctrl+Shift+Z redo</span>
                 </>
               )}
             </div>

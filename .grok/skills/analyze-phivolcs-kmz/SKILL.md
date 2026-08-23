@@ -32,4 +32,4 @@ See `references/kmz-photo-read.md` after analysis. Short version:
 2. Sample **hazard-colored pixels only** for labels (`frontend/scripts/sample-earthquake-labels.ps1`).
 3. Train a model on those labels + terrain/lon-lat, then **predict** a grid. The visible dots are predictions, not a photocopy of the KMZ.
 4. Pin score = model `predictAt(lon,lat)`, not “nearest old pixel only.”
-5. Keep official KMZ overlay toggles on the Risk tab as the reference sheet.
+5. Do **not** put official KMZ overlay toggles on the Risk tab or map shortcuts. The sheets are training/reference for `/earthquake-prone-model` only. The map product is the trained heatmap.

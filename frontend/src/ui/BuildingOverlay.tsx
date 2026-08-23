@@ -19,6 +19,7 @@ import { MODEL_CATALOG, PROJECT_STATUS_COLORS, PROJECT_STATUS_LABELS } from "../
 import { patchProject, backendUrl } from "../lib/api";
 import { updateProjectInFirestore } from "../services/firestore-projects";
 import { snapLngLatToRoad } from "../lib/snap-to-road";
+
 import { PlaceSidePanel } from "./PlaceSidePanel";
 import {
   BUILDING_GLB_MIN_ZOOM,

@@ -38,6 +38,8 @@ import {
 import { createAlertFromRisk } from "./services/alerts.js";
 import { buildSlopeCache } from "./services/dem.js";
 import { chatWithOllama, getChatConfig } from "./services/chat.js";
+import { lookupPlaceName } from "./services/placeName.js";
+import { assessGeorisk } from "./services/georiskAssess.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -161,6 +163,45 @@ app.use(
 );
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
+
+/** Nearby street or barangay for a map drop / hover. */
+app.get("/api/place-name", async (req, res) => {
+  const lat = Number(req.query.lat);
+  const lon = Number(req.query.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    res.status(400).json({ error: "lat and lon required" });
+    return;
+  }
+  try {
+    const name = await lookupPlaceName({ lat, lon });
+    res.json({ name: name || null });
+  } catch (err) {
+    console.error("place-name:", err);
+    res.json({ name: null });
+  }
+});
+
+/** Live MGB flood + rain-induced landslide (GeoRiskPH public layers). Luisiana only. */
+app.get("/api/georisk-assess", async (req, res) => {
+  const lat = Number(req.query.lat);
+  const lon = Number(req.query.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    res.status(400).json({ error: "lat and lon required" });
+    return;
+  }
+  try {
+    const payload = await assessGeorisk({ lat, lon });
+    res.json(payload);
+  } catch (err) {
+    console.error("georisk-assess:", err);
+    res.json({
+      inside: true,
+      flood: { value: "Unavailable", code: null },
+      landslide: { value: "Unavailable", code: null },
+      source: "MGB via GeoRiskPH",
+    });
+  }
+});
 
 /**
  * Map viewport-driven endpoints

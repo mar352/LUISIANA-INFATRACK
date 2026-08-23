@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent, type SyntheticEvent } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent, type SyntheticEvent } from "react";
 import maplibregl, { Map as MapLibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { CesiumMap, type CesiumMapHandle } from "./CesiumMap";
+import { MapShortcuts } from "./MapShortcuts";
+import { ClimateReadingsCard } from "./ClimateReadingsCard";
+import { BarangayLegend } from "./BarangayLegend";
+import { loadBarangayAreas, type BarangayArea } from "../lib/barangay-overlay";
 import InventoryPage from "./InventoryPage";
-import PlanningPage from "./PlanningPage";
 import DocumentsPage from "./DocumentsPage";
 import AnalyticsPage from "./AnalyticsPage";
 import CitizenPortal from "./CitizenPortal";
@@ -15,6 +18,8 @@ import type {
   MapSketch,
   MapSketchKind,
   PlacementTool,
+  PlanningEvent,
+  PlanningMeeting,
   PlanningProposal,
   Project,
   RiskZones,
@@ -30,8 +35,10 @@ import {
 } from "../types";
 import { connectRealtime } from "../lib/realtime";
 import { BACKEND_URL, backendUrl } from "../lib/api";
-import { fetchProposalsOnce, updateProposal } from "../services/firestore-planning";
+import { fetchPlanningEventsOnce, fetchPlanningMeetingsOnce, fetchProposalsOnce, updateProposal } from "../services/firestore-planning";
 import { departmentForRole } from "../lib/planning-permissions";
+import { buildOpsAlerts, type OpsAlert } from "../lib/ops-alerts";
+import { NotifyOpsList } from "./NotifyOpsList";
 import { buildHeatmapPoints, type BBox, type HeatmapMetric } from "../lib/heatmap";
 import { formatGibsDate, getGibsLayerInfo, gibsWmtsTileUrl, type GibsLayerId } from "../lib/gibs";
 import {
@@ -84,6 +91,7 @@ import {
   teardownEditStreetOverlay,
 } from "../lib/street-edit-overlay";
 import { snapLngLatToRoad } from "../lib/snap-to-road";
+import { displayNameForProject } from "../lib/place-name";
 import { LandingPage, LoginScreen, ROLE_CONFIGS, isBarangayOfficial, isMunicipalStaff, type UserRole } from "./Landing";
 import {
   DEFAULT_INFRA_FILTER,
@@ -100,8 +108,7 @@ import { classAdvice, classColor } from "../lib/earthquake-labels";
 import { ProjectMonitoringPanel } from "./ProjectMonitoringPanel";
 import { ThemeToggle } from "./ThemeToggle";
 import { ProjectChat } from "./ProjectChat";
-import { HazardLegend } from "./HazardLegend";
-import { activeHazardFromToggles } from "../lib/hazard-overlays";
+
 import {
   seedAccounts,
   restoreSession,
@@ -111,6 +118,8 @@ import {
 } from "../services/auth";
 import { setAuditActor } from "../services/firestore-audit";
 import AuditPage from "./AuditPage";
+
+const PlanningPage = lazy(() => import("./PlanningPage"));
 
 // ── Dashboard icons ────────────────────────────────────────────────────────────
 const IconClipboard = () => (
@@ -222,9 +231,6 @@ type LayerToggles = {
   projects: boolean;
   buildingBlocks: boolean;
   stormTrack: boolean;
-  hazardEil2010: boolean;
-  hazardEq2014: boolean;
-  hazardGsh2014: boolean;
 };
 
 const DEFAULT_TOGGLES: LayerToggles = {
@@ -237,9 +243,6 @@ const DEFAULT_TOGGLES: LayerToggles = {
   projects: true,
   buildingBlocks: true,
   stormTrack: false,
-  hazardEil2010: false,
-  hazardEq2014: false,
-  hazardGsh2014: false,
 };
 
 const BUILDING_EXTRUSION_OPACITY_DEFAULT = 1;
@@ -327,7 +330,7 @@ type PanelNotice = {
   title: string;
   message: string;
   at: string;
-  kind: "botohan" | "returned" | "review" | "assigned" | "update";
+  kind: "returned" | "review" | "assigned" | "update";
 };
 
 function buildEngineerPlanningNotices(
@@ -341,25 +344,8 @@ function buildEngineerPlanningNotices(
   for (const p of proposals) {
     const isDept = p.department === dept;
     const isAssignee = (p.assignees || []).some((a) => a.toLowerCase() === username);
-    const votes = p.votes || [];
-    const hasVoted = votes.some((v) => v.username.toLowerCase() === username);
-    const yes = votes.filter((v) => v.choice === "yes").length;
-    const no = votes.filter((v) => v.choice === "no").length;
-    const abstain = votes.filter((v) => v.choice === "abstain").length;
     const statusLabel = PLANNING_STATUS_LABELS[p.status] || p.status;
     const at = p.updatedAt || p.createdAt;
-
-    if (p.status === "in_review" && !hasVoted) {
-      notices.push({
-        id: `${p.id}:botohan:${votes.length}`,
-        proposalId: p.id,
-        title: "Botohan open",
-        message: `"${p.title}" — cast your Yes / No / Abstain vote.`,
-        at,
-        kind: "botohan",
-      });
-      continue;
-    }
 
     if (!isDept && !isAssignee) continue;
 
@@ -377,10 +363,10 @@ function buildEngineerPlanningNotices(
 
     if (isAssignee && (p.status === "submitted" || p.status === "in_review")) {
       notices.push({
-        id: `${p.id}:assigned:${p.status}:${votes.length}`,
+        id: `${p.id}:assigned:${p.status}`,
         proposalId: p.id,
         title: "Assigned to you",
-        message: `"${p.title}" · ${statusLabel}${votes.length ? ` · Botohan ${yes}Y / ${no}N / ${abstain}A` : ""}`,
+        message: `"${p.title}" · ${statusLabel}`,
         at,
         kind: "assigned",
       });
@@ -389,13 +375,10 @@ function buildEngineerPlanningNotices(
 
     if (isDept && (p.status === "submitted" || p.status === "in_review" || p.status === "recommended")) {
       notices.push({
-        id: `${p.id}:${p.status}:${votes.length}`,
+        id: `${p.id}:${p.status}`,
         proposalId: p.id,
         title: statusLabel,
-        message:
-          p.status === "in_review" && votes.length
-            ? `"${p.title}" · Botohan ${yes}Y / ${no}N / ${abstain}A`
-            : `"${p.title}" needs Engineering attention.`,
+        message: `"${p.title}" needs Engineering attention.`,
         at,
         kind: p.status === "in_review" ? "review" : "update",
       });
@@ -413,36 +396,16 @@ function buildEngineerPlanningNotices(
  * MPDC is the final approval authority so they need to see:
  * - Any proposal newly submitted (waiting for them to open review / assign)
  * - Proposals that reached "recommended" status (ready for their approve/reject decision)
- * - Open botohan where they haven't voted yet
  * - Proposals returned by them that were resubmitted (came back for re-review)
  */
 function buildMpdcPlanningNotices(
   proposals: PlanningProposal[],
   session: SessionUser,
 ): PanelNotice[] {
-  const username = session.username.toLowerCase();
   const notices: PanelNotice[] = [];
 
   for (const p of proposals) {
-    const votes = p.votes || [];
-    const hasVoted = votes.some((v) => v.username.toLowerCase() === username);
-    const yes = votes.filter((v) => v.choice === "yes").length;
-    const no = votes.filter((v) => v.choice === "no").length;
-    const abstain = votes.filter((v) => v.choice === "abstain").length;
     const at = p.updatedAt || p.createdAt;
-
-    // Open botohan — MPDC hasn't voted yet.
-    if (p.status === "in_review" && !hasVoted) {
-      notices.push({
-        id: `${p.id}:botohan:${votes.length}`,
-        proposalId: p.id,
-        title: "Botohan open",
-        message: `"${p.title}" — cast your Yes / No / Abstain vote.`,
-        at,
-        kind: "botohan",
-      });
-      continue;
-    }
 
     // Newly submitted — MPDC needs to open review and assign.
     if (p.status === "submitted") {
@@ -457,14 +420,13 @@ function buildMpdcPlanningNotices(
       continue;
     }
 
-    // Recommended by committee — MPDC needs to approve or reject.
+    // Recommended — MPDC needs to approve or reject.
     if (p.status === "recommended") {
-      const voteStr = votes.length ? ` · Botohan ${yes}Y / ${no}N / ${abstain}A` : "";
       notices.push({
         id: `${p.id}:recommended:${at}`,
         proposalId: p.id,
         title: "Ready for approval",
-        message: `"${p.title}" was recommended by the committee.${voteStr}`,
+        message: `"${p.title}" is ready for MPDC approval.`,
         at,
         kind: "assigned",
       });
@@ -505,10 +467,22 @@ function loadDismissedNoticeIds(): string[] {
 
 // ── MPDC notices ─────────────────────────────────────────────────────────────
 const MPDC_DISMISSED_NOTICES_KEY = "infatrack_mpdc_dismissed_notices";
+const OPS_DISMISSED_KEY = "infatrack_ops_dismissed_notices";
 
 function loadMpdcDismissedNoticeIds(): string[] {
   try {
     const raw = localStorage.getItem(MPDC_DISMISSED_NOTICES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+function loadOpsDismissedIds(): string[] {
+  try {
+    const raw = localStorage.getItem(OPS_DISMISSED_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     return Array.isArray(parsed) ? parsed.map(String) : [];
@@ -682,7 +656,7 @@ export default function App() {
     (pinProposal && currentRole === "MPDC" && screen === "app") ||
     (placementMode && currentRole === "Engineer" && screen === "app");
   const eraseBlocksActive = placementToolbarOpen && placementTool === "erase";
-  const [sidebarTab, setSidebarTab] = useState<"notify" | "layers" | "risk" | "projects" | "climate" | "events">("climate");
+  const [sidebarTab, setSidebarTab] = useState<"notify" | "layers" | "settings" | "risk" | "projects" | "climate" | "events">("climate");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
     typeof window !== "undefined" && window.matchMedia("(max-width: 1024px)").matches
   );
@@ -695,6 +669,9 @@ export default function App() {
   const [dismissedNoticeIds, setDismissedNoticeIds] = useState<string[]>(() => loadDismissedNoticeIds());
   const [mpdcNotices, setMpdcNotices] = useState<PanelNotice[]>([]);
   const [mpdcDismissedIds, setMpdcDismissedIds] = useState<string[]>(() => loadMpdcDismissedNoticeIds());
+  const [planningMeetings, setPlanningMeetings] = useState<PlanningMeeting[]>([]);
+  const [planningEvents, setPlanningEvents] = useState<PlanningEvent[]>([]);
+  const [opsDismissedIds, setOpsDismissedIds] = useState<string[]>(() => loadOpsDismissedIds());
   const refreshPlanningNoticesRef = useRef<() => void>(() => {});
 
   // Set default tab based on role permissions
@@ -814,11 +791,21 @@ export default function App() {
   const [glbModelsOpacity, setGlbModelsOpacity] = useState(1);
   const [gibsStatus, setGibsStatus] = useState<"loading" | "ok" | "unavailable">("loading");
 
+  const [climateReadingsOpen, setClimateReadingsOpen] = useState(false);
+  const [barangaysVisible, setBarangaysVisible] = useState(false);
+  const [barangayAreas, setBarangayAreas] = useState<BarangayArea[]>([]);
   const [tropicalEnabled, setTropicalEnabled] = useState(false);
   const [tropicalSystems, setTropicalSystems] = useState<TropicalSystem[]>([]);
   const [tropicalLoading, setTropicalLoading] = useState(false);
   const [tropicalDisclaimer, setTropicalDisclaimer] = useState("");
   const [tropicalError, setTropicalError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!barangaysVisible) return;
+    void loadBarangayAreas()
+      .then(setBarangayAreas)
+      .catch(() => setBarangayAreas([]));
+  }, [barangaysVisible]);
 
   const [quakeModelEnabled, setQuakeModelEnabled] = useState(false);
   const [quakeStatus, setQuakeStatus] = useState<EarthquakeTrainStatus>({
@@ -829,8 +816,7 @@ export default function App() {
   });
   const [quakeGrid, setQuakeGrid] = useState<EarthquakeGridCell[]>([]);
 
-  // Google Street View mode — when active, clicking the map opens GSV in a new tab
-  const [streetViewMode, setStreetViewMode] = useState(false);
+
 
   // Map bearing tracked by CameraCompass (live rotate/pitch sync)
 
@@ -1182,7 +1168,7 @@ export default function App() {
         minzoom: 10,
         paint: {
           "circle-radius": 5,
-          "circle-color": "#245C3A",
+          "circle-color": "#151c28",
           "circle-stroke-width": 2,
           "circle-stroke-color": "#ffffff",
         },
@@ -1201,7 +1187,7 @@ export default function App() {
           "text-allow-overlap": true,
         },
         paint: {
-          "text-color": "#245C3A",
+          "text-color": "#151c28",
           "text-halo-color": "#ffffff",
           "text-halo-width": 1.8,
         },
@@ -1444,7 +1430,6 @@ export default function App() {
     setBlockRemoverMode(false);
     setEditMode(false);
     setSidebarCollapsed(true);
-    setStreetViewMode(false);
     setScreen("app");
   }
 
@@ -1549,11 +1534,13 @@ export default function App() {
 
     const { lng, lat } = pendingPlacement;
     const now = new Date().toISOString();
+    const placedName = modalProjectName.trim();
+    if (!placedName) return;
     const fallbackProject: Project = {
       id: typeof crypto !== "undefined" && "randomUUID" in crypto
         ? crypto.randomUUID()
         : `local-${Date.now()}`,
-      name: modalProjectName,
+      name: placedName,
       modelType: selectedModelRef.current,
       type: modalProjectType,
       department: modalDepartment,
@@ -1615,7 +1602,7 @@ export default function App() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            name: modalProjectName,
+            name: placedName,
             modelType: selectedModelRef.current,
             type: modalProjectType,
             department: modalDepartment,
@@ -1810,18 +1797,38 @@ export default function App() {
     };
   }, []);
 
-  // Engineer + MPDC Live Situation notifications (planning / botohan)
+  // Engineer + MPDC planning notices; all municipal staff get meeting/event data for ops alerts
   useEffect(() => {
-    const isStaff = currentRole === "Engineer" || currentRole === "MPDC";
-    if (!isStaff || !currentSession) {
+    const planningStaff = currentRole === "Engineer" || currentRole === "MPDC";
+    const staff = isMunicipalStaff(currentRole);
+    if (!staff || !currentSession) {
       setPlanningNotices([]);
       setMpdcNotices([]);
+      setPlanningMeetings([]);
+      setPlanningEvents([]);
       refreshPlanningNoticesRef.current = () => {};
       return;
     }
 
     let cancelled = false;
     const refresh = async () => {
+      try {
+        const [meetings, events] = await Promise.all([
+          fetchPlanningMeetingsOnce(),
+          fetchPlanningEventsOnce(),
+        ]);
+        if (cancelled) return;
+        setPlanningMeetings(meetings);
+        setPlanningEvents(events);
+      } catch (err) {
+        console.warn("[Notices] Failed to load meetings/events:", err);
+        if (!cancelled) {
+          setPlanningMeetings([]);
+          setPlanningEvents([]);
+        }
+      }
+
+      if (!planningStaff) return;
       try {
         const list = await fetchProposalsOnce();
         if (cancelled) return;
@@ -1903,6 +1910,62 @@ export default function App() {
       }
       return next;
     });
+  }
+
+  const opsDept =
+    currentRole === "Agriculture" || currentRole === "Negosyo Center"
+      ? departmentForRole(currentRole)
+      : null;
+  const opsAlerts = useMemo(
+    () =>
+      isMunicipalStaff(currentRole)
+        ? buildOpsAlerts(Array.isArray(projects) ? projects : [], planningMeetings, planningEvents, {
+            department: opsDept,
+          })
+        : [],
+    [currentRole, projects, planningMeetings, planningEvents, opsDept],
+  );
+  const activeOpsAlerts = useMemo(
+    () => opsAlerts.filter((a) => !opsDismissedIds.includes(a.id)),
+    [opsAlerts, opsDismissedIds],
+  );
+  const opsUnreadCount = activeOpsAlerts.length;
+  const notifyBadgeCount =
+    (currentRole === "Engineer" ? noticeUnreadCount : currentRole === "MPDC" ? mpdcUnreadCount : 0) +
+    opsUnreadCount;
+
+  function persistOpsDismissed(next: string[]) {
+    try {
+      localStorage.setItem(OPS_DISMISSED_KEY, JSON.stringify(next));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function dismissOpsAlert(id: string) {
+    setOpsDismissedIds((prev) => {
+      if (prev.includes(id)) return prev;
+      const next = [...prev, id].slice(-120);
+      persistOpsDismissed(next);
+      return next;
+    });
+  }
+
+  function dismissAllOpsAlerts() {
+    setOpsDismissedIds((prev) => {
+      const next = [...new Set([...prev, ...activeOpsAlerts.map((a) => a.id)])].slice(-120);
+      persistOpsDismissed(next);
+      return next;
+    });
+  }
+
+  function openOpsAlert(alert: OpsAlert) {
+    dismissOpsAlert(alert.id);
+    if (alert.open === "planning") setScreen("planning");
+    else {
+      setSidebarTab("projects");
+      setScreen("app");
+    }
   }
 
   function dismissAllMpdcNotices() {
@@ -2051,32 +2114,6 @@ export default function App() {
       map.off("style.load", apply);
     };
   }, [mapInstance, buildingExtrusionOpacity, toggles.satellite]);
-
-  // Google Street View mode — click map to open GSV in new tab
-  const streetViewModeRef = useRef(false);
-  useEffect(() => { streetViewModeRef.current = streetViewMode; }, [streetViewMode]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    const handleClick = (e: maplibregl.MapMouseEvent) => {
-      if (!streetViewModeRef.current) return;
-      const { lat, lng } = e.lngLat;
-      const url = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lng}`;
-      window.open(url, "_blank");
-    };
-
-    map.on("click", handleClick);
-    return () => { map.off("click", handleClick); };
-  }, [mapInstance]);
-
-  // Update cursor when street view mode changes
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    map.getCanvas().style.cursor = streetViewMode ? "crosshair" : "";
-  }, [streetViewMode]);
 
   // Terrain (3D elevation) toggle with WebGL enhancements
   useEffect(() => {
@@ -2260,16 +2297,6 @@ export default function App() {
     return { high, mod, low, total: feats.length };
   }, [riskZones]);
 
-  const activeHazardLegend = useMemo(
-    () =>
-      activeHazardFromToggles({
-        hazardEil2010: toggles.hazardEil2010,
-        hazardEq2014: toggles.hazardEq2014,
-        hazardGsh2014: toggles.hazardGsh2014,
-      }),
-    [toggles.hazardEil2010, toggles.hazardEq2014, toggles.hazardGsh2014],
-  );
-
   const staffOverlay =
     screen === "planning" ||
     screen === "documents" ||
@@ -2356,11 +2383,14 @@ export default function App() {
       )}
 
       {screen === "planning" && currentRole !== "Viewer" && (
-        <PlanningPage
-          onBack={() => setScreen("app")}
-          session={currentSession}
-          onPinSite={currentRole === "MPDC" ? startPinSite : undefined}
-        />
+        <Suspense fallback={<div className="an-page" style={{ padding: 24 }}>Loading planning…</div>}>
+          <PlanningPage
+            onBack={() => setScreen("app")}
+            session={currentSession}
+            onPinSite={currentRole === "MPDC" ? startPinSite : undefined}
+            projects={Array.isArray(projects) ? projects : []}
+          />
+        </Suspense>
       )}
 
       {screen === "documents" && isMunicipalStaff(currentRole) && (
@@ -2372,7 +2402,11 @@ export default function App() {
       )}
 
       {screen === "analytics" && isMunicipalStaff(currentRole) && (
-        <AnalyticsPage onBack={() => setScreen("app")} projects={Array.isArray(projects) ? projects : []} />
+        <AnalyticsPage
+          onBack={() => setScreen("app")}
+          projects={Array.isArray(projects) ? projects : []}
+          captureMapPng={() => cesiumMapRef.current?.captureMapPng() ?? Promise.resolve(null)}
+        />
       )}
 
       {screen === "engagement" && roleConfig?.canSeeEngagement && (
@@ -2399,16 +2433,12 @@ export default function App() {
           solarHour={solarHour}
           sunAzimuthDeg={sunAzimuthDeg}
           buildingBlocksVisible={toggles.buildingBlocks}
+          barangaysVisible={barangaysVisible}
           blockRemoverActive={
             (blockRemoverMode && currentRole === "Engineer") || eraseBlocksActive
           }
           terrainEnabled={toggles.satellite}
           satellite={toggles.satellite}
-          hazardOverlays={{
-            eil2010: toggles.hazardEil2010,
-            eq2014: toggles.hazardEq2014,
-            gsh2014: toggles.hazardGsh2014,
-          }}
           mapSettings={mapSettings}
           tropicalEnabled={tropicalEnabled}
           tropicalSystems={tropicalSystems}
@@ -2460,54 +2490,6 @@ export default function App() {
         />
 
         <ProjectChat />
-
-        {activeHazardLegend && screen === "app" && (
-          <HazardLegend hazard={activeHazardLegend} variant="map" />
-        )}
-
-        {/* Google Street View mode indicator */}
-        {streetViewMode && (
-          <div style={{
-            position: "absolute",
-            top: 70,
-            left: "50%",
-            transform: "translateX(-50%)",
-            zIndex: 10,
-            background: "rgba(0,0,0,0.85)",
-            color: "#fff",
-            padding: "8px 20px",
-            borderRadius: 8,
-            fontSize: 13,
-            fontFamily: '"Chakra Petch", sans-serif',
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            border: "1px solid rgba(255,255,255,0.2)",
-            backdropFilter: "blur(8px)",
-          }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FBBC05" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="5" r="3"/><path d="M12 8v4"/><path d="M6.5 16a5.5 5.5 0 0 1 11 0"/>
-              <path d="M4 22l2-6"/><path d="M20 22l-2-6"/>
-            </svg>
-            <span>Click anywhere on the map to open <b>Google Street View</b></span>
-            <button
-              onClick={() => setStreetViewMode(false)}
-              style={{
-                cursor: "pointer",
-                background: "rgba(255,255,255,0.15)",
-                border: "1px solid rgba(255,255,255,0.3)",
-                borderRadius: 4,
-                color: "#fff",
-                padding: "3px 12px",
-                fontSize: 11,
-                fontWeight: 600,
-                marginLeft: 4,
-              }}
-            >
-              Exit
-            </button>
-          </div>
-        )}
 
         {placementToolbarOpen ? (
           <div className="placement-draw-toolbar">
@@ -2767,7 +2749,7 @@ export default function App() {
               <div className="brand">
                 INFA-TRACK <span className="brand-place">Luisiana</span>
               </div>
-              <div className="sub">Real-Time GIS Infrastructure & Disaster Monitoring</div>
+              <div className="sub">Municipal GIS for safer infrastructure siting</div>
             </div>
             <span
               className="topBar-live-dot"
@@ -2799,11 +2781,7 @@ export default function App() {
             {roleConfig?.canSeePlanning && currentRole !== "Viewer" && (
               <button
                 type="button"
-                className="topBar-exit"
-                style={{
-                  background: "linear-gradient(135deg, rgba(36,92,58,0.22), rgba(61,155,95,0.18))",
-                  borderColor: "rgba(36,92,58,0.45)",
-                }}
+                className="topBar-nav-link"
                 onClick={() => {
                   setMoreMenuOpen(false);
                   setScreen("planning");
@@ -2825,11 +2803,7 @@ export default function App() {
             {isMunicipalStaff(currentRole) && (
               <button
                 type="button"
-                className="topBar-exit"
-                style={{
-                  background: "linear-gradient(135deg, rgba(120,90,40,0.2), rgba(180,140,60,0.15))",
-                  borderColor: "rgba(140,110,50,0.45)",
-                }}
+                className="topBar-nav-link"
                 onClick={() => {
                   setMoreMenuOpen(false);
                   setScreen("documents");
@@ -2849,11 +2823,7 @@ export default function App() {
             {isMunicipalStaff(currentRole) && (
               <button
                 type="button"
-                className="topBar-exit"
-                style={{
-                  background: "linear-gradient(135deg, rgba(36,92,58,0.18), rgba(108,142,191,0.2))",
-                  borderColor: "rgba(60,100,80,0.45)",
-                }}
+                className="topBar-nav-link"
                 onClick={() => {
                   setMoreMenuOpen(false);
                   setScreen("analytics");
@@ -2871,11 +2841,7 @@ export default function App() {
             {roleConfig?.canSeeEngagement && (
               <button
                 type="button"
-                className="topBar-exit"
-                style={{
-                  background: "linear-gradient(135deg, rgba(36,92,58,0.2), rgba(212,160,23,0.18))",
-                  borderColor: "rgba(36,92,58,0.45)",
-                }}
+                className="topBar-nav-link"
                 onClick={() => {
                   setMoreMenuOpen(false);
                   setScreen("engagement");
@@ -2891,8 +2857,7 @@ export default function App() {
             {isMunicipalStaff(currentRole) && currentRole !== "Negosyo Center" && (
               <button
                 type="button"
-                className="topBar-exit"
-                style={{ background: "linear-gradient(135deg, rgba(59,130,246,0.2), rgba(139,92,246,0.2))", borderColor: "rgba(59,130,246,0.4)" }}
+                className="topBar-nav-link"
                 onClick={() => {
                   setMoreMenuOpen(false);
                   setScreen("inventory");
@@ -2906,11 +2871,7 @@ export default function App() {
             {currentRole === "Viewer" && (
               <button
                 type="button"
-                className="topBar-exit"
-                style={{
-                  background: "linear-gradient(135deg, rgba(36,92,58,0.2), rgba(212,160,23,0.18))",
-                  borderColor: "rgba(36,92,58,0.45)",
-                }}
+                className="topBar-nav-link"
                 onClick={() => {
                   setMoreMenuOpen(false);
                   setScreen("citizen");
@@ -2937,7 +2898,7 @@ export default function App() {
             {isMunicipalStaff(currentRole) && (
               <button
                 type="button"
-                className="topBar-exit topBar-audit-btn"
+                className="topBar-nav-link topBar-audit-btn"
                 title="Activity log and audit trail"
                 onClick={() => {
                   setMoreMenuOpen(false);
@@ -2985,6 +2946,7 @@ export default function App() {
         )}
 
         {/* Sun bearing dial + time — isolated from Cesium canvas mouse drag */}
+        {!editMode && (
         <div
           className="solar-map-controls"
           title="Sun bearing & time (Luisiana)"
@@ -3039,6 +3001,7 @@ export default function App() {
             </div>
           </div>
         </div>
+        )}
 
         {currentRole === "Engineer" && (
           <div
@@ -3058,6 +3021,8 @@ export default function App() {
                     setSnapToRoad(true);
                     setPlacementMode(false);
                     setBlockRemoverMode(false);
+                    setClimateReadingsOpen(false);
+                    setSidebarCollapsed(true);
                   }
                   return next;
                 });
@@ -3075,7 +3040,7 @@ export default function App() {
             </button>
             {editMode && (
               <>
-                <span className="map-edit-mode-hint">Click a building to move it</span>
+                <span className="map-edit-mode-hint">Click a building · Move / Rotate / Size</span>
                 <button
                   type="button"
                   className="map-edit-mode-done"
@@ -3086,6 +3051,61 @@ export default function App() {
               </>
             )}
           </div>
+        )}
+
+        {!editMode && (
+        <MapShortcuts
+          canSeeLayers={Boolean(roleConfig?.canSeeLayers)}
+          canSeeRisk={Boolean(roleConfig?.canSeeRisk)}
+          canSeeClimate={Boolean(roleConfig?.canSeeWeather || roleConfig?.canSeeLayers)}
+          satellite={toggles.satellite}
+          buildingBlocks={toggles.buildingBlocks}
+          projects={toggles.projects}
+          quakeHeat={quakeModelEnabled}
+          climateReadings={climateReadingsOpen}
+          tropical={tropicalEnabled}
+          barangays={barangaysVisible}
+          onSatellite={() =>
+            setToggles((t) => {
+              const next = !t.satellite;
+              return { ...t, satellite: next, terrain: next };
+            })
+          }
+          onBuildingBlocks={() => setToggles((t) => ({ ...t, buildingBlocks: !t.buildingBlocks }))}
+          onProjects={() => setToggles((t) => ({ ...t, projects: !t.projects }))}
+          onBarangays={() => setBarangaysVisible((v) => !v)}
+          onQuakeHeat={() => setQuakeModelEnabled((v) => !v)}
+          onClimateReadings={() => setClimateReadingsOpen((v) => !v)}
+          onTropical={() => {
+            setTropicalEnabled((on) => {
+              const next = !on;
+              setToggles((t) => ({ ...t, gibsPrecip: next }));
+              if (next) {
+                setGibsLayer((layer) =>
+                  layer.startsWith("IMERG_") ? layer : "IMERG_Precipitation_Rate",
+                );
+              }
+              return next;
+            });
+          }}
+          onPointerDown={stopMapPointer}
+        />
+        )}
+
+        {!editMode && barangaysVisible && roleConfig?.canSeeLayers && (
+          <BarangayLegend
+            areas={barangayAreas}
+            onClose={() => setBarangaysVisible(false)}
+            onPointerDown={stopMapPointer}
+          />
+        )}
+
+        {!editMode && climateReadingsOpen && (roleConfig?.canSeeWeather || roleConfig?.canSeeLayers) && (
+          <ClimateReadingsCard
+            weather={weather}
+            onClose={() => setClimateReadingsOpen(false)}
+            onPointerDown={stopMapPointer}
+          />
         )}
 
         {/* ── Map Controls ── */}
@@ -3122,7 +3142,7 @@ export default function App() {
               <line x1="2" y1="20" x2="22" y2="20"/>
             </svg>
           </button>
-          {currentRole === "Engineer" && (
+          {currentRole === "Engineer" && !editMode && (
             <>
               <div className="map-ctrl-divider" />
               <button
@@ -3160,9 +3180,7 @@ export default function App() {
       <button
         type="button"
         className={`sidePanel-edgeToggle${sidebarCollapsed ? " is-collapsed" : ""}${
-          currentRole === "Engineer" && noticeUnreadCount > 0 ? " has-badge" : ""
-        }${
-          currentRole === "MPDC" && mpdcUnreadCount > 0 ? " has-badge" : ""
+          isMunicipalStaff(currentRole) && notifyBadgeCount > 0 ? " has-badge" : ""
         }`}
         aria-label={sidebarCollapsed ? "Expand side panel" : "Collapse side panel"}
         title={
@@ -3179,11 +3197,8 @@ export default function App() {
             ? <polyline points="15 18 9 12 15 6" />
             : <polyline points="9 18 15 12 9 6" />}
         </svg>
-        {currentRole === "Engineer" && noticeUnreadCount > 0 && (
-          <span className="sidePanel-edgeBadge" aria-hidden>{noticeUnreadCount > 9 ? "9+" : noticeUnreadCount}</span>
-        )}
-        {currentRole === "MPDC" && mpdcUnreadCount > 0 && (
-          <span className="sidePanel-edgeBadge" aria-hidden>{mpdcUnreadCount > 9 ? "9+" : mpdcUnreadCount}</span>
+        {isMunicipalStaff(currentRole) && notifyBadgeCount > 0 && (
+          <span className="sidePanel-edgeBadge" aria-hidden>{notifyBadgeCount > 9 ? "9+" : notifyBadgeCount}</span>
         )}
       </button>
 
@@ -3191,14 +3206,9 @@ export default function App() {
         <div className="sidePanel-head">
           <div className="sectionTitle">
             Live Situation Panel
-            {currentRole === "Engineer" && noticeUnreadCount > 0 && (
-              <span className="sidePanel-titleBadge" aria-label={`${noticeUnreadCount} notifications`}>
-                {noticeUnreadCount}
-              </span>
-            )}
-            {currentRole === "MPDC" && mpdcUnreadCount > 0 && (
-              <span className="sidePanel-titleBadge" aria-label={`${mpdcUnreadCount} notifications`}>
-                {mpdcUnreadCount}
+            {isMunicipalStaff(currentRole) && notifyBadgeCount > 0 && (
+              <span className="sidePanel-titleBadge" aria-label={`${notifyBadgeCount} notifications`}>
+                {notifyBadgeCount}
               </span>
             )}
           </div>
@@ -3217,27 +3227,15 @@ export default function App() {
 
         {/* Tab Navigation */}
         <div className="sidebar-tabs">
-          {currentRole === "Engineer" && (
+          {isMunicipalStaff(currentRole) && (
             <button
               type="button"
               className={`sidebar-tab${sidebarTab === "notify" ? " active" : ""}`}
               onClick={() => setSidebarTab("notify")}
             >
               Notify
-              {noticeUnreadCount > 0 && (
-                <span className="sidebar-tab-badge">{noticeUnreadCount > 9 ? "9+" : noticeUnreadCount}</span>
-              )}
-            </button>
-          )}
-          {currentRole === "MPDC" && (
-            <button
-              type="button"
-              className={`sidebar-tab${sidebarTab === "notify" ? " active" : ""}`}
-              onClick={() => setSidebarTab("notify")}
-            >
-              Notify
-              {mpdcUnreadCount > 0 && (
-                <span className="sidebar-tab-badge">{mpdcUnreadCount > 9 ? "9+" : mpdcUnreadCount}</span>
+              {notifyBadgeCount > 0 && (
+                <span className="sidebar-tab-badge">{notifyBadgeCount > 9 ? "9+" : notifyBadgeCount}</span>
               )}
             </button>
           )}
@@ -3253,8 +3251,8 @@ export default function App() {
           {roleConfig?.canSeeProjects && (
             <button type="button" className={`sidebar-tab${sidebarTab === "projects" ? " active" : ""}`} onClick={() => setSidebarTab("projects")}>Projects</button>
           )}
-          {roleConfig?.canSeeLayers && (
-            <button type="button" className={`sidebar-tab${sidebarTab === "events" ? " active" : ""}`} onClick={() => setSidebarTab("events")}>Events</button>
+          {(roleConfig?.canSeeLayers || roleConfig?.canSeeWeather || roleConfig?.canSeeRisk) && (
+            <button type="button" className={`sidebar-tab${sidebarTab === "settings" ? " active" : ""}`} onClick={() => setSidebarTab("settings")}>Settings</button>
           )}
         </div>
 
@@ -3288,8 +3286,7 @@ export default function App() {
               {activePlanningNotices.length > 0 && (
                 <button
                   type="button"
-                  className="btn-ghost"
-                  style={{ fontSize: 11, padding: "4px 8px" }}
+                  className="side-btn"
                   onClick={dismissAllNotices}
                 >
                   Clear all
@@ -3297,7 +3294,7 @@ export default function App() {
               )}
             </div>
             <p style={{ margin: "0 0 10px", fontSize: 12, color: "var(--muted)", lineHeight: 1.45 }}>
-              Planning &amp; botohan items for Engineering. Live updates when the committee workspace changes.
+              Planning items for Engineering. Live updates when the workspace changes.
             </p>
             {activePlanningNotices.length ? (
               <div className="miniList">
@@ -3340,9 +3337,16 @@ export default function App() {
               </div>
             ) : (
               <div className="card" style={{ color: "var(--muted)", fontSize: 13 }}>
-                No open notifications. New botohan, returns, and Engineering assignments will show up here.
+                No open notifications. New returns and Engineering assignments will show up here.
               </div>
             )}
+            <NotifyOpsList
+              alerts={activeOpsAlerts}
+              formatAgo={formatAgo}
+              onOpen={openOpsAlert}
+              onDismiss={dismissOpsAlert}
+              onClearAll={dismissAllOpsAlerts}
+            />
             {roleConfig?.canSeeAlerts && alerts.length > 0 && (
               <>
                 <div className="sectionTitle" style={{ marginTop: 16, marginBottom: 8 }}>
@@ -3380,8 +3384,7 @@ export default function App() {
               {activeMpdcNotices.length > 0 && (
                 <button
                   type="button"
-                  className="btn-ghost"
-                  style={{ fontSize: 11, padding: "4px 8px" }}
+                  className="side-btn"
                   onClick={dismissAllMpdcNotices}
                 >
                   Clear all
@@ -3389,7 +3392,7 @@ export default function App() {
               )}
             </div>
             <p style={{ margin: "0 0 10px", fontSize: 12, color: "var(--muted)", lineHeight: 1.45 }}>
-              Planning items requiring MPDC action — submissions, recommendations, and open botohan. Live updates.
+              Planning items requiring MPDC action — submissions and approvals. Live updates.
             </p>
             {activeMpdcNotices.length ? (
               <div className="miniList">
@@ -3432,9 +3435,16 @@ export default function App() {
               </div>
             ) : (
               <div className="card" style={{ color: "var(--muted)", fontSize: 13 }}>
-                No open notifications. New submissions, committee recommendations, and botohan items will appear here.
+                No open notifications. New submissions and items ready for approval will appear here.
               </div>
             )}
+            <NotifyOpsList
+              alerts={activeOpsAlerts}
+              formatAgo={formatAgo}
+              onOpen={openOpsAlert}
+              onDismiss={dismissOpsAlert}
+              onClearAll={dismissAllOpsAlerts}
+            />
             {roleConfig?.canSeeAlerts && alerts.length > 0 && (
               <>
                 <div className="sectionTitle" style={{ marginTop: 16, marginBottom: 8 }}>
@@ -3451,6 +3461,24 @@ export default function App() {
                 </div>
               </>
             )}
+          </div>
+        )}
+
+        {sidebarTab === "notify" &&
+          isMunicipalStaff(currentRole) &&
+          currentRole !== "Engineer" &&
+          currentRole !== "MPDC" && (
+          <div style={{ marginBottom: 12 }}>
+            <div className="sectionTitle" style={{ marginBottom: 8 }}>
+              Notifications
+            </div>
+            <NotifyOpsList
+              alerts={activeOpsAlerts}
+              formatAgo={formatAgo}
+              onOpen={openOpsAlert}
+              onDismiss={dismissOpsAlert}
+              onClearAll={dismissAllOpsAlerts}
+            />
           </div>
         )}
 
@@ -3503,21 +3531,15 @@ export default function App() {
           </div>
         )}
 
-        {/* ── Layers Tab ── */}
-        {sidebarTab === "layers" && roleConfig?.canSeeLayers && (
+        {/* ── Settings Tab ── */}
+        {sidebarTab === "settings" &&
+          (roleConfig?.canSeeLayers || roleConfig?.canSeeWeather || roleConfig?.canSeeRisk) && (
         <div className="card" style={{ marginBottom: 12 }}>
           <div className="sectionTitle" style={{ marginBottom: 8 }}>
-            Layers (LGU-Friendly Toggles)
+            Settings
           </div>
           <div className="hint" style={{ marginBottom: 10 }}>
-            3D tilt uses Map Settings draw distance (fog) — the globe stays continuous, never a clipped square.
-          </div>
-
-          <div className="sectionTitle" style={{ marginBottom: 8, marginTop: 4, fontSize: 13 }}>
-            Map Settings
-          </div>
-          <div className="hint" style={{ marginBottom: 10 }}>
-            Tune performance and view. Saved on this device.
+            Globe performance and view. Saved on this device.
           </div>
 
           <div
@@ -3559,25 +3581,13 @@ export default function App() {
                     : "Balanced"}
               </span>
             </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <div className="side-seg">
               {(["low", "medium", "high"] as TerrainQuality[]).map((q) => (
                 <button
                   key={q}
                   type="button"
+                  className={`side-seg-btn${mapSettings.terrainQuality === q ? " is-on" : ""}`}
                   onClick={() => setMapSettings((s) => ({ ...s, terrainQuality: q }))}
-                  style={{
-                    cursor: "pointer",
-                    borderRadius: 2,
-                    padding: "6px 10px",
-                    fontSize: 12,
-                    textTransform: "capitalize",
-                    background: mapSettings.terrainQuality === q ? "var(--seed)" : "var(--cream-ink)",
-                    color: "var(--ink)",
-                    fontWeight: 700,
-                    border:
-                      mapSettings.terrainQuality === q ? "2px solid var(--ink)" : "1px solid var(--stroke)",
-                    boxShadow: mapSettings.terrainQuality === q ? "2px 2px 0 var(--ink)" : "none",
-                  }}
                 >
                   {q}
                 </button>
@@ -3588,7 +3598,7 @@ export default function App() {
           <div className="toggleRow">
             <div>
               <label>Shadows</label>
-              <div className="hint">Sun shadows on terrain &amp; models (day only)</div>
+              <div className="hint">Soft sun shadows inside Luisiana only (day, near town)</div>
             </div>
             <div
               className={`switch ${mapSettings.shadowsEnabled ? "on" : ""}`}
@@ -3603,31 +3613,19 @@ export default function App() {
               <span className="pill">Shadow quality</span>
               <span style={{ fontSize: 11, color: "var(--muted)" }}>
                 {mapSettings.shadowQuality === "low"
-                  ? "250 m · 512"
+                  ? "700 m · hard"
                   : mapSettings.shadowQuality === "high"
-                    ? "1000 m · 2048"
-                    : "500 m · 1024"}
+                    ? "2.2 km · soft"
+                    : "1.6 km · soft"}
               </span>
             </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <div className="side-seg">
               {(["low", "medium", "high"] as ShadowQuality[]).map((q) => (
                 <button
                   key={q}
                   type="button"
+                  className={`side-seg-btn${mapSettings.shadowQuality === q ? " is-on" : ""}`}
                   onClick={() => setMapSettings((s) => ({ ...s, shadowQuality: q }))}
-                  style={{
-                    cursor: "pointer",
-                    borderRadius: 2,
-                    padding: "6px 10px",
-                    fontSize: 12,
-                    textTransform: "capitalize",
-                    background: mapSettings.shadowQuality === q ? "var(--seed)" : "var(--cream-ink)",
-                    color: "var(--ink)",
-                    fontWeight: 700,
-                    border:
-                      mapSettings.shadowQuality === q ? "2px solid var(--ink)" : "1px solid var(--stroke)",
-                    boxShadow: mapSettings.shadowQuality === q ? "2px 2px 0 var(--ink)" : "none",
-                  }}
                 >
                   {q}
                 </button>
@@ -3648,24 +3646,66 @@ export default function App() {
             />
           </div>
 
+          <div
+            className="extrusion-opacity-control"
+            style={{
+              display: "flex",
+              gap: 10,
+              alignItems: "center",
+              marginBottom: 10,
+              paddingLeft: 2,
+            }}
+          >
+            <span className="pill">Motion blur</span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={5}
+              value={mapSettings.motionBlur}
+              aria-label="Camera motion blur strength"
+              onChange={(e) =>
+                setMapSettings((s) => ({ ...s, motionBlur: Number(e.target.value) }))
+              }
+              style={{ flex: 1 }}
+            />
+            <span style={{ fontSize: 11, color: "var(--muted)", minWidth: 52 }}>
+              {mapSettings.motionBlur <= 0
+                ? "Off"
+                : mapSettings.motionBlur <= 30
+                  ? `${mapSettings.motionBlur}% soft`
+                  : mapSettings.motionBlur <= 70
+                    ? `${mapSettings.motionBlur}%`
+                    : `${mapSettings.motionBlur}% strong`}
+            </span>
+          </div>
+          <div className="hint" style={{ marginTop: -4, marginBottom: 10, paddingLeft: 2 }}>
+            Streak while panning the globe. 0 is off. Drag, then pan to preview.
+          </div>
+
           <button
             type="button"
-            className="btn"
-            style={{ fontSize: 11, padding: "4px 8px", marginBottom: 12 }}
+            className="side-btn"
+            style={{ marginBottom: 4 }}
             onClick={() => setMapSettings({ ...DEFAULT_MAP_SETTINGS })}
           >
-            Reset map settings
+            Reset settings
           </button>
+        </div>
+        )}
+
+        {/* ── Layers Tab ── */}
+        {sidebarTab === "layers" && roleConfig?.canSeeLayers && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div className="sectionTitle" style={{ marginBottom: 8 }}>
+            Layers
+          </div>
+          <div className="hint" style={{ marginBottom: 10 }}>
+            Show or hide map overlays. Globe performance lives in Settings.
+          </div>
 
           {(
             [
-              {
-                k: "heatmap",
-                title: "Heatmap",
-                hint: "Animated intensity (Blue→Yellow→Red)",
-              },
-              { k: "weather", title: "Weather Overlay", hint: "Cloud field + rainfall feel" },
-              { k: "stormTrack", title: "Storm Tracking", hint: "Drift line based on wind" },
               { k: "projects", title: "Infrastructure Projects", hint: "GLB models on map" },
               { k: "buildingBlocks", title: "3D Blocks", hint: "Luisiana OSM building extrusions" },
             ] as const
@@ -3688,8 +3728,7 @@ export default function App() {
             <div style={{ marginBottom: 10, paddingLeft: 2 }}>
               <button
                 type="button"
-                className="btn"
-                style={{ fontSize: 11, padding: "4px 8px" }}
+                className="side-btn"
                 title="Restore all deleted OSM blocks"
                 onClick={() => cesiumMapRef.current?.restoreRemovedBlocks()}
               >
@@ -3776,65 +3815,6 @@ export default function App() {
             </div>
           </div>
 
-          <div className="toggleRow" style={{ alignItems: "flex-start", flexWrap: "wrap" }}>
-            <div style={{ flex: "1 1 180px", minWidth: 0 }}>
-              <label>Heatmap Mode</label>
-              <div className="hint">What the heatmap represents</div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-                {(
-                  [
-                    ["combined", "Combined"],
-                    ["rainfall", "Rainfall"],
-                    ["landslide", "Landslide"],
-                    ["infrastructure", "Infrastructure"],
-                  ] as const
-                ).map(([k, label]) => (
-                  <button
-                    key={k}
-                    onClick={() => setHeatMetric(k)}
-                    style={{
-                      cursor: "pointer",
-                      borderRadius: 2,
-                      padding: "6px 10px",
-                      fontSize: 12,
-                      background: heatMetric === k ? "var(--seed)" : "var(--cream-ink)",
-                      color: "var(--ink)",
-                      fontWeight: 700,
-                      border: heatMetric === k ? "2px solid var(--ink)" : "1px solid var(--stroke)",
-                      boxShadow: heatMetric === k ? "2px 2px 0 var(--ink)" : "none",
-                    }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div style={{ flex: "0 0 auto", textAlign: "right" }}>
-              <span className="pill">Cool→Hot</span>
-              <div style={{ marginTop: 6, fontSize: 12, color: "var(--muted2)" }}>
-                {heatMetric === "rainfall"
-                  ? "Rain intensity"
-                  : heatMetric === "landslide"
-                    ? "Risk pressure"
-                    : heatMetric === "infrastructure"
-                      ? "Density"
-                      : "All signals"}
-              </div>
-            </div>
-          </div>
-
-          <div className="toggleRow">
-            <div>
-              <label>Street View</label>
-              <div className="hint">Google — click map to view 360° street imagery</div>
-            </div>
-            <div
-              className={`switch ${streetViewMode ? "on" : ""}`}
-              role="switch"
-              aria-checked={streetViewMode}
-              onClick={() => setStreetViewMode((v) => !v)}
-            />
-          </div>
           <div className="toggleRow">
             <div>
               <label>Satellite</label>
@@ -3895,83 +3875,16 @@ export default function App() {
 
         <div className="card" style={{ marginBottom: 12 }}>
           <div className="sectionTitle" style={{ marginBottom: 8 }}>
-            Official map overlays (KMZ)
-          </div>
-          <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12, lineHeight: 1.5 }}>
-            Light high-res PHIVOLCS map tiles — turn on one at a time.
-          </div>
-          <div className="toggleRow" style={{ marginBottom: 10 }}>
-            <div>
-              <label>EIL 2010 landslide map</label>
-              <div className="hint">Earthquake-induced landslide</div>
-            </div>
-            <div
-              className={`switch ${toggles.hazardEil2010 ? "on" : ""}`}
-              role="switch"
-              aria-checked={toggles.hazardEil2010}
-              onClick={() =>
-                setToggles((t) => ({
-                  ...t,
-                  hazardEil2010: !t.hazardEil2010,
-                  hazardEq2014: false,
-                  hazardGsh2014: false,
-                }))
-              }
-            />
-          </div>
-          <div className="toggleRow" style={{ marginBottom: 10 }}>
-            <div>
-              <label>Earthquake 50K 2014 (EIL)</label>
-              <div className="hint">Earthquake-induced landslide</div>
-            </div>
-            <div
-              className={`switch ${toggles.hazardEq2014 ? "on" : ""}`}
-              role="switch"
-              aria-checked={toggles.hazardEq2014}
-              onClick={() =>
-                setToggles((t) => ({
-                  ...t,
-                  hazardEq2014: !t.hazardEq2014,
-                  hazardEil2010: false,
-                  hazardGsh2014: false,
-                }))
-              }
-            />
-          </div>
-          <div className="toggleRow" style={{ marginBottom: 10 }}>
-            <div>
-              <label>Ground Shaking 2014</label>
-              <div className="hint">PHIVOLCS ground shaking map</div>
-            </div>
-            <div
-              className={`switch ${toggles.hazardGsh2014 ? "on" : ""}`}
-              role="switch"
-              aria-checked={toggles.hazardGsh2014}
-              onClick={() =>
-                setToggles((t) => ({
-                  ...t,
-                  hazardGsh2014: !t.hazardGsh2014,
-                  hazardEil2010: false,
-                  hazardEq2014: false,
-                }))
-              }
-            />
-          </div>
-          {activeHazardLegend && <HazardLegend hazard={activeHazardLegend} variant="panel" />}
-        </div>
-
-        <div className="card" style={{ marginBottom: 12 }}>
-          <div className="sectionTitle" style={{ marginBottom: 8 }}>
             Earthquake-prone model
           </div>
           <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12, lineHeight: 1.5 }}>
-            Solid dots = PHIVOLCS EIL 2014. Extra HIGH/MODERATE = TensorFlow prediction from
-            terrain/satellite (turn Satellite on for live DEM).
+            Heatmap = TensorFlow trained on PHIVOLCS EIL / GSH KMZ labels (not a photocopy of the
+            old sheet). Turn Satellite on for live DEM. Pula = HIGH, iwasan sa siting.
           </div>
           <div className="toggleRow" style={{ marginBottom: 10 }}>
             <div>
-              <label>Show earthquake-prone grid</label>
-              <div className="hint">2014 sheet stays; the model only adds guesses between those points</div>
+              <label>Show earthquake-prone heatmap</label>
+              <div className="hint">Model fills the municipal grid. Click a hot spot for class.</div>
             </div>
             <div
               className={`switch ${quakeModelEnabled ? "on" : ""}`}
@@ -4009,7 +3922,7 @@ export default function App() {
                 ))}
               </div>
               <div style={{ marginTop: 6, color: "var(--muted)" }}>
-                Click a cell for class. Pin a site to see {classAdvice("HIGH")} vs {classAdvice("SAFE")}.
+                Click a hot spot for class. Pin a site to see {classAdvice("HIGH")} vs {classAdvice("SAFE")}.
               </div>
             </div>
           )}
@@ -4066,11 +3979,6 @@ export default function App() {
                 key={s}
                 type="button"
                 className={`infra-chip${infraFilter.statuses.includes(s) ? " is-on" : ""}`}
-                style={
-                  infraFilter.statuses.includes(s)
-                    ? { borderColor: PROJECT_STATUS_COLORS[s], color: PROJECT_STATUS_COLORS[s] }
-                    : undefined
-                }
                 onClick={() =>
                   setInfraFilter((f) => ({ ...f, statuses: toggleListValue(f.statuses, s) }))
                 }
@@ -4154,6 +4062,8 @@ export default function App() {
 
             {/* Placement toggle */}
             <button
+              type="button"
+              className={`side-cta${placementMode ? " is-on" : ""}`}
               onClick={() => {
                 setPlacementMode((v) => {
                   const next = !v;
@@ -4163,14 +4073,6 @@ export default function App() {
                   }
                   return next;
                 });
-              }}
-              style={{
-                width: "100%", cursor: "pointer", padding: "10px 0",
-                borderRadius: 2, fontWeight: 700, fontSize: 13,
-                border: placementMode ? "1px solid rgba(61,155,95,0.6)" : "1px solid var(--stroke)",
-                background: placementMode ? "rgba(61,155,95,0.20)" : "var(--cream-deep)",
-                color: placementMode ? "var(--seed)" : "var(--muted)",
-                marginBottom: 10,
               }}
             >
               {placementMode ? (
@@ -4243,6 +4145,8 @@ export default function App() {
                   {MODEL_CATALOG.filter((m) => m.category === cat).map((m) => (
                     <button
                       key={m.type}
+                      type="button"
+                      className={`side-seg-btn${selectedModel === m.type ? " is-on" : ""}`}
                       onClick={() => {
                         setSelectedModel(m.type);
                         if (m.type !== "custom") {
@@ -4251,18 +4155,9 @@ export default function App() {
                         }
                       }}
                       title={m.description}
-                      style={{
-                        cursor: "pointer", padding: "8px 6px", borderRadius: 2, textAlign: "left",
-                        border: selectedModel === m.type
-                          ? "1px solid rgba(61,155,95,0.55)"
-                          : "1px solid var(--stroke2)",
-                        background: selectedModel === m.type
-                          ? "rgba(61,155,95,0.14)"
-                          : "var(--cream-ink)",
-                        color: selectedModel === m.type ? "var(--seed)" : "var(--muted)",
-                      }}
+                      style={{ textAlign: "left", width: "100%", padding: "8px 10px" }}
                     >
-                      <div style={{ marginBottom: 4, display: "flex", alignItems: "center", color: selectedModel === m.type ? "var(--seed)" : "var(--muted)" }}>
+                      <div style={{ marginBottom: 4, display: "flex", alignItems: "center", color: selectedModel === m.type ? "var(--on-gold)" : "var(--muted)" }}>
                         {(() => { const Ic = ModelIcons[m.icon] ?? ModelIcons.construction; return <Ic size={18} />; })()}
                       </div>
                       <div style={{ fontSize: 11, fontWeight: 600 }}>{m.label}</div>
@@ -4277,8 +4172,8 @@ export default function App() {
               <div style={{ 
                 marginTop: 12, 
                 padding: "12px", 
-                background: "rgba(61,155,95,0.08)", 
-                border: "1px solid rgba(61,155,95,0.25)", 
+                background: "color-mix(in oklch, var(--gold-oklch) 12%, var(--cream))", 
+                border: "1px solid color-mix(in oklch, var(--gold-oklch) 40%, var(--stroke))", 
                 borderRadius: 2 
               }}>
                 <div style={{ fontSize: 11, color: "var(--seed)", fontWeight: 600, marginBottom: 8 }}>
@@ -4351,16 +4246,13 @@ export default function App() {
                         {(() => { const ic = MODEL_CATALOG.find((m) => m.type === p.modelType)?.icon ?? "construction"; const Ic = ModelIcons[ic] ?? ModelIcons.construction; return <Ic size={15} />; })()}
                       </span>
                       <span style={{ flex: 1, fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {p.name}
+                        {displayNameForProject(p)}
                       </span>
                       <button
+                        type="button"
+                        className="side-btn-danger"
                         onClick={async () => {
                           await fetch(backendUrl(`/api/projects/${p.id}`), { method: "DELETE" });
-                        }}
-                        style={{
-                          cursor: "pointer", padding: "2px 7px", borderRadius: 5, fontSize: 11,
-                          border: "1px solid rgba(255,77,79,0.3)", background: "rgba(255,77,79,0.10)",
-                          color: "rgba(255,100,100,0.9)",
                         }}
                       >✕</button>
                     </div>
@@ -4491,25 +4383,151 @@ export default function App() {
               </div>
             ) : null}
 
-            {roleConfig?.canSeeLayers && (
+            <div className="sectionTitle" style={{ marginBottom: 8 }}>
+              Tropical systems (Invest / TC)
+            </div>
+            <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12, lineHeight: 1.5 }}>
+              West Pacific Invests and named cyclones from RAMMB/CIRA. Invests inside the Philippine AOI are labeled LPA-watch.
+            </div>
+
+            <div className="toggleRow" style={{ marginBottom: 16 }}>
+              <div>
+                <label>Enable tropical tracking</label>
+                <div className="hint">Invest / TC tracks + NASA GIBS precip</div>
+              </div>
+              <div
+                className={`switch ${tropicalEnabled ? "on" : ""}`}
+                role="switch"
+                aria-checked={tropicalEnabled}
+                onClick={() => {
+                  setTropicalEnabled((on) => {
+                    const next = !on;
+                    setToggles((t) => ({ ...t, gibsPrecip: next }));
+                    if (next) {
+                      setGibsLayer((layer) =>
+                        layer.startsWith("IMERG_") ? layer : "IMERG_Precipitation_Rate"
+                      );
+                    }
+                    return next;
+                  });
+                }}
+              />
+            </div>
+
+            {tropicalLoading && (
+              <div style={{ marginTop: 8, fontSize: 11, color: "var(--muted)", display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--warn, #d4a017)", animation: "pulse 1.5s infinite" }} />
+                Loading tropical systems...
+              </div>
+            )}
+
+            {!tropicalLoading && tropicalEnabled && tropicalError && (
+              <div style={{ marginTop: 8, fontSize: 11, color: "var(--warn)" }}>
+                {tropicalError}
+              </div>
+            )}
+
+            {!tropicalLoading && tropicalEnabled && !tropicalError && tropicalSystems.length === 0 && (
+              <div style={{ marginTop: 8, fontSize: 11, color: "var(--muted)" }}>
+                No active West Pacific systems reported
+              </div>
+            )}
+
+            {!tropicalLoading && tropicalEnabled && tropicalSystems.length > 0 && (
+              <div style={{ marginTop: 8, fontSize: 11, color: "var(--ink-soft)", display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--warn, #d4a017)" }} />
+                {tropicalSystems.length} system{tropicalSystems.length !== 1 ? "s" : ""} tracked
+              </div>
+            )}
+
+            {tropicalEnabled && tropicalSystems.length > 0 && (
+              <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--stroke2)" }}>
+                <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
+                  Active systems
+                </div>
+                <div style={{ maxHeight: 320, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+                  {tropicalSystems.map((system) => {
+                    const color = getTropicalColor(system);
+                    const meta = getTropicalStageMeta(system.stage);
+                    const distance = Math.round(
+                      calculateDistance(14.1856, 121.5167, system.lat, system.lon),
+                    );
+                    return (
+                      <div
+                        key={system.id}
+                        onClick={() => {
+                          cesiumMapRef.current?.flyToLonLat(system.lon, system.lat, 400_000);
+                          mapRef.current?.flyTo({
+                            center: [system.lon, system.lat],
+                            zoom: 5,
+                            duration: 2000,
+                          });
+                        }}
+                        style={{
+                          padding: 10,
+                          background: "var(--cream-deep)",
+                          border: `1px solid ${color}55`,
+                          borderRadius: 2,
+                          cursor: "pointer",
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                          <span style={{ fontSize: 16, flexShrink: 0, color }}>{getTropicalIcon(system)}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--ink)", marginBottom: 4, lineHeight: 1.3 }}>
+                              {system.label}
+                            </div>
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", fontSize: 10, color: "var(--muted)" }}>
+                              <span style={{ color }}>{meta.title}</span>
+                              <span>•</span>
+                              <span>{system.intensityKt} kt</span>
+                              <span>•</span>
+                              <span>{distance.toLocaleString()} km away</span>
+                              {system.lpaWatch && (
+                                <>
+                                  <span>•</span>
+                                  <span style={{ color: "#c47a1a" }}>LPA-watch</span>
+                                </>
+                              )}
+                            </div>
+                            <div style={{ fontSize: 9, color: "var(--muted2)", marginTop: 4 }}>
+                              Observed: {new Date(system.observedAt).toLocaleString()}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div style={{ marginTop: 12, marginBottom: 16, padding: 12, background: "rgba(196,122,26,0.08)", border: "1px solid rgba(196,122,26,0.2)", borderRadius: 2 }}>
+              <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.6 }}>
+                {tropicalDisclaimer ||
+                  "Positions from RAMMB/CIRA TC Realtime (JTWC-derived). Not an official PAGASA bulletin."}
+              </div>
+            </div>
+
+            {roleConfig?.canSeeLayers && tropicalEnabled && (
             <>
             <div className="sectionTitle" style={{ marginBottom: 8 }}>
               NASA GIBS Map Layers
             </div>
             <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12, lineHeight: 1.5 }}>
-              Precipitation follows Tropical Tracking (Events). Other overlays use the same on/off.
+              Precipitation follows tropical tracking above. Other overlays use the same on/off.
             </div>
 
             {/* Precipitation Layers */}
             <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 11, color: "rgba(61,155,95,0.85)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
+              <div style={{ fontSize: 11, color: "var(--amber-ink)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
                 ☔ Precipitation (Ulan)
               </div>
               <div className="hint" style={{ marginBottom: 8 }}>
                 Turns on/off with tropical tracking
                 {tropicalEnabled ? " · active" : " · off"}
               </div>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <div className="side-seg">
                 {(
                   [
                     ["IMERG_Precipitation_Rate", "IMERG Rate"],
@@ -4518,17 +4536,9 @@ export default function App() {
                 ).map(([k, label]) => (
                   <button
                     key={k}
+                    type="button"
+                    className={`side-seg-btn${gibsLayer === k ? " is-on" : ""}`}
                     onClick={() => setGibsLayer(k)}
-                    style={{
-                      cursor: "pointer",
-                      borderRadius: 2,
-                      padding: "7px 12px",
-                      fontSize: 11,
-                      fontWeight: 600,
-                      border: "1px solid rgba(61,155,95,0.20)",
-                      background: gibsLayer === k ? "rgba(61,155,95,0.25)" : "rgba(0,0,0,0.15)",
-                      color: gibsLayer === k ? "rgba(61,155,95,1)" : "var(--muted)",
-                    }}
                   >
                     {label}
                   </button>
@@ -4536,68 +4546,18 @@ export default function App() {
               </div>
             </div>
 
-            {/* Temperature Layers */}
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 11, color: "rgba(255,140,60,0.85)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
-                🌡️ Temperature (Temperatura)
+                Temperature
               </div>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {(
-                  [
-                    ["MODIS_Terra_Land_Surface_Temp_Day", "Surface (Day)"],
-                    ["MODIS_Terra_Land_Surface_Temp_Night", "Surface (Night)"],
-                    ["AIRS_L2_Surface_Air_Temperature_Day", "Air Temp"],
-                  ] as const
-                ).map(([k, label]) => (
-                  <button
-                    key={k}
-                    onClick={() => setGibsLayer(k)}
-                    style={{
-                      cursor: "pointer",
-                      borderRadius: 2,
-                      padding: "7px 12px",
-                      fontSize: 11,
-                      fontWeight: 600,
-                      border: "1px solid rgba(255,140,60,0.20)",
-                      background: gibsLayer === k ? "rgba(255,140,60,0.25)" : "rgba(0,0,0,0.15)",
-                      color: gibsLayer === k ? "var(--primary)" : "var(--muted)",
-                    }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Satellite Imagery */}
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 11, color: "rgba(61,155,95,0.85)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
-                🛰️ Satellite Imagery
-              </div>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {(
-                  [
-                    ["MODIS_Terra_CorrectedReflectance_TrueColor", "MODIS (250m)"],
-                    ["VIIRS_NOAA20_CorrectedReflectance_TrueColor", "VIIRS (750m)"],
-                  ] as const
-                ).map(([k, label]) => (
-                  <button
-                    key={k}
-                    onClick={() => setGibsLayer(k)}
-                    style={{
-                      cursor: "pointer",
-                      borderRadius: 2,
-                      padding: "7px 12px",
-                      fontSize: 11,
-                      fontWeight: 600,
-                      border: "1px solid rgba(61,155,95,0.20)",
-                      background: gibsLayer === k ? "rgba(61,155,95,0.25)" : "rgba(0,0,0,0.15)",
-                      color: gibsLayer === k ? "rgba(61,155,95,1)" : "var(--muted)",
-                    }}
-                  >
-                    {label}
-                  </button>
-                ))}
+              <div className="side-seg">
+                <button
+                  type="button"
+                  className={`side-seg-btn${gibsLayer === "AIRS_L2_Surface_Air_Temperature_Day" ? " is-on" : ""}`}
+                  onClick={() => setGibsLayer("AIRS_L2_Surface_Air_Temperature_Day")}
+                >
+                  Air Temp
+                </button>
               </div>
             </div>
 
@@ -4606,7 +4566,7 @@ export default function App() {
               <div style={{ fontSize: 11, color: "rgba(255,215,0,0.85)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
                 🌫️ Atmosphere (Hangin)
               </div>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <div className="side-seg">
                 {(
                   [
                     ["MODIS_Terra_Aerosol", "Air Quality"],
@@ -4616,17 +4576,9 @@ export default function App() {
                 ).map(([k, label]) => (
                   <button
                     key={k}
+                    type="button"
+                    className={`side-seg-btn${gibsLayer === k ? " is-on" : ""}`}
                     onClick={() => setGibsLayer(k)}
-                    style={{
-                      cursor: "pointer",
-                      borderRadius: 2,
-                      padding: "7px 12px",
-                      fontSize: 11,
-                      fontWeight: 600,
-                      border: "1px solid rgba(255,215,0,0.20)",
-                      background: gibsLayer === k ? "rgba(255,215,0,0.25)" : "rgba(0,0,0,0.15)",
-                      color: gibsLayer === k ? "var(--seed)" : "var(--muted)",
-                    }}
                   >
                     {label}
                   </button>
@@ -4684,160 +4636,21 @@ export default function App() {
                 </div>
               )}
               {gibsStatus === "ok" && toggles.gibsPrecip && (
-                <div style={{ marginTop: 10, fontSize: 11, color: "rgba(61,155,95,0.85)", display: "flex", alignItems: "center", gap: 6 }}>
-                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: "rgba(61,155,95,0.85)" }} />
+                <div style={{ marginTop: 10, fontSize: 11, color: "var(--amber-ink)", display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--gold)" }} />
                   Climate data active
                 </div>
               )}
             </div>
 
             {/* Info Box */}
-            <div style={{ marginTop: 16, padding: 12, background: "rgba(61,155,95,0.08)", border: "1px solid rgba(61,155,95,0.15)", borderRadius: 2 }}>
+            <div style={{ marginTop: 16, padding: 12, background: "color-mix(in oklch, var(--gold-oklch) 10%, var(--cream))", border: "1px solid var(--stroke)", borderRadius: 2 }}>
               <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.6 }}>
                 💡 <strong>Tip:</strong> Use yesterday's date for most reliable data. Some layers have 1-2 day processing lag.
               </div>
             </div>
             </>
             )}
-          </div>
-        )}
-
-        {sidebarTab === "events" && roleConfig?.canSeeLayers && (
-          <div className="card" style={{ marginBottom: 12 }}>
-            <div className="sectionTitle" style={{ marginBottom: 8 }}>
-              Tropical systems (Invest / TC)
-            </div>
-            <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12, lineHeight: 1.5 }}>
-              West Pacific Invests and named cyclones from RAMMB/CIRA. Invests inside the Philippine AOI are labeled LPA-watch.
-            </div>
-
-            <div className="toggleRow" style={{ marginBottom: 16 }}>
-              <div>
-                <label>Enable tropical tracking</label>
-                <div className="hint">Invest / TC tracks + NASA GIBS precip</div>
-              </div>
-              <div
-                className={`switch ${tropicalEnabled ? "on" : ""}`}
-                role="switch"
-                aria-checked={tropicalEnabled}
-                onClick={() => {
-                  setTropicalEnabled((on) => {
-                    const next = !on;
-                    setToggles((t) => ({ ...t, gibsPrecip: next }));
-                    if (next) {
-                      setGibsLayer((layer) =>
-                        layer.startsWith("IMERG_") ? layer : "IMERG_Precipitation_Rate"
-                      );
-                    }
-                    return next;
-                  });
-                }}
-              />
-            </div>
-
-            {tropicalLoading && (
-              <div style={{ marginTop: 8, fontSize: 11, color: "rgba(255,215,0,0.85)", display: "flex", alignItems: "center", gap: 6 }}>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "rgba(255,215,0,0.85)", animation: "pulse 1.5s infinite" }} />
-                Loading tropical systems...
-              </div>
-            )}
-
-            {!tropicalLoading && tropicalEnabled && tropicalError && (
-              <div style={{ marginTop: 8, fontSize: 11, color: "rgba(255,140,80,0.9)" }}>
-                {tropicalError}
-              </div>
-            )}
-
-            {!tropicalLoading && tropicalEnabled && !tropicalError && tropicalSystems.length === 0 && (
-              <div style={{ marginTop: 8, fontSize: 11, color: "rgba(61,155,95,0.85)" }}>
-                No active West Pacific systems reported
-              </div>
-            )}
-
-            {!tropicalLoading && tropicalEnabled && tropicalSystems.length > 0 && (
-              <div style={{ marginTop: 8, fontSize: 11, color: "rgba(240,160,48,0.9)", display: "flex", alignItems: "center", gap: 6 }}>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "rgba(240,160,48,0.9)" }} />
-                {tropicalSystems.length} system{tropicalSystems.length !== 1 ? "s" : ""} tracked
-              </div>
-            )}
-
-            {tropicalEnabled && tropicalSystems.length > 0 && (
-              <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--stroke2)" }}>
-                <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
-                  Active systems
-                </div>
-                <div style={{ maxHeight: 320, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
-                  {tropicalSystems.map((system) => {
-                    const color = getTropicalColor(system);
-                    const meta = getTropicalStageMeta(system.stage);
-                    const distance = Math.round(
-                      calculateDistance(14.1856, 121.5167, system.lat, system.lon),
-                    );
-                    return (
-                      <div
-                        key={system.id}
-                        onClick={() => {
-                          cesiumMapRef.current?.flyToLonLat(system.lon, system.lat, 400_000);
-                          mapRef.current?.flyTo({
-                            center: [system.lon, system.lat],
-                            zoom: 5,
-                            duration: 2000,
-                          });
-                        }}
-                        style={{
-                          padding: 10,
-                          background: "rgba(0,0,0,0.20)",
-                          border: `1px solid ${color}30`,
-                          borderRadius: 2,
-                          cursor: "pointer",
-                          transition: "all 0.2s ease",
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = "rgba(0,0,0,0.35)";
-                          e.currentTarget.style.borderColor = `${color}60`;
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = "rgba(0,0,0,0.20)";
-                          e.currentTarget.style.borderColor = `${color}30`;
-                        }}
-                      >
-                        <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-                          <span style={{ fontSize: 16, flexShrink: 0, color }}>{getTropicalIcon(system)}</span>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--ink)", marginBottom: 4, lineHeight: 1.3 }}>
-                              {system.label}
-                            </div>
-                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", fontSize: 10, color: "var(--muted)" }}>
-                              <span style={{ color }}>{meta.title}</span>
-                              <span>•</span>
-                              <span>{system.intensityKt} kt</span>
-                              <span>•</span>
-                              <span>{distance.toLocaleString()} km away</span>
-                              {system.lpaWatch && (
-                                <>
-                                  <span>•</span>
-                                  <span style={{ color: "#f0a030" }}>LPA-watch</span>
-                                </>
-                              )}
-                            </div>
-                            <div style={{ fontSize: 9, color: "var(--muted2)", marginTop: 4 }}>
-                              Observed: {new Date(system.observedAt).toLocaleString()}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            <div style={{ marginTop: 16, padding: 12, background: "rgba(240,160,48,0.08)", border: "1px solid rgba(240,160,48,0.18)", borderRadius: 2 }}>
-              <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.6 }}>
-                {tropicalDisclaimer ||
-                  "Positions from RAMMB/CIRA TC Realtime (JTWC-derived). Not an official PAGASA bulletin."}
-              </div>
-            </div>
           </div>
         )}
 
@@ -4917,7 +4730,7 @@ export default function App() {
                   type="text"
                   value={modalProjectName}
                   onChange={(e) => setModalProjectName(e.target.value)}
-                  placeholder="e.g. Barangay Hall Phase 2"
+                  placeholder="e.g. Bonifacio Elementary School"
                   style={{
                     width: "100%",
                     boxSizing: "border-box",
