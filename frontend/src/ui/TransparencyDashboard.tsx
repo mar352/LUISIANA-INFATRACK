@@ -19,7 +19,7 @@ type Props = {
   engagementStats: EngagementPublicStats | null;
 };
 
-const CHART_FALLBACK = ["#245C3A", "#3D9B5F", "#6c8ebf", "#d4a017", "#2E6B45", "#9b9b9b"];
+const CHART_FALLBACK = ["#151c28", "#ffc107", "#6c8ebf", "#d4a017", "#5b6b7c", "#9b9b9b"];
 
 export default function TransparencyDashboard({ projects, engagementStats }: Props) {
   const mapProjects = useMemo(() => projects.map(publicProjectAsMapProject), [projects]);
@@ -53,10 +53,10 @@ export default function TransparencyDashboard({ projects, engagementStats }: Pro
     const byKind = engagementStats.byKind || { feedback: 0, issue: 0, suggestion: 0 };
     return [
       { name: "Open reports", count: engagementStats.open ?? 0, fill: "#d4a017" },
-      { name: "Resolved / closed", count: engagementStats.closed ?? 0, fill: "#245C3A" },
-      { name: "Feedback", count: byKind.feedback ?? 0, fill: "#3D9B5F" },
+      { name: "Resolved / closed", count: engagementStats.closed ?? 0, fill: "#151c28" },
+      { name: "Feedback", count: byKind.feedback ?? 0, fill: "#ffc107" },
       { name: "Issues", count: byKind.issue ?? 0, fill: "#6c8ebf" },
-      { name: "Suggestions", count: byKind.suggestion ?? 0, fill: "#2E6B45" },
+      { name: "Suggestions", count: byKind.suggestion ?? 0, fill: "#5b6b7c" },
     ];
   }, [engagementStats]);
 
@@ -117,7 +117,7 @@ export default function TransparencyDashboard({ projects, engagementStats }: Pro
                   <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                   <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
                   <Tooltip />
-                  <Bar dataKey="count" fill="#3D9B5F" radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="count" fill="#ffc107" radius={[2, 2, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -132,7 +132,7 @@ export default function TransparencyDashboard({ projects, engagementStats }: Pro
                   <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
                   <YAxis type="category" dataKey="name" width={100} tick={{ fontSize: 10 }} />
                   <Tooltip />
-                  <Bar dataKey="count" fill="#245C3A" radius={[0, 2, 2, 0]} />
+                  <Bar dataKey="count" fill="#151c28" radius={[0, 2, 2, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>

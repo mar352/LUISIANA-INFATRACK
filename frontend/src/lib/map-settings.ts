@@ -17,6 +17,11 @@ export type MapSettings = {
   shadowQuality: ShadowQuality;
   /** Horizon fog in tilted 3D (also drops far tile detail). */
   fogEnabled: boolean;
+  /**
+   * Camera motion-blur strength while panning (0 = off, 100 = current max).
+   * Default is a light streak — the original pass read as too strong.
+   */
+  motionBlur: number;
 };
 
 export const DEFAULT_MAP_SETTINGS: MapSettings = {
@@ -25,6 +30,7 @@ export const DEFAULT_MAP_SETTINGS: MapSettings = {
   shadowsEnabled: true,
   shadowQuality: "medium",
   fogEnabled: true,
+  motionBlur: 30,
 };
 
 const STORAGE_KEY = "infatrack-map-settings-v1";
@@ -43,13 +49,13 @@ export function shadowQualityToShadowMap(q: ShadowQuality): {
   softShadows: boolean;
 } {
   if (q === "low") {
-    return { maximumDistance: 250, size: 512, softShadows: false };
+    return { maximumDistance: 700, size: 512, softShadows: false };
   }
   if (q === "high") {
-    return { maximumDistance: 1000, size: 2048, softShadows: true };
+    return { maximumDistance: 2200, size: 2048, softShadows: true };
   }
-  // medium — FPS baseline: 500 m / 1024 / soft
-  return { maximumDistance: 500, size: 1024, softShadows: true };
+  // medium — soft PCF, municipal range only (see CesiumMap camera gate)
+  return { maximumDistance: 1600, size: 1024, softShadows: true };
 }
 
 function parseQuality<T extends string>(
@@ -68,6 +74,7 @@ export function loadMapSettings(): MapSettings {
     if (!raw) return { ...DEFAULT_MAP_SETTINGS };
     const parsed = JSON.parse(raw) as Partial<MapSettings>;
     const draw = Number(parsed.drawDistanceKm);
+    const blur = Number(parsed.motionBlur);
     const qualities = ["low", "medium", "high"] as const;
     return {
       drawDistanceKm: Number.isFinite(draw)
@@ -91,6 +98,9 @@ export function loadMapSettings(): MapSettings {
         typeof parsed.fogEnabled === "boolean"
           ? parsed.fogEnabled
           : DEFAULT_MAP_SETTINGS.fogEnabled,
+      motionBlur: Number.isFinite(blur)
+        ? Math.min(100, Math.max(0, Math.round(blur)))
+        : DEFAULT_MAP_SETTINGS.motionBlur,
     };
   } catch {
     return { ...DEFAULT_MAP_SETTINGS };

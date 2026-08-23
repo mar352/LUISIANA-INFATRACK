@@ -317,6 +317,13 @@ class EarthquakeProneModel {
   }
 
   async predictAt(lon: number, lat: number): Promise<EarthquakeDualSummary> {
+    if (this.labels.length < 20) {
+      try {
+        this.labels = await fetchEarthquakeLabels();
+      } catch {
+        /* sheet lookup still attempted below */
+      }
+    }
     const officialPts = this.labels.filter((p) => p.source !== "safe-negative");
     const near = nearestLabel(officialPts, lon, lat);
     const distM = near ? haversineM(lon, lat, near.lon, near.lat) : Infinity;

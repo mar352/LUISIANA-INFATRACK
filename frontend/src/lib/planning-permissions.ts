@@ -9,6 +9,7 @@ export type PlanningPermissions = {
   canAssign: boolean;
   canRecommend: boolean;
   canApprove: boolean;
+  canChangeStatus: boolean;
   canVote: boolean;
   canManageCalendar: boolean;
   canManageMeetings: boolean;
@@ -24,6 +25,7 @@ export function getPlanningPermissions(role: UserRole | null): PlanningPermissio
       canAssign: false,
       canRecommend: false,
       canApprove: false,
+      canChangeStatus: false,
       canVote: false,
       canManageCalendar: false,
       canManageMeetings: false,
@@ -33,7 +35,6 @@ export function getPlanningPermissions(role: UserRole | null): PlanningPermissio
   const isViewer = role === "Viewer";
   const isBarangay = role === "Barangay Official";
   const isMpdC = role === "MPDC";
-  const isCommittee = role === "MPDC" || role === "Engineer" || role === "Agriculture";
 
   return {
     canView: true,
@@ -41,8 +42,9 @@ export function getPlanningPermissions(role: UserRole | null): PlanningPermissio
     canComment: !isViewer,
     canSetPriority: isMpdC,
     canAssign: isMpdC,
-    canRecommend: isCommittee,
+    canRecommend: isMpdC,
     canApprove: isMpdC,
+    canChangeStatus: isMpdC,
     canVote: !isViewer && !isBarangay,
     canManageCalendar: !isViewer && !isBarangay,
     canManageMeetings: (isMpdC || role === "Engineer") && !isBarangay,
@@ -55,37 +57,33 @@ export function allowedStatusTransitions(
   role: UserRole | null,
 ): PlanningProposalStatus[] {
   if (!role || role === "Viewer") return [];
-  if (role === "Barangay Official") {
+
+  // Submitters may only file / resubmit. MPDC owns the review pipeline.
+  if (role !== "MPDC") {
     if (status === "draft" || status === "returned") return ["submitted"];
     return [];
   }
 
-  const perms = getPlanningPermissions(role);
   const next: PlanningProposalStatus[] = [];
-
   switch (status) {
     case "draft":
-      if (perms.canCreate) next.push("submitted");
+      next.push("submitted");
       break;
     case "submitted":
-      if (perms.canAssign || perms.canRecommend) next.push("in_review");
+      next.push("in_review", "returned", "rejected");
       break;
     case "in_review":
-      if (perms.canRecommend) {
-        next.push("recommended", "returned");
-      }
-      if (perms.canApprove) next.push("rejected");
+      next.push("recommended", "returned", "rejected");
       break;
     case "recommended":
-      if (perms.canApprove) next.push("approved", "rejected", "returned");
+      next.push("approved", "returned", "rejected");
       break;
     case "returned":
-      if (perms.canCreate) next.push("submitted");
+      next.push("submitted", "rejected");
       break;
     default:
       break;
   }
-
   return next;
 }
 

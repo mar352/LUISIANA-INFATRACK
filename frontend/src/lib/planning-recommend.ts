@@ -3,7 +3,24 @@ import type {
   PlanningProposal,
   PlanningProposalStatus,
   PlanningRequestKind,
+  Project,
 } from "../types";
+import { computeInfraGaps } from "./infra-analytics";
+
+const NEED_HINTS: { label: string; needles: string[] }[] = [
+  { label: "Barangay Hall", needles: ["barangay hall", "brgy hall", "bgy hall", "municipal hall"] },
+  { label: "Health facility", needles: ["rhu", "health center", "health", "hospital", "clinic", "birthing"] },
+  { label: "School", needles: ["school", "classroom", "deped", "elementary", "high school"] },
+  { label: "Water facility", needles: ["water tank", "water", "reservoir", "poso", "level ii", "level iii"] },
+];
+
+export function inferBaselineNeed(text: string): string | null {
+  const t = String(text || "").toLowerCase();
+  for (const row of NEED_HINTS) {
+    if (row.needles.some((n) => t.includes(n))) return row.label;
+  }
+  return null;
+}
 
 export type RecommendationResult = {
   score: number;
@@ -27,15 +44,27 @@ export function isNeedsAssessmentComplete(
   return Boolean(needs.urgencyNote?.trim() && needs.hazardExposure?.trim());
 }
 
+export type RecommendationContext = {
+  projects?: Project[];
+};
+
 /**
  * Rule-based recommendation score (0–100).
  * Transparent weights for MPDC — not ML.
+ * Optional live projects add points when the request fills a mapped baseline gap.
  */
 export function computeRecommendation(
   proposal: Pick<
     PlanningProposal,
-    "priority" | "needsAssessment" | "requestKind" | "barangay" | "attachments"
+    | "title"
+    | "summary"
+    | "priority"
+    | "needsAssessment"
+    | "requestKind"
+    | "barangay"
+    | "attachments"
   >,
+  ctx?: RecommendationContext,
 ): RecommendationResult {
   const reasons: string[] = [];
   let score = 0;
@@ -84,6 +113,20 @@ export function computeRecommendation(
   if (docs > 0) {
     score += Math.min(10, docs * 4);
     reasons.push(`${docs} supporting document${docs === 1 ? "" : "s"}`);
+  }
+
+  const projects = ctx?.projects;
+  const barangay = (proposal.barangay || "").trim();
+  if (projects?.length && barangay) {
+    const gap = computeInfraGaps(projects).find((g) => g.barangay === barangay);
+    const inferred = inferBaselineNeed(`${proposal.title || ""} ${proposal.summary || ""}`);
+    if (gap && inferred && gap.missing.includes(inferred)) {
+      score += 20;
+      reasons.push(`Fills ${inferred} gap in ${barangay}`);
+    } else if (gap && gap.missing.length >= 2) {
+      score += 8;
+      reasons.push(`${barangay} has ${gap.missing.length} baseline gaps`);
+    }
   }
 
   score = Math.max(0, Math.min(100, score));
@@ -139,9 +182,9 @@ export function nextActorHint(status: PlanningProposalStatus): string {
     case "draft":
       return "Waiting on submitter to submit the request.";
     case "submitted":
-      return "Waiting on MPDC / committee to move into review.";
+      return "Waiting on MPDC to move into review.";
     case "in_review":
-      return "Waiting on Engineer / Agriculture / MPDC to recommend or return.";
+      return "Waiting on MPDC to recommend, return, or reject.";
     case "recommended":
       return "Waiting on MPDC to approve, return, or reject.";
     case "approved":

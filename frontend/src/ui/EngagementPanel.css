@@ -53,8 +53,8 @@
 }
 
 .ep-btn.primary {
-  background: #245C3A;
-  border-color: #245C3A;
+  background: var(--seed);
+  border-color: var(--seed);
   color: #fff;
   margin-top: 8px;
 }
@@ -93,8 +93,8 @@
 }
 
 .ep-item.active {
-  border-color: #245C3A;
-  box-shadow: inset 3px 0 0 #245C3A;
+  border-color: var(--gold);
+  background: color-mix(in oklch, var(--gold-oklch) 14%, var(--cream));
 }
 
 .ep-item-top {
@@ -107,7 +107,7 @@
   font-weight: 800;
 }
 
-.ep-kind { color: #245C3A; }
+.ep-kind { color: var(--seed); }
 .ep-status { color: var(--muted, #666); }
 .ep-id { color: var(--muted, #666); font-size: 11px; }
 
@@ -139,6 +139,6 @@
   font-size: 12px;
   margin-top: 6px;
   padding: 6px 8px;
-  background: rgba(61, 155, 95, 0.08);
-  border: 1px solid rgba(61, 155, 95, 0.25);
+  background: rgba(255, 193, 7, 0.08);
+  border: 1px solid rgba(255, 193, 7, 0.25);
 }

@@ -75,7 +75,7 @@ export type MapSketch = {
 
 export const MAP_SKETCH_COLORS = [
   "#c47a1a",
-  "#245c3a",
+  "#151c28",
   "#1d4e89",
   "#b42318",
   "#7a3e9d",
@@ -121,8 +121,8 @@ export const LIFECYCLE_PHASES: { phase: LifecyclePhase; label: string; color: st
   { phase: "Procurement",     label: "Procurement",     color: "#6c8ebf" },
   { phase: "Construction",    label: "Construction",    color: "#f5a623" },
   { phase: "Inspection",      label: "Inspection",      color: "#d4a017" },
-  { phase: "Turnover",        label: "Turnover",        color: "#82b366" },
-  { phase: "Maintenance",     label: "Maintenance",     color: "#245C3A" },
+  { phase: "Turnover",        label: "Turnover",        color: "#c9a227" },
+  { phase: "Maintenance",     label: "Maintenance",     color: "#151c28" },
   { phase: "Decommissioned",  label: "Decommissioned",  color: "#7a6b8a" },
 ];
 
@@ -265,6 +265,9 @@ export type Project = {
   progress: number;
   location: { lat: number; lon: number };
   rotation?: number;
+  /** Extra orientation for the map GLB, degrees. */
+  rotationPitch?: number;
+  rotationRoll?: number;
   /** User-adjusted multiplier for the map GLB model. */
   modelScale?: number;
   /**
@@ -344,7 +347,7 @@ export const PROJECT_STATUS_COLORS: Record<ProjectStatus, string> = {
   Planned: "#9b9b9b",
   Ongoing: "#f5a623",
   Delayed: "#e05252",
-  Completed: "#245C3A",
+  Completed: "#151c28",
   Suspended: "#7a6b8a",
 };
 
@@ -505,8 +508,8 @@ export const PLANNING_STATUS_COLORS: Record<PlanningProposalStatus, string> = {
   draft: "#9b9b9b",
   submitted: "#6c8ebf",
   in_review: "#f5a623",
-  recommended: "#82b366",
-  approved: "#245C3A",
+  recommended: "#c9a227",
+  approved: "#151c28",
   returned: "#d4a017",
   rejected: "#e05252",
 };

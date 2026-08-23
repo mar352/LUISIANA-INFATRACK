@@ -1,4 +1,4 @@
-import { Component, useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { Component, useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import type { EngagementKind, EngagementPublicStats, PublicProject } from "../types";
 import { BARANGAY_LIST, MODEL_CATALOG } from "../types";
 import {
@@ -7,7 +7,7 @@ import {
   publicProjectAsMapProject,
   submitEngagement,
 } from "../lib/api";
-import { CesiumMap } from "./CesiumMap";
+import { CesiumMap, type CesiumMapHandle } from "./CesiumMap";
 import TransparencyDashboard from "./TransparencyDashboard";
 import { ThemeToggle } from "./ThemeToggle";
 import "./CitizenPortal.css";
@@ -81,8 +81,7 @@ export default function CitizenPortal({ onBack, onOpenLiveMap }: Props) {
   const [stats, setStats] = useState<EngagementPublicStats | null>(null);
   const [loadError, setLoadError] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [pickMode, setPickMode] = useState(false);
-  const [picked, setPicked] = useState<{ lng: number; lat: number } | null>(null);
+  const portalMapRef = useRef<CesiumMapHandle>(null);
 
   const [formTitle, setFormTitle] = useState("");
   const [formBody, setFormBody] = useState("");
@@ -109,8 +108,6 @@ export default function CitizenPortal({ onBack, onOpenLiveMap }: Props) {
     [projects, selectedId]
   );
 
-  const showMap = tab === "report";
-
   const refresh = useCallback(async () => {
     try {
       setLoadError("");
@@ -131,8 +128,16 @@ export default function CitizenPortal({ onBack, onOpenLiveMap }: Props) {
   }, [refresh]);
 
   useEffect(() => {
-    if (tab !== "report") setPickMode(false);
-  }, [tab]);
+    if (tab !== "projects" || !selectedId) return;
+    let tries = 0;
+    let timer = 0;
+    const attempt = () => {
+      if (portalMapRef.current?.flyToProject(selectedId)) return;
+      if (tries++ < 40) timer = window.setTimeout(attempt, 200);
+    };
+    attempt();
+    return () => window.clearTimeout(timer);
+  }, [tab, selectedId]);
 
   const resetForm = () => {
     setFormTitle("");
@@ -143,7 +148,6 @@ export default function CitizenPortal({ onBack, onOpenLiveMap }: Props) {
     setContactName("");
     setContactEmail("");
     setContactPhone("");
-    setPicked(null);
     setSubmitError("");
     setSubmitOkId("");
   };
@@ -178,8 +182,8 @@ export default function CitizenPortal({ onBack, onOpenLiveMap }: Props) {
         category: formCategory,
         projectId: formProjectId || null,
         barangay: formBarangay || null,
-        lng: picked?.lng ?? null,
-        lat: picked?.lat ?? null,
+        lng: projects.find((p) => p.id === formProjectId)?.location.lon ?? null,
+        lat: projects.find((p) => p.id === formProjectId)?.location.lat ?? null,
         contactName: contactName || null,
         contactEmail: contactEmail || null,
         contactPhone: contactPhone || null,
@@ -187,7 +191,6 @@ export default function CitizenPortal({ onBack, onOpenLiveMap }: Props) {
       setSubmitOkId(res.submission.id);
       setFormTitle("");
       setFormBody("");
-      setPicked(null);
       void refresh();
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Submission failed");
@@ -244,32 +247,10 @@ export default function CitizenPortal({ onBack, onOpenLiveMap }: Props) {
 
       {loadError && <div className="cp-banner err">{loadError}</div>}
 
-      {/* Mini map for report location pick only — full Live Map uses the Viewer shell + side panel. */}
-      <div
-        className="cp-map-host cp-map-host--mini"
-        hidden={!showMap}
-        aria-hidden={!showMap}
-      >
-        <CesiumMap
-          solarHour={14}
-          projects={mapProjects}
-          visible
-          readOnly
-          placementMode={pickMode}
-          onPlaceClick={(pos) => {
-            setPicked({ lng: pos.lng, lat: pos.lat });
-            setPickMode(false);
-          }}
-          terrainEnabled={false}
-          satellite={false}
-          buildingBlocksVisible
-        />
-      </div>
-
       <div className="cp-body">
         <PortalErrorBoundary label="Portal section">
           {tab === "projects" && (
-            <div className="cp-split">
+            <div className="cp-split cp-split--projects">
               <div className="cp-list">
                 <h2>Public projects</h2>
                 {projects.length === 0 ? (
@@ -280,7 +261,13 @@ export default function CitizenPortal({ onBack, onOpenLiveMap }: Props) {
                       key={p.id}
                       type="button"
                       className={`cp-proj${selectedId === p.id ? " active" : ""}`}
-                      onClick={() => setSelectedId(p.id)}
+                      onClick={() => {
+                        if (selectedId === p.id) {
+                          portalMapRef.current?.flyToProject(p.id);
+                        } else {
+                          setSelectedId(p.id);
+                        }
+                      }}
                     >
                       <div className="cp-proj-name">{p.name || "Untitled"}</div>
                       <div className="cp-proj-meta">
@@ -368,11 +355,30 @@ export default function CitizenPortal({ onBack, onOpenLiveMap }: Props) {
                   </>
                 )}
               </div>
+              <div className="cp-map-host cp-map-host--projects">
+                <CesiumMap
+                  ref={portalMapRef}
+                  solarHour={14}
+                  projects={mapProjects}
+                  visible
+                  readOnly
+                  clusteringEnabled={false}
+                  terrainEnabled={false}
+                  satellite={false}
+                  buildingBlocksVisible
+                  onProjectSelect={(id) => setSelectedId(id)}
+                />
+                <div className="cp-map-hint">
+                  {selected
+                    ? `${selected.name} · ${selected.barangay || "Luisiana"}`
+                    : "Select a project to fly to it"}
+                </div>
+              </div>
             </div>
           )}
 
           {(tab === "report" || tab === "feedback" || tab === "suggest") && (
-            <div className={`cp-form-wrap${tab === "report" ? " cp-form-wrap--with-map" : ""}`}>
+            <div className="cp-form-wrap">
               <div>
                 <h2>
                   {tab === "report" && "Report an infrastructure issue"}
@@ -454,26 +460,6 @@ export default function CitizenPortal({ onBack, onOpenLiveMap }: Props) {
                     </label>
                   )}
 
-                  {tab === "report" && (
-                    <div className="cp-pick">
-                      <button
-                        type="button"
-                        className={`cp-btn${pickMode ? " primary" : ""}`}
-                        onClick={() => setPickMode((v) => !v)}
-                      >
-                        {pickMode ? "Click the map on the right…" : "Pick location on map (optional)"}
-                      </button>
-                      {picked && (
-                        <span className="cp-muted">
-                          {picked.lat.toFixed(5)}, {picked.lng.toFixed(5)}
-                          <button type="button" className="cp-link" onClick={() => setPicked(null)}>
-                            Clear
-                          </button>
-                        </span>
-                      )}
-                    </div>
-                  )}
-
                   <fieldset className="cp-fieldset">
                     <legend>Contact (optional)</legend>
                     <div className="cp-grid2">
@@ -512,8 +498,6 @@ export default function CitizenPortal({ onBack, onOpenLiveMap }: Props) {
                   </button>
                 </form>
               </div>
-
-              {tab === "report" && <div className="cp-map-slot" aria-hidden />}
             </div>
           )}
 

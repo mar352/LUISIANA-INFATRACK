@@ -32,8 +32,8 @@
   color: #1a1a1a;
 }
 
-.td-kpi-value.accent { color: #3D9B5F; }
-.td-kpi-value.safe { color: #245C3A; }
+.td-kpi-value.accent { color: var(--amber-ink); }
+.td-kpi-value.safe { color: var(--seed); }
 .td-kpi-value.warn { color: #b8860b; }
 
 .td-empty,
@@ -61,7 +61,7 @@
   font-weight: 800;
   letter-spacing: 0.02em;
   text-transform: uppercase;
-  color: #245C3A;
+  color: var(--seed);
 }
 
 .td-chart {

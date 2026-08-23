@@ -1,5 +1,5 @@
 import type { Project, ProjectStatus } from "../types";
-import { MODEL_CATALOG } from "../types";
+import { BARANGAY_LIST, MODEL_CATALOG } from "../types";
 
 export type NamedCount = {
   name: string;
@@ -30,17 +30,17 @@ const STATUS_ORDER: ProjectStatus[] = [
 
 const STATUS_FILL: Record<ProjectStatus, string> = {
   Planned: "#6c8ebf",
-  Ongoing: "#3D9B5F",
+  Ongoing: "#ffc107",
   Delayed: "#d4a017",
-  Completed: "#245C3A",
+  Completed: "#151c28",
   Suspended: "#9b9b9b",
 };
 
 const DEPT_FILL: Record<string, string> = {
-  MPDC: "#245C3A",
-  Engineering: "#3D9B5F",
-  Agriculture: "#7a9e3e",
-  "Negosyo Center": "#2E6B45",
+  MPDC: "#151c28",
+  Engineering: "#ffc107",
+  Agriculture: "#5b6b7c",
+  "Negosyo Center": "#c9a227",
 };
 
 function modelLabel(modelType: string): string {
@@ -104,4 +104,169 @@ export function computeInfraAnalytics(projects: Project[]): InfraAnalyticsSummar
     suspended: statusMap.get("Suspended") || 0,
     avgProgress: total === 0 ? 0 : Math.round((progressSum / total) * 10) / 10,
   };
+}
+
+export type BarangayCompareRow = {
+  name: string;
+  count: number;
+  completed: number;
+  ongoing: number;
+  planned: number;
+  delayed: number;
+  avgProgress: number;
+  budgetTotal: number;
+  budgetSpent: number;
+};
+
+export type BudgetRollup = {
+  total: number;
+  spent: number;
+  utilPct: number;
+  withBudget: number;
+  byBarangay: { name: string; total: number; spent: number }[];
+  byDepartment: { name: string; total: number; spent: number }[];
+};
+
+export type GapNeed = {
+  key: string;
+  label: string;
+  modelTypes: string[];
+};
+
+/** Baseline facilities each Luisiana barangay is expected to have for siting. */
+export const BASELINE_NEEDS: GapNeed[] = [
+  { key: "hall", label: "Barangay Hall", modelTypes: ["barangay_hall", "municipal_hall"] },
+  { key: "health", label: "Health facility", modelTypes: ["rhu", "hospital"] },
+  { key: "school", label: "School", modelTypes: ["school"] },
+  { key: "water", label: "Water facility", modelTypes: ["water_tank"] },
+];
+
+export type BarangayGap = {
+  barangay: string;
+  projectCount: number;
+  present: string[];
+  missing: string[];
+};
+
+export function computeBarangayCompare(projects: Project[]): BarangayCompareRow[] {
+  const list = Array.isArray(projects) ? projects : [];
+  const map = new Map<string, BarangayCompareRow>();
+
+  const ensure = (name: string): BarangayCompareRow => {
+    let row = map.get(name);
+    if (!row) {
+      row = {
+        name,
+        count: 0,
+        completed: 0,
+        ongoing: 0,
+        planned: 0,
+        delayed: 0,
+        avgProgress: 0,
+        budgetTotal: 0,
+        budgetSpent: 0,
+      };
+      map.set(name, row);
+    }
+    return row;
+  };
+
+  for (const p of list) {
+    const name = (p.barangay || "").trim() || "Unspecified";
+    const row = ensure(name);
+    row.count += 1;
+    if (p.status === "Completed") row.completed += 1;
+    else if (p.status === "Ongoing") row.ongoing += 1;
+    else if (p.status === "Planned") row.planned += 1;
+    else if (p.status === "Delayed") row.delayed += 1;
+    row.avgProgress += Number(p.progress) || 0;
+    row.budgetTotal += Number(p.budgetTotal) || 0;
+    row.budgetSpent += Number(p.budgetSpent) || 0;
+  }
+
+  return [...map.values()]
+    .map((row) => ({
+      ...row,
+      avgProgress: row.count === 0 ? 0 : Math.round(row.avgProgress / row.count),
+    }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+}
+
+export function computeBudgetRollup(projects: Project[]): BudgetRollup {
+  const list = Array.isArray(projects) ? projects : [];
+  let total = 0;
+  let spent = 0;
+  let withBudget = 0;
+  const brgy = new Map<string, { total: number; spent: number }>();
+  const dept = new Map<string, { total: number; spent: number }>();
+
+  for (const p of list) {
+    const t = Number(p.budgetTotal) || 0;
+    const s = Number(p.budgetSpent) || 0;
+    if (t > 0) withBudget += 1;
+    total += t;
+    spent += s;
+    const bName = (p.barangay || "").trim() || "Unspecified";
+    const dName = p.department || "Unknown";
+    const b = brgy.get(bName) ?? { total: 0, spent: 0 };
+    b.total += t;
+    b.spent += s;
+    brgy.set(bName, b);
+    const d = dept.get(dName) ?? { total: 0, spent: 0 };
+    d.total += t;
+    d.spent += s;
+    dept.set(dName, d);
+  }
+
+  const toList = (m: Map<string, { total: number; spent: number }>) =>
+    [...m.entries()]
+      .map(([name, v]) => ({ name, total: v.total, spent: v.spent }))
+      .filter((r) => r.total > 0 || r.spent > 0)
+      .sort((a, b) => b.total - a.total);
+
+  return {
+    total,
+    spent,
+    utilPct: total > 0 ? Math.round((spent / total) * 100) : 0,
+    withBudget,
+    byBarangay: toList(brgy),
+    byDepartment: toList(dept),
+  };
+}
+
+export function computeInfraGaps(projects: Project[]): BarangayGap[] {
+  const list = Array.isArray(projects) ? projects : [];
+  const byBrgy = new Map<string, Project[]>();
+  for (const p of list) {
+    const name = (p.barangay || "").trim();
+    if (!name) continue;
+    const arr = byBrgy.get(name) ?? [];
+    arr.push(p);
+    byBrgy.set(name, arr);
+  }
+
+  return BARANGAY_LIST.map((barangay) => {
+    const items = byBrgy.get(barangay) ?? [];
+    const types = new Set(items.map((p) => String(p.modelType || "")));
+    const present: string[] = [];
+    const missing: string[] = [];
+    for (const need of BASELINE_NEEDS) {
+      const hit = need.modelTypes.some((t) => types.has(t));
+      if (hit) present.push(need.label);
+      else missing.push(need.label);
+    }
+    return {
+      barangay,
+      projectCount: items.length,
+      present,
+      missing,
+    };
+  }).sort((a, b) => b.missing.length - a.missing.length || a.barangay.localeCompare(b.barangay));
+}
+
+export function formatPesoCompact(n: number): string {
+  if (!Number.isFinite(n) || n === 0) return "₱0";
+  if (Math.abs(n) >= 1_000_000) return `₱${(n / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(n) >= 1_000) return `₱${(n / 1_000).toFixed(0)}k`;
+  return `₱${Math.round(n).toLocaleString()}`;
 }

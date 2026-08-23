@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import type { Project, ProjectPhoto, ProjectPhotoKind } from "../types";
 import { MODEL_CATALOG, PROJECT_STATUS_COLORS, PROJECT_STATUS_LABELS } from "../types";
-import { classAdvice, classColor } from "../lib/earthquake-labels";
 import {
   isDualSummary,
   type EarthquakeDualSummary,
@@ -10,6 +9,16 @@ import {
 } from "../lib/ml-earthquake";
 import { backendUrl, deleteProjectPhoto, uploadProjectPhoto } from "../lib/api";
 import { resolveOfficialLinks } from "../lib/infra-official-links";
+import { hoverTypeLabel } from "../lib/place-name";
+import { officialLabelAt, type EarthquakeLabelPoint } from "../lib/earthquake-labels";
+import {
+  buildLuisianaAssess,
+  fetchGeoriskAssess,
+  pointInLuisiana,
+  type GeoRiskAssess,
+  type LiveHazards,
+} from "../lib/luisiana-site-assess";
+import { printSiteHazardReport } from "../lib/hazard-report";
 import "./PlaceSidePanel.css";
 
 type Tab = "overview" | "progress" | "activity" | "about";
@@ -26,6 +35,9 @@ type Props = {
   onPhotosChange?: (projectId: string, photos: ProjectPhoto[]) => void;
   onClose: () => void;
   onEdit?: () => void;
+  onRename?: (name: string) => void | Promise<void>;
+  /** Street or barangay under the name — not the structure title. */
+  locationLabel?: string | null;
   onToggleLock?: () => void;
   /** Engineer: convert this site pin into the Under Construction GLB. */
   canPromoteSitePin?: boolean;
@@ -46,6 +58,25 @@ function statusColor(status: Project["status"]) {
 
 function photoKindOf(photo: ProjectPhoto): ProjectPhotoKind {
   return photo.kind === "site" ? "site" : "progress";
+}
+
+function mergeSheetScore(
+  score: EarthquakeDualSummary | null,
+  sheet: EarthquakeLabelPoint | null,
+): EarthquakeDualSummary | null {
+  if (!sheet) return score;
+  const official: EarthquakeSiteScore = {
+    lon: sheet.lon,
+    lat: sheet.lat,
+    cls: sheet.label,
+    confidence: 1,
+    shakeClass: sheet.shakeClass,
+    eilClass: sheet.eilClass,
+    source: "nearest-label",
+  };
+  if (score?.official) return score;
+  if (score) return { ...score, official };
+  return { ...official, official, predicted: null };
 }
 
 function InfoSvg({ children }: { children: ReactNode }) {
@@ -110,6 +141,8 @@ export function PlaceSidePanel({
   onPhotosChange,
   onClose,
   onEdit,
+  onRename,
+  locationLabel = null,
   onToggleLock,
   canPromoteSitePin = false,
   startConstructionBusy = false,
@@ -124,9 +157,17 @@ export function PlaceSidePanel({
   const [uploading, setUploading] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [uploadKind, setUploadKind] = useState<ProjectPhotoKind>("site");
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
+  const [renameSaving, setRenameSaving] = useState(false);
+  const [insideLuisiana, setInsideLuisiana] = useState(true);
+  const [geoRisk, setGeoRisk] = useState<"idle" | "loading" | "error" | GeoRiskAssess>("idle");
+  const [sheetLabel, setSheetLabel] = useState<EarthquakeLabelPoint | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const modelInfo = MODEL_CATALOG.find((m) => m.type === project.modelType);
+  const displayName = project.name?.trim() || "Untitled site";
+  const typeLabel = hoverTypeLabel(project);
   const milestones = project.milestones ?? [];
   const sitePhotos = photos.filter((p) => photoKindOf(p) === "site");
   const progressPhotos = photos.filter((p) => photoKindOf(p) === "progress");
@@ -134,6 +175,68 @@ export function PlaceSidePanel({
   const coords = `${project.location.lat.toFixed(5)}, ${project.location.lon.toFixed(5)}`;
   const showPhotoEdit = Boolean(canAddPhotos);
   const showStartBuild = Boolean(canPromoteSitePin && project.siteMarkerOnly && onStartConstruction);
+  const canRename = Boolean(!readOnly && onRename);
+
+  useEffect(() => {
+    setRenameValue(displayName);
+    setRenaming(false);
+  }, [project.id, displayName]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void pointInLuisiana(project.location.lon, project.location.lat).then((ok) => {
+      if (!cancelled) setInsideLuisiana(ok);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [project.location.lon, project.location.lat]);
+
+  useEffect(() => {
+    if (!insideLuisiana) {
+      setGeoRisk("idle");
+      return;
+    }
+    const ctrl = new AbortController();
+    setGeoRisk("loading");
+    void fetchGeoriskAssess(project.location.lat, project.location.lon, ctrl.signal).then((data) => {
+      if (ctrl.signal.aborted) return;
+      setGeoRisk(data?.inside ? data : "error");
+    });
+    return () => {
+      ctrl.abort();
+    };
+  }, [insideLuisiana, project.location.lat, project.location.lon]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void officialLabelAt(project.location.lon, project.location.lat).then((pt) => {
+      if (!cancelled) setSheetLabel(pt);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [project.location.lon, project.location.lat]);
+
+  async function commitRename() {
+    const next = renameValue.trim();
+    if (!onRename || !next) {
+      setRenaming(false);
+      setRenameValue(displayName);
+      return;
+    }
+    if (next === displayName) {
+      setRenaming(false);
+      return;
+    }
+    setRenameSaving(true);
+    try {
+      await onRename(next);
+      setRenaming(false);
+    } finally {
+      setRenameSaving(false);
+    }
+  }
   const officialLinks = resolveOfficialLinks(project);
 
   useEffect(() => {
@@ -330,9 +433,9 @@ export function PlaceSidePanel({
   }
 
   return (
-    <aside className="place-panel" aria-label={`${project.name} details`}>
+    <aside className="place-panel" aria-label={`${displayName} details`}>
       <div className="place-panel-search">
-        <div className="place-panel-search-text">{project.name}</div>
+        <div className="place-panel-search-text">{displayName}</div>
         <button type="button" className="place-panel-icon-btn" onClick={onClose} aria-label="Close">
           ×
         </button>
@@ -349,14 +452,67 @@ export function PlaceSidePanel({
         >
           {!heroPhoto && (
             <div className="place-panel-hero-fallback">
-              <span>{modelInfo?.label || "Infrastructure"}</span>
-              <strong>{project.name}</strong>
+              <span>{typeLabel}</span>
+              <strong>{displayName}</strong>
             </div>
           )}
         </div>
 
         <div className="place-panel-body">
-          <h1 className="place-panel-title">{project.name}</h1>
+          {renaming && canRename ? (
+            <form
+              className="place-panel-rename"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void commitRename();
+              }}
+            >
+              <input
+                className="place-panel-rename-input"
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                autoFocus
+                disabled={renameSaving}
+                placeholder="Structure name"
+                aria-label="Rename site"
+              />
+              <div className="place-panel-rename-actions">
+                <button type="submit" className="place-panel-rename-save" disabled={renameSaving || !renameValue.trim()}>
+                  {renameSaving ? "Saving…" : "Save"}
+                </button>
+                <button
+                  type="button"
+                  className="place-panel-rename-cancel"
+                  disabled={renameSaving}
+                  onClick={() => {
+                    setRenaming(false);
+                    setRenameValue(displayName);
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div className="place-panel-title-row">
+              <h1 className="place-panel-title">{displayName}</h1>
+              {canRename && (
+                <button
+                  type="button"
+                  className="place-panel-rename-btn"
+                  onClick={() => {
+                    setRenameValue(displayName);
+                    setRenaming(true);
+                  }}
+                >
+                  Rename
+                </button>
+              )}
+            </div>
+          )}
+          {locationLabel && !renaming && (
+            <p className="place-panel-autoname">{locationLabel}</p>
+          )}
           <div className="place-panel-rating-row">
             <span
               className="place-panel-status"
@@ -368,67 +524,72 @@ export function PlaceSidePanel({
               {statusLabel(project.status)}
             </span>
             <span className="place-panel-meta">
-              {project.progress}% · {modelInfo?.label || project.modelType}
+              {project.progress}% · {typeLabel}
             </span>
           </div>
           <div className="place-panel-type">{project.department}</div>
 
-          {earthquakeScore && (
-            <div className="place-build-confirm" style={{ background: "#f4f7f4" }}>
-              {isDualSummary(earthquakeScore) ? (
-                <>
-                  <strong>Earthquake site</strong>
-                  <p style={{ marginBottom: 6 }}>
-                    <span style={{ fontSize: 10, letterSpacing: "0.04em", textTransform: "uppercase" }}>
-                      Old · PHIVOLCS EIL 2014
-                    </span>
-                    <br />
-                    {earthquakeScore.official ? (
-                      <>
-                        <b style={{ color: classColor(earthquakeScore.official.cls) }}>
-                          {earthquakeScore.official.cls}
-                        </b>
-                        {" — "}
-                        {classAdvice(earthquakeScore.official.cls)}. PEIS{" "}
-                        {earthquakeScore.official.shakeClass.toUpperCase()} · EIL{" "}
-                        {earthquakeScore.official.eilClass}.
-                      </>
-                    ) : (
-                      "No nearby 2014 sheet pixel."
-                    )}
-                  </p>
-                  <p>
-                    <span style={{ fontSize: 10, letterSpacing: "0.04em", textTransform: "uppercase" }}>
-                      Prediction · terrain / satellite
-                    </span>
-                    <br />
-                    {earthquakeScore.predicted ? (
-                      <>
-                        <b style={{ color: classColor(earthquakeScore.predicted.cls) }}>
-                          {earthquakeScore.predicted.cls}
-                        </b>
-                        {" — "}
-                        {classAdvice(earthquakeScore.predicted.cls)}.{" "}
-                        {Math.round(earthquakeScore.predicted.confidence * 100)}% confidence.
-                      </>
-                    ) : (
-                      "Model not ready."
-                    )}
-                  </p>
-                </>
-              ) : (
-                <>
-              <strong style={{ color: classColor(earthquakeScore.cls) }}>
-                Earthquake site: {earthquakeScore.cls}
-              </strong>
-              <p>
-                {classAdvice(earthquakeScore.cls)}. PEIS {earthquakeScore.shakeClass.toUpperCase()} · EIL{" "}
-                {earthquakeScore.eilClass}. Trained from PHIVOLCS maps — not a live quake feed.
-              </p>
-                </>
-              )}
-            </div>
-          )}
+          {(() => {
+            let live: LiveHazards | undefined;
+            if (insideLuisiana) {
+              if (geoRisk === "loading" || geoRisk === "idle") {
+                live = { flood: "loading", landslide: "loading" };
+              } else if (geoRisk === "error") {
+                live = { flood: "unavailable", landslide: "unavailable" };
+              } else {
+                live = {
+                  flood: geoRisk.flood ?? "unavailable",
+                  landslide: geoRisk.landslide ?? "unavailable",
+                };
+              }
+            }
+            const dual = mergeSheetScore(
+              isDualSummary(earthquakeScore) ? earthquakeScore : null,
+              sheetLabel,
+            );
+            const assess = buildLuisianaAssess(
+              project.location.lon,
+              project.location.lat,
+              insideLuisiana,
+              dual,
+              live,
+            );
+            const reportReady = insideLuisiana && geoRisk !== "loading" && geoRisk !== "idle";
+            return (
+              <div className="place-assess">
+                <div className="place-assess-title">Luisiana siting assessment</div>
+                <dl className="place-assess-list">
+                  {assess.rows.map((row) => (
+                    <div key={row.label} className="place-assess-row">
+                      <dt>{row.label}</dt>
+                      <dd style={row.color ? { color: row.color } : undefined}>{row.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+                <p className="place-assess-note">{assess.note}</p>
+                {insideLuisiana && (
+                  <button
+                    type="button"
+                    className="place-assess-report"
+                    disabled={!reportReady}
+                    onClick={() => {
+                      void printSiteHazardReport({
+                        name: displayName,
+                        barangay: project.barangay,
+                        locationLabel,
+                        lat: project.location.lat,
+                        lon: project.location.lon,
+                        live,
+                        score: dual,
+                      });
+                    }}
+                  >
+                    {reportReady ? "View report" : "Preparing report…"}
+                  </button>
+                )}
+              </div>
+            );
+          })()}
 
           {showStartBuild && (
             <div className="place-build-confirm">

@@ -5,8 +5,8 @@
   pointer-events: auto;
   min-height: 100vh;
   background:
-    radial-gradient(ellipse 80% 50% at 10% -10%, rgba(61, 155, 95, 0.12), transparent),
-    linear-gradient(180deg, var(--cream, #f3efe6) 0%, var(--cream-deep, #e8e0d2) 100%);
+    radial-gradient(ellipse 80% 50% at 10% -10%, rgba(255, 193, 7, 0.12), transparent),
+    linear-gradient(180deg, var(--cream, var(--cream)) 0%, var(--cream-deep) 100%);
   color: var(--ink, #1a1a1a);
   display: flex;
   flex-direction: column;
@@ -62,9 +62,9 @@
 }
 
 .planning-live-pill.is-live {
-  border-color: rgba(36, 92, 58, 0.35);
-  color: #245c3a;
-  background: rgba(36, 92, 58, 0.1);
+  border-color: var(--gold);
+  color: var(--on-gold);
+  background: var(--gold);
 }
 
 .planning-live-dot {
@@ -76,15 +76,15 @@
 }
 
 .planning-live-pill.is-live .planning-live-dot {
-  background: #245c3a;
-  box-shadow: 0 0 0 3px rgba(36, 92, 58, 0.2);
+  background: var(--on-gold);
+  box-shadow: 0 0 0 3px rgba(21, 28, 40, 0.18);
   animation: planning-live-pulse 1.6s ease-out infinite;
 }
 
 @keyframes planning-live-pulse {
-  0% { box-shadow: 0 0 0 0 rgba(36, 92, 58, 0.35); }
-  70% { box-shadow: 0 0 0 6px rgba(36, 92, 58, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(36, 92, 58, 0); }
+  0% { box-shadow: 0 0 0 0 rgba(21, 28, 40, 0.28); }
+  70% { box-shadow: 0 0 0 6px rgba(21, 28, 40, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(21, 28, 40, 0); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -96,7 +96,7 @@
 .planning-back,
 .planning-btn {
   border: 1px solid var(--stroke, rgba(0, 0, 0, 0.18));
-  background: var(--cream-deep, #e8e0d2);
+  background: var(--cream-deep);
   color: var(--ink, #1a1a1a);
   padding: 8px 12px;
   font-size: 12px;
@@ -106,9 +106,9 @@
 }
 
 .planning-btn.primary {
-  background: var(--seed, #245c3a);
-  color: #f7f3ea;
-  border-color: var(--seed, #245c3a);
+  background: var(--seed);
+  color: var(--on-burnt);
+  border-color: var(--seed);
 }
 
 .planning-btn.danger {
@@ -141,8 +141,8 @@
 }
 
 .planning-tabs button.active {
-  color: var(--seed, #245c3a);
-  border-bottom-color: var(--seed, #245c3a);
+  color: var(--seed);
+  border-bottom-color: var(--seed);
 }
 
 .planning-banner {
@@ -152,8 +152,8 @@
   gap: 12px;
   margin: 12px 20px 0;
   padding: 10px 14px;
-  background: rgba(61, 155, 95, 0.12);
-  border: 1px solid rgba(61, 155, 95, 0.35);
+  background: rgba(255, 193, 7, 0.12);
+  border: 1px solid rgba(255, 193, 7, 0.35);
   font-size: 13px;
 }
 
@@ -183,10 +183,6 @@
   width: 100%;
 }
 
-.planning-board-layout.has-detail {
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
-}
-
 .planning-board-main {
   padding: 16px 20px 24px;
   overflow: auto;
@@ -199,11 +195,15 @@
   color: var(--muted, #666);
 }
 
+.planning-modal--detail {
+  width: min(680px, 100%);
+  max-height: min(92vh, 100%);
+}
+
 .planning-detail {
-  border-left: 1px solid var(--stroke, rgba(0, 0, 0, 0.1));
-  background: rgba(255, 255, 255, 0.5);
-  padding: 18px 18px 28px;
-  overflow: auto;
+  background: var(--cream, var(--cream));
+  padding: 0;
+  overflow: hidden;
   min-width: 0;
 }
 
@@ -212,7 +212,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 8px;
+  margin-bottom: 0;
 }
 
 .planning-detail-top h2 {
@@ -233,6 +233,19 @@
   line-height: 1;
   cursor: pointer;
   flex-shrink: 0;
+}
+
+.planning-close-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--stroke, rgba(0, 0, 0, 0.1));
+  background: color-mix(in oklch, var(--cream, var(--cream)) 82%, #c47a1a);
+  font-size: 13px;
+  font-weight: 650;
 }
 
 .planning-detail h2 {
@@ -296,7 +309,7 @@
   margin-top: 6px;
   font-size: 11px;
   font-weight: 650;
-  color: var(--seed, #245c3a);
+  color: var(--seed);
   line-height: 1.35;
 }
 
@@ -310,8 +323,8 @@
 .planning-poll {
   margin: 12px 0;
   padding: 12px;
-  border: 1px solid rgba(36, 92, 58, 0.28);
-  background: rgba(36, 92, 58, 0.07);
+  border: 1px solid rgba(21, 28, 40, 0.28);
+  background: rgba(21, 28, 40, 0.07);
 }
 
 .planning-poll > label {
@@ -332,7 +345,7 @@
   font-weight: 700;
 }
 
-.planning-poll-yes { color: #245c3a; }
+.planning-poll-yes { color: var(--seed); }
 .planning-poll-no { color: #a32020; }
 .planning-poll-abs { color: #666; }
 
@@ -344,8 +357,8 @@
 }
 
 .planning-actions--workflow {
-  border: 1px solid rgba(36, 92, 58, 0.25);
-  background: rgba(36, 92, 58, 0.06);
+  border: 1px solid rgba(21, 28, 40, 0.25);
+  background: rgba(21, 28, 40, 0.06);
   padding: 10px;
   margin: 12px 0;
 }
@@ -353,8 +366,8 @@
 .planning-site-cta {
   margin: 12px 0 16px;
   padding: 14px;
-  border: 2px solid var(--seed, #245c3a);
-  background: color-mix(in oklch, var(--seed, #245c3a) 12%, var(--cream, #f4efe6));
+  border: 2px solid var(--gold);
+  background: color-mix(in oklch, var(--gold-oklch) 14%, var(--cream));
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -391,9 +404,9 @@
   padding: 8px 10px;
   font-size: 12px;
   font-weight: 800;
-  border: 2px solid var(--seed, #245c3a);
-  background: var(--seed, #245c3a);
-  color: #f7f3ea;
+  border: 2px solid var(--seed);
+  background: var(--seed);
+  color: var(--on-burnt);
   cursor: pointer;
   pointer-events: auto;
   position: relative;
@@ -470,7 +483,7 @@
 .planning-card {
   text-align: left;
   border: 1px solid var(--stroke, rgba(0, 0, 0, 0.12));
-  background: #fffdf8;
+  background: var(--cream);
   padding: 10px;
   cursor: pointer;
   color: inherit;
@@ -479,8 +492,8 @@
 }
 
 .planning-card.selected {
-  border-color: var(--seed, #245c3a);
-  box-shadow: inset 3px 0 0 var(--seed, #245c3a);
+  border-color: var(--gold);
+  background: color-mix(in oklch, var(--gold-oklch) 12%, var(--cream));
 }
 
 .planning-card-title {
@@ -632,7 +645,7 @@
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-weight: 700;
-  color: var(--seed, #245c3a);
+  color: var(--seed);
   margin-bottom: 6px;
 }
 
@@ -710,9 +723,9 @@
 }
 
 .planning-kind-badge.brgy {
-  border-color: rgba(36, 92, 58, 0.45);
-  color: #1a4a2e;
-  background: rgba(36, 92, 58, 0.08);
+  border-color: rgba(21, 28, 40, 0.45);
+  color: var(--seed);
+  background: rgba(21, 28, 40, 0.08);
 }
 
 .planning-kind-badge.office {
@@ -781,11 +794,11 @@
 }
 
 .planning-step.done {
-  color: var(--seed, #245c3a);
+  color: var(--seed);
 }
 
 .planning-step.done .planning-step-dot {
-  background: var(--seed, #245c3a);
+  background: var(--seed);
 }
 
 .planning-step.current {
@@ -849,8 +862,8 @@
 }
 
 .planning-file-btn:hover {
-  border-color: var(--seed, #245c3a);
-  color: var(--seed, #245c3a);
+  border-color: var(--seed);
+  color: var(--seed);
 }
 
 .planning-chip {
@@ -926,9 +939,9 @@
   font-weight: 600;
   margin-bottom: 4px;
   padding: 2px 6px;
-  border: 1px solid rgba(61, 155, 95, 0.4);
-  color: var(--seed, #245c3a);
-  background: rgba(61, 155, 95, 0.1);
+  border: 1px solid rgba(255, 193, 7, 0.4);
+  color: var(--seed);
+  background: rgba(255, 193, 7, 0.1);
 }
 
 .planning-anchor-row {
@@ -1006,12 +1019,12 @@
 }
 
 .planning-cal-cell.today {
-  border-color: var(--seed, #245c3a);
+  border-color: var(--seed);
 }
 
 .planning-cal-cell.selected {
-  background: rgba(61, 155, 95, 0.18);
-  border-color: var(--seed, #245c3a);
+  background: rgba(255, 193, 7, 0.18);
+  border-color: var(--seed);
 }
 
 .planning-cal-daynum {
@@ -1030,7 +1043,7 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--seed, #245c3a);
+  background: var(--seed);
 }
 
 .planning-cal-dot.type-committee {
@@ -1046,7 +1059,7 @@
 }
 
 .planning-cal-dot.type-site {
-  background: #82b366;
+  background: #ffc107;
 }
 
 .planning-cal-more {
@@ -1080,7 +1093,7 @@
   width: min(520px, 100%);
   max-height: min(90vh, 100%);
   overflow: hidden;
-  background: var(--cream, #f3efe6);
+  background: var(--cream, var(--cream));
   border: 2px solid var(--ink, #1a1a1a);
   padding: 0;
   display: flex;
@@ -1220,15 +1233,6 @@
 }
 
 @media (max-width: 960px) {
-  .planning-board-layout.has-detail {
-    grid-template-columns: 1fr;
-  }
-
-  .planning-detail {
-    border-left: none;
-    border-top: 1px solid var(--stroke, rgba(0, 0, 0, 0.1));
-    max-height: 50vh;
-  }
 
   .planning-column {
     flex: 0 0 180px;
@@ -1243,8 +1247,8 @@
 /* Dark theme hooks if app uses data-theme */
 [data-theme="dark"] .planning-page {
   background:
-    radial-gradient(ellipse 80% 50% at 10% -10%, rgba(61, 155, 95, 0.18), transparent),
-    linear-gradient(180deg, #1a1f1c 0%, #121612 100%);
+    radial-gradient(ellipse 80% 50% at 10% -10%, rgba(255, 193, 7, 0.18), transparent),
+    linear-gradient(180deg, #151c28 0%, #0f141c 100%);
   color: #e8e4da;
 }
 

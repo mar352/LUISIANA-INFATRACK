@@ -16,9 +16,11 @@
   z-index: 8;
   max-width: min(260px, calc(100vw - 24px));
   padding: 10px 12px;
-  background: rgba(255, 253, 248, 0.94);
-  border: 1px solid rgba(0, 0, 0, 0.14);
-  box-shadow: 2px 2px 0 rgba(0, 0, 0, 0.12);
+  background: var(--navy);
+  color: #eef1f6;
+  border: 0;
+  border-radius: 16px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
   pointer-events: none;
 }
 
@@ -27,7 +29,7 @@
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #245c3a;
+  color: var(--gold);
   margin-bottom: 8px;
 }
 
@@ -79,14 +81,18 @@
   line-height: 1.35;
 }
 
+.hz-legend--map .hz-legend-hint,
+.hz-legend--map .hz-legend-src {
+  color: rgba(255, 255, 255, 0.55);
+}
+
 html[data-theme="dark"] .hz-legend--map,
 :root[data-theme="dark"] .hz-legend--map {
-  background: rgba(24, 28, 24, 0.94);
-  border-color: rgba(255, 255, 255, 0.14);
-  color: #f0f0ec;
+  background: var(--navy);
+  color: #eef1f6;
 }
 
 html[data-theme="dark"] .hz-legend-hint,
 html[data-theme="dark"] .hz-legend-src {
-  color: #aaa;
+  color: rgba(255, 255, 255, 0.55);
 }

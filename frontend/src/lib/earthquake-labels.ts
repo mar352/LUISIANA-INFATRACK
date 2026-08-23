@@ -104,14 +104,38 @@ export function parseEarthquakeLabelsCsv(text: string): EarthquakeLabelPoint[] {
   return points;
 }
 
+let labelsCache: EarthquakeLabelPoint[] | null = null;
+let labelsInflight: Promise<EarthquakeLabelPoint[]> | null = null;
+
 export async function fetchEarthquakeLabels(
   url = EARTHQUAKE_LABELS_CSV,
 ): Promise<EarthquakeLabelPoint[]> {
-  const res = await fetch(url, { cache: "no-cache" });
-  if (!res.ok) throw new Error(`Earthquake labels HTTP ${res.status}`);
-  const points = parseEarthquakeLabelsCsv(await res.text());
-  if (points.length < 20) throw new Error(`Only ${points.length} earthquake labels loaded`);
-  return points;
+  if (labelsCache && labelsCache.length >= 20) return labelsCache;
+  if (labelsInflight) return labelsInflight;
+  labelsInflight = (async () => {
+    const res = await fetch(url, { cache: "force-cache" });
+    if (!res.ok) throw new Error(`Earthquake labels HTTP ${res.status}`);
+    const points = parseEarthquakeLabelsCsv(await res.text());
+    if (points.length < 20) throw new Error(`Only ${points.length} earthquake labels loaded`);
+    labelsCache = points;
+    return points;
+  })().finally(() => {
+    labelsInflight = null;
+  });
+  return labelsInflight;
+}
+
+/** Nearest digitized 2014 PEIS / EIL pixel — does not need the TF.js model. */
+export async function officialLabelAt(
+  lon: number,
+  lat: number,
+): Promise<EarthquakeLabelPoint | null> {
+  try {
+    const points = await fetchEarthquakeLabels();
+    return nearestLabel(points, lon, lat);
+  } catch {
+    return null;
+  }
 }
 
 export function nearestLabel(

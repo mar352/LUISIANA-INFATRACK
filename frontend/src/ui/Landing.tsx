@@ -39,7 +39,7 @@ export interface RoleConfig {
 export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
   MPDC: {
     label: "MPDC",
-    color: "#245C3A",
+    color: "#151c28",
     description: "Municipal Planning & Development Coordinator",
     canSeeWeather: true,
     canSeeLayers: true,
@@ -52,7 +52,7 @@ export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
   },
   Engineer: {
     label: "Engineer",
-    color: "#3D9B5F",
+    color: "#8a6500",
     description: "Infrastructure & Engineering Office",
     canSeeWeather: true,
     canSeeLayers: true,
@@ -65,7 +65,7 @@ export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
   },
   Agriculture: {
     label: "Agriculture",
-    color: "#3D9B5F",
+    color: "#3d4f6b",
     description: "Municipal Agriculture Office",
     canSeeWeather: true,
     canSeeLayers: false,
@@ -78,7 +78,7 @@ export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
   },
   "Negosyo Center": {
     label: "Negosyo Center",
-    color: "#2E6B45",
+    color: "#5b6b7c",
     description: "Business Permit & Licensing Office",
     canSeeWeather: false,
     canSeeLayers: false,
@@ -104,7 +104,7 @@ export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
   },
   Viewer: {
     label: "Public Viewer",
-    color: "#3D9B5F",
+    color: "#151c28",
     description: "Citizen portal access — live map, projects, and public reporting",
     canSeeWeather: true,
     canSeeLayers: true,
@@ -124,6 +124,16 @@ export const ROLE_CREDENTIALS: Record<string, UserRole> = {
   negosyo: "Negosyo Center",
   barangay: "Barangay Official",
 };
+
+function CapsuleActions({
+  children,
+  className = "",
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return <div className={className ? `btn-capsule ${className}` : "btn-capsule"}>{children}</div>;
+}
 
 type FeatureIcon = "map" | "cloud" | "alert" | "building" | "bell" | "clipboard";
 
@@ -171,12 +181,12 @@ const FEATURE_ICON_MAP: Record<FeatureIcon, () => JSX.Element> = {
 };
 
 const FEATURES: { icon: FeatureIcon; title: string; desc: string }[] = [
-  { icon: "map", title: "Real-Time GIS Map", desc: "Live 3D map of Luisiana with risk zones, project markers, and satellite imagery." },
-  { icon: "cloud", title: "Weather & Satellite", desc: "ECMWF IFS forecasts and NASA GIBS satellite precipitation layers." },
-  { icon: "alert", title: "Landslide Risk", desc: "Automated risk scoring using rainfall intensity and slope data across all barangays." },
-  { icon: "building", title: "Infrastructure Tracking", desc: "Monitor ongoing municipal, agricultural, and private construction projects in real time." },
-  { icon: "bell", title: "Instant Alerts", desc: "Automatic HIGH-risk alerts pushed live to relevant departments via WebSocket." },
-  { icon: "clipboard", title: "Business Permits", desc: "Negosyo Center dashboard for tracking permit applications and approvals." },
+  { icon: "map", title: "3D municipal globe", desc: "Cesium map of Luisiana with satellite imagery, 3D models, and barangay colors." },
+  { icon: "cloud", title: "Climate & tropical", desc: "Station readings, NASA GIBS overlays, and West Pacific Invest / tropical tracking." },
+  { icon: "alert", title: "Risk assessment tools", desc: "Click a site for flood, rain-induced landslide, PEIS, EIL 2014, and the terrain model. Luisiana only." },
+  { icon: "building", title: "Infrastructure tracking", desc: "Pin, place, and monitor municipal projects with progress, photos, and reports." },
+  { icon: "bell", title: "Disaster-resilient planning", desc: "Barangay requests, MPDC siting review, Engineer placement — build on safer ground." },
+  { icon: "clipboard", title: "Business permits", desc: "Negosyo Center dashboard for tracking permit applications and approvals." },
 ];
 
 type LandingPageId = "overview" | "features" | "departments" | "risk" | "about";
@@ -209,25 +219,25 @@ const PageOverview = ({
         <img src="/logo.png" alt="Bayan ng Luisiana" className="hero-logo" />
         <h1>INFA-TRACK</h1>
         <p className="hero-lede">
-          Integrated monitoring for municipal GIS, disaster risk, infrastructure, and business permits — built for Luisiana&apos;s departments.
+          Municipal GIS for where Luisiana builds infrastructure on safer ground — 3D map, site assessment, and department planning.
         </p>
-        <div className="hero-cta">
+        <CapsuleActions className="hero-cta">
           <button type="button" className="btn-amber" onClick={onPublicPortal}>
             Public Portal
           </button>
           <button type="button" className="btn-ghost" onClick={onEnter}>
             Department Sign In
           </button>
-        </div>
+        </CapsuleActions>
       </div>
     </section>
 
     <div className="masthead">
       {[
-        { v: "5s", l: "Update Interval" },
-        { v: "4", l: "Departments" },
-        { v: "22+", l: "Projects Tracked" },
-        { v: "Live", l: "Weather & Satellite" },
+        { v: "23", l: "Barangays" },
+        { v: "5", l: "Municipal offices" },
+        { v: "3D", l: "Luisiana globe" },
+        { v: "Live", l: "Flood & landslide" },
       ].map((s) => (
         <div key={s.l} className="masthead-cell">
           <div className="v">{s.v}</div>
@@ -238,16 +248,16 @@ const PageOverview = ({
 
     <section className="ed-section">
       <div className="ed-rail">
-        <h2>Built for modern municipal operations</h2>
-        <p>One instrument panel. Four offices. Continuous signal.</p>
+        <h2>Built for where Luisiana builds</h2>
+        <p>MPDC pins the site. Engineer places the model. Assessment at every pin.</p>
       </div>
       <div className="ed-body">
         <div className="ed-list">
           {[
-            { icon: <IconMap />, title: "Real-Time GIS Mapping", desc: "Interactive maps with live overlays, satellite imagery, and custom layers for spatial analysis." },
-            { icon: <IconAlert />, title: "Safe-site hazard layers", desc: "PHIVOLCS overlays, slope, and climate data so you can place infrastructure on safer ground." },
-            { icon: <IconBuilding />, title: "Infrastructure Tracking", desc: "Municipal projects, construction progress, and assets in one continuous register." },
-            { icon: <IconClipboard />, title: "Business Permit System", desc: "Permit processing, application status, and compliance without scattered spreadsheets." },
+            { icon: <IconMap />, title: "3D municipal globe", desc: "Street-level Cesium map of Luisiana with satellite, 3D models, and a 23-barangay overlay." },
+            { icon: <IconAlert />, title: "Site assessment", desc: "Flood, rain-induced landslide, PEIS, EIL 2014, terrain model, and distance to Mt. Banahaw — inside the municipality only." },
+            { icon: <IconBuilding />, title: "Infrastructure tracking", desc: "Municipal projects, construction progress, photos, and reports in one register." },
+            { icon: <IconClipboard />, title: "Planning board", desc: "Barangay requests scored for MPDC zoning review. Negosyo Center still handles permits." },
           ].map((f, i) => (
             <div key={f.title} className="ed-item">
               <div className="idx">{String(i + 1).padStart(2, "0")}</div>
@@ -265,15 +275,16 @@ const PageOverview = ({
     <section className="ed-section">
       <div className="ed-rail">
         <h2>Offices on the line</h2>
-        <p>MDRRMO · MPDC · Engineering · Business Permits</p>
+        <p>MPDC · Engineer · Agriculture · Negosyo Center · Barangay</p>
       </div>
       <div className="ed-body">
         <div className="dept-stack">
           {[
-            { name: "MDRRMO", desc: "Disaster Risk Reduction" },
-            { name: "MPDC", desc: "Planning & Development" },
-            { name: "Engineering", desc: "Infrastructure Projects" },
-            { name: "Business Permits", desc: "Licensing & Compliance" },
+            { name: "MPDC", desc: "Pins sites and reviews siting" },
+            { name: "Engineer", desc: "Places and builds the model" },
+            { name: "Agriculture", desc: "Climate and risk for farm sites" },
+            { name: "Negosyo Center", desc: "Business permits" },
+            { name: "Barangay Official", desc: "Requests infrastructure" },
           ].map((d) => (
             <div key={d.name} className="dept-row">
               <div className="dept-name">
@@ -294,13 +305,13 @@ const PageOverview = ({
     <div className="cta-band">
       <div>
         <h2>Ready when the municipality is</h2>
-        <p>Open the public portal for the live map, projects, and citizen reporting — or sign in for department tools.</p>
+        <p>Open the public portal for the live map and projects — or sign in to pin sites, assess ground, and plan.</p>
       </div>
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+      <CapsuleActions>
         <button type="button" className="btn-amber" onClick={onPublicPortal}>Public Portal</button>
         <button type="button" className="btn-ghost" onClick={onEnter}>Launch Dashboard</button>
         <button type="button" className="btn-ghost" onClick={() => setActivePage("about")}>About the System</button>
-      </div>
+      </CapsuleActions>
     </div>
   </>
 );
@@ -309,8 +320,8 @@ const PageFeatures = ({ onEnter, onPublicPortal }: { onEnter: () => void; onPubl
   <>
     <section className="ed-section">
       <div className="ed-rail">
-        <h2>Everything your LGU needs</h2>
-        <p>Six modules. One continuous operating picture.</p>
+        <h2>What staff actually use</h2>
+        <p>Siting, assessment, and tracking — not an MDRRM operations desk.</p>
       </div>
       <div className="ed-body">
         <div className="ed-list">
@@ -328,10 +339,10 @@ const PageFeatures = ({ onEnter, onPublicPortal }: { onEnter: () => void; onPubl
             );
           })}
         </div>
-        <div style={{ marginTop: 32, display: "flex", gap: 12, flexWrap: "wrap" }}>
+        <CapsuleActions className="ed-cta">
           <button type="button" className="btn-amber" onClick={onPublicPortal}>Open Public Portal</button>
           <button type="button" className="btn-ghost" onClick={onEnter}>Sign In to Access All Features</button>
-        </div>
+        </CapsuleActions>
       </div>
     </section>
   </>
@@ -353,12 +364,13 @@ const PageDepartments = ({ onEnter, onPublicPortal }: { onEnter: () => void; onP
             </div>
             <div className="dept-perms">
               {[
-                cfg.canSeeWeather && "Climate & Forecast",
-                cfg.canSeeLayers && "Map Layer Controls",
-                cfg.canSeeRisk && "Risk Zone Monitoring",
-                cfg.canSeeProjects && "Infrastructure Projects",
-                cfg.canSeeAlerts && "Real-Time Alerts",
-                cfg.canSeeBusinessPermits && "Business Permit Dashboard",
+                cfg.canSeeWeather && "Climate & tropical",
+                cfg.canSeeLayers && "Map layers",
+                cfg.canSeeRisk && "Siting assessment",
+                cfg.canSeeProjects && "Infrastructure projects",
+                cfg.canSeeAlerts && "Project notices",
+                cfg.canSeeBusinessPermits && "Business permits",
+                cfg.canSeePlanning && "Planning board",
               ].filter(Boolean).map((item) => (
                 <span key={item as string}>{item}</span>
               ))}
@@ -366,10 +378,10 @@ const PageDepartments = ({ onEnter, onPublicPortal }: { onEnter: () => void; onP
           </div>
         ))}
       </div>
-      <div style={{ marginTop: 32, display: "flex", gap: 12, flexWrap: "wrap" }}>
+      <CapsuleActions className="ed-cta">
         <button type="button" className="btn-amber" onClick={onPublicPortal}>Open Public Portal</button>
         <button type="button" className="btn-ghost" onClick={onEnter}>Sign In to Your Department</button>
-      </div>
+      </CapsuleActions>
     </div>
   </section>
 );
@@ -377,14 +389,14 @@ const PageDepartments = ({ onEnter, onPublicPortal }: { onEnter: () => void; onP
 const PageRisk = () => (
   <section className="ed-section">
     <div className="ed-rail">
-      <h2>Real-time risk monitoring</h2>
-      <p>Rainfall × slope, scored across every barangay.</p>
+      <h2>Risk assessment for siting</h2>
+      <p>Click a pin inside Luisiana. Classes tell you whether the ground is preferred, or better avoided.</p>
     </div>
     <div className="ed-body" style={{ padding: 0 }}>
       {[
-        { cls: "risk-high", level: "HIGH", title: "High Risk Alert", desc: "Triggered when rainfall intensity exceeds 72% and slope index is above 62%. Immediate evacuation advisory for affected barangays." },
-        { cls: "risk-mod", level: "MODERATE", title: "Moderate Risk", desc: "Issued when combined risk exceeds 55% or rainfall alone is above 45%. Departments prepare response teams." },
-        { cls: "risk-low", level: "LOW", title: "Low Risk / Safe", desc: "Normal conditions. Operations continue. System keeps passive monitoring every 5 seconds." },
+        { cls: "risk-high", level: "HIGH", title: "Avoid if possible", desc: "Steep or earthquake-prone ground. New infrastructure here needs extra review — prefer another site when you can." },
+        { cls: "risk-mod", level: "MODERATE", title: "Extra structural review", desc: "Buildable with care. Engineer and MPDC weigh flood, landslide, and seismic class before placing the model." },
+        { cls: "risk-low", level: "SAFE / LOW", title: "Preferred for siting", desc: "Safer ground for municipal facilities. Still check live flood and rain-induced landslide on the pin." },
       ].map((r) => (
         <div key={r.level} className={`risk-band ${r.cls}`}>
           <div className="level">{r.level}</div>
@@ -395,9 +407,9 @@ const PageRisk = () => (
         </div>
       ))}
       <div className="formula-block">
-        <h3>How the model works</h3>
+        <h3>What the assessment uses</h3>
         <p>
-          Risk score = <em>Rainfall Intensity × 0.65</em> + <em>Slope Index × 0.55</em>. Sourced from ECMWF IFS and OpenStreetMap terrain, refreshed every 5 seconds via WebSocket.
+          Local PHIVOLCS EIL / ground-shaking 2014 sheets and a terrain model, plus live MGB flood and rain-induced landslide (GeoRiskPH). Luisiana only. Not HazardHunterPH, not an evacuation feed.
         </p>
       </div>
     </div>
@@ -409,26 +421,27 @@ const PageAbout = ({ onEnter, onPublicPortal }: { onEnter: () => void; onPublicP
     <div className="about-prose">
       <h2>Built for Luisiana&apos;s municipal government</h2>
       <p>
-        INFA-TRACK is a GIS monitoring platform for the Municipality of Luisiana, Laguna. It consolidates infrastructure tracking, disaster risk, weather, and business permits into one live dashboard.
+        INFA-TRACK is the municipal GIS for Luisiana, Laguna — where to pin and place infrastructure on safer ground. MPDC, Engineering, Agriculture, Negosyo Center, and barangay halls share one 3D map.
       </p>
       <p>
-        Open-data sources — ECMWF IFS, OpenStreetMap, NASA GIBS — keep licensing cost at zero while staying accurate enough for LGU decisions. Residents can open the Public Portal for the live map, project updates, and citizen reports without signing in.
+        Site assessment uses PHIVOLCS 2014 sheets, a local terrain model, and live MGB flood / landslide layers. Climate uses station readings and NASA GIBS. Residents open the Public Portal for the map and projects without signing in.
       </p>
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+      <CapsuleActions>
         <button type="button" className="btn-amber" onClick={onPublicPortal}>Open Public Portal</button>
         <button type="button" className="btn-ghost" onClick={onEnter}>Sign In to Dashboard</button>
-      </div>
+      </CapsuleActions>
     </div>
     <div className="about-meta">
       {[
         { label: "Municipality", value: "Luisiana" },
         { label: "Province", value: "Laguna" },
         { label: "Region", value: "IV-A CALABARZON" },
-        { label: "System Type", value: "Real-Time GIS" },
-        { label: "Data Updates", value: "Every 5 seconds" },
-        { label: "Weather Model", value: "ECMWF IFS 0.25°" },
-        { label: "Map Provider", value: "OpenFreeMap / ESRI" },
-        { label: "Satellite Source", value: "NASA GIBS" },
+        { label: "System type", value: "Municipal siting GIS" },
+        { label: "Assessment", value: "Luisiana only" },
+        { label: "Live hazards", value: "MGB flood & landslide" },
+        { label: "Seismic", value: "PHIVOLCS 2014 + terrain" },
+        { label: "Globe", value: "Cesium / ESRI" },
+        { label: "Climate", value: "Stations + NASA GIBS" },
       ].map((item) => (
         <div key={item.label} className="meta-row">
           <span className="k">{item.label}</span>
@@ -496,12 +509,14 @@ export function LandingPage({
         </div>
         <div className="landing-nav-actions">
           <ThemeToggle />
-          <button type="button" className="btn-amber" onClick={onPublicPortal}>
-            Public Portal
-          </button>
-          <button type="button" className="btn-ghost" onClick={onEnter}>
-            Sign In
-          </button>
+          <CapsuleActions>
+            <button type="button" className="btn-amber" onClick={onPublicPortal}>
+              Public Portal
+            </button>
+            <button type="button" className="btn-ghost" onClick={onEnter}>
+              Sign In
+            </button>
+          </CapsuleActions>
         </div>
       </nav>
       <PageWrap>
@@ -559,7 +574,7 @@ export function LoginScreen({
         <div>
           <img src="/logo.png" alt="" className="login-rail-logo" />
           <h1>INFA-TRACK</h1>
-          <p>Department access for Luisiana municipal operations.</p>
+          <p>Department access for Luisiana infrastructure siting.</p>
         </div>
         <p style={{ fontSize: "0.78rem", letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 700, opacity: 0.75 }}>
           Luisiana · Laguna

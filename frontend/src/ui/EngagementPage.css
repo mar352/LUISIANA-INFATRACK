@@ -5,8 +5,8 @@
   display: flex;
   flex-direction: column;
   background:
-    radial-gradient(ellipse 70% 40% at 90% 0%, rgba(61, 155, 95, 0.14), transparent),
-    linear-gradient(180deg, #f3efe6 0%, #ebe6db 100%);
+    radial-gradient(ellipse 70% 40% at 90% 0%, rgba(255, 193, 7, 0.14), transparent),
+    linear-gradient(180deg, var(--cream) 0%, var(--cream-deep) 100%);
   color: var(--ink, #1a1a1a);
   font-family: "Segoe UI", system-ui, sans-serif;
 }
@@ -54,8 +54,8 @@
 }
 
 .eg-btn.primary {
-  background: #245c3a;
-  border-color: #245c3a;
+  background: var(--seed);
+  border-color: var(--seed);
   color: #fff;
   font-weight: 700;
   margin-top: 8px;
@@ -91,7 +91,7 @@
 }
 
 .eg-kpi-value.warn { color: #9a6b00; }
-.eg-kpi-value.safe { color: #245c3a; }
+.eg-kpi-value.safe { color: var(--seed); }
 
 .eg-toolbar {
   display: flex;
@@ -161,7 +161,6 @@
   width: 100%;
   padding: 10px 12px;
   border: 1px solid rgba(0, 0, 0, 0.12);
-  border-left: 3px solid transparent;
   background: rgba(255, 255, 255, 0.72);
   cursor: pointer;
   font: inherit;
@@ -181,23 +180,22 @@
 }
 
 .eg-item:focus-visible {
-  outline: 2px solid #245c3a;
+  outline: 2px solid var(--seed);
   outline-offset: 1px;
 }
 
 /* Only the chosen row — not every card */
 .eg-item.is-selected {
-  border-color: rgba(36, 92, 58, 0.45);
-  border-left-color: #245c3a;
-  background: rgba(36, 92, 58, 0.08);
+  border-color: var(--gold);
+  background: color-mix(in oklch, var(--gold-oklch) 14%, var(--cream));
 }
 
 .eg-item .eg-kind {
-  color: #5a6b5e;
+  color: var(--muted);
 }
 
 .eg-item.is-selected .eg-kind {
-  color: #245c3a;
+  color: var(--amber-ink);
 }
 
 .eg-item-top {
@@ -252,8 +250,8 @@
 .eg-contact {
   font-size: 13px;
   padding: 8px 10px;
-  background: rgba(61, 155, 95, 0.08);
-  border: 1px solid rgba(61, 155, 95, 0.25);
+  background: rgba(255, 193, 7, 0.08);
+  border: 1px solid rgba(255, 193, 7, 0.25);
 }
 
 .eg-empty {
@@ -286,8 +284,8 @@
 html[data-theme="dark"] .eg-page,
 :root[data-theme="dark"] .eg-page {
   background:
-    radial-gradient(ellipse 70% 40% at 90% 0%, rgba(61, 155, 95, 0.18), transparent),
-    linear-gradient(180deg, #121512 0%, #1a1e1a 100%);
+    radial-gradient(ellipse 70% 40% at 90% 0%, rgba(255, 193, 7, 0.18), transparent),
+    linear-gradient(180deg, #0f141c 0%, #151c28 100%);
   color: #f0f0ec;
 }
 
@@ -300,9 +298,8 @@ html[data-theme="dark"] .eg-detail {
 }
 
 html[data-theme="dark"] .eg-item.is-selected {
-  background: rgba(61, 155, 95, 0.12);
-  border-color: rgba(61, 155, 95, 0.45);
-  border-left-color: #3d9b5f;
+  background: rgba(255, 193, 7, 0.12);
+  border-color: rgba(255, 193, 7, 0.45);
 }
 
 html[data-theme="dark"] .eg-item .eg-kind {
@@ -310,7 +307,7 @@ html[data-theme="dark"] .eg-item .eg-kind {
 }
 
 html[data-theme="dark"] .eg-item.is-selected .eg-kind {
-  color: #3d9b5f;
+  color: var(--gold);
 }
 
 html[data-theme="dark"] .eg-sub,
