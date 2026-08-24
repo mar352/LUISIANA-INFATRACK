@@ -50,6 +50,8 @@ function ensureProjectShape(p) {
       ...ph,
       // Legacy uploads were progress photos; keep them there.
       kind: ph.kind === "site" ? "site" : "progress",
+      lat: Number.isFinite(Number(ph.lat)) ? Number(ph.lat) : null,
+      lon: Number.isFinite(Number(ph.lon)) ? Number(ph.lon) : null,
     })),
     activityLog: Array.isArray(p.activityLog) ? p.activityLog : [],
     budgetTotal: p.budgetTotal ?? null,
@@ -64,6 +66,9 @@ function ensureProjectShape(p) {
     lifecyclePhase: p.lifecyclePhase ?? "Planning",
     rotation: Number.isFinite(Number(p.rotation)) ? Number(p.rotation) : 0,
     modelScale: Number.isFinite(Number(p.modelScale)) ? Number(p.modelScale) : 1,
+    modelScaleX: Number.isFinite(Number(p.modelScaleX)) ? Number(p.modelScaleX) : 1,
+    modelScaleY: Number.isFinite(Number(p.modelScaleY)) ? Number(p.modelScaleY) : 1,
+    modelScaleZ: Number.isFinite(Number(p.modelScaleZ)) ? Number(p.modelScaleZ) : 1,
     modelHeight: Number.isFinite(Number(p.modelHeight)) ? Number(p.modelHeight) : 0,
     modelLocked: Boolean(p.modelLocked),
     siteMarkerOnly: Boolean(p.siteMarkerOnly),
@@ -500,12 +505,18 @@ export function updateProject(id, patch) {
       patch.location !== undefined ||
       patch.rotation !== undefined ||
       patch.modelScale !== undefined ||
+      patch.modelScaleX !== undefined ||
+      patch.modelScaleY !== undefined ||
+      patch.modelScaleZ !== undefined ||
       patch.modelHeight !== undefined
     ) {
       // strip transform changes when locked (modelLocked toggle above still applies)
       delete patch.location;
       delete patch.rotation;
       delete patch.modelScale;
+      delete patch.modelScaleX;
+      delete patch.modelScaleY;
+      delete patch.modelScaleZ;
       delete patch.modelHeight;
     }
   }
@@ -527,6 +538,12 @@ export function updateProject(id, patch) {
       project.modelScale = Math.max(0.001, Math.min(100, scale));
     }
   }
+  for (const key of ["modelScaleX", "modelScaleY", "modelScaleZ"]) {
+    if (patch[key] !== undefined) {
+      const n = Number(patch[key]);
+      if (Number.isFinite(n)) project[key] = Math.max(0.001, Math.min(100, n));
+    }
+  }
   if (patch.modelHeight !== undefined) {
     const h = Number(patch.modelHeight);
     if (Number.isFinite(h)) {
@@ -538,6 +555,9 @@ export function updateProject(id, patch) {
     patch.location !== undefined ||
     patch.rotation !== undefined ||
     patch.modelScale !== undefined ||
+    patch.modelScaleX !== undefined ||
+    patch.modelScaleY !== undefined ||
+    patch.modelScaleZ !== undefined ||
     patch.modelHeight !== undefined
   ) {
     logActivity(project, "3D model position, rotation, or scale updated.");
@@ -635,11 +655,13 @@ export function removeProject(id) {
   return true;
 }
 
-export function addProjectPhoto(projectId, { url, caption, milestoneId, kind }) {
+export function addProjectPhoto(projectId, { url, caption, milestoneId, kind, lat, lon }) {
   const project = findProject(projectId);
   if (!project || !url) return null;
 
   const photoKind = kind === "site" ? "site" : "progress";
+  const gpsLat = Number(lat);
+  const gpsLon = Number(lon);
   const photo = {
     id: `PH${Date.now()}`,
     url: String(url),
@@ -647,6 +669,8 @@ export function addProjectPhoto(projectId, { url, caption, milestoneId, kind }) 
     kind: photoKind,
     milestoneId: photoKind === "progress" ? milestoneId || null : null,
     uploadedAt: new Date().toISOString(),
+    lat: Number.isFinite(gpsLat) ? gpsLat : null,
+    lon: Number.isFinite(gpsLon) ? gpsLon : null,
   };
   project.photos.unshift(photo);
   const label = photoKind === "site" ? "Site photo" : "Progress photo";
@@ -768,6 +792,8 @@ export function toPublicProject(p) {
     caption: ph.caption || "",
     kind: ph.kind === "site" ? "site" : "progress",
     uploadedAt: ph.uploadedAt,
+    lat: Number.isFinite(Number(ph.lat)) ? Number(ph.lat) : null,
+    lon: Number.isFinite(Number(ph.lon)) ? Number(ph.lon) : null,
   }));
   return {
     id: p.id,

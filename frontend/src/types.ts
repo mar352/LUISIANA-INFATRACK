@@ -184,6 +184,9 @@ export type ProjectPhoto = {
   kind?: ProjectPhotoKind;
   milestoneId?: string | null;
   uploadedAt: string;
+  /** Phone GPS at capture, if the inspector allowed location. */
+  lat?: number | null;
+  lon?: number | null;
 };
 
 export type ProjectActivity = {
@@ -270,6 +273,10 @@ export type Project = {
   rotationRoll?: number;
   /** User-adjusted multiplier for the map GLB model. */
   modelScale?: number;
+  /** Non-uniform stretch on the GLB (1 = no extra stretch). Width / depth / height. */
+  modelScaleX?: number;
+  modelScaleY?: number;
+  modelScaleZ?: number;
   /**
    * Height above ground in meters. Use 0 (default) to clamp to terrain — no elevation float.
    */

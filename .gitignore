@@ -31,6 +31,7 @@ frontend/public/uploads/*
 
 # Runtime project data (seeded on first run)
 backend/data/projects.json
+backend/data/auth.json
 
 # impeccable-ignore-start
 # Ephemeral output, runtime state, and per-dev overrides.

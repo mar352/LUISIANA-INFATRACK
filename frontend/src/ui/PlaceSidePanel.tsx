@@ -19,6 +19,17 @@ import {
   type LiveHazards,
 } from "../lib/luisiana-site-assess";
 import { printSiteHazardReport } from "../lib/hazard-report";
+import { assetShareUrl, qrImageUrl, readGps } from "../lib/project-link";
+import { formatLonLat, formatLonLatCopy } from "../lib/coords";
+import {
+  enqueuePhoto,
+  flushPhotoQueue,
+  isOfflineNetworkError,
+  listQueuedPhotos,
+  onPhotoQueueChange,
+  removeQueuedPhoto,
+  type QueuedPhoto,
+} from "../lib/photo-queue";
 import "./PlaceSidePanel.css";
 
 type Tab = "overview" | "progress" | "activity" | "about";
@@ -58,6 +69,17 @@ function statusColor(status: Project["status"]) {
 
 function photoKindOf(photo: ProjectPhoto): ProjectPhotoKind {
   return photo.kind === "site" ? "site" : "progress";
+}
+
+function QueuedBlobImg({ blob, alt }: { blob: Blob; alt: string }) {
+  const [src, setSrc] = useState("");
+  useEffect(() => {
+    const url = URL.createObjectURL(blob);
+    setSrc(url);
+    return () => URL.revokeObjectURL(url);
+  }, [blob]);
+  if (!src) return null;
+  return <img src={src} alt={alt} />;
 }
 
 function mergeSheetScore(
@@ -163,7 +185,9 @@ export function PlaceSidePanel({
   const [insideLuisiana, setInsideLuisiana] = useState(true);
   const [geoRisk, setGeoRisk] = useState<"idle" | "loading" | "error" | GeoRiskAssess>("idle");
   const [sheetLabel, setSheetLabel] = useState<EarthquakeLabelPoint | null>(null);
+  const [queued, setQueued] = useState<QueuedPhoto[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
 
   const modelInfo = MODEL_CATALOG.find((m) => m.type === project.modelType);
   const displayName = project.name?.trim() || "Untitled site";
@@ -172,7 +196,8 @@ export function PlaceSidePanel({
   const sitePhotos = photos.filter((p) => photoKindOf(p) === "site");
   const progressPhotos = photos.filter((p) => photoKindOf(p) === "progress");
   const heroPhoto = sitePhotos[0] ?? progressPhotos[0];
-  const coords = `${project.location.lat.toFixed(5)}, ${project.location.lon.toFixed(5)}`;
+  const coords = formatLonLat(project.location.lat, project.location.lon);
+  const coordsCopy = formatLonLatCopy(project.location.lat, project.location.lon);
   const showPhotoEdit = Boolean(canAddPhotos);
   const showStartBuild = Boolean(canPromoteSitePin && project.siteMarkerOnly && onStartConstruction);
   const canRename = Boolean(!readOnly && onRename);
@@ -253,6 +278,21 @@ export function PlaceSidePanel({
     setPhotos(project.photos ?? []);
   }, [project.photos]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      void listQueuedPhotos(project.id).then((rows) => {
+        if (!cancelled) setQueued(rows);
+      });
+    };
+    load();
+    const stop = onPhotoQueueChange(load);
+    return () => {
+      cancelled = true;
+      stop();
+    };
+  }, [project.id]);
+
   function applyPhotos(next: ProjectPhoto[]) {
     setPhotos(next);
     onPhotosChange?.(project.id, next);
@@ -274,7 +314,7 @@ export function PlaceSidePanel({
 
   async function copyCoords() {
     try {
-      await navigator.clipboard.writeText(coords);
+      await navigator.clipboard.writeText(coordsCopy);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1800);
     } catch {
@@ -282,10 +322,29 @@ export function PlaceSidePanel({
     }
   }
 
-  function openFilePicker(kind: ProjectPhotoKind) {
+  function openFilePicker(kind: ProjectPhotoKind, camera = false) {
     setUploadKind(kind);
     setPhotoError(null);
-    window.setTimeout(() => fileInputRef.current?.click(), 0);
+    window.setTimeout(() => (camera ? cameraInputRef : fileInputRef).current?.click(), 0);
+  }
+
+  async function queueLocalPhoto(file: File, gps: { lat: number; lon: number } | null) {
+    await enqueuePhoto({
+      projectId: project.id,
+      caption: caption.trim(),
+      milestoneId: uploadKind === "progress" ? milestoneId || null : null,
+      kind: uploadKind,
+      lat: gps?.lat ?? null,
+      lon: gps?.lon ?? null,
+      blob: file,
+      name: file.name || "photo.jpg",
+      type: file.type || "image/jpeg",
+    });
+    setCaption("");
+    setMilestoneId("");
+    setTab(uploadKind === "progress" ? "progress" : "overview");
+    setPhotoError("Saved on this device. Will upload when you are back online.");
+    void flushPhotoQueue();
   }
 
   async function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -294,18 +353,31 @@ export function PlaceSidePanel({
     setUploading(true);
     setPhotoError(null);
     try {
-      const { photo } = await uploadProjectPhoto(project.id, file, {
-        caption: caption.trim() || undefined,
-        milestoneId: uploadKind === "progress" ? milestoneId || null : null,
-        kind: uploadKind,
-      });
-      applyPhotos([photo, ...photos]);
-      setCaption("");
-      setMilestoneId("");
-      setTab(uploadKind === "progress" ? "progress" : "overview");
-    } catch (err) {
-      console.error("Failed to upload photo:", err);
-      setPhotoError("Upload failed. Try again.");
+      const gps = await readGps();
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        await queueLocalPhoto(file, gps);
+        return;
+      }
+      try {
+        const { photo } = await uploadProjectPhoto(project.id, file, {
+          caption: caption.trim() || undefined,
+          milestoneId: uploadKind === "progress" ? milestoneId || null : null,
+          kind: uploadKind,
+          lat: gps?.lat ?? null,
+          lon: gps?.lon ?? null,
+        });
+        applyPhotos([photo, ...photos]);
+        setCaption("");
+        setMilestoneId("");
+        setTab(uploadKind === "progress" ? "progress" : "overview");
+      } catch (err) {
+        if (isOfflineNetworkError(err)) {
+          await queueLocalPhoto(file, gps);
+          return;
+        }
+        console.error("Failed to upload photo:", err);
+        setPhotoError("Upload failed. Try again.");
+      }
     } finally {
       setUploading(false);
       e.target.value = "";
@@ -335,16 +407,39 @@ export function PlaceSidePanel({
       withMilestones?: boolean;
     },
   ) {
+    const queuedHere = queued.filter((q) => q.kind === kind);
     return (
       <div className="place-photos-block">
         <div className="place-photos-heading">
           <span>{opts.title}</span>
-          {list.length > 0 && <span className="place-photos-count">{list.length}</span>}
+          {list.length + queuedHere.length > 0 && (
+            <span className="place-photos-count">{list.length + queuedHere.length}</span>
+          )}
         </div>
-        {list.length === 0 ? (
+        {list.length === 0 && queuedHere.length === 0 ? (
           <p className="place-empty">{opts.empty}</p>
         ) : (
           <div className="place-photo-grid">
+            {queuedHere.map((row) => (
+              <div key={row.id} className="place-photo-card is-queued">
+                <div className="place-photo-card-media">
+                  <QueuedBlobImg blob={row.blob} alt={row.caption || "Queued photo"} />
+                </div>
+                <div className="place-photo-card-meta">
+                  <span>{row.caption || "Waiting to upload"}</span>
+                  <span className="place-photo-card-tag">Offline queue</span>
+                </div>
+                {showPhotoEdit && (
+                  <button
+                    type="button"
+                    className="place-photo-card-remove"
+                    onClick={() => void removeQueuedPhoto(row.id)}
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+            ))}
             {list.map((photo) => {
               const linkedMilestone =
                 kind === "progress" && photo.milestoneId
@@ -372,6 +467,11 @@ export function PlaceSidePanel({
                     {photo.uploadedAt && (
                       <span className="place-photo-card-date">
                         {new Date(photo.uploadedAt).toLocaleDateString()}
+                      </span>
+                    )}
+                    {photo.lat != null && photo.lon != null && (
+                      <span className="place-photo-card-date">
+                        GPS {photo.lat.toFixed(5)}, {photo.lon.toFixed(5)}
                       </span>
                     )}
                   </div>
@@ -415,14 +515,24 @@ export function PlaceSidePanel({
                 ))}
               </select>
             )}
-            <button
-              type="button"
-              className="place-photo-add-btn"
-              disabled={uploading}
-              onClick={() => openFilePicker(kind)}
-            >
-              {uploading && uploadKind === kind ? "Uploading…" : opts.uploadLabel}
-            </button>
+            <div className="place-photo-add-row">
+              <button
+                type="button"
+                className="place-photo-add-btn"
+                disabled={uploading}
+                onClick={() => openFilePicker(kind, true)}
+              >
+                {uploading && uploadKind === kind ? "Uploading…" : "Take photo"}
+              </button>
+              <button
+                type="button"
+                className="place-photo-add-btn"
+                disabled={uploading}
+                onClick={() => openFilePicker(kind, false)}
+              >
+                {opts.uploadLabel}
+              </button>
+            </div>
             {photoError && uploadKind === kind && (
               <div className="place-photo-error">{photoError}</div>
             )}
@@ -512,6 +622,11 @@ export function PlaceSidePanel({
           )}
           {locationLabel && !renaming && (
             <p className="place-panel-autoname">{locationLabel}</p>
+          )}
+          {!renaming && coords && (
+            <p className="place-panel-coords" title="Click Share to copy lat, lon">
+              {coords}
+            </p>
           )}
           <div className="place-panel-rating-row">
             <span
@@ -672,14 +787,25 @@ export function PlaceSidePanel({
           </div>
 
           {showPhotoEdit && (
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              className="place-photo-file-input"
-              disabled={uploading}
-              onChange={(e) => void handlePhotoUpload(e)}
-            />
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="place-photo-file-input"
+                disabled={uploading}
+                onChange={(e) => void handlePhotoUpload(e)}
+              />
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="place-photo-file-input"
+                disabled={uploading}
+                onChange={(e) => void handlePhotoUpload(e)}
+              />
+            </>
           )}
 
           {tab === "overview" && (
@@ -691,6 +817,28 @@ export function PlaceSidePanel({
                   <div className="place-info-sub">
                     {project.barangay ? `${project.barangay}, Luisiana, Laguna` : "Luisiana, Laguna"}
                   </div>
+                </div>
+              </div>
+              <div className="place-info-row place-qr-row">
+                <img
+                  className="place-qr-img"
+                  src={qrImageUrl(assetShareUrl(project.id), 160)}
+                  alt={`QR for ${displayName}`}
+                />
+                <div>
+                  <div className="place-info-main">Asset QR</div>
+                  <div className="place-info-sub">
+                    Scan with a phone camera to open this site.
+                  </div>
+                  <button
+                    type="button"
+                    className="place-qr-copy"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(assetShareUrl(project.id));
+                    }}
+                  >
+                    Copy link
+                  </button>
                 </div>
               </div>
               {officialLinks.length > 0 &&

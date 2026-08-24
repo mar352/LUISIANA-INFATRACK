@@ -110,3 +110,40 @@ export function addBarangayOverlay(viewer: Cesium.Viewer, areas: BarangayArea[])
   }
   viewer.scene.requestRender();
 }
+
+export function highlightBarangay(viewer: Cesium.Viewer, areas: BarangayArea[], name: string | null) {
+  if (viewer.isDestroyed()) return;
+  for (let i = 0; i < areas.length; i++) {
+    const a = areas[i];
+    const on = Boolean(name && a.name === name);
+    const fill = Cesium.Color.fromCssColorString(a.color).withAlpha(on ? 0.62 : 0.38);
+    const line = Cesium.Color.fromCssColorString(a.color).withAlpha(on ? 1 : 0.95);
+    const poly = viewer.entities.getById(`${ID_PREFIX}${i}`);
+    if (poly?.polygon) {
+      poly.polygon.material = new Cesium.ColorMaterialProperty(fill);
+      poly.polygon.outlineColor = new Cesium.ConstantProperty(line);
+    }
+    const lab = viewer.entities.getById(`${LABEL_PREFIX}${i}`);
+    if (lab?.label) {
+      lab.label.font = new Cesium.ConstantProperty(on ? "bold 15px sans-serif" : "bold 12px sans-serif");
+      lab.label.pixelOffset = new Cesium.ConstantProperty(new Cesium.Cartesian2(0, on ? -10 : -6));
+    }
+  }
+  viewer.scene.requestRender();
+}
+
+/** Frame the barangay polygon on the globe. */
+export function flyToBarangay(viewer: Cesium.Viewer, area: BarangayArea) {
+  if (viewer.isDestroyed() || area.ring.length < 3) return;
+  const positions = area.ring.map(([lon, lat]) => Cesium.Cartesian3.fromDegrees(lon, lat));
+  const sphere = Cesium.BoundingSphere.fromPoints(positions);
+  const range = Math.max(420, sphere.radius * 2.7);
+  viewer.camera.flyToBoundingSphere(sphere, {
+    duration: 1.15,
+    offset: new Cesium.HeadingPitchRange(
+      viewer.camera.heading,
+      Cesium.Math.toRadians(-42),
+      range,
+    ),
+  });
+}

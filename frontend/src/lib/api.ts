@@ -22,7 +22,7 @@ export function backendUrl(path: string) {
 }
 
 export async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(backendUrl(path));
+  const res = await fetch(backendUrl(path), { credentials: "include" });
   if (!res.ok) throw new Error(`Request failed: ${res.status}`);
   return (await res.json()) as T;
 }
@@ -30,6 +30,7 @@ export async function getJson<T>(path: string): Promise<T> {
 async function sendJson<T>(path: string, method: string, body?: unknown): Promise<T> {
   const res = await fetch(backendUrl(path), {
     method,
+    credentials: "include",
     headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
@@ -84,15 +85,24 @@ export function fetchAccomplishmentReport(projectId: string) {
 export async function uploadProjectPhoto(
   projectId: string,
   file: File,
-  opts?: { caption?: string; milestoneId?: string | null; kind?: "site" | "progress" }
+  opts?: {
+    caption?: string;
+    milestoneId?: string | null;
+    kind?: "site" | "progress";
+    lat?: number | null;
+    lon?: number | null;
+  }
 ) {
   const form = new FormData();
   form.append("photo", file);
   if (opts?.caption) form.append("caption", opts.caption);
   if (opts?.milestoneId) form.append("milestoneId", opts.milestoneId);
   form.append("kind", opts?.kind === "site" ? "site" : "progress");
+  if (opts?.lat != null && Number.isFinite(opts.lat)) form.append("lat", String(opts.lat));
+  if (opts?.lon != null && Number.isFinite(opts.lon)) form.append("lon", String(opts.lon));
   const res = await fetch(backendUrl(`/api/projects/${projectId}/photos`), {
     method: "POST",
+    credentials: "include",
     body: form,
   });
   if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
@@ -109,6 +119,7 @@ export async function uploadPlanningAttachment(file: File) {
   form.append("file", file);
   const res = await fetch(backendUrl("/api/planning/attachments"), {
     method: "POST",
+    credentials: "include",
     body: form,
   });
   if (!res.ok) {
@@ -130,6 +141,7 @@ export async function uploadDocumentFile(file: File) {
   form.append("file", file);
   const res = await fetch(backendUrl("/api/documents/upload"), {
     method: "POST",
+    credentials: "include",
     body: form,
   });
   if (!res.ok) {

@@ -1,12 +1,25 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /projects/{document=**} {
-      allow read, write: if true;
-    }
+    // Password hashes and sessions live on the Express server, not here.
     match /accounts/{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
+    match /sessions/{document=**} {
+      allow read, write: if false;
+    }
+    // Staff may append an Activity line; nobody can wipe the log from the browser.
+    match /auditLogs/{document=**} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if false;
+    }
+    // Map pins: public read for the citizen globe. Writes go through /api/projects (login required).
+    match /projects/{document=**} {
+      allow read: if true;
+      allow write: if false;
+    }
+    // Planning board still uses the client until those APIs move to Express.
     match /proposals/{document=**} {
       allow read, write: if true;
     }
@@ -17,12 +30,6 @@ service cloud.firestore {
       allow read, write: if true;
     }
     match /documents/{document=**} {
-      allow read, write: if true;
-    }
-    match /sessions/{document=**} {
-      allow read, write: if true;
-    }
-    match /auditLogs/{document=**} {
       allow read, write: if true;
     }
   }

@@ -100,9 +100,9 @@ export function applyProceduralAtmosphere(
   // Extra Mie = soft orange haze / sun bloom.
   const mie = MIE_DAY * (1 + w * 2.4);
 
-  globe.enableLighting = true;
-  globe.dynamicAtmosphereLighting = true;
-  globe.dynamicAtmosphereLightingFromSun = true;
+  globe.enableLighting = false;
+  globe.dynamicAtmosphereLighting = false;
+  globe.dynamicAtmosphereLightingFromSun = false;
   globe.shadows = Cesium.ShadowMode.RECEIVE_ONLY;
   globe.showGroundAtmosphere = true;
   globe.atmosphereLightIntensity = lerp(0.8, 22, dayFactor) + w * 10;
@@ -111,8 +111,8 @@ export function applyProceduralAtmosphere(
   globe.atmosphereMieAnisotropy = lerp(0.9, 0.75, w); // wider haze lobe at dusk
   // Cap hue well below the magenta danger zone (~0.05+).
   globe.atmosphereHueShift = w * 0.03;
-  globe.atmosphereSaturationShift = lerp(-0.15, 0, nightFactor) + w * 0.22;
-  globe.atmosphereBrightnessShift = lerp(-0.55, 0.02, dayFactor) + w * 0.04;
+  globe.atmosphereSaturationShift = lerp(-0.2, 0, nightFactor) + w * 0.22;
+  globe.atmosphereBrightnessShift = lerp(-0.32, 0.02, dayFactor) + w * 0.04;
   if ("nightFadeInDistance" in globe) {
     (globe as Cesium.Globe & { nightFadeInDistance: number }).nightFadeInDistance = 8.0e6;
   }
@@ -132,9 +132,9 @@ export function applyProceduralAtmosphere(
     scene.atmosphere.mieCoefficient = new Cesium.Cartesian3(mie, mie, mie);
     scene.atmosphere.mieAnisotropy = lerp(0.9, 0.75, w);
     scene.atmosphere.hueShift = w * 0.03;
-    scene.atmosphere.saturationShift = lerp(-0.12, 0, nightFactor) + w * 0.2;
-    scene.atmosphere.brightnessShift = lerp(-0.5, 0.02, dayFactor) + w * 0.04;
-    scene.atmosphere.lightIntensity = lerp(1.2, 16, dayFactor) + w * 10;
+    scene.atmosphere.saturationShift = lerp(-0.15, 0, nightFactor) + w * 0.2;
+    scene.atmosphere.brightnessShift = lerp(-0.28, 0.02, dayFactor) + w * 0.04;
+    scene.atmosphere.lightIntensity = lerp(2.2, 16, dayFactor) + w * 10;
   }
 
   let sky = scene.skyAtmosphere;
@@ -147,24 +147,28 @@ export function applyProceduralAtmosphere(
   sky.atmosphereRayleighCoefficient = new Cesium.Cartesian3(rayR, rayG, rayB);
   sky.atmosphereMieCoefficient = new Cesium.Cartesian3(mie, mie, mie);
   sky.atmosphereMieAnisotropy = lerp(0.92, 0.72, w);
-  sky.atmosphereLightIntensity = lerp(3.5, 50, dayFactor) + w * 22;
+  sky.atmosphereLightIntensity = lerp(4, 50, dayFactor) + w * 22;
   sky.hueShift = w * 0.03;
-  sky.saturationShift = lerp(-0.18, 0, nightFactor) + w * 0.28;
-  sky.brightnessShift = lerp(-0.48, 0.03, dayFactor) + w * 0.06;
+  sky.saturationShift = lerp(-0.22, 0, nightFactor) + w * 0.28;
+  sky.brightnessShift = lerp(-0.36, 0.03, dayFactor) + w * 0.06;
 
-  const sat = opts.satelliteLayer;
-  if (sat) {
-    sat.brightness = lerp(0.28, 1.04, dayFactor);
-    sat.saturation = lerp(0.4, 1.04, dayFactor);
-    sat.gamma = lerp(1.25, 0.96, dayFactor);
-    sat.contrast = lerp(0.95, 1.1, dayFactor);
+  const nightBright = lerp(0.38, 1.04, dayFactor);
+  const nightSat = lerp(0.5, 1.04, dayFactor);
+  const nightGamma = lerp(1.18, 0.96, dayFactor);
+  const n = viewer.imageryLayers.length;
+  for (let i = 0; i < n; i++) {
+    const layer = viewer.imageryLayers.get(i);
+    layer.brightness = nightBright;
+    layer.saturation = nightSat;
+    layer.gamma = nightGamma;
+    layer.contrast = lerp(0.96, 1.1, dayFactor);
   }
 
   // Thicker warm fog at the horizon during golden hour; darker at night.
   if (scene.fog) {
     scene.fog.enabled = true;
-    scene.fog.density = lerp(0.00034, 0.00011, dayFactor) + w * 0.00022;
-    scene.fog.minimumBrightness = lerp(0.015, 0.22, dayFactor) + w * 0.16;
+    scene.fog.density = lerp(0.0004, 0.00011, dayFactor) + w * 0.00022;
+    scene.fog.minimumBrightness = lerp(0.04, 0.22, dayFactor) + w * 0.16;
     if ("visualDensityScalar" in scene.fog) {
       scene.fog.visualDensityScalar = 1 + w * 0.5;
     }

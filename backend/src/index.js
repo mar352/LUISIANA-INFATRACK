@@ -40,6 +40,16 @@ import { buildSlopeCache } from "./services/dem.js";
 import { chatWithOllama, getChatConfig } from "./services/chat.js";
 import { lookupPlaceName } from "./services/placeName.js";
 import { assessGeorisk } from "./services/georiskAssess.js";
+import {
+  changePassword as staffChangePassword,
+  cookieHeader,
+  isGlbFile,
+  login as staffLogin,
+  logout as staffLogout,
+  requireRoles,
+  requireStaff,
+  sessionFromRequest,
+} from "./services/auth.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -147,6 +157,13 @@ function multerErrorHandler(err, _req, res, next) {
 }
 
 const app = express();
+app.disable("x-powered-by");
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  next();
+});
 app.use(express.json({ limit: "2mb" }));
 app.use("/uploads", express.static(uploadsDir));
 app.use(
@@ -163,6 +180,58 @@ app.use(
 );
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
+
+function clientIp(req) {
+  return (
+    req.headers["x-forwarded-for"]?.toString().split(",")[0]?.trim() ||
+    req.socket?.remoteAddress ||
+    "anon"
+  );
+}
+
+app.post("/api/auth/login", (req, res) => {
+  const result = staffLogin(req.body?.username, req.body?.password, clientIp(req));
+  if (!result.ok) {
+    const status = result.error === "locked" ? 423 : 401;
+    return res.status(status).json({
+      error: result.error,
+      lockedUntil: result.lockedUntil || undefined,
+    });
+  }
+  res.setHeader("Set-Cookie", cookieHeader(result.sid));
+  res.json({ user: result.session.user });
+});
+
+app.post("/api/auth/logout", (req, res) => {
+  staffLogout(req);
+  res.setHeader("Set-Cookie", cookieHeader("", { clear: true }));
+  res.json({ ok: true });
+});
+
+app.get("/api/auth/me", (req, res) => {
+  const s = sessionFromRequest(req);
+  if (!s) return res.status(401).json({ error: "Sign in required." });
+  res.json({
+    user: { username: s.username, role: s.role, department: s.department },
+  });
+});
+
+app.post("/api/auth/password", requireStaff, (req, res) => {
+  const result = staffChangePassword(req, req.body?.currentPassword, req.body?.newPassword);
+  if (!result.ok) {
+    const map = {
+      auth: [401, "Sign in required."],
+      current: [400, "Current password is wrong."],
+      short: [400, "New password must be at least 8 characters."],
+      long: [400, "New password is too long."],
+      same: [400, "Pick a different password from the current one."],
+      invalid: [400, "Enter your current and new password."],
+    };
+    const [status, error] = map[result.error] || [400, "Could not change password."];
+    return res.status(status).json({ error });
+  }
+  res.json({ ok: true });
+});
 
 /** Nearby street or barangay for a map drop / hover. */
 app.get("/api/place-name", async (req, res) => {
@@ -267,7 +336,7 @@ app.get("/api/risk-zones", (req, res) => {
   res.json({ zones, generatedAt: new Date().toISOString() });
 });
 
-app.get("/api/projects", (_req, res) => {
+app.get("/api/projects", requireStaff, (_req, res) => {
   res.json(emitProjectsPayload());
 });
 
@@ -302,7 +371,7 @@ app.post("/api/public/engagement", (req, res) => {
   res.status(201).json({ submission: { id: result.submission.id, createdAt: result.submission.createdAt } });
 });
 
-app.get("/api/engagement", (req, res) => {
+app.get("/api/engagement", requireStaff, (req, res) => {
   const kind = req.query.kind ? String(req.query.kind) : undefined;
   const status = req.query.status ? String(req.query.status) : undefined;
   res.json({
@@ -311,7 +380,7 @@ app.get("/api/engagement", (req, res) => {
   });
 });
 
-app.patch("/api/engagement/:id", (req, res) => {
+app.patch("/api/engagement/:id", requireStaff, (req, res) => {
   const result = updateEngagement(req.params.id, req.body || {});
   if (!result) return res.status(404).json({ error: "Submission not found" });
   if (result.error) return res.status(400).json({ error: result.error });
@@ -322,7 +391,7 @@ app.get("/api/engagement/stats", (_req, res) => {
   res.json({ stats: engagementPublicStats(), generatedAt: new Date().toISOString() });
 });
 
-app.post("/api/projects", (req, res) => {
+app.post("/api/projects", requireRoles("Engineer", "MPDC"), (req, res) => {
   const {
     name,
     modelType,
@@ -373,48 +442,48 @@ app.post("/api/projects", (req, res) => {
   res.json({ project });
 });
 
-app.patch("/api/projects/:id", (req, res) => {
+app.patch("/api/projects/:id", requireRoles("Engineer", "MPDC"), (req, res) => {
   const project = updateProject(req.params.id, req.body);
   if (!project) return res.status(404).json({ error: "Project not found" });
   io.emit("projects:update", emitProjectsPayload());
   res.json({ project });
 });
 
-app.post("/api/projects/:id/milestones", (req, res) => {
+app.post("/api/projects/:id/milestones", requireRoles("Engineer", "MPDC"), (req, res) => {
   const milestone = addMilestone(req.params.id, req.body);
   if (!milestone) return res.status(400).json({ error: "Invalid project or milestone data" });
   io.emit("projects:update", emitProjectsPayload());
   res.json({ milestone });
 });
 
-app.patch("/api/projects/:id/milestones/:mid", (req, res) => {
+app.patch("/api/projects/:id/milestones/:mid", requireRoles("Engineer", "MPDC"), (req, res) => {
   const milestone = completeMilestone(req.params.id, req.params.mid);
   if (!milestone) return res.status(404).json({ error: "Milestone not found" });
   io.emit("projects:update", emitProjectsPayload());
   res.json({ milestone });
 });
 
-app.post("/api/projects/:id/issues", (req, res) => {
+app.post("/api/projects/:id/issues", requireStaff, (req, res) => {
   const issue = reportIssue(req.params.id, req.body);
   if (!issue) return res.status(400).json({ error: "Invalid project or issue data" });
   io.emit("projects:update", emitProjectsPayload());
   res.json({ issue });
 });
 
-app.patch("/api/projects/:id/issues/:iid", (req, res) => {
+app.patch("/api/projects/:id/issues/:iid", requireStaff, (req, res) => {
   const issue = resolveIssue(req.params.id, req.params.iid);
   if (!issue) return res.status(404).json({ error: "Issue not found" });
   io.emit("projects:update", emitProjectsPayload());
   res.json({ issue });
 });
 
-app.get("/api/projects/:id/report", (req, res) => {
+app.get("/api/projects/:id/report", requireStaff, (req, res) => {
   const report = generateAccomplishmentReport(req.params.id);
   if (!report) return res.status(404).json({ error: "Project not found" });
   res.json({ report });
 });
 
-app.post("/api/projects/:id/photos", (req, res, next) => {
+app.post("/api/projects/:id/photos", requireRoles("Engineer", "MPDC"), (req, res, next) => {
   uploadPhoto.single("photo")(req, res, (err) => {
     if (err) return multerErrorHandler(err, req, res, next);
     if (!req.file) {
@@ -426,6 +495,8 @@ app.post("/api/projects/:id/photos", (req, res, next) => {
       caption: req.body?.caption,
       milestoneId: req.body?.milestoneId || null,
       kind: req.body?.kind || "progress",
+      lat: req.body?.lat,
+      lon: req.body?.lon,
     });
     if (!photo) return res.status(404).json({ error: "Project not found" });
     io.emit("projects:update", emitProjectsPayload());
@@ -433,18 +504,26 @@ app.post("/api/projects/:id/photos", (req, res, next) => {
   });
 });
 
-app.delete("/api/projects/:id/photos/:photoId", (req, res) => {
+app.delete("/api/projects/:id/photos/:photoId", requireRoles("Engineer", "MPDC"), (req, res) => {
   const removed = removeProjectPhoto(req.params.id, req.params.photoId);
   if (!removed) return res.status(404).json({ error: "Photo or project not found" });
   io.emit("projects:update", emitProjectsPayload());
   res.json({ ok: true });
 });
 
-app.post("/api/upload-model", (req, res, next) => {
+app.post("/api/upload-model", requireRoles("Engineer"), (req, res, next) => {
   upload.single("model")(req, res, (err) => {
     if (err) return multerErrorHandler(err, req, res, next);
     if (!req.file) {
       return res.status(400).json({ error: "No file uploaded" });
+    }
+    if (!isGlbFile(req.file.path)) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch {
+        /* ignore */
+      }
+      return res.status(400).json({ error: "File is not a valid GLB/GLTF model." });
     }
 
     // Also mirror into frontend/dist/uploads when present (vite preview / static builds).
@@ -471,14 +550,14 @@ app.post("/api/upload-model", (req, res, next) => {
   });
 });
 
-app.delete("/api/projects/:id", (req, res) => {
+app.delete("/api/projects/:id", requireRoles("Engineer"), (req, res) => {
   const removed = removeProject(req.params.id);
   if (!removed) return res.status(404).json({ error: "Project not found" });
   io.emit("projects:update", emitProjectsPayload());
   res.json({ ok: true });
 });
 
-app.post("/api/planning/notify", (req, res) => {
+app.post("/api/planning/notify", requireStaff, (req, res) => {
   io.emit("planning:update", {
     kind: req.body?.kind || "update",
     at: req.body?.at || new Date().toISOString(),
@@ -486,7 +565,7 @@ app.post("/api/planning/notify", (req, res) => {
   res.json({ ok: true });
 });
 
-app.post("/api/planning/attachments", (req, res, next) => {
+app.post("/api/planning/attachments", requireStaff, (req, res, next) => {
   uploadPlanningAttach.single("file")(req, res, (err) => {
     if (err) return multerErrorHandler(err, req, res, next);
     if (!req.file) {
@@ -523,7 +602,7 @@ const uploadDocument = multer({
   },
 });
 
-app.post("/api/documents/upload", (req, res, next) => {
+app.post("/api/documents/upload", requireStaff, (req, res, next) => {
   uploadDocument.single("file")(req, res, (err) => {
     if (err) return multerErrorHandler(err, req, res, next);
     if (!req.file) {
@@ -544,7 +623,7 @@ app.get("/api/chat/health", (_req, res) => {
   res.json({ ok: true, ...getChatConfig() });
 });
 
-app.post("/api/chat", async (req, res) => {
+app.post("/api/chat", requireStaff, async (req, res) => {
   try {
     const messages = req.body?.messages;
     const result = await chatWithOllama(messages);

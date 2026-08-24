@@ -38,6 +38,9 @@ import { BACKEND_URL, backendUrl } from "../lib/api";
 import { fetchPlanningEventsOnce, fetchPlanningMeetingsOnce, fetchProposalsOnce, updateProposal } from "../services/firestore-planning";
 import { departmentForRole } from "../lib/planning-permissions";
 import { buildOpsAlerts, type OpsAlert } from "../lib/ops-alerts";
+import { assetQueryParam } from "../lib/project-link";
+import { startPhotoQueueFlusher } from "../lib/photo-queue";
+import { inspectGlbFile, type GlbTextureReport } from "../lib/inspect-glb";
 import { NotifyOpsList } from "./NotifyOpsList";
 import { buildHeatmapPoints, type BBox, type HeatmapMetric } from "../lib/heatmap";
 import { formatGibsDate, getGibsLayerInfo, gibsWmtsTileUrl, type GibsLayerId } from "../lib/gibs";
@@ -108,6 +111,7 @@ import { classAdvice, classColor } from "../lib/earthquake-labels";
 import { ProjectMonitoringPanel } from "./ProjectMonitoringPanel";
 import { ThemeToggle } from "./ThemeToggle";
 import { ProjectChat } from "./ProjectChat";
+import { ChangePasswordForm } from "./ChangePasswordForm";
 
 import {
   seedAccounts,
@@ -513,6 +517,10 @@ export default function App() {
   });
 
   useEffect(() => {
+    return startPhotoQueueFlusher();
+  }, []);
+
+  useEffect(() => {
     seedAccounts().catch((err) => console.warn("[Auth] Seed accounts failed:", err));
 
     if (cookieConsent === "accepted") {
@@ -631,12 +639,35 @@ export default function App() {
   const [weather, setWeather] = useState<WeatherSnapshot | null>(null);
   const [heatPoints, setHeatPoints] = useState<HeatPoint[]>([]);
   const [riskZones, setRiskZones] = useState<RiskZones | null>(null);
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [projects, setProjects] = useState<Project[]>(() => {
+    try {
+      const raw = localStorage.getItem("infatrack-projects-cache");
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
   const [infraFilter, setInfraFilter] = useState<InfraFilter>(DEFAULT_INFRA_FILTER);
   const filteredProjects = useMemo(
     () => filterInfrastructure(Array.isArray(projects) ? projects : [], infraFilter),
     [projects, infraFilter],
   );
+
+  useEffect(() => {
+    const id = assetQueryParam();
+    if (!id) return;
+    if (currentSession && screen === "landing") setScreen("app");
+    if (screen !== "app" && screen !== "citizen") return;
+    let tries = 0;
+    const timer = window.setInterval(() => {
+      tries += 1;
+      const ok = cesiumMapRef.current?.flyToProject(id);
+      if (ok || tries > 50) window.clearInterval(timer);
+    }, 400);
+    return () => window.clearInterval(timer);
+  }, [screen, currentSession, filteredProjects.length]);
+
   const [placementMode, setPlacementMode] = useState(false);
   const [blockRemoverMode, setBlockRemoverMode] = useState(false);
   const [editMode, setEditMode] = useState(false);
@@ -646,6 +677,7 @@ export default function App() {
   const [placingName, setPlacingName] = useState("");
   const [customModelFile, setCustomModelFile] = useState<File | null>(null);
   const [customModelPreview, setCustomModelPreview] = useState<string | null>(null);
+  const [customModelTextureReport, setCustomModelTextureReport] = useState<GlbTextureReport | null>(null);
   /** Approved proposal waiting for MPDC to click the map and pin the site. */
   const [pinProposal, setPinProposal] = useState<PlanningProposal | null>(null);
   const pinProposalRef = useRef<PlanningProposal | null>(null);
@@ -656,7 +688,7 @@ export default function App() {
     (pinProposal && currentRole === "MPDC" && screen === "app") ||
     (placementMode && currentRole === "Engineer" && screen === "app");
   const eraseBlocksActive = placementToolbarOpen && placementTool === "erase";
-  const [sidebarTab, setSidebarTab] = useState<"notify" | "layers" | "settings" | "risk" | "projects" | "climate" | "events">("climate");
+  const [sidebarTab, setSidebarTab] = useState<"notify" | "layers" | "settings" | "account" | "risk" | "projects" | "climate" | "events">("climate");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
     typeof window !== "undefined" && window.matchMedia("(max-width: 1024px)").matches
   );
@@ -682,6 +714,7 @@ export default function App() {
       else if (roleConfig.canSeeWeather || roleConfig.canSeeLayers) setSidebarTab("climate");
       else if (roleConfig.canSeeRisk) setSidebarTab("risk");
       else if (roleConfig.canSeeProjects) setSidebarTab("projects");
+      else if (currentRole && currentRole !== "Viewer") setSidebarTab("account");
     }
     if (currentRole !== "Engineer") {
       setBlockRemoverMode(false);
@@ -794,6 +827,7 @@ export default function App() {
   const [climateReadingsOpen, setClimateReadingsOpen] = useState(false);
   const [barangaysVisible, setBarangaysVisible] = useState(false);
   const [barangayAreas, setBarangayAreas] = useState<BarangayArea[]>([]);
+  const [focusedBarangay, setFocusedBarangay] = useState<string | null>(null);
   const [tropicalEnabled, setTropicalEnabled] = useState(false);
   const [tropicalSystems, setTropicalSystems] = useState<TropicalSystem[]>([]);
   const [tropicalLoading, setTropicalLoading] = useState(false);
@@ -801,7 +835,10 @@ export default function App() {
   const [tropicalError, setTropicalError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!barangaysVisible) return;
+    if (!barangaysVisible) {
+      setFocusedBarangay(null);
+      return;
+    }
     void loadBarangayAreas()
       .then(setBarangayAreas)
       .catch(() => setBarangayAreas([]));
@@ -1281,6 +1318,9 @@ export default function App() {
   // Modal state for entering building details before placement
   const [showPlacementModal, setShowPlacementModal] = useState(false);
   const [pendingPlacement, setPendingPlacement] = useState<{ lng: number; lat: number } | null>(null);
+  /** Ignore the leftover globe click that would instantly close the new modal. */
+  const placementModalReadyRef = useRef(false);
+  const pendingEditIdRef = useRef<string | null>(null);
   const [modalProjectName, setModalProjectName] = useState("");
   const [modalProjectType, setModalProjectType] = useState<"Municipal Project" | "Private Building" | "Agricultural Structure">("Municipal Project");
   const [modalDepartment, setModalDepartment] = useState<"MPDC" | "Engineering" | "Agriculture" | "Negosyo Center">("Engineering");
@@ -1403,7 +1443,16 @@ export default function App() {
     setModalStatus("Planned");
     setModalProgress(0);
     setModalDescription(catalog?.description || "");
+    placementModalReadyRef.current = false;
     setShowPlacementModal(true);
+    window.setTimeout(() => {
+      placementModalReadyRef.current = true;
+    }, 400);
+  }
+
+  function closePlacementModal() {
+    setShowPlacementModal(false);
+    setPendingPlacement(null);
   }
 
   function handlePlaceSketch(sketch: MapSketch) {
@@ -1478,6 +1527,7 @@ export default function App() {
       try {
         const res = await fetch(backendUrl("/api/projects"), {
           method: "POST",
+          credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
@@ -1577,6 +1627,7 @@ export default function App() {
 
         const uploadRes = await fetch(backendUrl("/api/upload-model"), {
           method: "POST",
+          credentials: "include",
           body: formData,
         });
 
@@ -1600,6 +1651,7 @@ export default function App() {
       try {
         const res = await fetch(backendUrl("/api/projects"), {
           method: "POST",
+          credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name: placedName,
@@ -1632,6 +1684,11 @@ export default function App() {
 
         const { project } = await res.json();
         addProjectToFirestore(project).catch((e) => console.warn("[Firestore] sync failed:", e));
+        setProjects((prev) => {
+          if (prev.some((x) => x.id === project.id)) return prev;
+          return [project, ...prev];
+        });
+        pendingEditIdRef.current = project.id;
       } catch (backendErr) {
         if (selectedModelRef.current === "custom") {
           throw backendErr;
@@ -1642,16 +1699,19 @@ export default function App() {
           : fallbackProject;
         await addProjectToFirestore(localProject);
         setProjects((prev) => [localProject, ...prev]);
+        pendingEditIdRef.current = localProject.id;
         console.warn("[Projects] Backend unavailable, saved placement directly to Firestore:", backendErr);
       }
       
-      // Close modal and reset
       setShowPlacementModal(false);
       setPendingPlacement(null);
       setModalProjectName("");
       setModalDescription("");
-      
-      // Backend will emit projects:update via socket
+      setPlacementMode(false);
+      setEditMode(true);
+      setSnapToRoad(true);
+      setBlockRemoverMode(false);
+      setSidebarCollapsed(true);
     } catch (err) {
       console.error("Failed to place project:", err);
       const message =
@@ -1662,13 +1722,38 @@ export default function App() {
     }
   };
 
+  useEffect(() => {
+    const id = pendingEditIdRef.current;
+    if (!id || !editMode) return;
+    if (!projects.some((p) => p.id === id && !p.siteMarkerOnly)) return;
+    pendingEditIdRef.current = null;
+    cesiumMapRef.current?.selectProject(id);
+  }, [projects, editMode]);
+
+  // Swallow the leftover globe click so it cannot close the placement modal.
+  useEffect(() => {
+    if (!showPlacementModal) return;
+    const blockGhostClick = (e: MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    window.addEventListener("click", blockGhostClick, true);
+    const t = window.setTimeout(() => {
+      window.removeEventListener("click", blockGhostClick, true);
+      placementModalReadyRef.current = true;
+    }, 350);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener("click", blockGhostClick, true);
+    };
+  }, [showPlacementModal]);
+
   // ESC key to close placement modal / cancel MPDC site pin
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       if (showPlacementModal) {
-        setShowPlacementModal(false);
-        setPendingPlacement(null);
+        closePlacementModal();
       }
       if (pinProposal) {
         setPinProposal(null);
@@ -1785,7 +1870,13 @@ export default function App() {
     socket.on("weather:update", (w) => setWeather(w));
     socket.on("risk:update", (z) => setRiskZones(z.zones));
     socket.on("projects:update", (p) => {
-      setProjects(Array.isArray(p?.projects) ? p.projects : []);
+      const list = Array.isArray(p?.projects) ? p.projects : [];
+      setProjects(list);
+      try {
+        localStorage.setItem("infatrack-projects-cache", JSON.stringify(list));
+      } catch {
+        /* quota */
+      }
     });
     socket.on("alerts:new", (a) => setAlerts((prev) => [a, ...prev].slice(0, 8)));
     socket.on("planning:update", () => {
@@ -2434,6 +2525,7 @@ export default function App() {
           sunAzimuthDeg={sunAzimuthDeg}
           buildingBlocksVisible={toggles.buildingBlocks}
           barangaysVisible={barangaysVisible}
+          focusedBarangay={focusedBarangay}
           blockRemoverActive={
             (blockRemoverMode && currentRole === "Engineer") || eraseBlocksActive
           }
@@ -2480,7 +2572,10 @@ export default function App() {
             currentRole === "Engineer"
               ? async (projectId) => {
                   try {
-                    await fetch(backendUrl(`/api/projects/${projectId}`), { method: "DELETE" });
+                    await fetch(backendUrl(`/api/projects/${projectId}`), {
+                      method: "DELETE",
+                      credentials: "include",
+                    });
                   } catch (err) {
                     console.error("Failed to delete project:", err);
                   }
@@ -3095,6 +3190,11 @@ export default function App() {
         {!editMode && barangaysVisible && roleConfig?.canSeeLayers && (
           <BarangayLegend
             areas={barangayAreas}
+            selectedName={focusedBarangay}
+            onSelect={(area) => {
+              setFocusedBarangay(area.name);
+              cesiumMapRef.current?.flyToBarangay(area);
+            }}
             onClose={() => setBarangaysVisible(false)}
             onPointerDown={stopMapPointer}
           />
@@ -3253,6 +3353,9 @@ export default function App() {
           )}
           {(roleConfig?.canSeeLayers || roleConfig?.canSeeWeather || roleConfig?.canSeeRisk) && (
             <button type="button" className={`sidebar-tab${sidebarTab === "settings" ? " active" : ""}`} onClick={() => setSidebarTab("settings")}>Settings</button>
+          )}
+          {currentRole && currentRole !== "Viewer" && (
+            <button type="button" className={`sidebar-tab${sidebarTab === "account" ? " active" : ""}`} onClick={() => setSidebarTab("account")}>Account</button>
           )}
         </div>
 
@@ -3691,6 +3794,20 @@ export default function App() {
           >
             Reset settings
           </button>
+        </div>
+        )}
+
+        {sidebarTab === "account" && currentRole && currentRole !== "Viewer" && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div className="sectionTitle" style={{ marginBottom: 8 }}>
+            Account
+          </div>
+          <div className="hint" style={{ marginBottom: 8 }}>
+            Signed in as <b>{currentSession?.username || currentRole}</b>
+            {currentSession?.department ? ` · ${currentSession.department}` : ""}.
+            Change this login’s password (at least 8 characters).
+          </div>
+          <ChangePasswordForm />
         </div>
         )}
 
@@ -4152,6 +4269,7 @@ export default function App() {
                         if (m.type !== "custom") {
                           setCustomModelFile(null);
                           setCustomModelPreview(null);
+                          setCustomModelTextureReport(null);
                         }
                       }}
                       title={m.description}
@@ -4180,9 +4298,10 @@ export default function App() {
                   Upload Custom GLB Model
                 </div>
                 <div style={{ fontSize: 10, color: "var(--muted)", lineHeight: 1.45, marginBottom: 8 }}>
-                  Colors must be on Principled BSDF Base Color (or image textures), not Viewport Display only.
-                  SVG materials often export white — run scripts/blender_fix_materials_for_gltf.py in Blender before export.
-                  Max file size: 500MB (.glb / .gltf).
+                  Blender viewport textures do not count. Image Texture must plug into Principled BSDF
+                  Base Color, then File → External Data → Pack Resources, export glTF Binary (.glb).
+                  White mesh = maps never made it into the file. Run
+                  scripts/blender_fix_materials_for_gltf.py before export. Max 500MB.
                 </div>
                 <input
                   type="file"
@@ -4192,6 +4311,8 @@ export default function App() {
                     if (file) {
                       setCustomModelFile(file);
                       setCustomModelPreview(file.name);
+                      setCustomModelTextureReport(null);
+                      void inspectGlbFile(file).then(setCustomModelTextureReport);
                     }
                   }}
                   style={{
@@ -4218,6 +4339,26 @@ export default function App() {
                       <polyline points="20 6 9 17 4 12"/>
                     </svg>
                     {customModelPreview}
+                    {customModelTextureReport && (
+                      <span>
+                        · {customModelTextureReport.texturedMaterials}/{customModelTextureReport.materials} textured
+                      </span>
+                    )}
+                  </div>
+                )}
+                {customModelTextureReport?.warning && (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      fontSize: 10,
+                      color: "var(--seed)",
+                      background: "color-mix(in oklch, var(--warn) 12%, var(--cream))",
+                      border: "1px solid color-mix(in oklch, var(--warn) 40%, var(--stroke))",
+                      padding: "8px 10px",
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    {customModelTextureReport.warning}
                   </div>
                 )}
                 <div style={{ 
@@ -4252,7 +4393,10 @@ export default function App() {
                         type="button"
                         className="side-btn-danger"
                         onClick={async () => {
-                          await fetch(backendUrl(`/api/projects/${p.id}`), { method: "DELETE" });
+                          await fetch(backendUrl(`/api/projects/${p.id}`), {
+                            method: "DELETE",
+                            credentials: "include",
+                          });
                         }}
                       >✕</button>
                     </div>
@@ -4674,8 +4818,8 @@ export default function App() {
         <div
           className="placement-modal"
           onClick={() => {
-            setShowPlacementModal(false);
-            setPendingPlacement(null);
+            if (!placementModalReadyRef.current) return;
+            closePlacementModal();
           }}
         >
           <div
@@ -4684,26 +4828,9 @@ export default function App() {
           >
             {/* Close button */}
             <button
-              onClick={() => {
-                setShowPlacementModal(false);
-                setPendingPlacement(null);
-              }}
-              style={{
-                position: "absolute",
-                top: 12,
-                right: 12,
-                cursor: "pointer",
-                background: "none",
-                border: "none",
-                color: "var(--muted)",
-                fontSize: 24,
-                padding: 0,
-                width: 32,
-                height: 32,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
+              type="button"
+              className="placement-modal-close"
+              onClick={closePlacementModal}
               title="Close (ESC)"
             >
               ×
@@ -4711,10 +4838,10 @@ export default function App() {
 
             {/* Header */}
             <div style={{ marginBottom: 20 }}>
-              <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: "var(--ink)", lineHeight: 1.3, marginBottom: 4 }}>
+              <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: "#fff", lineHeight: 1.3, marginBottom: 4 }}>
                 Place New Infrastructure
               </h2>
-              <div style={{ fontSize: 12, color: "var(--muted2)" }}>
+              <div style={{ fontSize: 12, color: "rgba(238,241,246,0.62)" }}>
                 Enter building details before placing on map
               </div>
             </div>
@@ -4723,7 +4850,7 @@ export default function App() {
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               {/* Project Name */}
               <div>
-                <label style={{ display: "block", fontSize: 11, color: "var(--muted2)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
+                <label className="placement-modal-label">
                   Project Name *
                 </label>
                 <input
@@ -4747,7 +4874,7 @@ export default function App() {
 
               {/* Type */}
               <div>
-                <label style={{ display: "block", fontSize: 11, color: "var(--muted2)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
+                <label className="placement-modal-label">
                   Project Type *
                 </label>
                 <select
@@ -4774,7 +4901,7 @@ export default function App() {
 
               {/* Department */}
               <div>
-                <label style={{ display: "block", fontSize: 11, color: "var(--muted2)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
+                <label className="placement-modal-label">
                   Department *
                 </label>
                 <select
@@ -4802,7 +4929,7 @@ export default function App() {
 
               {/* Status */}
               <div>
-                <label style={{ display: "block", fontSize: 11, color: "var(--muted2)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
+                <label className="placement-modal-label">
                   Status *
                 </label>
                 <select
@@ -4831,7 +4958,7 @@ export default function App() {
 
               {/* Progress */}
               <div>
-                <label style={{ display: "block", fontSize: 11, color: "var(--muted2)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
+                <label className="placement-modal-label">
                   Progress: {modalProgress}%
                 </label>
                 <input
@@ -4851,7 +4978,7 @@ export default function App() {
               {/* Timeline & budget */}
               <div className="grid2" style={{ gap: 10 }}>
                 <div>
-                  <label style={{ display: "block", fontSize: 11, color: "var(--muted2)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
+                  <label className="placement-modal-label">
                     Start Date
                   </label>
                   <input
@@ -4862,7 +4989,7 @@ export default function App() {
                   />
                 </div>
                 <div>
-                  <label style={{ display: "block", fontSize: 11, color: "var(--muted2)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
+                  <label className="placement-modal-label">
                     Target End
                   </label>
                   <input
@@ -4875,7 +5002,7 @@ export default function App() {
               </div>
 
               <div>
-                <label style={{ display: "block", fontSize: 11, color: "var(--muted2)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
+                <label className="placement-modal-label">
                   Budget Total (PHP, optional)
                 </label>
                 <input
@@ -4890,7 +5017,7 @@ export default function App() {
 
               {/* Description */}
               <div>
-                <label style={{ display: "block", fontSize: 11, color: "var(--muted2)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 500 }}>
+                <label className="placement-modal-label">
                   Description (Optional)
                 </label>
                 <textarea
@@ -4915,58 +5042,30 @@ export default function App() {
               </div>
 
               {/* Location Info */}
-              <div style={{ padding: "10px 12px", background: "var(--cream-ink)", border: "1px solid var(--stroke2)", borderRadius: 0 }}>
-                <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              <div className="placement-modal-loc">
+                <div style={{ fontSize: 11, color: "rgba(238,241,246,0.62)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>
                   Location
                 </div>
-                <div style={{ fontSize: 12, color: "var(--muted)", fontFamily: "monospace" }}>
+                <div style={{ fontSize: 12, color: "#eef1f6", fontFamily: "monospace" }}>
                   {pendingPlacement.lat.toFixed(6)}°N, {pendingPlacement.lng.toFixed(6)}°E
                 </div>
               </div>
             </div>
 
             {/* Action Buttons */}
-            <div style={{ display: "flex", gap: 10, marginTop: 20, paddingTop: 16, borderTop: "1px solid var(--stroke2)" }}>
+            <div className="placement-modal-actions">
               <button
-                onClick={() => {
-                  setShowPlacementModal(false);
-                  setPendingPlacement(null);
-                }}
-                style={{
-                  flex: 1,
-                  cursor: "pointer",
-                  padding: "11px 0",
-                  borderRadius: 2,
-                  background: "var(--cream-deep)",
-                  border: "1px solid var(--stroke)",
-                  color: "var(--muted)",
-                  fontSize: 14,
-                  fontWeight: 600,
-                }}
+                type="button"
+                className="place-modal-cancel"
+                onClick={closePlacementModal}
               >
                 Cancel
               </button>
               <button
+                type="button"
+                className="place-modal-submit"
                 onClick={handlePlaceBuilding}
                 disabled={!modalProjectName.trim()}
-                style={{
-                  flex: 1,
-                  cursor: modalProjectName.trim() ? "pointer" : "not-allowed",
-                  padding: "11px 0",
-                  borderRadius: 2,
-                  background: modalProjectName.trim()
-                    ? "var(--seed)"
-                    : "var(--cream-ink)",
-                  border: modalProjectName.trim()
-                    ? "2px solid var(--ink)"
-                    : "1px solid var(--stroke)",
-                  color: modalProjectName.trim() ? "var(--ink)" : "var(--muted2)",
-                  fontSize: 14,
-                  fontWeight: 700,
-                  fontFamily: '"Chakra Petch", sans-serif',
-                  boxShadow: modalProjectName.trim() ? "4px 4px 0 var(--ink)" : "none",
-                  opacity: modalProjectName.trim() ? 1 : 0.6,
-                }}
               >
                 Place Building
               </button>

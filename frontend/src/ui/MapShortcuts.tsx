@@ -1,4 +1,5 @@
 import type { ReactNode, SyntheticEvent } from "react";
+import { GlobeOfflineButton } from "./GlobeOfflineButton";
 
 type Props = {
   canSeeLayers: boolean;
@@ -118,6 +119,7 @@ export function MapShortcuts({
               <circle cx="12" cy="10" r="2.2" />
             </svg>
           </IconBtn>
+          <GlobeOfflineButton />
           <IconBtn
             label="Barangays"
             title="Show barangay colors"

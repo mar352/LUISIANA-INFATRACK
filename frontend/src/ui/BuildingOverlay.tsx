@@ -19,6 +19,7 @@ import { MODEL_CATALOG, PROJECT_STATUS_COLORS, PROJECT_STATUS_LABELS } from "../
 import { patchProject, backendUrl } from "../lib/api";
 import { updateProjectInFirestore } from "../services/firestore-projects";
 import { snapLngLatToRoad } from "../lib/snap-to-road";
+import { formatLonLat } from "../lib/coords";
 
 import { PlaceSidePanel } from "./PlaceSidePanel";
 import {
@@ -332,7 +333,13 @@ export function BuildingOverlay({
   useEffect(() => { transformSavingRef.current = transformSaving; }, [transformSaving]);
   
   // Hover state for tooltip
-  const [hoveredBuilding, setHoveredBuilding] = useState<{ name: string; status: string; x: number; y: number } | null>(null);
+  const [hoveredBuilding, setHoveredBuilding] = useState<{
+    name: string;
+    status: string;
+    x: number;
+    y: number;
+    coords: string;
+  } | null>(null);
 
   // ── Step 1: Create scene + layer once. No models here. ───────────────────
   useEffect(() => {
@@ -988,6 +995,7 @@ export function BuildingOverlay({
             status: s.status,
             x: e.clientX,
             y: e.clientY,
+            coords: formatLonLat(s.lat, s.lng),
           });
         } else {
           setHoveredBuilding(null);
@@ -1302,6 +1310,11 @@ export function BuildingOverlay({
           <div style={{ fontSize: 12, fontWeight: 600, color: "var(--seed)", marginBottom: 2 }}>
             {hoveredBuilding.name}
           </div>
+          {hoveredBuilding.coords && (
+            <div style={{ fontSize: 11, fontWeight: 700, fontVariantNumeric: "tabular-nums", color: "var(--seed)", marginBottom: 4 }}>
+              {hoveredBuilding.coords}
+            </div>
+          )}
           <div style={{ fontSize: 10, color: "var(--muted)" }}>
             Status: <span style={{ color: PROJECT_STATUS_COLORS[(hoveredBuilding.status === "Planning" ? "Planned" : hoveredBuilding.status) as keyof typeof PROJECT_STATUS_COLORS] ?? PROJECT_STATUS_COLORS.Planned }}>
               {hoveredBuilding.status === "Planning" ? "Planned" : hoveredBuilding.status}

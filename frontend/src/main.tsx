@@ -2,9 +2,11 @@ import React, { Component, type ErrorInfo, type ReactNode } from "react";
 import ReactDOM from "react-dom/client";
 import App from "./ui/App";
 import { initTheme } from "./lib/theme";
+import { registerGlobeServiceWorker } from "./lib/globe-offline";
 import "./ui/styles.css";
 
 initTheme();
+void registerGlobeServiceWorker();
 
 class RootErrorBoundary extends Component<{ children: ReactNode }, { err: Error | null }> {
   state = { err: null as Error | null };

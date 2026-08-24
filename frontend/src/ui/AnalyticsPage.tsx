@@ -33,6 +33,7 @@ import {
 } from "../lib/critical-infra";
 import type { CompactHazard } from "../lib/hazard-report";
 import { fetchProposalsOnce } from "../services/firestore-planning";
+import { formatLonLat } from "../lib/coords";
 import { ThemeToggle } from "./ThemeToggle";
 import "./AnalyticsPage.css";
 
@@ -376,6 +377,7 @@ export default function AnalyticsPage({ onBack, projects, captureMapPng }: Props
                       <th>Facility</th>
                       <th>Type</th>
                       <th>Barangay</th>
+                      <th>Coordinates</th>
                       <th>Status</th>
                       <th>Flood</th>
                       <th>Landslide</th>
@@ -391,6 +393,9 @@ export default function AnalyticsPage({ onBack, projects, captureMapPng }: Props
                           <td>{p.name}</td>
                           <td>{criticalTypeLabel(p.modelType)}</td>
                           <td>{p.barangay || "—"}</td>
+                          <td className="an-coords">
+                            {formatLonLat(p.location.lat, p.location.lon) || "—"}
+                          </td>
                           <td>{p.status}</td>
                           <td>{h?.flood ?? (ciHazBusy ? "…" : "—")}</td>
                           <td>{h?.landslide ?? (ciHazBusy ? "…" : "—")}</td>

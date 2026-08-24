@@ -13,6 +13,7 @@ import {
   type LiveHazards,
 } from "./luisiana-site-assess";
 import { printHtmlDocument } from "./report-export";
+import { formatLonLat } from "./coords";
 
 export type HazardTone = "ok" | "low" | "mid" | "high" | "muted";
 
@@ -277,7 +278,7 @@ export async function printSiteHazardReport(opts: {
       <div class="haz-meta">
         <div><span>DATE</span>${escape(new Date().toLocaleString())}</div>
         <div><span>LOCATION</span>${escape(place)}</div>
-        <div><span>COORDINATES</span>${opts.lon.toFixed(5)}, ${opts.lat.toFixed(5)}</div>
+        <div><span>COORDINATES</span>${formatLonLat(opts.lat, opts.lon)}</div>
       </div>
     </div>
     <p class="haz-note">Not HazardHunterPH and not an official PHIVOLCS printout. Flood and rain-induced landslide are live MGB layers via GeoRiskPH. Ground shaking and earthquake-induced landslide are digitized PHIVOLCS 2014 sheets.</p>
