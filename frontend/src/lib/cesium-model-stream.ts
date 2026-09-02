@@ -1,9 +1,8 @@
 /**
  * Streaming budget for Cesium project GLBs.
  *
- * Luisiana is small enough that a fixed 4 km load radius pulls every digital
- * twin onto the GPU at once. These knobs scale with camera height and
- * `navigator.deviceMemory` so pan/orbit stay smooth as the project list grows.
+ * Covers the entire municipality so all digital twins in Luisiana
+ * load and stay ready in the scene without needing to fly close first.
  */
 
 import { sceneIsLagging, sceneIsStalling } from "./cesium-frame-budget";
@@ -14,39 +13,37 @@ function deviceMemoryGb(): number | undefined {
   return typeof gb === "number" && Number.isFinite(gb) ? gb : undefined;
 }
 
-/** How many decoded GLBs may sit on the GPU at once (selected always counts). */
+/**
+ * Unlimited model count — all 3D models across Luisiana are loaded.
+ */
 export function gpuModelBudget(): number {
-  const gb = deviceMemoryGb();
-  if (gb != null && gb <= 4) return 10;
-  if (gb != null && gb <= 8) return 16;
-  return 22;
+  return Number.POSITIVE_INFINITY;
 }
 
 /**
- * Ground distance (meters) at which a pin may promote to a full GLB.
- * 0 = pins / clusters only (camera is too high to read a digital twin).
+ * Background preload radius (meters) — covers all barangays across Luisiana (25km).
  */
-export function modelLoadRadiusM(cameraHeightM: number): number {
-  if (!Number.isFinite(cameraHeightM) || cameraHeightM > 14_000) return 0;
-  if (cameraHeightM > 8_000) return 1_600;
-  if (cameraHeightM > 3_500) return 2_500;
-  if (cameraHeightM > 1_200) return 2_200;
-  return 1_800;
+export function modelPreloadRadiusM(_cameraHeightM?: number): number {
+  return 25_000;
 }
 
-/** Hysteresis so a model does not pop off the moment the camera eases back. */
+/**
+ * Visual rendering radius (meters) — covers the entire town (25km).
+ * Distant models render lightweight Low-Poly LOD; closer models render High Detail.
+ */
+export function modelVisibleRadiusM(_cameraHeightM?: number): number {
+  return 25_000;
+}
+
+/** Hysteresis unload radius. */
 export function modelUnloadRadiusM(loadRadiusM: number): number {
-  if (loadRadiusM <= 0) return 0;
-  return Math.round(loadRadiusM * 1.55);
+  if (loadRadiusM <= 0) return 30_000;
+  return Math.round(loadRadiusM * 1.35);
 }
 
-/** How many GLB attaches to start at once. Cached hits can be more parallel. */
+/** Parallel GLB streaming concurrency. */
 export function modelLoadConcurrency(cachedHit: boolean): number {
-  if (sceneIsStalling()) return 1;
-  if (sceneIsLagging()) return cachedHit ? 2 : 1;
-  const gb = deviceMemoryGb();
-  if (gb != null && gb <= 4) return cachedHit ? 2 : 2;
-  return cachedHit ? 4 : 3;
+  return cachedHit ? 4 : 2;
 }
 
 export function formatBytesShort(bytes: number): string {

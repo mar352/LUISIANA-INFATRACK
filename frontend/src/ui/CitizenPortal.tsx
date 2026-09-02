@@ -9,15 +9,18 @@ import {
 } from "../lib/api";
 import { CesiumMap, type CesiumMapHandle } from "./CesiumMap";
 import TransparencyDashboard from "./TransparencyDashboard";
+import OnlineApplicationWizard from "./OnlineApplicationWizard";
 import { ThemeToggle } from "./ThemeToggle";
 import "./CitizenPortal.css";
 
-type PortalTab = "map" | "projects" | "report" | "feedback" | "suggest" | "transparency";
+type PortalTab = "map" | "apply" | "projects" | "report" | "feedback" | "suggest" | "transparency";
 
 type Props = {
   onBack: () => void;
   /** Open the full live map shell (with side panel). */
   onOpenLiveMap: () => void;
+  /** Open the dedicated full-screen Online Application page */
+  onOpenOnlineServices?: () => void;
 };
 
 const ISSUE_CATEGORIES = [
@@ -75,7 +78,7 @@ class PortalErrorBoundary extends Component<
   }
 }
 
-export default function CitizenPortal({ onBack, onOpenLiveMap }: Props) {
+export default function CitizenPortal({ onBack, onOpenLiveMap, onOpenOnlineServices }: Props) {
   const [tab, setTab] = useState<PortalTab>("projects");
   const [projects, setProjects] = useState<PublicProject[]>([]);
   const [stats, setStats] = useState<EngagementPublicStats | null>(null);
@@ -220,12 +223,13 @@ export default function CitizenPortal({ onBack, onOpenLiveMap }: Props) {
       <nav className="cp-tabs" aria-label="Portal sections">
         {(
           [
-            ["map", "Live Map"],
+            ["apply", "Mag-apply Online (Zoning & Permits)"],
             ["projects", "Projects"],
             ["report", "Report issue"],
             ["feedback", "Feedback"],
             ["suggest", "Suggest"],
             ["transparency", "Transparency"],
+            ["map", "Live Map"],
           ] as const
         ).map(([id, label]) => (
           <button
@@ -235,6 +239,10 @@ export default function CitizenPortal({ onBack, onOpenLiveMap }: Props) {
             onClick={() => {
               if (id === "map") {
                 onOpenLiveMap?.();
+                return;
+              }
+              if (id === "apply" && onOpenOnlineServices) {
+                onOpenOnlineServices();
                 return;
               }
               setTab(id);
@@ -247,8 +255,15 @@ export default function CitizenPortal({ onBack, onOpenLiveMap }: Props) {
 
       {loadError && <div className="cp-banner err">{loadError}</div>}
 
-      <div className="cp-body">
+      <div className={`cp-body ${tab === "apply" ? "cp-body--apply" : ""}`}>
         <PortalErrorBoundary label="Portal section">
+          {tab === "apply" && (
+            <OnlineApplicationWizard
+              onBack={() => setTab("projects")}
+              onViewMap={onOpenLiveMap}
+            />
+          )}
+
           {tab === "projects" && (
             <div className="cp-split cp-split--projects">
               <div className="cp-list">
@@ -360,7 +375,8 @@ export default function CitizenPortal({ onBack, onOpenLiveMap }: Props) {
                   ref={portalMapRef}
                   solarHour={14}
                   projects={mapProjects}
-                  visible
+                  visible={tab === "projects"}
+                  paused={tab !== "projects"}
                   readOnly
                   clusteringEnabled={false}
                   terrainEnabled={false}

@@ -104,6 +104,11 @@
   padding: 14px 16px 24px;
 }
 
+.cp-body--apply {
+  padding: 0;
+  background: var(--bg, #0f141d);
+}
+
 .cp-banner {
   margin: 0 16px;
   padding: 10px 12px;

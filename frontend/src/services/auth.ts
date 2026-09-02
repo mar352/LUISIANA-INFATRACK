@@ -28,6 +28,7 @@ const ROLE_DEPARTMENT: Record<UserRole, string> = {
   Agriculture: "Municipal Agriculture Office",
   "Negosyo Center": "Business Permit & Licensing Office",
   "Barangay Official": "Barangay Hall — Luisiana",
+  "Private Engineer": "Private Professional / Design Engineer",
   Viewer: "Public",
 };
 
@@ -37,6 +38,7 @@ const PUBLIC_STAFF: PublicAccount[] = [
   { username: "agriculture", role: "Agriculture", label: "Agriculture", department: ROLE_DEPARTMENT.Agriculture },
   { username: "negosyo", role: "Negosyo Center", label: "Negosyo Center", department: ROLE_DEPARTMENT["Negosyo Center"] },
   { username: "barangay", role: "Barangay Official", label: "Barangay Official", department: ROLE_DEPARTMENT["Barangay Official"] },
+  { username: "pengineer", role: "Private Engineer", label: "Private Engineer", department: ROLE_DEPARTMENT["Private Engineer"] },
 ];
 
 async function parseAuthJson(res: Response): Promise<Record<string, unknown>> {

@@ -36,7 +36,7 @@ Luisiana, Laguna GIS for **where to build infrastructure on safer ground**. Not 
 
 ## Map shortcuts
 
-Left-rail SVG buttons toggle the common map layers (satellite, 3D blocks, projects, barangays, quake heatmap, climate readings, tropical) so staff do not have to open the side panel. Active = gold on navy. Hover shows the name. Barangays paints each of the 23 barangays a different color with a legend; click a legend row to fly the globe to that barangay. Climate opens the station readings card on the map. No Street View. No KMZ overlay shortcuts.
+Left-rail SVG buttons toggle the common map layers (satellite, 3D blocks, projects, barangays, shapes, quake heatmap, climate readings, tropical) so staff do not have to open the side panel. Active = gold on navy. Hover shows the name. Barangays paints each of the 23 barangays a different color with a legend; click a legend row to fly the globe to that barangay. **Shapes** (Engineer) opens a palette of volumes (freeform / box / cylinder), roofs, and trees — click a tile then click the globe (freeform: draw a polygon, then Finish). Climate opens the station readings card on the map. No Street View. No KMZ overlay shortcuts.
 
 ## Map camera
 

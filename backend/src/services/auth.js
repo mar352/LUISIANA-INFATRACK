@@ -25,6 +25,7 @@ const STAFF_ROLES = new Set([
   "Agriculture",
   "Negosyo Center",
   "Barangay Official",
+  "Private Engineer",
 ]);
 
 const SEED = [
@@ -33,6 +34,7 @@ const SEED = [
   { username: "agriculture", password: "impact2024", role: "Agriculture", label: "Agriculture", department: "Municipal Agriculture Office" },
   { username: "negosyo", password: "impact2024", role: "Negosyo Center", label: "Negosyo Center", department: "Business Permit & Licensing Office" },
   { username: "barangay", password: "impact2024", role: "Barangay Official", label: "Barangay Official", department: "Barangay Hall — Luisiana" },
+  { username: "pengineer", password: "impact2024", role: "Private Engineer", label: "Private Engineer", department: "Private Professional / Design Engineer" },
 ];
 
 const loginBuckets = new Map();
@@ -155,9 +157,18 @@ export function cookieHeader(sid, { clear = false } = {}) {
   return `${COOKIE}=${encodeURIComponent(sid)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`;
 }
 
+/** Cookie (web) or Bearer / X-Infatrack-Sid (mobile field app). */
+export function sidFromRequest(req) {
+  const cookies = parseCookies(req);
+  const auth = String(req.headers.authorization || "");
+  const bearer = /^Bearer\s+/i.test(auth) ? auth.replace(/^Bearer\s+/i, "").trim() : "";
+  const headerSid = String(req.headers["x-infatrack-sid"] || "").trim();
+  return cookies[COOKIE] || bearer || headerSid || "";
+}
+
 export function sessionFromRequest(req) {
   load();
-  const sid = parseCookies(req)[COOKIE];
+  const sid = sidFromRequest(req);
   if (!sid) return null;
   const s = sessions.get(sid);
   if (!s) return null;
@@ -214,7 +225,7 @@ export function login(username, password, ip = "anon") {
 
 export function logout(req) {
   load();
-  const sid = parseCookies(req)[COOKIE];
+  const sid = sidFromRequest(req);
   if (sid) sessions.delete(sid);
   save();
 }

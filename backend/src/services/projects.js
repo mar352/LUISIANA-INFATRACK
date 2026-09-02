@@ -32,6 +32,7 @@ function modelTypeToLegacyType(modelType) {
   if (!modelType) return "Private Building";
   if (["road", "bridge", "water_tank", "solar_farm", "municipal_hall", "rhu"].includes(modelType)) return "Municipal Project";
   if (["barn"].includes(modelType)) return "Agricultural Structure";
+  if (modelType === "shape") return "Municipal Project";
   return "Private Building";
 }
 
@@ -74,6 +75,42 @@ function ensureProjectShape(p) {
     siteMarkerOnly: Boolean(p.siteMarkerOnly),
     markerColor: p.markerColor ? String(p.markerColor) : "",
     mapSketch: normalizeMapSketch(p.mapSketch),
+    mapShape: normalizeMapShape(p.mapShape),
+  };
+}
+
+const SHAPE_KINDS = [
+  "freeform",
+  "box",
+  "cylinder",
+  "gable",
+  "hip",
+  "pyramid",
+  "tree_broadleaf",
+  "tree_conifer",
+  "tree_bush",
+];
+
+function normalizeMapShape(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  if (!SHAPE_KINDS.includes(raw.kind)) return null;
+  const n = (v, fallback) => {
+    const x = Number(v);
+    return Number.isFinite(x) ? x : fallback;
+  };
+  const footprint = Array.isArray(raw.footprint)
+    ? raw.footprint
+        .map((c) => ({ lon: Number(c?.lon ?? c?.lng), lat: Number(c?.lat) }))
+        .filter((c) => Number.isFinite(c.lon) && Number.isFinite(c.lat))
+    : undefined;
+  return {
+    kind: raw.kind,
+    color: typeof raw.color === "string" && raw.color ? raw.color : "#c8ccd4",
+    width: n(raw.width, 8),
+    depth: n(raw.depth, 8),
+    height: n(raw.height, 8),
+    radius: n(raw.radius, 4),
+    ...(footprint && footprint.length >= 3 ? { footprint } : {}),
   };
 }
 
@@ -353,6 +390,7 @@ export function addProject({
   siteMarkerOnly,
   mapSketch,
   markerColor,
+  mapShape,
 }) {
   const projects = projectsSeed();
   const id = `P${nextId++}`;
@@ -372,6 +410,7 @@ export function addProject({
     modelLocked: siteMarkerOnly ? true : false,
     siteMarkerOnly: Boolean(siteMarkerOnly),
     mapSketch: sketch,
+    mapShape: normalizeMapShape(mapShape),
     markerColor: markerColor || sketch?.color || "",
     description: description || "",
     startDate: startDate || null,
@@ -493,10 +532,19 @@ export function updateProject(id, patch) {
     logActivity(project, "Map sketch updated.");
   }
 
+  if (patch.mapShape !== undefined) {
+    project.mapShape = normalizeMapShape(patch.mapShape);
+    logActivity(project, "Map shape updated.");
+  }
+
   if (patch.markerColor !== undefined) {
     project.markerColor = String(patch.markerColor || "");
     if (project.mapSketch) project.mapSketch = { ...project.mapSketch, color: project.markerColor || project.mapSketch.color };
     logActivity(project, "Marker color updated.");
+  }
+
+  if (patch.hideBadge !== undefined) {
+    project.hideBadge = Boolean(patch.hideBadge);
   }
 
   if (project.modelLocked) {

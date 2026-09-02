@@ -112,10 +112,12 @@ function formatBarangayLabel(raw: string): string {
 }
 
 export function formatStreetOrBarangay(street?: string | null, barangay?: string | null): string | null {
-  const road = cleanName(street);
+  let road = cleanName(street);
+  if (road) {
+    road = road.replace(/\s*[-·•]\s*(Barangay|Brgy).*$/i, "").trim();
+    return road;
+  }
   const brgy = formatBarangayLabel(barangay || "");
-  if (road && brgy) return `${road} · ${brgy}`;
-  if (road) return road;
   if (brgy) return brgy;
   return null;
 }
@@ -201,8 +203,11 @@ export async function lookupPlaceName(
       const fromApi = backend.status === "fulfilled" ? backend.value : null;
       const photonVal =
         photon.status === "fulfilled" ? photon.value : { street: "", barangay: "" };
-      const name =
+      let name =
         fromApi || formatStreetOrBarangay(photonVal.street, photonVal.barangay) || null;
+      if (name) {
+        name = name.replace(/\s*[-·•]\s*(Barangay|Brgy).*$/i, "").trim() || null;
+      }
       liveCache.set(key, name);
       return name;
     } catch {

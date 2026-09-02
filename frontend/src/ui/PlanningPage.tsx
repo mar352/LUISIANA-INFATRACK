@@ -38,7 +38,14 @@ import {
   updatePlanningMeeting,
   updateProposal,
 } from "../services/firestore-planning";
-import { BACKEND_URL, backendUrl, uploadPlanningAttachment } from "../lib/api";
+import {
+  BACKEND_URL,
+  backendUrl,
+  uploadPlanningAttachment,
+  fetchCitizenApplications,
+  patchCitizenApplication,
+} from "../lib/api";
+import { MPDC_CHARTER_SERVICES, getCharterService } from "../lib/mpdc-charter";
 import {
   allowedStatusTransitions,
   departmentForRole,
@@ -76,7 +83,7 @@ type AnchorKind = "none" | "section" | "map";
 const SECTION_ANCHORS = ["Summary", "Location", "Priority", "Other"] as const;
 
 /** Office accounts shown in assignee pickers (no Viewer, no scroller needed). */
-const OFFICE_ASSIGNEE_ROLES = ["MPDC", "Engineer", "Agriculture", "Negosyo Center"] as const;
+const OFFICE_ASSIGNEE_ROLES = ["MPDC", "Engineer", "Agriculture"] as const;
 /** MPDC owns zoning / siting review — always on the card. */
 const MPDC_ASSIGNEE = "mpdc";
 
@@ -102,12 +109,6 @@ const FALLBACK_OFFICE_ACCOUNTS: PublicAccount[] = [
     role: "Agriculture",
     label: "Agriculture",
     department: "Municipal Agriculture Office",
-  },
-  {
-    username: "negosyo",
-    role: "Negosyo Center",
-    label: "Negosyo Center",
-    department: "Business Permit & Licensing Office",
   },
 ];
 
@@ -226,6 +227,7 @@ function PlanningPage({ onBack, session, onPinSite, projects = [] }: Props) {
   const [showCreate, setShowCreate] = useState(false);
   const [showCreateMore, setShowCreateMore] = useState(false);
   const [showDetailMore, setShowDetailMore] = useState(false);
+  const [showCharterModal, setShowCharterModal] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
   const [draftSummary, setDraftSummary] = useState("");
@@ -943,6 +945,30 @@ function PlanningPage({ onBack, session, onPinSite, projects = [] }: Props) {
             {t === "board" ? "Workspace" : t === "calendar" ? "Calendar" : "Meetings"}
           </button>
         ))}
+        <button
+          type="button"
+          className="planning-charter-btn"
+          style={{
+            marginLeft: "auto",
+            background: "rgba(37, 99, 235, 0.15)",
+            border: "1px solid rgba(37, 99, 235, 0.35)",
+            color: "#60a5fa",
+            borderRadius: 8,
+            padding: "6px 14px",
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: "pointer",
+          }}
+          onClick={() => setShowCharterModal(true)}
+        >
+          <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ verticalAlign: "middle", marginRight: 6 }}>
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+          </svg>
+          Citizen's Charter (MPDC)
+        </button>
       </nav>
 
       {firestoreDenied && (
@@ -993,7 +1019,6 @@ function PlanningPage({ onBack, session, onPinSite, projects = [] }: Props) {
                 <option value="MPDC">MPDC</option>
                 <option value="Engineering">Engineering</option>
                 <option value="Agriculture">Agriculture</option>
-                <option value="Negosyo Center">Negosyo Center</option>
               </select>
               )}
               <select
@@ -1031,6 +1056,9 @@ function PlanningPage({ onBack, session, onPinSite, projects = [] }: Props) {
                 }
               >
                 <option value="">All kinds</option>
+                <option value="zoning_certificate">Zoning Certificate (Citizen Charter)</option>
+                <option value="land_titling">Land Titling Certification (Citizen Charter)</option>
+                <option value="planning_research">Research Data (Citizen Charter)</option>
                 <option value="barangay_request">Barangay request</option>
                 <option value="office_proposal">Office proposal</option>
               </select>
@@ -1262,6 +1290,91 @@ function PlanningPage({ onBack, session, onPinSite, projects = [] }: Props) {
                   )}
                 </div>
                 <p className="planning-summary">{selected.summary || "No summary."}</p>
+
+                {/* Citizen Charter Digital Requirements Inspection */}
+                {(selected.citizenUploads || ["zoning_certificate", "land_titling", "planning_research"].includes(selected.requestKind || "")) && (
+                  <div className="planning-charter-inspect-card" style={{
+                    background: "rgba(37, 99, 235, 0.08)",
+                    border: "1px solid rgba(37, 99, 235, 0.3)",
+                    borderRadius: 12,
+                    padding: 18,
+                    margin: "18px 0",
+                  }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                      <div>
+                        <span style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.06em", color: "#60a5fa", fontWeight: 700 }}>
+                          MPDC Citizen's Charter Inspection
+                        </span>
+                        <h4 style={{ margin: "2px 0 0", color: "#fff", fontSize: 15 }}>
+                          {selected.requestKind === "zoning_certificate"
+                            ? "Securing Zoning Certificate for Building Construction (Exemption)"
+                            : selected.requestKind === "land_titling"
+                            ? "Securing MPDC Certification (Land Titling)"
+                            : "Researching Planning and Development Information"}
+                        </h4>
+                      </div>
+                      {selected.citizenTrackingNumber && (
+                        <span style={{ fontFamily: "monospace", fontWeight: 700, padding: "4px 10px", background: "rgba(37, 99, 235, 0.25)", color: "#93c5fd", borderRadius: 8, fontSize: 13 }}>
+                          {selected.citizenTrackingNumber}
+                        </span>
+                      )}
+                    </div>
+
+                    <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 14, lineHeight: 1.5 }}>
+                      ⏱️ <strong>SLA Turnaround:</strong> 1 Day 12 Min · 💰 <strong>Fees:</strong> None (Free) · 👥 <strong>Designated Officers:</strong> Bon Ryan P. Pedron (Admin Aide), Edward B. Romulo, EnP. (Zoning Officer), Engr. Mario S. Baldovino (MPDC)
+                    </div>
+
+                    {/* Requirements checklist items */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      {selected.citizenUploads && Object.entries(selected.citizenUploads).map(([reqKey, files]) => {
+                        if (!files || (files as any[]).length === 0) return null;
+                        const labelMap: Record<string, string> = {
+                          tctTaxDec: "TCT / Tax Declaration",
+                          deedOrConsent: "Deed of Sale / Lease / Affidavit of Consent",
+                          rptReceipt: "Real Property Tax (RPT) Receipt",
+                          brgyClearance: "Barangay Clearance",
+                          ploCert: "MERALCO PLO Certification",
+                          photoDocs: "Photo Documentation (Inside, Outside, Toilet)",
+                          denrLetter: "DENR/CENRO Request Letter",
+                          studentIdLetter: "Student ID / Request Letter",
+                        };
+                        const label = labelMap[reqKey] || reqKey;
+                        return (
+                          <div key={reqKey} style={{ background: "rgba(0,0,0,0.25)", padding: "10px 14px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.06)" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                              <strong style={{ fontSize: 13, color: "#e2e8f0" }}>✓ {label}</strong>
+                              <span style={{ fontSize: 11, color: "#34d399", fontWeight: 600 }}>{(files as any[]).length} file(s) attached</span>
+                            </div>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                              {(files as any[]).map((f: any, fIdx: number) => (
+                                <a
+                                  key={f.url || fIdx}
+                                  href={backendUrl(f.url)}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 6,
+                                    fontSize: 12,
+                                    padding: "4px 10px",
+                                    background: "rgba(37, 99, 235, 0.2)",
+                                    border: "1px solid rgba(37, 99, 235, 0.4)",
+                                    color: "#93c5fd",
+                                    borderRadius: 6,
+                                    textDecoration: "none",
+                                  }}
+                                >
+                                  📄 {f.originalName || `Document ${fIdx + 1}`} (Tingnan / I-download)
+                                </a>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 <div className="planning-route">
                   <label>Committee review route</label>
@@ -2035,6 +2148,9 @@ function PlanningPage({ onBack, session, onPinSite, projects = [] }: Props) {
               >
                 <option value="office_proposal">Office proposal</option>
                 <option value="barangay_request">Barangay infrastructure request</option>
+                <option value="zoning_certificate">Zoning Certificate (Citizen Charter)</option>
+                <option value="land_titling">Land Titling Certification (Citizen Charter)</option>
+                <option value="planning_research">Research Data (Citizen Charter)</option>
               </select>
                 </>
               )}
@@ -2379,6 +2495,105 @@ function PlanningPage({ onBack, session, onPinSite, projects = [] }: Props) {
               >
                 Cancel
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCharterModal && (
+        <div className="planning-modal-backdrop" onClick={() => setShowCharterModal(false)}>
+          <div
+            className="planning-modal planning-modal--tall"
+            style={{ maxWidth: 850, maxHeight: "90vh", overflowY: "auto" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="planning-modal-head" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                  <line x1="16" y1="13" x2="8" y2="13"/>
+                  <line x1="16" y1="17" x2="8" y2="17"/>
+                </svg>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: 18, color: "#fff" }}>
+                    Citizen's Charter — Office of the MPDC
+                  </h2>
+                  <div style={{ fontSize: 12, color: "#94a3b8" }}>
+                    Bayan ng Luisiana · Lalawigan ng Laguna
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="planning-btn"
+                onClick={() => setShowCharterModal(false)}
+              >
+                ✕ Isara
+              </button>
+            </div>
+
+            <div className="planning-modal-body" style={{ padding: "20px 24px" }}>
+              {Object.values(MPDC_CHARTER_SERVICES).map((svc) => (
+                <div
+                  key={svc.id}
+                  style={{
+                    background: "rgba(255, 255, 255, 0.03)",
+                    border: "1px solid rgba(255, 255, 255, 0.08)",
+                    borderRadius: 12,
+                    padding: 18,
+                    marginBottom: 20,
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 8 }}>
+                    <div>
+                      <span style={{ fontSize: 11, textTransform: "uppercase", fontWeight: 700, color: "#60a5fa", letterSpacing: "0.06em" }}>
+                        Service #{svc.number} · {svc.classification} ({svc.transactionType})
+                      </span>
+                      <h3 style={{ margin: "4px 0 6px", fontSize: 16, color: "#fff" }}>
+                        {svc.title}
+                      </h3>
+                    </div>
+                    <span style={{ padding: "3px 10px", borderRadius: 12, background: "rgba(16, 185, 129, 0.2)", color: "#34d399", fontSize: 12, fontWeight: 700 }}>
+                      LIBRE / ₱0.00
+                    </span>
+                  </div>
+
+                  <p style={{ fontSize: 13, color: "#cbd5e1", lineHeight: 1.5, margin: "0 0 14px" }}>
+                    {svc.description}
+                  </p>
+
+                  <div style={{ background: "rgba(0,0,0,0.3)", borderRadius: 8, padding: 14, marginBottom: 14 }}>
+                    <h4 style={{ margin: "0 0 8px", fontSize: 13, color: "#93c5fd" }}>
+                      📋 Checklist of Requirements &amp; Where to Secure:
+                    </h4>
+                    <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: "#cbd5e1", lineHeight: 1.6 }}>
+                      {svc.requirements.map((r) => (
+                        <li key={r.id}>
+                          <strong>{r.label}:</strong> {r.notes || ""}{" "}
+                          <span style={{ color: "#fbbf24" }}>[Kukunin sa: {r.whereToSecure}]</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div style={{ background: "rgba(0,0,0,0.2)", borderRadius: 8, padding: 14 }}>
+                    <h4 style={{ margin: "0 0 10px", fontSize: 13, color: "#93c5fd" }}>
+                      ⏱️ Processing Workflow &amp; Responsible Officers (Total: {svc.totalTime}):
+                    </h4>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {svc.steps.map((st) => (
+                        <div key={st.stepNumber} style={{ fontSize: 12, color: "#cbd5e1" }}>
+                          <strong>Step {st.stepNumber}: {st.clientStep}</strong> ({st.processingTime})
+                          <div style={{ fontSize: 11, color: "#94a3b8", marginLeft: 12 }}>
+                            Kawani: {st.personsResponsible.map((p) => `${p.name} (${p.title})`).join(", ")}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>

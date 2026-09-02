@@ -66,7 +66,7 @@ export function applyTerrainPerfSettings(
     globe.loadingDescendantLimit = 2;
     globe.preloadSiblings = false;
     globe.preloadAncestors = false;
-    if (typeof globe.tileCacheSize === "number") globe.tileCacheSize = 80;
+    if (typeof globe.tileCacheSize === "number") globe.tileCacheSize = 50;
     globe.terrainExaggeration = LUISIANA_TERRAIN_EXAGGERATION;
     globe.terrainExaggerationRelativeHeight = 0;
     globe.depthTestAgainstTerrain = true;
@@ -74,10 +74,11 @@ export function applyTerrainPerfSettings(
     globe.dynamicAtmosphereLighting = true;
     globe.dynamicAtmosphereLightingFromSun = true;
   } else {
-    globe.maximumScreenSpaceError = 2;
-    globe.loadingDescendantLimit = 20;
-    globe.preloadSiblings = true;
-    globe.preloadAncestors = true;
+    globe.maximumScreenSpaceError = 3.5;
+    globe.loadingDescendantLimit = 2;
+    globe.preloadSiblings = false;
+    globe.preloadAncestors = false;
+    if (typeof globe.tileCacheSize === "number") globe.tileCacheSize = 50;
     globe.terrainExaggeration = 1;
     globe.terrainExaggerationRelativeHeight = 0;
     globe.depthTestAgainstTerrain = false;

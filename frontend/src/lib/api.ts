@@ -216,6 +216,60 @@ export function patchEngagement(
   return sendJson<{ submission: EngagementSubmission }>(`/api/engagement/${id}`, "PATCH", body);
 }
 
+// ── Citizen Online Applications (Zoning & MPDC Certifications) ───────────
+export async function uploadCitizenDocument(
+  file: File
+): Promise<{ url: string; filename: string; originalName: string; size: number; mimeType?: string }> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch(backendUrl("/api/citizen/applications/upload"), {
+    method: "POST",
+    credentials: "include",
+    body: fd,
+  });
+  if (!res.ok) {
+    let msg = `Upload failed: ${res.status}`;
+    try {
+      const b = await res.json();
+      if (b?.error) msg = b.error;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+export async function submitCitizenApplication(
+  payload: Record<string, unknown>
+): Promise<{ ok: boolean; application: any }> {
+  return sendJson<{ ok: boolean; application: any }>("/api/citizen/applications", "POST", payload);
+}
+
+export async function trackCitizenApplication(trackingNumber: string): Promise<any | null> {
+  try {
+    const res = await getJson<{ ok: boolean; application: any }>(
+      `/api/citizen/applications/${encodeURIComponent(trackingNumber.trim())}`
+    );
+    return res.application || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchCitizenApplications(): Promise<any[]> {
+  try {
+    const res = await getJson<{ ok: boolean; applications: any[] }>("/api/citizen/applications");
+    return res.applications || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function patchCitizenApplication(id: string, patch: Record<string, unknown>): Promise<any> {
+  return sendJson<{ ok: boolean; application: any }>(`/api/citizen/applications/${id}`, "PATCH", patch);
+}
+
 /** Map public DTO → full Project shape for Cesium (fill staff-only fields with defaults). */
 export function publicProjectAsMapProject(p: PublicProject): Project {
   const issues = Array.isArray(p.issues) ? p.issues : [];

@@ -14,10 +14,13 @@ service cloud.firestore {
       allow create: if true;
       allow update, delete: if false;
     }
-    // Map pins: public read for the citizen globe. Writes go through /api/projects (login required).
-    match /projects/{document=**} {
+    // Map pins: public read for the citizen globe. Full writes stay on /api/projects.
+    // The Android field app may only append photos (and the matching timestamps).
+    match /projects/{projectId} {
       allow read: if true;
-      allow write: if false;
+      allow create, delete: if false;
+      allow update: if request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(["photos", "updatedAt", "activityLog"]);
     }
     // Planning board still uses the client until those APIs move to Express.
     match /proposals/{document=**} {

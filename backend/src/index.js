@@ -7,6 +7,7 @@ import multer from "multer";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
+import { spawn } from "child_process";
 
 import { buildHeatPointsForBbox, computeRiskZones } from "./services/risk.js";
 import { getWeatherSnapshot } from "./services/weather.js";
@@ -35,6 +36,12 @@ import {
   checkEngagementRateLimit,
   engagementPublicStats,
 } from "./services/engagement.js";
+import {
+  listCitizenApplications,
+  getCitizenApplicationByTracking,
+  createCitizenApplication,
+  updateCitizenApplication,
+} from "./services/citizenApplications.js";
 import { createAlertFromRisk } from "./services/alerts.js";
 import { buildSlopeCache } from "./services/dem.js";
 import { chatWithOllama, getChatConfig } from "./services/chat.js";
@@ -137,6 +144,29 @@ const uploadPlanningAttach = multer({
   },
 });
 
+const CITIZEN_UPLOAD_MAX_BYTES = 15 * 1024 * 1024; // 15MB per requirement document/photo
+
+const citizenUploadStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, uploadsDir),
+  filename: (_req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, "czreq-" + uniqueSuffix + path.extname(file.originalname).toLowerCase());
+  },
+});
+
+const uploadCitizenRequirement = multer({
+  storage: citizenUploadStorage,
+  limits: { fileSize: CITIZEN_UPLOAD_MAX_BYTES },
+  fileFilter: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if ([".jpg", ".jpeg", ".png", ".webp", ".pdf"].includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Allowed formats: PDF, JPG, PNG, WEBP (Max 15MB)"));
+    }
+  },
+});
+
 /** Turn multer LIMIT_FILE_SIZE / filter errors into clear JSON instead of bare 500. */
 function multerErrorHandler(err, _req, res, next) {
   if (!err) return next();
@@ -199,7 +229,8 @@ app.post("/api/auth/login", (req, res) => {
     });
   }
   res.setHeader("Set-Cookie", cookieHeader(result.sid));
-  res.json({ user: result.session.user });
+  // sid is for the mobile field app (React Native has no httpOnly cookie jar).
+  res.json({ user: result.session.user, sid: result.sid });
 });
 
 app.post("/api/auth/logout", (req, res) => {
@@ -437,6 +468,7 @@ app.post("/api/projects", requireRoles("Engineer", "MPDC"), (req, res) => {
     siteMarkerOnly: Boolean(req.body?.siteMarkerOnly),
     mapSketch: req.body?.mapSketch ?? null,
     markerColor: req.body?.markerColor || "",
+    mapShape: req.body?.mapShape ?? null,
   });
   io.emit("projects:update", emitProjectsPayload());
   res.json({ project });
@@ -511,8 +543,54 @@ app.delete("/api/projects/:id/photos/:photoId", requireRoles("Engineer", "MPDC")
   res.json({ ok: true });
 });
 
+function optimizeUploadedGlb(filePath) {
+  return new Promise((resolve) => {
+    const scriptPath = path.resolve(__dirname, "../../scripts/optimize-single-glb.mjs");
+    if (!fs.existsSync(scriptPath)) {
+      console.warn("[upload-model] Optimizer script not found at", scriptPath);
+      return resolve({ ok: false, error: "Optimizer script not found" });
+    }
+
+    const child = spawn(process.execPath, [scriptPath, filePath], {
+      windowsHide: true,
+      timeout: 120000, // 2 minutes max
+    });
+
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (d) => {
+      stdout += d.toString();
+    });
+    child.stderr.on("data", (d) => {
+      stderr += d.toString();
+    });
+
+    child.on("close", (code) => {
+      if (code === 0) {
+        try {
+          const res = JSON.parse(stdout.trim());
+          console.info(
+            `[upload-model] Auto-optimized ${path.basename(filePath)}: ${(res.beforeBytes / 1024).toFixed(1)}KB -> ${(res.afterBytes / 1024).toFixed(1)}KB (${res.savedPercent}% saved)`,
+          );
+          resolve(res);
+        } catch {
+          resolve({ ok: true });
+        }
+      } else {
+        console.warn(`[upload-model] Optimizer warning (code ${code}):`, stderr || stdout);
+        resolve({ ok: false, error: stderr || stdout });
+      }
+    });
+
+    child.on("error", (err) => {
+      console.warn("[upload-model] Optimizer spawn error:", err.message);
+      resolve({ ok: false, error: err.message });
+    });
+  });
+}
+
 app.post("/api/upload-model", requireRoles("Engineer"), (req, res, next) => {
-  upload.single("model")(req, res, (err) => {
+  upload.single("model")(req, res, async (err) => {
     if (err) return multerErrorHandler(err, req, res, next);
     if (!req.file) {
       return res.status(400).json({ error: "No file uploaded" });
@@ -526,6 +604,17 @@ app.post("/api/upload-model", requireRoles("Engineer"), (req, res, next) => {
       return res.status(400).json({ error: "File is not a valid GLB/GLTF model." });
     }
 
+    const originalSize = req.file.size;
+
+    // Automatically optimize custom uploaded GLB (merge draw calls, compress textures, Draco)
+    const optResult = await optimizeUploadedGlb(req.file.path);
+    let finalSize = originalSize;
+    try {
+      finalSize = fs.statSync(req.file.path).size;
+    } catch {
+      /* ignore */
+    }
+
     // Also mirror into frontend/dist/uploads when present (vite preview / static builds).
     try {
       const distUploads = path.join(__dirname, "../../frontend/dist/uploads");
@@ -535,6 +624,11 @@ app.post("/api/upload-model", requireRoles("Engineer"), (req, res, next) => {
           path.join(uploadsDir, req.file.filename),
           path.join(distUploads, req.file.filename),
         );
+        const lodFilename = req.file.filename.replace(/\.glb$/i, ".lod.glb");
+        const srcLod = path.join(uploadsDir, lodFilename);
+        if (fs.existsSync(srcLod)) {
+          fs.copyFileSync(srcLod, path.join(distUploads, lodFilename));
+        }
       }
     } catch (copyErr) {
       console.warn("[upload-model] dist mirror skipped:", copyErr?.message || copyErr);
@@ -545,7 +639,12 @@ app.post("/api/upload-model", requireRoles("Engineer"), (req, res, next) => {
       url,
       filename: req.file.filename,
       originalName: req.file.originalname,
-      size: req.file.size,
+      size: finalSize,
+      originalSize,
+      optimized: Boolean(optResult?.ok),
+      savedPercent: optResult?.savedPercent ?? 0,
+      drawCallsBefore: optResult?.beforeStats?.prims ?? null,
+      drawCallsAfter: optResult?.afterStats?.prims ?? null,
     });
   });
 });
@@ -579,6 +678,86 @@ app.post("/api/planning/attachments", requireStaff, (req, res, next) => {
       size: req.file.size,
     });
   });
+});
+
+// ── Citizen Online Applications (Zoning & MPDC Certifications) ───────────
+app.post("/api/citizen/applications/upload", (req, res, next) => {
+  uploadCitizenRequirement.single("file")(req, res, (err) => {
+    if (err) return multerErrorHandler(err, req, res, next);
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    // Mirror to dist/uploads if folder exists
+    try {
+      const distUploads = path.join(__dirname, "../../frontend/dist/uploads");
+      if (fs.existsSync(path.dirname(distUploads))) {
+        fs.mkdirSync(distUploads, { recursive: true });
+        fs.copyFileSync(
+          path.join(uploadsDir, req.file.filename),
+          path.join(distUploads, req.file.filename),
+        );
+      }
+    } catch {
+      /* ignore */
+    }
+
+    const url = `/uploads/${req.file.filename}`;
+    res.json({
+      ok: true,
+      url,
+      filename: req.file.filename,
+      originalName: req.file.originalname,
+      size: req.file.size,
+      mimeType: req.file.mimetype,
+    });
+  });
+});
+
+app.post("/api/citizen/applications", (req, res) => {
+  try {
+    const appData = req.body || {};
+    if (!appData.applicant?.fullName || !appData.applicant?.contactPhone) {
+      return res.status(400).json({ error: "Applicant name and contact number are required." });
+    }
+    const created = createCitizenApplication(appData);
+    io.emit("planning:new_application", {
+      trackingNumber: created.trackingNumber,
+      serviceType: created.serviceType,
+      applicant: created.applicant.fullName,
+      barangay: created.applicant.barangay,
+      at: created.createdAt,
+    });
+    res.json({ ok: true, application: created });
+  } catch (err) {
+    res.status(500).json({ error: err?.message || "Failed to submit application" });
+  }
+});
+
+app.get("/api/citizen/applications/:trackingNumber", (req, res) => {
+  const app = getCitizenApplicationByTracking(req.params.trackingNumber);
+  if (!app) {
+    return res.status(404).json({ error: "Application not found with the provided tracking number." });
+  }
+  res.json({ ok: true, application: app });
+});
+
+app.get("/api/citizen/applications", (req, res) => {
+  const list = listCitizenApplications();
+  res.json({ ok: true, applications: list });
+});
+
+app.patch("/api/citizen/applications/:id", requireStaff, (req, res) => {
+  const updated = updateCitizenApplication(req.params.id, req.body || {});
+  if (!updated) {
+    return res.status(404).json({ error: "Application not found." });
+  }
+  io.emit("planning:application_updated", {
+    trackingNumber: updated.trackingNumber,
+    status: updated.status,
+    at: updated.updatedAt,
+  });
+  res.json({ ok: true, application: updated });
 });
 
 const documentStorage = multer.diskStorage({

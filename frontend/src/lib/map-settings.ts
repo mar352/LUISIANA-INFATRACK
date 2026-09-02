@@ -6,6 +6,8 @@ export type TerrainQuality = "low" | "medium" | "high";
 
 export type ShadowQuality = "low" | "medium" | "high";
 
+export type TargetFps = 30 | 60;
+
 export type MapSettings = {
   /** Local 3D camera far plane (km). */
   drawDistanceKm: number;
@@ -22,6 +24,12 @@ export type MapSettings = {
    * Default is a light streak — the original pass read as too strong.
    */
   motionBlur: number;
+  /** Target frame rate cap (60 fps for smooth vsync, 30 fps for power saving). */
+  targetFps?: TargetFps;
+  /** Show floating 3D labels / badges above models on the map. */
+  showFloatingLabels?: boolean;
+  /** Show GPS coordinates inside the floating 3D badges. */
+  showCoordinates?: boolean;
 };
 
 export const DEFAULT_MAP_SETTINGS: MapSettings = {
@@ -31,6 +39,9 @@ export const DEFAULT_MAP_SETTINGS: MapSettings = {
   shadowQuality: "medium",
   fogEnabled: true,
   motionBlur: 30,
+  targetFps: 60,
+  showFloatingLabels: true,
+  showCoordinates: true,
 };
 
 const STORAGE_KEY = "infatrack-map-settings-v1";
@@ -101,6 +112,15 @@ export function loadMapSettings(): MapSettings {
       motionBlur: Number.isFinite(blur)
         ? Math.min(100, Math.max(0, Math.round(blur)))
         : DEFAULT_MAP_SETTINGS.motionBlur,
+      targetFps: parsed.targetFps === 30 || parsed.targetFps === 60 ? parsed.targetFps : DEFAULT_MAP_SETTINGS.targetFps,
+      showFloatingLabels:
+        typeof parsed.showFloatingLabels === "boolean"
+          ? parsed.showFloatingLabels
+          : DEFAULT_MAP_SETTINGS.showFloatingLabels,
+      showCoordinates:
+        typeof parsed.showCoordinates === "boolean"
+          ? parsed.showCoordinates
+          : DEFAULT_MAP_SETTINGS.showCoordinates,
     };
   } catch {
     return { ...DEFAULT_MAP_SETTINGS };

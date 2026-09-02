@@ -1,3 +1,7 @@
+import type { MapShape } from "./lib/map-shapes";
+
+export type { MapShape, MapShapeKind } from "./lib/map-shapes";
+
 export type HeatPoint = [number, number, number]; // [lon,lat,weight]
 
 export type WeatherForecastHour = {
@@ -58,7 +62,8 @@ export type ModelType =
   | "barn"
   | "evacuation_center"
   | "construction"
-  | "custom";
+  | "custom"
+  | "shape";
 
 /** Placement / site markup drawn on the map (not a GLB). */
 export type MapSketchKind = "pin" | "line" | "area";
@@ -105,6 +110,7 @@ export const MODEL_CATALOG: {
   { type: "barn",              label: "Barn / Post-Harvest", icon: "barn",              category: "Agriculture",     description: "Agricultural barn or post-harvest facility",  glb: "building.glb",      scale: 95  },
   { type: "construction",      label: "Under Construction",  icon: "construction",      category: "Construction",    description: "Site under active construction",              glb: "construction.glb",  scale: 80  },
   { type: "custom",            label: "Custom Model",        icon: "construction",      category: "Construction",    description: "Upload your own 3D model",                    glb: "building.glb",      scale: 80  },
+  { type: "shape",             label: "Map shape",           icon: "construction",      category: "Construction",    description: "Box, cylinder, freeform, roof, or tree",      glb: "building.glb",      scale: 8   },
 ];
 
 export type LifecyclePhase =
@@ -283,10 +289,14 @@ export type Project = {
   modelHeight?: number;
   /** When true, model cannot be moved / rotated / scaled on the map. */
   modelLocked?: boolean;
+  /** When true, floating 3D badge above the model is hidden on the map. */
+  hideBadge?: boolean;
   /**
    * MPDC site pin only — show a map marker, do not load a GLB until Engineering places a model.
    */
   siteMarkerOnly?: boolean;
+  /** Procedural volume / roof / tree placed from the Shapes panel. */
+  mapShape?: MapShape | null;
   /** Map markup from placement tools (pin / line / area). */
   mapSketch?: MapSketch | null;
   /** Marker / sketch stroke color (hex). */
@@ -417,7 +427,77 @@ export type PlanningVote = {
   at: string;
 };
 
-export type PlanningRequestKind = "barangay_request" | "office_proposal";
+export type PlanningRequestKind =
+  | "barangay_request"
+  | "office_proposal"
+  | "zoning_certificate"
+  | "land_titling"
+  | "planning_research";
+
+export type CitizenServiceType = "zoning_certificate" | "land_titling" | "planning_research";
+
+export type CitizenUploadedFile = {
+  url: string;
+  filename: string;
+  originalName: string;
+  size: number;
+  mimeType?: string;
+  uploadedAt?: string;
+  tag?: string; // e.g. "inside", "outside", "toilet", "notarized"
+};
+
+export type CitizenApplication = {
+  id: string;
+  trackingNumber: string;
+  serviceType: CitizenServiceType;
+  applicant: {
+    fullName: string;
+    contactPhone: string;
+    contactEmail?: string;
+    address: string;
+    barangay: string;
+  };
+  lotDetails?: {
+    tctNo?: string;
+    taxDecNo?: string;
+    lotOwner?: string;
+    isApplicantOwner: boolean;
+    proposedBuildingType?: string;
+    lotAreaSqM?: number;
+    lotLocationDescription?: string;
+  };
+  uploads: {
+    tctTaxDec?: CitizenUploadedFile[];
+    deedOrConsent?: CitizenUploadedFile[];
+    rptReceipt?: CitizenUploadedFile[];
+    brgyClearance?: CitizenUploadedFile[];
+    ploCert?: CitizenUploadedFile[];
+    photoDocs?: CitizenUploadedFile[];
+    denrLetter?: CitizenUploadedFile[];
+    studentIdLetter?: CitizenUploadedFile[];
+  };
+  notes?: string;
+  status: "submitted" | "in_review" | "ocular_inspection" | "approved" | "rejected";
+  stepProgress?: {
+    currentStep: number;
+    totalSteps: number;
+    step1Completed: boolean;
+    step1At?: string | null;
+    step1By?: string | null;
+    step2Completed: boolean;
+    step2At?: string | null;
+    step2By?: string | null;
+    step3Completed: boolean;
+    step3At?: string | null;
+    step3By?: string | null;
+  };
+  responsibleOfficers?: { name: string; role: string }[];
+  slaDays?: number;
+  slaMinutes?: number;
+  fee?: string;
+  createdAt: string;
+  updatedAt: string;
+};
 
 export type PlanningNeedsAssessment = {
   populationServed?: string;
@@ -444,8 +524,11 @@ export type PlanningProposal = {
   approvals: PlanningApproval[];
   /** Inter-office botohan / poll tallies. */
   votes?: PlanningVote[];
-  /** Barangay infrastructure request vs office-originated proposal. */
+  /** Barangay infrastructure request vs office-originated proposal vs Citizen Charter applications. */
   requestKind?: PlanningRequestKind;
+  citizenApplicationId?: string | null;
+  citizenTrackingNumber?: string | null;
+  citizenUploads?: CitizenApplication["uploads"] | null;
   needsAssessment?: PlanningNeedsAssessment | null;
   recommendationScore?: number | null;
   recommendationReasons?: string[];

@@ -5,11 +5,13 @@ import { CesiumMap, type CesiumMapHandle } from "./CesiumMap";
 import { MapShortcuts } from "./MapShortcuts";
 import { ClimateReadingsCard } from "./ClimateReadingsCard";
 import { BarangayLegend } from "./BarangayLegend";
+import { ShapesPanel } from "./ShapesPanel";
 import { loadBarangayAreas, type BarangayArea } from "../lib/barangay-overlay";
 import InventoryPage from "./InventoryPage";
 import DocumentsPage from "./DocumentsPage";
 import AnalyticsPage from "./AnalyticsPage";
 import CitizenPortal from "./CitizenPortal";
+import OnlineApplicationWizard from "./OnlineApplicationWizard";
 import EngagementPage from "./EngagementPage";
 import { addProjectToFirestore } from "../services/firestore-projects";
 import type {
@@ -41,6 +43,13 @@ import { buildOpsAlerts, type OpsAlert } from "../lib/ops-alerts";
 import { assetQueryParam } from "../lib/project-link";
 import { startPhotoQueueFlusher } from "../lib/photo-queue";
 import { inspectGlbFile, type GlbTextureReport } from "../lib/inspect-glb";
+import {
+  makeMapShape,
+  shapeLabel,
+  sketchCentroid,
+  type MapShapeKind,
+  type ShapeCatalogItem,
+} from "../lib/map-shapes";
 import { NotifyOpsList } from "./NotifyOpsList";
 import { buildHeatmapPoints, type BBox, type HeatmapMetric } from "../lib/heatmap";
 import { formatGibsDate, getGibsLayerInfo, gibsWmtsTileUrl, type GibsLayerId } from "../lib/gibs";
@@ -120,10 +129,12 @@ import {
   sessionForRole,
   type SessionUser,
 } from "../services/auth";
+import NegosyoCenterPage from "./NegosyoCenterPage";
+import ZoningPermitsPage from "./ZoningPermitsPage";
 import { setAuditActor } from "../services/firestore-audit";
 import AuditPage from "./AuditPage";
-
-const PlanningPage = lazy(() => import("./PlanningPage"));
+import PlanningPage from "./PlanningPage";
+import { PrivateEngineerPortal } from "./PrivateEngineerPortal";
 
 // ── Dashboard icons ────────────────────────────────────────────────────────────
 const IconClipboard = () => (
@@ -504,7 +515,7 @@ export default function App() {
 
   const [currentSession, setCurrentSession] = useState<SessionUser | null>(null);
   const currentRole = currentSession?.role ?? null;
-  const [screen, setScreen] = useState<"landing" | "login" | "app" | "inventory" | "planning" | "documents" | "analytics" | "engagement" | "citizen" | "audit">("landing");
+  const [screen, setScreen] = useState<"landing" | "login" | "app" | "inventory" | "planning" | "documents" | "analytics" | "engagement" | "citizen" | "services" | "audit" | "negosyo" | "permits">("landing");
   const roleConfig = currentRole ? ROLE_CONFIGS[currentRole] : null;
   /** Keep Cesium alive briefly after leaving the map so logout/home doesn't white-screen on WebGL teardown. */
   const [mapHold, setMapHold] = useState(false);
@@ -529,7 +540,7 @@ export default function App() {
           if (!saved) return;
           setAuditActor(saved);
           setCurrentSession(saved);
-          setScreen(saved.role === "Barangay Official" ? "planning" : "app");
+          setScreen(saved.role === "Barangay Official" ? "planning" : saved.role === "Negosyo Center" ? "negosyo" : "app");
         })
         .catch((err) => console.warn("[Auth] restore session failed:", err));
     }
@@ -681,11 +692,17 @@ export default function App() {
   /** Approved proposal waiting for MPDC to click the map and pin the site. */
   const [pinProposal, setPinProposal] = useState<PlanningProposal | null>(null);
   const pinProposalRef = useRef<PlanningProposal | null>(null);
+  const [pinCitizenApp, setPinCitizenApp] = useState<any | null>(null);
+  const pinCitizenAppRef = useRef<any | null>(null);
   const [placementTool, setPlacementTool] = useState<PlacementTool>("pin");
   const [placementColor, setPlacementColor] = useState<string>(MAP_SKETCH_COLORS[0]);
+  const [shapesPanelOpen, setShapesPanelOpen] = useState(false);
+  const [pendingShapeKind, setPendingShapeKind] = useState<MapShapeKind | null>(null);
+  const pendingShapeKindRef = useRef<MapShapeKind | null>(null);
+  const pendingShapeFootprintRef = useRef<{ lon: number; lat: number }[] | null>(null);
 
   const placementToolbarOpen =
-    (pinProposal && currentRole === "MPDC" && screen === "app") ||
+    ((pinProposal || pinCitizenApp) && currentRole === "MPDC" && screen === "app") ||
     (placementMode && currentRole === "Engineer" && screen === "app");
   const eraseBlocksActive = placementToolbarOpen && placementTool === "erase";
   const [sidebarTab, setSidebarTab] = useState<"notify" | "layers" | "settings" | "account" | "risk" | "projects" | "climate" | "events">("climate");
@@ -723,6 +740,8 @@ export default function App() {
     if (currentRole !== "MPDC") {
       setPinProposal(null);
       pinProposalRef.current = null;
+      setPinCitizenApp(null);
+      pinCitizenAppRef.current = null;
     }
     if (currentRole !== "Engineer" && currentRole !== "MPDC") {
       setPlacementMode(false);
@@ -732,6 +751,10 @@ export default function App() {
   useEffect(() => {
     pinProposalRef.current = pinProposal;
   }, [pinProposal]);
+
+  useEffect(() => {
+    pinCitizenAppRef.current = pinCitizenApp;
+  }, [pinCitizenApp]);
 
   // Collapse side panel by default on tablet/phone; full map first
   useEffect(() => {
@@ -1334,6 +1357,7 @@ export default function App() {
   useEffect(() => { placementModeRef.current = placementMode; }, [placementMode]);
   useEffect(() => { snapToRoadRef.current = snapToRoad; }, [snapToRoad]);
   useEffect(() => { selectedModelRef.current = selectedModel; }, [selectedModel]);
+  useEffect(() => { pendingShapeKindRef.current = pendingShapeKind; }, [pendingShapeKind]);
   useEffect(() => { placementRotationRef.current = placementRotation; }, [placementRotation]);
   useEffect(() => { placingNameRef.current = placingName; }, [placingName]);
   useEffect(() => { customModelFileRef.current = customModelFile; }, [customModelFile]);
@@ -1431,9 +1455,23 @@ export default function App() {
       return;
     }
 
+    const pendingCitizenPin = pinCitizenAppRef.current;
+    if (pendingCitizenPin && currentRole === "MPDC") {
+      void placeApprovedCitizenSiteAt(pendingCitizenPin, lng, lat, {
+        kind: "pin",
+        color: placementColor,
+        coordinates: [{ lon: lng, lat }],
+      });
+      return;
+    }
+
     setPendingPlacement({ lng, lat });
+    const shapeKind = pendingShapeKindRef.current;
     const catalog = MODEL_CATALOG.find((m) => m.type === selectedModelRef.current);
-    setModalProjectName(placingNameRef.current.trim() || `${catalog?.label ?? selectedModelRef.current}`);
+    setModalProjectName(
+      placingNameRef.current.trim() ||
+        (shapeKind ? shapeLabel(shapeKind) : `${catalog?.label ?? selectedModelRef.current}`),
+    );
     setModalProjectType(
       catalog?.category === "Agriculture" ? "Agricultural Structure" :
       catalog?.category === "Infrastructure" ? "Municipal Project" :
@@ -1463,8 +1501,40 @@ export default function App() {
       void placeApprovedProposalAt(pendingPin, first.lon, first.lat, sketch);
       return;
     }
+    const pendingCitizenPin = pinCitizenAppRef.current;
+    if (pendingCitizenPin && currentRole === "MPDC") {
+      void placeApprovedCitizenSiteAt(pendingCitizenPin, first.lon, first.lat, sketch);
+      return;
+    }
+    if (pendingShapeKindRef.current === "freeform" && sketch.kind === "area" && sketch.coordinates.length >= 3) {
+      pendingShapeFootprintRef.current = sketch.coordinates;
+      const c = sketchCentroid(sketch.coordinates);
+      openPlacementAt({ lng: c.lng, lat: c.lat });
+      return;
+    }
     // Engineer free placement: use sketch centroid / first point for the GLB modal.
     openPlacementAt({ lng: first.lon, lat: first.lat });
+  }
+
+  function startShapePlacement(item: ShapeCatalogItem) {
+    if (item.locked) return;
+    pendingShapeKindRef.current = item.kind;
+    pendingShapeFootprintRef.current = null;
+    setPendingShapeKind(item.kind);
+    setSelectedModel("shape");
+    setPlacingName(item.label);
+    setPlacementTool(item.tool);
+    setPlacementMode(true);
+    setEditMode(false);
+    setBlockRemoverMode(false);
+    setSidebarCollapsed(true);
+    cesiumMapRef.current?.clearSketch();
+  }
+
+  function clearPendingShape() {
+    pendingShapeKindRef.current = null;
+    pendingShapeFootprintRef.current = null;
+    setPendingShapeKind(null);
   }
 
   function startPinSite(proposal: PlanningProposal) {
@@ -1480,6 +1550,109 @@ export default function App() {
     setEditMode(false);
     setSidebarCollapsed(true);
     setScreen("app");
+  }
+
+  function startPinCitizenSite(app: any) {
+    setPinCitizenApp(app);
+    pinCitizenAppRef.current = app;
+    setPlacingName(`${app.applicant?.fullName || "Private"} - ${app.property?.proposedBuildingType || "Gusali"}`);
+    const isCommercial = app.property?.proposedBuildingType?.toLowerCase().includes("commercial");
+    setSelectedModel(isCommercial ? "shop" : "residential");
+    setModalDepartment("MPDC");
+    setPlacementTool("pin");
+    setPlacementColor("#ffc107");
+    setPlacementMode(true);
+    setBlockRemoverMode(false);
+    setEditMode(false);
+    setSidebarCollapsed(true);
+    setScreen("app");
+  }
+
+  async function placeApprovedCitizenSiteAt(
+    app: any,
+    lng: number,
+    lat: number,
+    sketch?: MapSketch | null,
+  ) {
+    const now = new Date().toISOString();
+    const mapSketch: MapSketch = sketch ?? {
+      kind: "pin",
+      color: "#ffc107",
+      coordinates: [{ lon: lng, lat }],
+    };
+    const title = `${app.applicant?.fullName || "Private"} - ${app.property?.proposedBuildingType || "Gusali"} (${app.trackingNumber})`;
+    const body = {
+      name: title,
+      modelType: "office" as ModelType,
+      type: "Private Building" as const,
+      department: "MPDC" as const,
+      status: "Planned" as ProjectStatus,
+      progress: 0,
+      description: `Citizen Zoning Application: ${app.trackingNumber} | TD: ${app.property?.taxDecNo || "—"} | TCT: ${app.property?.tctNo || "—"} | Area: ${app.property?.lotAreaSqM ? `${app.property.lotAreaSqM} sq.m.` : "—"} | Address: ${app.property?.locationDescription || app.applicant?.address || "Luisiana"}`,
+      barangay: app.applicant?.barangay || "Zone I Poblacion",
+      fundingSource: "Private / Citizen",
+      contractor: "Private Property Owner",
+      location: { lat, lon: lng },
+      rotation: 0,
+      modelLocked: true,
+      siteMarkerOnly: true,
+      mapSketch,
+      markerColor: mapSketch.color,
+      lifecyclePhase: "Planning",
+    };
+
+    try {
+      let createdProject: Project | null = null;
+      try {
+        const res = await fetch(backendUrl("/api/projects"), {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          createdProject = data.project;
+        }
+      } catch (err) {
+        console.warn("[App] backend save failed, using local fallback:", err);
+      }
+
+      if (!createdProject) {
+        createdProject = {
+          id: typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `app-site-${Date.now()}`,
+          ...body,
+          milestones: [],
+          issues: [],
+          photos: [],
+          activityLog: [{ at: now, message: `Site pinned by MPDC for citizen application ${app.trackingNumber}.` }],
+          updatedAt: now,
+          archivedAt: null,
+        } as Project;
+      }
+
+      addProjectToFirestore(createdProject).catch(() => undefined);
+      setProjects((prev) => [createdProject!, ...prev]);
+
+      if (app.id) {
+        patchCitizenApplication(app.id, {
+          notes: app.notes
+            ? `${app.notes} [Site Pinned at (${lat.toFixed(5)}, ${lng.toFixed(5)})]`
+            : `Site Pinned on 3D Map at coordinates (${lat.toFixed(5)}, ${lng.toFixed(5)}).`,
+        }).catch((e) => console.warn("Failed to patch citizen app location note:", e));
+      }
+
+      setPinCitizenApp(null);
+      pinCitizenAppRef.current = null;
+      setPlacementMode(false);
+      cesiumMapRef.current?.flyToLonLat(lng, lat, 1800);
+      window.alert(
+        `Matagumpay na nai-pin sa 3D Mapa ang lokasyon para sa aplikasyon ni ${app.applicant?.fullName || "Aplikante"} (${app.trackingNumber})!`,
+      );
+    } catch (err) {
+      console.error("Failed to pin citizen site:", err);
+      window.alert("Failed to pin site. Please try again.");
+    }
   }
 
   async function placeApprovedProposalAt(
@@ -1591,7 +1764,7 @@ export default function App() {
         ? crypto.randomUUID()
         : `local-${Date.now()}`,
       name: placedName,
-      modelType: selectedModelRef.current,
+      modelType: pendingShapeKindRef.current ? "shape" : selectedModelRef.current,
       type: modalProjectType,
       department: modalDepartment,
       status: modalStatus,
@@ -1609,6 +1782,14 @@ export default function App() {
       photos: [],
       activityLog: [{ at: now, message: "Project created from map placement." }],
       updatedAt: now,
+      mapShape: pendingShapeKindRef.current
+        ? makeMapShape(
+            pendingShapeKindRef.current,
+            pendingShapeKindRef.current === "freeform"
+              ? pendingShapeFootprintRef.current ?? undefined
+              : undefined,
+          )
+        : undefined,
     };
 
     try {
@@ -1634,6 +1815,11 @@ export default function App() {
         if (uploadRes.ok) {
           const data = await uploadRes.json();
           customModelUrl = data.url;
+          if (data.optimized && data.savedPercent > 0) {
+            console.info(
+              `[upload-model] Auto-optimized custom model: ${(data.originalSize / (1024 * 1024)).toFixed(1)}MB -> ${(data.size / (1024 * 1024)).toFixed(1)}MB (${data.savedPercent}% saved, ${data.drawCallsBefore ?? "?"} -> ${data.drawCallsAfter ?? "?"} draw calls)`,
+            );
+          }
         } else {
           let detail = "";
           try {
@@ -1655,7 +1841,7 @@ export default function App() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name: placedName,
-            modelType: selectedModelRef.current,
+            modelType: pendingShapeKindRef.current ? "shape" : selectedModelRef.current,
             type: modalProjectType,
             department: modalDepartment,
             status: modalStatus,
@@ -1674,6 +1860,14 @@ export default function App() {
             location: { lat, lon: lng },
             rotation: placementRotationRef.current,
             customModelUrl,
+            mapShape: pendingShapeKindRef.current
+              ? makeMapShape(
+                  pendingShapeKindRef.current,
+                  pendingShapeKindRef.current === "freeform"
+                    ? pendingShapeFootprintRef.current ?? undefined
+                    : undefined,
+                )
+              : undefined,
           }),
         });
 
@@ -1690,7 +1884,7 @@ export default function App() {
         });
         pendingEditIdRef.current = project.id;
       } catch (backendErr) {
-        if (selectedModelRef.current === "custom") {
+        if (selectedModelRef.current === "custom" && !pendingShapeKindRef.current) {
           throw backendErr;
         }
 
@@ -1708,6 +1902,7 @@ export default function App() {
       setModalProjectName("");
       setModalDescription("");
       setPlacementMode(false);
+      clearPendingShape();
       setEditMode(true);
       setSnapToRoad(true);
       setBlockRemoverMode(false);
@@ -2394,7 +2589,9 @@ export default function App() {
     screen === "analytics" ||
     screen === "inventory" ||
     screen === "engagement" ||
-    screen === "audit";
+    screen === "audit" ||
+    screen === "pengineer" ||
+    screen === "permits";
   /**
    * Once the globe has been created, never tear it down in-SPA.
    * Deferred Cesium destroy after logout painted Landing then white-screened.
@@ -2432,6 +2629,7 @@ export default function App() {
             setCurrentSession(sessionForRole("Viewer"));
             setScreen("citizen");
           }}
+          onOnlineServices={() => setScreen("services")}
         />
       )}
 
@@ -2441,10 +2639,53 @@ export default function App() {
           onLogin={(session) => {
             setAuditActor(session);
             setCurrentSession(session);
-            setScreen(session.role === "Barangay Official" ? "planning" : "app");
+            setScreen(
+              session.role === "Barangay Official"
+                ? "planning"
+                : session.role === "Negosyo Center"
+                ? "negosyo"
+                : session.role === "Private Engineer"
+                ? "pengineer"
+                : "app"
+            );
           }}
           onBack={() => setScreen("landing")}
         />
+      )}
+
+      {/* Dedicated Private Engineer / Professional Portal */}
+      {screen === "pengineer" && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 10000, overflowY: "auto", background: "#080c14" }}>
+          <PrivateEngineerPortal
+            onBack={goHome}
+            session={currentSession}
+            onOpenLiveMap={() => {
+              setSidebarCollapsed(false);
+              setScreen("app");
+            }}
+          />
+        </div>
+      )}
+
+      {/* Dedicated Negosyo Center / BPLO Page (NO MAP) */}
+      {screen === "negosyo" && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 10000, overflowY: "auto", background: "#080c14" }}>
+          <NegosyoCenterPage onLogout={goHome} />
+        </div>
+      )}
+
+      {/* Dedicated Online Services & Application Wizard Page */}
+      {screen === "services" && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 10000, overflowY: "auto", background: "var(--bg, #0f141d)" }}>
+          <OnlineApplicationWizard
+            onBack={() => setScreen("landing")}
+            onViewMap={() => {
+              setCurrentSession(sessionForRole("Viewer"));
+              setSidebarCollapsed(false);
+              setScreen("app");
+            }}
+          />
+        </div>
       )}
 
       {showCitizenShell && (
@@ -2460,11 +2701,12 @@ export default function App() {
               setSidebarCollapsed(false);
               setScreen("app");
             }}
+            onOpenOnlineServices={() => setScreen("services")}
           />
         </div>
       )}
 
-      {/* Inventory / Planning / Documents / Analytics — overlays; map stays parked underneath */}
+      {/* Inventory / Planning / Documents / Analytics / Zoning Permits — overlays; map stays parked underneath */}
       {screen === "inventory" && (
         <InventoryPage
           onBack={() => setScreen("app")}
@@ -2474,14 +2716,20 @@ export default function App() {
       )}
 
       {screen === "planning" && currentRole !== "Viewer" && (
-        <Suspense fallback={<div className="an-page" style={{ padding: 24 }}>Loading planning…</div>}>
-          <PlanningPage
-            onBack={() => setScreen("app")}
-            session={currentSession}
-            onPinSite={currentRole === "MPDC" ? startPinSite : undefined}
-            projects={Array.isArray(projects) ? projects : []}
-          />
-        </Suspense>
+        <PlanningPage
+          onBack={() => setScreen("app")}
+          session={currentSession}
+          onPinSite={currentRole === "MPDC" ? startPinSite : undefined}
+          projects={Array.isArray(projects) ? projects : []}
+        />
+      )}
+
+      {screen === "permits" && isMunicipalStaff(currentRole) && (
+        <ZoningPermitsPage
+          onBack={() => setScreen("app")}
+          session={currentSession}
+          onPinSite={currentRole === "MPDC" ? startPinCitizenSite : undefined}
+        />
       )}
 
       {screen === "documents" && isMunicipalStaff(currentRole) && (
@@ -2538,10 +2786,11 @@ export default function App() {
           earthquakeGrid={quakeGrid}
           projects={filteredProjects}
           clusteringEnabled={infraFilter.clustering}
-          visible
+          visible={!parkMapShell}
+          paused={parkMapShell}
           placementMode={
             (placementMode && currentRole === "Engineer") ||
-            (placementMode && currentRole === "MPDC" && Boolean(pinProposal))
+            (placementMode && currentRole === "MPDC" && (Boolean(pinProposal) || Boolean(pinCitizenApp)))
           }
           editMode={editMode && currentRole === "Engineer"}
           placementTool={placementTool}
@@ -2594,6 +2843,10 @@ export default function App() {
                   <>
                     <b>Draw site</b> for <b>{pinProposal.title}</b> — pin / draw / area / erase blocks
                   </>
+                ) : pinCitizenApp ? (
+                  <>
+                    <b>📍 I-pin ang Lokasyon ng Gusali</b> para kay <b>{pinCitizenApp.applicant?.fullName}</b> ({pinCitizenApp.trackingNumber}) — i-click ang lote sa mapa
+                  </>
                 ) : (
                   <>
                     <b>Place tools</b> — pin, draw, color, or delete OSM blocks
@@ -2605,9 +2858,12 @@ export default function App() {
                 onClick={() => {
                   setPinProposal(null);
                   pinProposalRef.current = null;
+                  setPinCitizenApp(null);
+                  pinCitizenAppRef.current = null;
                   setPlacementMode(false);
                   setBlockRemoverMode(false);
                   setPlacementTool("pin");
+                  clearPendingShape();
                   cesiumMapRef.current?.clearSketch();
                 }}
                 style={{
@@ -2963,6 +3219,22 @@ export default function App() {
                 <span className="topBar-exit-short">Inv</span>
               </button>
             )}
+            {isMunicipalStaff(currentRole) && currentRole !== "Negosyo Center" && (
+              <button
+                type="button"
+                className="topBar-nav-link"
+                onClick={() => {
+                  setMoreMenuOpen(false);
+                  setScreen("permits");
+                }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
+                  <path d="M3 21h18M9 8h1M9 12h1M9 16h1M14 8h1M14 12h1M14 16h1M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16" />
+                </svg>
+                <span className="topBar-exit-full">Zoning Permits</span>
+                <span className="topBar-exit-short">Permits</span>
+              </button>
+            )}
             {currentRole === "Viewer" && (
               <button
                 type="button"
@@ -3160,6 +3432,26 @@ export default function App() {
           climateReadings={climateReadingsOpen}
           tropical={tropicalEnabled}
           barangays={barangaysVisible}
+          coordinates={mapSettings.showCoordinates ?? true}
+          labels={mapSettings.showFloatingLabels ?? true}
+          shapes={shapesPanelOpen}
+          canPlaceShapes={currentRole === "Engineer"}
+          placement={placementMode}
+          canPlace={currentRole === "Engineer" || currentRole === "MPDC"}
+          onPlacement={() => {
+            setPlacementMode((v) => {
+              const next = !v;
+              if (!next) {
+                setPinProposal(null);
+                pinProposalRef.current = null;
+                setBlockRemoverMode(false);
+                setPlacementTool("pin");
+                clearPendingShape();
+                cesiumMapRef.current?.clearSketch();
+              }
+              return next;
+            });
+          }}
           onSatellite={() =>
             setToggles((t) => {
               const next = !t.satellite;
@@ -3168,7 +3460,26 @@ export default function App() {
           }
           onBuildingBlocks={() => setToggles((t) => ({ ...t, buildingBlocks: !t.buildingBlocks }))}
           onProjects={() => setToggles((t) => ({ ...t, projects: !t.projects }))}
-          onBarangays={() => setBarangaysVisible((v) => !v)}
+          onBarangays={() => {
+            setBarangaysVisible((v) => !v);
+            setShapesPanelOpen(false);
+          }}
+          onCoordinates={() =>
+            setMapSettings((s) => ({
+              ...s,
+              showCoordinates: !(s.showCoordinates ?? true),
+            }))
+          }
+          onLabels={() =>
+            setMapSettings((s) => ({
+              ...s,
+              showFloatingLabels: !(s.showFloatingLabels ?? true),
+            }))
+          }
+          onShapes={() => {
+            setShapesPanelOpen((v) => !v);
+            setBarangaysVisible(false);
+          }}
           onQuakeHeat={() => setQuakeModelEnabled((v) => !v)}
           onClimateReadings={() => setClimateReadingsOpen((v) => !v)}
           onTropical={() => {
@@ -3185,6 +3496,15 @@ export default function App() {
           }}
           onPointerDown={stopMapPointer}
         />
+        )}
+
+        {!editMode && shapesPanelOpen && currentRole === "Engineer" && (
+          <ShapesPanel
+            selectedKind={pendingShapeKind}
+            onSelect={startShapePlacement}
+            onClose={() => setShapesPanelOpen(false)}
+            onPointerDown={stopMapPointer}
+          />
         )}
 
         {!editMode && barangaysVisible && roleConfig?.canSeeLayers && (
@@ -3749,6 +4069,42 @@ export default function App() {
             />
           </div>
 
+          <div className="toggleRow">
+            <div>
+              <label>Floating 3D badges</label>
+              <div className="hint">Show floating title badges above 3D models</div>
+            </div>
+            <div
+              className={`switch ${mapSettings.showFloatingLabels ?? true ? "on" : ""}`}
+              role="switch"
+              aria-checked={mapSettings.showFloatingLabels ?? true}
+              onClick={() =>
+                setMapSettings((s) => ({
+                  ...s,
+                  showFloatingLabels: !(s.showFloatingLabels ?? true),
+                }))
+              }
+            />
+          </div>
+
+          <div className="toggleRow">
+            <div>
+              <label>GPS coordinates</label>
+              <div className="hint">Show latitude/longitude in floating badges</div>
+            </div>
+            <div
+              className={`switch ${mapSettings.showCoordinates ?? true ? "on" : ""}`}
+              role="switch"
+              aria-checked={mapSettings.showCoordinates ?? true}
+              onClick={() =>
+                setMapSettings((s) => ({
+                  ...s,
+                  showCoordinates: !(s.showCoordinates ?? true),
+                }))
+              }
+            />
+          </div>
+
           <div
             className="extrusion-opacity-control"
             style={{
@@ -4259,13 +4615,14 @@ export default function App() {
               <div key={cat} style={{ marginBottom: 10 }}>
                 <div style={{ fontSize: 10, color: "var(--muted2)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>{cat}</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                  {MODEL_CATALOG.filter((m) => m.category === cat).map((m) => (
+                  {MODEL_CATALOG.filter((m) => m.category === cat && m.type !== "shape").map((m) => (
                     <button
                       key={m.type}
                       type="button"
                       className={`side-seg-btn${selectedModel === m.type ? " is-on" : ""}`}
                       onClick={() => {
                         setSelectedModel(m.type);
+                        clearPendingShape();
                         if (m.type !== "custom") {
                           setCustomModelFile(null);
                           setCustomModelPreview(null);
@@ -4365,9 +4722,19 @@ export default function App() {
                   marginTop: 8, 
                   fontSize: 10, 
                   color: "var(--muted2)", 
-                  lineHeight: 1.4 
+                  lineHeight: 1.45,
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 6,
+                  padding: "6px 8px",
+                  background: "rgba(74, 222, 128, 0.08)",
+                  border: "1px solid rgba(74, 222, 128, 0.25)",
+                  borderRadius: 2,
                 }}>
-                  Upload your own 3D model in GLB or GLTF format. The model will be placed on the map at the clicked location.
+                  <span style={{ color: "#4ade80", fontWeight: 700, fontSize: 11 }}>⚡</span>
+                  <span style={{ color: "var(--ink-soft)" }}>
+                    <strong>Auto-Optimization Enabled:</strong> Uploaded BIM/CAD geometry is automatically merged, textures compressed, and Draco-encoded on the server for instant map rendering.
+                  </span>
                 </div>
               </div>
             )}

@@ -12,10 +12,20 @@ type Props = {
   climateReadings: boolean;
   tropical: boolean;
   barangays: boolean;
+  coordinates?: boolean;
+  labels?: boolean;
+  shapes?: boolean;
+  canPlaceShapes?: boolean;
+  placement?: boolean;
+  canPlace?: boolean;
   onSatellite: () => void;
   onBuildingBlocks: () => void;
   onProjects: () => void;
   onBarangays: () => void;
+  onCoordinates?: () => void;
+  onLabels?: () => void;
+  onShapes?: () => void;
+  onPlacement?: () => void;
   onQuakeHeat: () => void;
   onClimateReadings: () => void;
   onTropical: () => void;
@@ -61,10 +71,20 @@ export function MapShortcuts({
   climateReadings,
   tropical,
   barangays,
+  coordinates = true,
+  labels = true,
+  shapes = false,
+  canPlaceShapes = false,
+  placement = false,
+  canPlace = false,
   onSatellite,
   onBuildingBlocks,
   onProjects,
   onBarangays,
+  onCoordinates,
+  onLabels,
+  onShapes,
+  onPlacement,
   onQuakeHeat,
   onClimateReadings,
   onTropical,
@@ -132,6 +152,62 @@ export function MapShortcuts({
               <path d="M13 13h7v7h-7z" />
             </svg>
           </IconBtn>
+          {onLabels && (
+            <IconBtn
+              label="Labels"
+              title="Toggle floating 3D labels above models"
+              active={labels}
+              onClick={onLabels}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+                <line x1="7" y1="7" x2="7.01" y2="7" />
+              </svg>
+            </IconBtn>
+          )}
+          {onCoordinates && (
+            <IconBtn
+              label="Coords"
+              title="Toggle GPS coordinates in floating labels"
+              active={coordinates}
+              onClick={onCoordinates}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <circle cx="12" cy="12" r="9" />
+                <line x1="21" y1="12" x2="17" y2="12" />
+                <line x1="7" y1="12" x2="3" y2="12" />
+                <line x1="12" y1="3" x2="12" y2="7" />
+                <line x1="12" y1="17" x2="12" y2="21" />
+              </svg>
+            </IconBtn>
+          )}
+          {canPlace && onPlacement && (
+            <IconBtn
+              label="Placement"
+              title="Placement tools (Pin, Draw, Area, Delete blocks)"
+              active={placement}
+              onClick={onPlacement}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M12 2a8 8 0 0 0-8 8c0 5.25 8 12 8 12s8-6.75 8-12a8 8 0 0 0-8-8z" />
+                <line x1="12" y1="7" x2="12" y2="13" />
+                <line x1="9" y1="10" x2="15" y2="10" />
+              </svg>
+            </IconBtn>
+          )}
+          {canPlaceShapes && onShapes && (
+            <IconBtn
+              label="Shapes"
+              title="Add boxes, cylinders, freeform, roofs, and trees"
+              active={shapes}
+              onClick={onShapes}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M12 3 L21 8 L12 13 L3 8 Z" />
+                <path d="M21 8 V16 L12 21 L3 16 V8" />
+              </svg>
+            </IconBtn>
+          )}
         </>
       )}
 

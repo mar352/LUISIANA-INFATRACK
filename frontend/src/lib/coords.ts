@@ -18,8 +18,10 @@ export function infraLabelText(
   lat: number,
   lon: number,
   isSitePin: boolean,
+  showCoords = true,
 ): string {
   const title = isSitePin ? `📌 ${name}` : name;
+  if (!showCoords) return title;
   const coords = formatLonLat(lat, lon);
   return coords ? `${title}\n${coords}` : title;
 }

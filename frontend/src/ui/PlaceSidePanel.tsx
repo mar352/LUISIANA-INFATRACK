@@ -50,6 +50,8 @@ type Props = {
   /** Street or barangay under the name — not the structure title. */
   locationLabel?: string | null;
   onToggleLock?: () => void;
+  /** Hide or show the floating 3D badge above this specific model. */
+  onToggleBadge?: () => void;
   /** Engineer: convert this site pin into the Under Construction GLB. */
   canPromoteSitePin?: boolean;
   startConstructionBusy?: boolean;
@@ -166,6 +168,7 @@ export function PlaceSidePanel({
   onRename,
   locationLabel = null,
   onToggleLock,
+  onToggleBadge,
   canPromoteSitePin = false,
   startConstructionBusy = false,
   onStartConstruction,
@@ -767,6 +770,17 @@ export function PlaceSidePanel({
               <button type="button" className="place-action" onClick={onToggleLock}>
                 <span className="place-action-icon">{project.modelLocked ? "Open" : "Lock"}</span>
                 <span>{project.modelLocked ? "Unlock" : "Lock"}</span>
+              </button>
+            )}
+            {!readOnly && onToggleBadge && (
+              <button
+                type="button"
+                className={`place-action${project.hideBadge ? " is-active" : ""}`}
+                onClick={onToggleBadge}
+                title={project.hideBadge ? "Show floating 3D badge on map" : "Hide floating 3D badge on map"}
+              >
+                <span className="place-action-icon">{project.hideBadge ? "🏷️" : "🚫"}</span>
+                <span>{project.hideBadge ? "Badge Off" : "Badge"}</span>
               </button>
             )}
             {showPhotoEdit && (

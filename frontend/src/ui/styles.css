@@ -218,24 +218,29 @@ button, input, select, textarea {
 input[type="text"],
 input[type="password"],
 input[type="number"],
-input[type="range"],
+input[type="tel"],
+input[type="email"],
+input[type="search"],
 select,
 textarea {
   font-family: var(--font);
   color: var(--ink);
   background: var(--cream-deep);
-  border: 2px solid var(--ink);
-  border-radius: 0;
+  border: 1px solid var(--stroke, rgba(0, 0, 0, 0.2));
+  border-radius: 8px;
   outline: none;
 }
 
 input[type="text"]:focus,
 input[type="password"]:focus,
 input[type="number"]:focus,
+input[type="tel"]:focus,
+input[type="email"]:focus,
+input[type="search"]:focus,
 select:focus,
 textarea:focus {
-  border-color: var(--amber-sharp);
-  box-shadow: 3px 3px 0 var(--amber);
+  border-color: var(--amber, #ffc107);
+  box-shadow: 0 0 0 3px rgba(255, 193, 7, 0.25);
 }
 
 input[type="range"] {
