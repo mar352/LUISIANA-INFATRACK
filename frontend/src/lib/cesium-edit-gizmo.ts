@@ -177,6 +177,21 @@ export function resizeEditGizmo(viewer: Cesium.Viewer) {
   updatePoseLengthFromCamera(viewer);
 }
 
+/** Cheap pose write for drag — CallbackProperties read this the same frame. */
+export function setEditGizmoPose(lon: number, lat: number, heightM: number) {
+  if (!_gizmoShown) return;
+  if (!Number.isFinite(lon) || !Number.isFinite(lat)) return;
+  let z = Math.abs(heightM) < 1e-4 ? 1.2 : heightM + 1.2;
+  if (_sizeViewer && !_sizeViewer.isDestroyed()) {
+    const gh = _sizeViewer.scene.globe.getHeight(Cesium.Cartographic.fromDegrees(lon, lat));
+    if (typeof gh === "number" && Number.isFinite(gh)) z += gh;
+  }
+  const origin = Cesium.Cartesian3.fromDegrees(lon, lat, z, undefined, _origin);
+  Cesium.Transforms.eastNorthUpToFixedFrame(origin, undefined, _enu);
+  Cesium.Cartesian3.clone(origin, _poseOrigin);
+  writePoseTips(_poseLen);
+}
+
 export function removeEditGizmo(viewer: Cesium.Viewer) {
   _gizmoShown = false;
   unbindSizeTick();
@@ -227,7 +242,9 @@ export function syncEditGizmo(
     }
 
     const onGround = Math.abs(opts.heightM) < 1e-4;
-    const z = onGround ? 1.2 : opts.heightM + 1.2;
+    let z = onGround ? 1.2 : opts.heightM + 1.2;
+    const gh = viewer.scene.globe.getHeight(Cesium.Cartographic.fromDegrees(opts.lon, opts.lat));
+    if (typeof gh === "number" && Number.isFinite(gh)) z += gh;
     const origin = Cesium.Cartesian3.fromDegrees(opts.lon, opts.lat, z, undefined, _origin);
     Cesium.Transforms.eastNorthUpToFixedFrame(origin, undefined, _enu);
     Cesium.Cartesian3.clone(origin, _poseOrigin);

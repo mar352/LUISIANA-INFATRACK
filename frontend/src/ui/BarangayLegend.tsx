@@ -4,11 +4,13 @@ import "./BarangayLegend.css";
 
 type Props = {
   areas: BarangayArea[];
+  selectedName?: string | null;
+  onSelect: (area: BarangayArea) => void;
   onClose: () => void;
   onPointerDown?: (e: SyntheticEvent) => void;
 };
 
-export function BarangayLegend({ areas, onClose, onPointerDown }: Props) {
+export function BarangayLegend({ areas, selectedName, onSelect, onClose, onPointerDown }: Props) {
   return (
     <aside
       className="brgy-legend"
@@ -22,14 +24,24 @@ export function BarangayLegend({ areas, onClose, onPointerDown }: Props) {
           ×
         </button>
       </div>
-      <p className="brgy-legend-hint">Color-coded areas so you can see each barangay on the map.</p>
+      <p className="brgy-legend-hint">Click a barangay to fly to it on the globe.</p>
       <ul className="brgy-legend-list">
-        {areas.map((a) => (
-          <li key={a.name}>
-            <span className="brgy-legend-swatch" style={{ background: a.color }} />
-            <span>{a.name.replace(/^Barangay\s+/i, "")}</span>
-          </li>
-        ))}
+        {areas.map((a) => {
+          const on = selectedName === a.name;
+          return (
+            <li key={a.name}>
+              <button
+                type="button"
+                className={`brgy-legend-item${on ? " is-on" : ""}`}
+                aria-current={on ? "true" : undefined}
+                onClick={() => onSelect(a)}
+              >
+                <span className="brgy-legend-swatch" style={{ background: a.color }} />
+                <span>{a.name.replace(/^Barangay\s+/i, "")}</span>
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </aside>
   );

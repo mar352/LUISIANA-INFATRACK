@@ -3,7 +3,7 @@
  * and MapLibre-parity edit: select / left-drag move / right-drag rotate / scroll scale.
  */
 
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { Fragment, forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import * as Cesium from "cesium";
 import "cesium/Build/Cesium/Widgets/widgets.css";
 import type { MapSketch, MapSketchKind, PlacementTool, Project, ProjectPhoto, ProjectStatus } from "../types";
@@ -21,6 +21,7 @@ import {
   isGlbCached,
   prefetchGlbUrls,
   resolveGlbUrlForAttach,
+  resolveLodGlbUrl,
   retainGlbUrls,
   touchGlbCache,
 } from "../lib/glb-cache";
@@ -28,7 +29,8 @@ import {
   formatBytesShort,
   gpuModelBudget,
   modelLoadConcurrency,
-  modelLoadRadiusM,
+  modelPreloadRadiusM,
+  modelVisibleRadiusM,
   modelUnloadRadiusM,
 } from "../lib/cesium-model-stream";
 import {
@@ -45,10 +47,13 @@ import {
   removeEditGizmo,
   resizeEditGizmo,
   setEditGizmoHover,
+  setEditGizmoPose,
   syncEditGizmo,
   type EditAxis,
   type EditTool,
 } from "../lib/cesium-edit-gizmo";
+import { isPrimitiveShape, isRoadShape, isTreeShape } from "../lib/map-shapes";
+import { getRoadTileTexture } from "../lib/road-tile-texture";
 import { fetchLuisianaBuildings, type BuildingFootprint } from "../lib/osm-buildings";
 import {
   applyTerrainPerfSettings,
@@ -72,6 +77,7 @@ import {
   OSM_RASTER_TILE_URL,
 } from "../lib/stadia";
 import { getSatelliteSource } from "../lib/terrain";
+import { isGlobeOfflineMode, OFFLINE_MODE_EVENT } from "../lib/globe-offline";
 import { classAdvice, classColor } from "../lib/earthquake-labels";
 import {
   earthquakeProneModel,
@@ -92,13 +98,21 @@ import {
 } from "../lib/tropical-systems";
 import { HAZARD_OVERLAYS, loadHazardTilesManifest } from "../lib/hazard-overlays";
 import { addLuisianaBoundary } from "../lib/luisiana-boundary";
-import { addBarangayOverlay, loadBarangayAreas, removeBarangayOverlay } from "../lib/barangay-overlay";
+import {
+  addBarangayOverlay,
+  flyToBarangay as flyCameraToBarangay,
+  highlightBarangay,
+  loadBarangayAreas,
+  removeBarangayOverlay,
+  type BarangayArea,
+} from "../lib/barangay-overlay";
 import {
   displayNameForProject,
   hoverTypeLabel,
   lookupPlaceName,
   syncPlaceName,
 } from "../lib/place-name";
+import { formatLonLat, infraLabelText } from "../lib/coords";
 import {
   isInsideLuisiana,
   loadLuisianaRing,
@@ -121,9 +135,9 @@ const GLOBE_FAR_M = 10_000_000_000;
 const LOCAL_3D_FAR_M = 2_000_000;
 const LOCAL_3D_FOG_SSE_FACTOR = 4.0;
 const FOG_MIN_BRIGHTNESS_DAY = 0.25;
-/** Cap extruded OSM blocks so weak GPUs don't melt. */
-const MAX_OSM_BUILDING_BLOCKS = 4500;
-const OSM_BUILDING_BATCH = 350;
+/** Cap extruded OSM blocks so weak GPUs don't melt (focus on poblacion/town center). */
+const MAX_OSM_BUILDING_BLOCKS = 1200;
+const OSM_BUILDING_BATCH = 300;
 /** Lift blocks slightly above DEM / ellipsoid (meters). */
 const OSM_BLOCK_BASE_M = 0.35;
 /** Light gray-white blocks (reference style) — basemap is OSM street. */
@@ -355,6 +369,8 @@ export type CesiumMapHandle = {
   flyToLonLat: (lon: number, lat: number, heightM?: number) => void;
   /** Select a project model and fly the camera to it. False if the globe is not ready yet. */
   flyToProject: (projectId: string) => boolean;
+  /** Select a just-placed building so Edit Mode gizmo attaches (no fly). */
+  selectProject: (projectId: string) => boolean;
   /** Finish current line/area sketch (placement mode). */
   finishSketch: () => boolean;
   /** Remove last sketch vertex. */
@@ -365,6 +381,8 @@ export type CesiumMapHandle = {
   getSketchVertexCount: () => number;
   /** Snapshot of the live globe (PNG data URL) for printable maps / reports. */
   captureMapPng: () => Promise<string | null>;
+  /** Fly to a barangay polygon from the legend. */
+  flyToBarangay: (area: BarangayArea) => void;
 };
 
 type PlaceClick = { lng: number; lat: number };
@@ -378,6 +396,10 @@ type LocalXform = {
   pitchDeg: number;
   rollDeg: number;
   scaleMultiplier: number;
+  /** Extra stretch on the GLB (1 = none). X width, Y depth, Z height. */
+  scaleX: number;
+  scaleY: number;
+  scaleZ: number;
   modelLocked: boolean;
   dirty: boolean;
   /** Keep local pose until projects prop matches after save. */
@@ -395,6 +417,9 @@ type EditPoseSnap = {
   pitchDeg: number;
   rollDeg: number;
   scaleMultiplier: number;
+  scaleX: number;
+  scaleY: number;
+  scaleZ: number;
 };
 
 function snapFromXform(projectId: string, xf: LocalXform): EditPoseSnap {
@@ -407,6 +432,9 @@ function snapFromXform(projectId: string, xf: LocalXform): EditPoseSnap {
     pitchDeg: xf.pitchDeg ?? 0,
     rollDeg: xf.rollDeg ?? 0,
     scaleMultiplier: xf.scaleMultiplier,
+    scaleX: xf.scaleX ?? 1,
+    scaleY: xf.scaleY ?? 1,
+    scaleZ: xf.scaleZ ?? 1,
   };
 }
 
@@ -419,7 +447,10 @@ function poseSnapEqual(a: EditPoseSnap, b: EditPoseSnap): boolean {
     Math.abs(a.rotationDeg - b.rotationDeg) < 1e-3 &&
     Math.abs(a.pitchDeg - b.pitchDeg) < 1e-3 &&
     Math.abs(a.rollDeg - b.rollDeg) < 1e-3 &&
-    Math.abs(a.scaleMultiplier - b.scaleMultiplier) < 1e-4
+    Math.abs(a.scaleMultiplier - b.scaleMultiplier) < 1e-4 &&
+    Math.abs(a.scaleX - b.scaleX) < 1e-4 &&
+    Math.abs(a.scaleY - b.scaleY) < 1e-4 &&
+    Math.abs(a.scaleZ - b.scaleZ) < 1e-4
   );
 }
 
@@ -431,6 +462,9 @@ function writeXformFromSnap(xf: LocalXform, snap: EditPoseSnap) {
   xf.pitchDeg = snap.pitchDeg;
   xf.rollDeg = snap.rollDeg;
   xf.scaleMultiplier = snap.scaleMultiplier;
+  xf.scaleX = snap.scaleX ?? 1;
+  xf.scaleY = snap.scaleY ?? 1;
+  xf.scaleZ = snap.scaleZ ?? 1;
 }
 
 type Props = {
@@ -444,6 +478,8 @@ type Props = {
   /** When true, nearby pins collapse into count bubbles until you zoom in. */
   clusteringEnabled?: boolean;
   visible?: boolean;
+  /** Pause WebGL render loop when parked off-screen to prevent background GPU lag */
+  paused?: boolean;
   placementMode?: boolean;
   /** Select an existing model and move / rotate / scale it. */
   editMode?: boolean;
@@ -476,8 +512,12 @@ type Props = {
   };
   /** Layers toggle — hide/show Luisiana 3D blocks. */
   buildingBlocksVisible?: boolean;
+  /** Layers toggle — hide/show Luisiana textured asphalt roads. */
+  asphaltRoadsVisible?: boolean;
   /** Left-rail toggle — color-coded barangay areas. */
   barangaysVisible?: boolean;
+  /** Legend selection — highlight that barangay fill. */
+  focusedBarangay?: string | null;
   /** Click a block to remove it (engineer tool). */
   blockRemoverActive?: boolean;
   /** Layers → 3D Terrain: elevation mesh on the globe. */
@@ -506,6 +546,7 @@ function gibsMaximumLevel(layer: GibsLayerId): number {
 }
 
 function projectModelUrl(p: Project): string {
+  if (isTreeShape(p.mapShape?.kind)) return "/models/tree.glb";
   if (p.modelType === "custom" && p.customModelUrl) {
     const u = p.customModelUrl;
     if (u.startsWith("http")) return u;
@@ -526,16 +567,208 @@ function absoluteAssetUrl(path: string): string {
 }
 
 function modelScaleValue(p: Project, scaleMultiplier: number): number {
+  const sm = Number.isFinite(scaleMultiplier) && scaleMultiplier > 0 ? scaleMultiplier : 1;
+  if (p.mapShape?.kind === "tree_bush") return Math.max(0.0001, 2.2 * sm);
+  if (p.mapShape?.kind === "tree_conifer") return Math.max(0.0001, 7.5 * sm);
+  if (p.mapShape?.kind === "tree_broadleaf") return Math.max(0.0001, 5.5 * sm);
   const cat = MODEL_CATALOG.find((m) => m.type === (p.modelType ?? "office"));
-  // Catalog `scale` is a relative base; engineers may need tiny multipliers for
-  // large authored GLBs (no hard floor of 1 — that blocked shrinking).
-  const targetH = (cat?.scale ?? 60) * scaleMultiplier;
-  return Math.max(0.0001, targetH / 10);
+  const catScale = Number.isFinite(cat?.scale) && (cat?.scale ?? 0) > 0 ? (cat?.scale ?? 60) : 60;
+  const targetH = catScale * sm;
+  const finalScale = targetH / 10;
+  return Number.isFinite(finalScale) && finalScale >= 0.0001 ? finalScale : 1.0;
+}
+
+function shapeWorldMeters(p: Project, xf: LocalXform) {
+  const s = p.mapShape;
+  const u = xf.scaleMultiplier ?? 1;
+  const sx = (xf.scaleX ?? 1) * u;
+  const sy = (xf.scaleY ?? 1) * u;
+  const sz = (xf.scaleZ ?? 1) * u;
+  return {
+    w: (s?.width ?? 8) * sx,
+    d: (s?.depth ?? 8) * sy,
+    h: (s?.height ?? 8) * sz,
+    r: (s?.radius ?? 4) * Math.max(sx, sy),
+  };
+}
+
+function applyMapShapeGraphics(ent: Cesium.Entity, p: Project, xf: LocalXform) {
+  const kind = p.mapShape?.kind;
+  if (!isPrimitiveShape(kind)) {
+    if (ent.box) ent.box = undefined;
+    if (ent.cylinder) ent.cylinder = undefined;
+    if (ent.polygon) ent.polygon = undefined;
+    return;
+  }
+  const m = shapeWorldMeters(p, xf);
+  const parsed = Cesium.Color.fromCssColorString(p.mapShape?.color || "#cfd3d8");
+  const fill = (parsed ?? Cesium.Color.GAINSBORO).clone();
+  fill.alpha = 1;
+  const mat = new Cesium.ColorMaterialProperty(fill);
+  const outline = Cesium.Color.fromCssColorString("#6a717c") ?? Cesium.Color.DIMGREY;
+  ent.model = undefined;
+  ent.shadows = new Cesium.ConstantProperty(Cesium.ShadowMode.ENABLED);
+  if (ent.point) {
+    (ent.point as Cesium.PointGraphics).show = new Cesium.ConstantProperty(false);
+  }
+
+  if (isRoadShape(kind)) {
+    ent.cylinder = undefined;
+    ent.polygon = undefined;
+    const tileImage = getRoadTileTexture(kind!);
+    const roadMat = new Cesium.ImageMaterialProperty({
+      image: tileImage,
+      transparent: false,
+    });
+    const dims = new Cesium.Cartesian3(Math.max(1, m.w), Math.max(1, m.d), 0.25);
+    const ground = Cesium.HeightReference.RELATIVE_TO_GROUND;
+    if (ent.box) {
+      ent.box.dimensions = new Cesium.ConstantProperty(dims);
+      ent.box.material = roadMat;
+      ent.box.fill = new Cesium.ConstantProperty(true);
+      ent.box.outline = new Cesium.ConstantProperty(false);
+      ent.box.heightReference = new Cesium.ConstantProperty(ground);
+    } else {
+      ent.box = new Cesium.BoxGraphics({
+        dimensions: dims,
+        material: roadMat,
+        fill: true,
+        outline: false,
+        heightReference: ground,
+      });
+    }
+    return;
+  }
+
+  if (kind === "box" || kind === "gable") {
+    ent.cylinder = undefined;
+    ent.polygon = undefined;
+    const h = kind === "gable" ? m.h * 0.7 : m.h;
+    const dims = new Cesium.Cartesian3(Math.max(0.4, m.w), Math.max(0.4, m.d), Math.max(0.4, h));
+    const ground = Cesium.HeightReference.RELATIVE_TO_GROUND;
+    if (ent.box) {
+      ent.box.dimensions = new Cesium.ConstantProperty(dims);
+      ent.box.material = mat;
+      ent.box.fill = new Cesium.ConstantProperty(true);
+      ent.box.heightReference = new Cesium.ConstantProperty(ground);
+    } else {
+      ent.box = new Cesium.BoxGraphics({
+        dimensions: dims,
+        material: mat,
+        fill: true,
+        outline: true,
+        outlineColor: outline,
+        outlineWidth: 2,
+        heightReference: ground,
+      });
+    }
+    return;
+  }
+  if (kind === "cylinder" || kind === "pyramid" || kind === "hip") {
+    ent.box = undefined;
+    ent.polygon = undefined;
+    const top = kind === "cylinder" ? m.r : 0.08;
+    const bottom = kind === "hip" ? m.r * 1.05 : m.r;
+    const ground = Cesium.HeightReference.RELATIVE_TO_GROUND;
+    if (ent.cylinder) {
+      ent.cylinder.length = new Cesium.ConstantProperty(Math.max(0.4, m.h));
+      ent.cylinder.topRadius = new Cesium.ConstantProperty(Math.max(0.05, top));
+      ent.cylinder.bottomRadius = new Cesium.ConstantProperty(Math.max(0.2, bottom));
+      ent.cylinder.material = mat;
+      ent.cylinder.fill = new Cesium.ConstantProperty(true);
+      ent.cylinder.heightReference = new Cesium.ConstantProperty(ground);
+    } else {
+      ent.cylinder = new Cesium.CylinderGraphics({
+        length: Math.max(0.4, m.h),
+        topRadius: Math.max(0.05, top),
+        bottomRadius: Math.max(0.2, bottom),
+        material: mat,
+        fill: true,
+        outline: true,
+        outlineColor: outline,
+        outlineWidth: 2,
+        heightReference: ground,
+      });
+    }
+    return;
+  }
+  if (kind === "freeform") {
+    const ring = shiftedShapeFootprint(p, xf);
+    if (!ring || ring.length < 3) return;
+    ent.box = undefined;
+    ent.cylinder = undefined;
+    const flat: number[] = [];
+    for (const c of ring) {
+      flat.push(c.lon, c.lat);
+    }
+    const extruded = xf.heightM + Math.max(0.6, m.h);
+    const hierarchy = new Cesium.PolygonHierarchy(Cesium.Cartesian3.fromDegreesArray(flat));
+    if (ent.polygon) {
+      ent.polygon.hierarchy = new Cesium.ConstantProperty(hierarchy);
+      ent.polygon.material = mat;
+      ent.polygon.fill = new Cesium.ConstantProperty(true);
+      ent.polygon.height = new Cesium.ConstantProperty(xf.heightM);
+      ent.polygon.extrudedHeight = new Cesium.ConstantProperty(extruded);
+    } else {
+      ent.polygon = new Cesium.PolygonGraphics({
+        hierarchy,
+        material: mat,
+        fill: true,
+        outline: true,
+        outlineColor: outline,
+        height: xf.heightM,
+        extrudedHeight: extruded,
+        perPositionHeight: false,
+      });
+    }
+  }
 }
 
 /** Scroll-scale range for engineer-authored GLBs of wildly different unit sizes. */
 const SCALE_MULT_MIN = 0.001;
 const SCALE_MULT_MAX = 100;
+
+function clampScaleMult(n: number): number {
+  return Math.max(SCALE_MULT_MIN, Math.min(SCALE_MULT_MAX, n));
+}
+
+function stretchFromProject(p: Project): { scaleX: number; scaleY: number; scaleZ: number } {
+  return {
+    scaleX: Number.isFinite(p.modelScaleX) ? Number(p.modelScaleX) : 1,
+    scaleY: Number.isFinite(p.modelScaleY) ? Number(p.modelScaleY) : 1,
+    scaleZ: Number.isFinite(p.modelScaleZ) ? Number(p.modelScaleZ) : 1,
+  };
+}
+
+function applyStretchFactor(xf: LocalXform, axis: EditAxis, factor: number) {
+  if (axis === "x") xf.scaleX = clampScaleMult((xf.scaleX ?? 1) * factor);
+  else if (axis === "y") xf.scaleY = clampScaleMult((xf.scaleY ?? 1) * factor);
+  else if (axis === "z") xf.scaleZ = clampScaleMult((xf.scaleZ ?? 1) * factor);
+  else xf.scaleMultiplier = clampScaleMult(xf.scaleMultiplier * factor);
+}
+
+const _stretchScale = new Cesium.Cartesian3();
+
+function forEachModelPrimitive(
+  collection: { length: number; get: (i: number) => unknown },
+  visit: (prim: Cesium.Model & { id?: unknown }) => void,
+) {
+  const n = collection.length;
+  for (let i = 0; i < n; i++) {
+    const p = collection.get(i) as {
+      length?: number;
+      get?: (i: number) => unknown;
+      modelMatrix?: Cesium.Matrix4;
+      id?: unknown;
+    };
+    if (!p) continue;
+    if (typeof p.length === "number" && typeof p.get === "function") {
+      forEachModelPrimitive(p as Cesium.PrimitiveCollection, visit);
+    } else if (p.modelMatrix) {
+      visit(p as Cesium.Model & { id?: unknown });
+    }
+  }
+}
 
 function entityIdFor(projectId: string) {
   return `project-${projectId}`;
@@ -583,6 +816,8 @@ function attachProjectGlbModel(
     heightReference: Cesium.HeightReference;
     /** Extra models past the budget skip the shadow pass so pan stays smooth. */
     skipShadows?: boolean;
+    /** Dynamic visibility property (for GPU standby culling without destroying WebGL buffers). */
+    show?: boolean | Cesium.Property;
   },
 ): void {
   // Heavy authored halls (municipal-office / RHU) skip the shadow map —
@@ -590,16 +825,18 @@ function attachProjectGlbModel(
   const heavy = /municipal-office|rural-health-unit/i.test(opts.uri);
   const shadowMode =
     heavy || opts.skipShadows ? Cesium.ShadowMode.DISABLED : Cesium.ShadowMode.ENABLED;
+  const safeScale = Number.isFinite(opts.scale) && opts.scale >= 0.0001 ? opts.scale : 1.0;
   ent.shadows = new Cesium.ConstantProperty(shadowMode);
   ent.model = new Cesium.ModelGraphics({
     uri: opts.uri,
-    scale: opts.scale,
+    scale: safeScale,
     heightReference: opts.heightReference,
     shadows: shadowMode,
     runAnimations: false,
     incrementallyLoadTextures: true,
     maximumScale: undefined,
     minimumPixelSize: 0,
+    show: opts.show !== undefined ? opts.show : true,
   });
 }
 
@@ -866,6 +1103,44 @@ function offsetLngLatMeters(
   };
 }
 
+const _livePoseCart = new Cesium.Cartesian3();
+const _livePoseHpr = new Cesium.HeadingPitchRoll();
+
+function shapeLiftM(p: Project, xf: LocalXform): number {
+  if (!isPrimitiveShape(p.mapShape?.kind) || p.mapShape?.kind === "freeform") return 0;
+  return shapeWorldMeters(p, xf).h / 2;
+}
+
+function cartesianForXform(p: Project, xf: LocalXform, result: Cesium.Cartesian3): Cesium.Cartesian3 {
+  const h = xf.heightM + shapeLiftM(p, xf);
+  return Cesium.Cartesian3.fromDegrees(xf.lon, xf.lat, h, undefined, result);
+}
+
+function bindLiveEntityPose(ent: Cesium.Entity, p: Project, xf: LocalXform) {
+  const tagged = ent as Cesium.Entity & { _liveXf?: LocalXform; _liveProj?: Project };
+  tagged._liveXf = xf;
+  tagged._liveProj = p;
+  if (ent.position instanceof Cesium.CallbackPositionProperty) return;
+  ent.position = new Cesium.CallbackPositionProperty((_time, result) => {
+    const liveP = tagged._liveProj ?? p;
+    const liveXf = tagged._liveXf ?? xf;
+    const h = (liveXf.heightM || 0) + shapeLiftM(liveP, liveXf);
+    return Cesium.Cartesian3.fromDegrees(liveXf.lon, liveXf.lat, h, undefined, result);
+  }, false);
+  ent.orientation = new Cesium.CallbackProperty((_time, result) => {
+    const liveP = tagged._liveProj ?? p;
+    const liveXf = tagged._liveXf ?? xf;
+    const h = (liveXf.heightM || 0) + shapeLiftM(liveP, liveXf);
+    const pos = Cesium.Cartesian3.fromDegrees(liveXf.lon, liveXf.lat, h);
+    const hpr = new Cesium.HeadingPitchRoll(
+      Cesium.Math.toRadians(-liveXf.rotationDeg || 0),
+      Cesium.Math.toRadians(liveXf.pitchDeg || 0),
+      Cesium.Math.toRadians(liveXf.rollDeg || 0),
+    );
+    return Cesium.Transforms.headingPitchRollQuaternion(pos, hpr, Cesium.Ellipsoid.WGS84, Cesium.Transforms.eastNorthUpToFixedFrame, result as Cesium.Quaternion);
+  }, false) as unknown as Cesium.Property;
+}
+
 function applyEntityPose(
   ent: Cesium.Entity,
   lon: number,
@@ -890,15 +1165,17 @@ function applyEntityPose(
     Cesium.Transforms.headingPitchRollQuaternion(
       position,
       new Cesium.HeadingPitchRoll(
-        Cesium.Math.toRadians(-rotationDeg),
-        Cesium.Math.toRadians(pitchDeg),
-        Cesium.Math.toRadians(rollDeg),
+        Cesium.Math.toRadians(-rotationDeg || 0),
+        Cesium.Math.toRadians(pitchDeg || 0),
+        Cesium.Math.toRadians(rollDeg || 0),
       ),
     ),
   );
+
   if (ent.model) {
     const model = ent.model as Cesium.ModelGraphics;
-    model.scale = new Cesium.ConstantProperty(scale);
+    const safeScale = Number.isFinite(scale) && scale >= 0.0001 ? scale : 1.0;
+    model.scale = new Cesium.ConstantProperty(safeScale);
     model.heightReference = new Cesium.ConstantProperty(heightRef);
     model.minimumPixelSize = new Cesium.ConstantProperty(0);
     model.maximumScale = undefined;
@@ -928,29 +1205,78 @@ function gizmoScreenAngle(
   return Math.atan2(mouse.y - win.y, mouse.x - win.x);
 }
 
+/** Street / barangay height: show name + coordinates on every visible site. */
+const INFRA_COORDS_LABEL_HEIGHT_M = 2800;
+let activeMapSettings: MapSettings = DEFAULT_MAP_SETTINGS;
+let activeProjects: Project[] = [];
+
+function gizmoHeightFor(p: Project, xf: LocalXform): number {
+  return xf.heightM + shapeLiftM(p, xf);
+}
+
+function pinGizmoToXform(p: Project, xf: LocalXform) {
+  setEditGizmoPose(xf.lon, xf.lat, gizmoHeightFor(p, xf));
+}
+
+function shiftedShapeFootprint(p: Project, xf: LocalXform): { lon: number; lat: number }[] | undefined {
+  const ring = p.mapShape?.footprint;
+  if (!ring || ring.length < 3) return ring;
+  const dLon = xf.lon - p.location.lon;
+  const dLat = xf.lat - p.location.lat;
+  if (Math.abs(dLon) < 1e-12 && Math.abs(dLat) < 1e-12) return ring;
+  return ring.map((c) => ({ lon: c.lon + dLon, lat: c.lat + dLat }));
+}
+
 function applyXformToEntity(ent: Cesium.Entity, p: Project, xf: LocalXform) {
+  const primitive = isPrimitiveShape(p.mapShape?.kind);
+  bindLiveEntityPose(ent, p, xf);
   applyEntityPose(
     ent,
     xf.lon,
     xf.lat,
     xf.rotationDeg,
     modelScaleValue(p, xf.scaleMultiplier),
-    xf.heightM,
+    xf.heightM + shapeLiftM(p, xf),
     xf.pitchDeg ?? 0,
     xf.rollDeg ?? 0,
   );
+  if (primitive) {
+    applyMapShapeGraphics(ent, p, xf);
+  }
+  if (ent.label) {
+    const isSitePin = Boolean(p.siteMarkerOnly);
+    const displayName = p.name?.trim() || "Untitled site";
+    (ent.label as Cesium.LabelGraphics).text = new Cesium.CallbackProperty(
+      () => {
+        const showCoords = activeMapSettings?.showCoordinates ?? true;
+        return infraLabelText(displayName, xf.lat, xf.lon, isSitePin, showCoords);
+      },
+      false,
+    ) as any;
+  }
 }
 
-function applyResolvedPlaceName(viewer: Cesium.Viewer, p: Project, name: string) {
+function applyResolvedPlaceName(
+  viewer: Cesium.Viewer,
+  p: Project,
+  name: string,
+  lonLat?: { lon: number; lat: number },
+) {
   if (!viewerAlive(viewer) || !name.trim()) return;
   const ent = viewer.entities.getById(entityIdFor(p.id));
   if (!ent) return;
   ent.name = name;
   if (ent.label) {
     const isSitePin = Boolean(p.siteMarkerOnly);
-    (ent.label as Cesium.LabelGraphics).text = new Cesium.ConstantProperty(
-      isSitePin ? `📌 ${name}` : name,
-    );
+    const lat = lonLat?.lat ?? p.location.lat;
+    const lon = lonLat?.lon ?? p.location.lon;
+    (ent.label as Cesium.LabelGraphics).text = new Cesium.CallbackProperty(
+      () => {
+        const showCoords = activeMapSettings?.showCoordinates ?? true;
+        return infraLabelText(name, lat, lon, isSitePin, showCoords);
+      },
+      false,
+    ) as any;
   }
 }
 
@@ -960,34 +1286,63 @@ function applySitePinChrome(
   p: Project,
   opts: {
     isAttached: (id: string) => boolean;
+    isVisible?: (id: string) => boolean;
     isSelected: (id: string) => boolean;
     isHovered: (id: string) => boolean;
+    cameraHeightM?: () => number;
+    lon?: number;
+    lat?: number;
   },
 ) {
   const isSitePin = Boolean(p.siteMarkerOnly);
   const displayName = p.name?.trim() || "Untitled site";
+  const lon = opts.lon ?? p.location.lon;
+  const lat = opts.lat ?? p.location.lat;
   if (ent.point) {
     const point = ent.point as Cesium.PointGraphics;
     point.pixelSize = new Cesium.ConstantProperty(isSitePin ? 16 : 10);
     point.outlineWidth = new Cesium.ConstantProperty(isSitePin ? 3 : 2);
     point.show = new Cesium.CallbackProperty(
-      () => isSitePin || !opts.isAttached(p.id),
+      () =>
+        isSitePin ||
+        !opts.isAttached(p.id) ||
+        (opts.isVisible ? !opts.isVisible(p.id) : false),
       false,
     );
   }
   if (ent.label) {
     const label = ent.label as Cesium.LabelGraphics;
-    label.text = new Cesium.ConstantProperty(isSitePin ? `📌 ${displayName}` : displayName);
-    label.font = new Cesium.ConstantProperty(isSitePin ? "bold 13px sans-serif" : "12px sans-serif");
+    label.text = new Cesium.CallbackProperty(
+      () => {
+        const showCoords = activeMapSettings?.showCoordinates ?? true;
+        return infraLabelText(displayName, lat, lon, isSitePin, showCoords);
+      },
+      false,
+    ) as any;
+    label.font = new Cesium.ConstantProperty(isSitePin ? "bold 12px sans-serif" : "11px sans-serif");
+    label.showBackground = new Cesium.ConstantProperty(true);
+    label.backgroundColor = new Cesium.ConstantProperty(
+      Cesium.Color.fromCssColorString("#0c121ce6"),
+    );
+    label.backgroundPadding = new Cesium.ConstantProperty(new Cesium.Cartesian2(7, 5));
     label.pixelOffset = new Cesium.ConstantProperty(
-      new Cesium.Cartesian2(0, isSitePin ? -22 : -18),
+      new Cesium.Cartesian2(0, isSitePin ? -28 : -36),
     );
     label.show = new Cesium.CallbackProperty(
-      () =>
-        isSitePin ||
-        opts.isSelected(p.id) ||
-        opts.isHovered(p.id) ||
-        !opts.isAttached(p.id),
+      () => {
+        const proj = activeProjects.find((x) => x.id === p.id) ?? p;
+        const isSel = opts.isSelected(p.id);
+        const isHov = opts.isHovered(p.id);
+        if (isSel || isHov) return true;
+        if (proj.hideBadge) return false;
+        const showLabels = activeMapSettings?.showFloatingLabels ?? true;
+        if (!showLabels) return false;
+        return (
+          isSitePin ||
+          !opts.isAttached(p.id) ||
+          (opts.cameraHeightM?.() ?? Infinity) < INFRA_COORDS_LABEL_HEIGHT_M
+        );
+      },
       false,
     );
   }
@@ -1044,6 +1399,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     projects,
     clusteringEnabled = true,
     visible = true,
+    paused = false,
     placementMode = false,
     editMode = false,
     onPlaceClick,
@@ -1061,6 +1417,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     gibs,
     buildingBlocksVisible = true,
     barangaysVisible = false,
+    focusedBarangay = null,
     blockRemoverActive = false,
     terrainEnabled = false,
     satellite = false,
@@ -1080,7 +1437,10 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
   const osmBasemapRef = useRef<Cesium.ImageryLayer | null>(null);
   const satelliteEnabledRef = useRef(satellite);
   satelliteEnabledRef.current = satellite;
-  const applySatelliteVisibilityRef = useRef<() => void>(() => {});
+  const applySatelliteVisibilityRef = useRef<() => void>(() => { });
+  const forceCachedEsriRef = useRef<() => void>(() => { });
+  const cachedEsriLayerRef = useRef<Cesium.ImageryLayer | null>(null);
+  const restoreOnlineImageryRef = useRef<() => void>(() => { });
   const hazardOverlayLayersRef = useRef<Map<string, Cesium.ImageryLayer[]>>(new Map());
   const gibsRef = useRef(gibs);
   gibsRef.current = gibs;
@@ -1104,6 +1464,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     x: number;
     y: number;
     streetLabel: string | null;
+    coords: string;
   } | null>(null);
   const [hoveredQuake, setHoveredQuake] = useState<{
     cell: EarthquakeGridCell;
@@ -1134,14 +1495,23 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
   terrainEnabledRef.current = terrainEnabled;
   const mapSettingsRef = useRef(mapSettings);
   mapSettingsRef.current = mapSettings;
+  activeMapSettings = mapSettings;
+  activeProjects = Array.isArray(projects) ? projects : [];
   const sunIsDayRef = useRef(true);
   const luisianaRingRef = useRef<LonLat[] | null>(null);
   const applyScopeRef = useRef<(() => void) | null>(null);
   const [removedBlockCount, setRemovedBlockCount] = useState(() => loadRemovedBlockIds().size);
   const [viewerReady, setViewerReady] = useState(0);
+  /** True once the globe has rendered its first batch of base tiles (kills the black-screen). */
+  const [mapReady, setMapReady] = useState(false);
+  const mapReadyRef = useRef(false);
   const loadedIdsRef = useRef<Set<string>>(new Set());
-  /** Project ids that currently have a GLB ModelGraphics attached (not just a pin). */
+  /** Project ids that currently have a GLB ModelGraphics compiled in GPU memory (active or standby). */
   const modelAttachedRef = useRef<Set<string>>(new Set());
+  /** Tracks whether an attached model is currently using the low-poly LOD1 variant (true) or high-detail LOD0 (false). */
+  const modelAttachedLodRef = useRef<Map<string, boolean>>(new Map());
+  /** Project ids whose 3D model is currently visible within camera view (not in standby). */
+  const modelVisibleRef = useRef<Set<string>>(new Set());
   const modelLoadBusyRef = useRef(0);
   const modelLoadQueueRef = useRef<string[]>([]);
   /** Ids currently fetching/decoding a GLB (not yet attached). */
@@ -1162,6 +1532,8 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
   const lodReconcileRef = useRef<(() => void) | null>(null);
   const tiltedRef = useRef(true);
   const xformsRef = useRef<Map<string, LocalXform>>(new Map());
+  /** Pre-cached project BoundingSpheres for zero-allocation frustum culling. */
+  const projectSpheresRef = useRef<Map<string, Cesium.BoundingSphere>>(new Map());
   const undoStackRef = useRef<EditPoseSnap[]>([]);
   const redoStackRef = useRef<EditPoseSnap[]>([]);
   const dragActiveRef = useRef(false);
@@ -1170,7 +1542,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
   const [redoDepth, setRedoDepth] = useState(0);
   const projectsRef = useRef(projects);
   const clusteringEnabledRef = useRef(clusteringEnabled);
-  const applyInfraClustersRef = useRef<() => void>(() => {});
+  const applyInfraClustersRef = useRef<() => void>(() => { });
   const clusterMetaRef = useRef(new Map<string, { lon: number; lat: number }>());
   const selectedIdRef = useRef<string | null>(null);
   const placementModeRef = useRef(placementMode);
@@ -1191,7 +1563,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
   const [sketchVertexCount, setSketchVertexCount] = useState(0);
   /** Show tip ball after mouse release (freehand draw). */
   const [showFreehandEndBall, setShowFreehandEndBall] = useState(false);
-  const bumpSketchUiRef = useRef(() => {});
+  const bumpSketchUiRef = useRef(() => { });
   bumpSketchUiRef.current = () => setSketchVertexCount(sketchDraftRef.current.length);
   const finishSketchDraftRef = useRef<() => boolean>(() => false);
   const setShowFreehandEndBallRef = useRef(setShowFreehandEndBall);
@@ -1229,6 +1601,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
   } | null>(null);
   const [editSaving, setEditSaving] = useState(false);
   const [, bumpXform] = useState(0);
+  const hudBumpRafRef = useRef(0);
   const [modelLoadUi, setModelLoadUi] = useState<{
     active: boolean;
     label: string;
@@ -1470,6 +1843,11 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         duration: 2,
       });
     },
+    flyToBarangay(area: BarangayArea) {
+      const viewer = viewerRef.current;
+      if (!viewer || viewer.isDestroyed()) return;
+      flyCameraToBarangay(viewer, area);
+    },
     flyToProject(projectId: string) {
       const viewer = viewerRef.current;
       if (!viewer || viewer.isDestroyed()) return false;
@@ -1489,6 +1867,23 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         duration: 1.15,
       });
       window.setTimeout(() => lodReconcileRef.current?.(), 80);
+      return true;
+    },
+    selectProject(projectId: string) {
+      const p = projectsRef.current.find((x) => x.id === projectId);
+      if (!p?.location || p.siteMarkerOnly) return false;
+      setSelectedId(projectId);
+      setEditTool("move");
+      const viewer = viewerRef.current;
+      if (viewer && !viewer.isDestroyed()) {
+        const ent = viewer.entities.getById(entityIdFor(projectId));
+        if (ent) ent.show = true;
+        viewer.scene.requestRender();
+      }
+      window.setTimeout(() => {
+        lodReconcileRef.current?.();
+        refreshEditGizmoRef.current(true);
+      }, 80);
       return true;
     },
     finishSketch() {
@@ -1538,6 +1933,11 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
 
   const ensureXform = useCallback((p: Project): LocalXform => {
     const existing = xformsRef.current.get(p.id);
+    if (existing) {
+      if (!Number.isFinite(existing.scaleX)) existing.scaleX = 1;
+      if (!Number.isFinite(existing.scaleY)) existing.scaleY = 1;
+      if (!Number.isFinite(existing.scaleZ)) existing.scaleZ = 1;
+    }
     if (existing?.dirty) return existing;
 
     if (existing?.pendingSync) {
@@ -1548,7 +1948,10 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         Math.abs(existing.rotationDeg - (p.rotation ?? 0)) < 0.05 &&
         Math.abs((existing.pitchDeg ?? 0) - (p.rotationPitch ?? 0)) < 0.05 &&
         Math.abs((existing.rollDeg ?? 0) - (p.rotationRoll ?? 0)) < 0.05 &&
-        Math.abs(existing.scaleMultiplier - (p.modelScale ?? 1)) < 0.001;
+        Math.abs(existing.scaleMultiplier - (p.modelScale ?? 1)) < 0.001 &&
+        Math.abs((existing.scaleX ?? 1) - (p.modelScaleX ?? 1)) < 0.001 &&
+        Math.abs((existing.scaleY ?? 1) - (p.modelScaleY ?? 1)) < 0.001 &&
+        Math.abs((existing.scaleZ ?? 1) - (p.modelScaleZ ?? 1)) < 0.001;
       if (matches) {
         existing.pendingSync = false;
         existing.modelLocked = Boolean(p.modelLocked);
@@ -1558,6 +1961,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       }
     }
 
+    const stretch = stretchFromProject(p);
     const next: LocalXform = {
       lon: p.location.lon,
       lat: p.location.lat,
@@ -1566,6 +1970,9 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       pitchDeg: p.rotationPitch ?? 0,
       rollDeg: p.rotationRoll ?? 0,
       scaleMultiplier: p.modelScale ?? 1,
+      scaleX: stretch.scaleX,
+      scaleY: stretch.scaleY,
+      scaleZ: stretch.scaleZ,
       modelLocked: Boolean(p.modelLocked),
       dirty: false,
       pendingSync: false,
@@ -1588,8 +1995,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
 
   // ── Create / destroy viewer ──────────────────────────────────────────────
   useEffect(() => {
-    if (!visible || !containerRef.current) return;
-    if (viewerRef.current) return;
+    if (!containerRef.current || viewerRef.current) return;
 
     const ionToken = (import.meta.env.VITE_CESIUM_ION_TOKEN as string | undefined)?.trim();
     if (ionToken) Cesium.Ion.defaultAccessToken = ionToken;
@@ -1609,13 +2015,33 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       terrainShadows: Cesium.ShadowMode.RECEIVE_ONLY,
       shouldAnimate: false,
       scene3DOnly: true,
-      msaaSamples: 2,
+      msaaSamples: 1,
       // OSM street basemap (Ion token stays for terrain only).
       baseLayer: false,
     });
+
+    // Guard against zero-dimension canvas/container crash (DeveloperError: Expected width to be greater than 0)
+    const origSceneRender = viewer.scene.render.bind(viewer.scene);
+    (viewer.scene as unknown as { render: (time?: Cesium.JulianDate) => void }).render = function (
+      time?: Cesium.JulianDate,
+    ) {
+      if (viewer.isDestroyed()) return;
+      const w = viewer.canvas.clientWidth;
+      const h = viewer.canvas.clientHeight;
+      if (w <= 0 || h <= 0) return;
+      return origSceneRender(time);
+    };
+
+    // Limit globe tile cache to ~50 tiles to prevent huge RAM/VRAM accumulation
+    viewer.scene.globe.tileCacheSize = 50;
+    viewer.scene.globe.loadingDescendantLimit = 2;
+    viewer.scene.globe.preloadAncestors = false;
+    viewer.scene.globe.preloadSiblings = false;
+    viewer.scene.globe.maximumScreenSpaceError = 3.5;
+
     // Keep imagery / GLB fetches from starving each other on weak GPUs.
-    Cesium.RequestScheduler.maximumRequests = 12;
-    Cesium.RequestScheduler.maximumRequestsPerServer = 6;
+    Cesium.RequestScheduler.maximumRequests = 8;
+    Cesium.RequestScheduler.maximumRequestsPerServer = 4;
 
     // Ours is the only click handler — default pick/fly-to fights placement.
     viewer.screenSpaceEventHandler.removeInputAction(
@@ -1667,21 +2093,29 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       const on = satelliteEnabledRef.current;
       const sat = satelliteImageryRef.current;
       const osm = osmBasemapRef.current;
+      // Keep satellite under the street map so a failed OSM fetch is not a black globe.
       if (sat) {
-        sat.show = on;
-        sat.alpha = on ? 1 : 0;
-        if (on) {
-          styleSatelliteLayer(sat);
+        sat.show = true;
+        sat.alpha = 1;
+        styleSatelliteLayer(sat);
+      }
+      if (osm) {
+        osm.show = !on;
+        osm.alpha = on ? 0 : 1;
+        if (!on) {
           try {
-            viewer.imageryLayers.raiseToTop(sat);
+            viewer.imageryLayers.raiseToTop(osm);
           } catch {
             /* ignore */
           }
         }
       }
-      if (osm) {
-        osm.show = !on;
-        osm.alpha = on ? 0 : 1;
+      if (on && sat) {
+        try {
+          viewer.imageryLayers.raiseToTop(sat);
+        } catch {
+          /* ignore */
+        }
       }
       syncOsmBlocksForSatellite();
       applySatelliteHdScene(on);
@@ -1723,6 +2157,43 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       );
       styleSatelliteLayer(layer);
       satelliteImageryRef.current = layer;
+      applySatVisibility();
+    };
+
+    forceCachedEsriRef.current = () => {
+      const satCfg = getSatelliteSource("esri");
+      const url =
+        satCfg.tiles[0]?.replace(
+          "server.arcgisonline.com",
+          "services.arcgisonline.com",
+        ) ?? `${ESRI_WORLD_IMAGERY}/tile/{z}/{y}/{x}`;
+      if (!cachedEsriLayerRef.current) {
+        const layer = viewer.imageryLayers.addImageryProvider(
+          new Cesium.UrlTemplateImageryProvider({
+            url,
+            credit: satCfg.attribution,
+            maximumLevel: 18,
+            tilingScheme: new Cesium.WebMercatorTilingScheme(),
+          }),
+        );
+        cachedEsriLayerRef.current = layer;
+      }
+      const layer = cachedEsriLayerRef.current;
+      layer.show = true;
+      layer.alpha = 1;
+      try {
+        viewer.imageryLayers.raiseToTop(layer);
+      } catch {
+        /* ignore */
+      }
+      viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString("#2c4a3a");
+    };
+
+    restoreOnlineImageryRef.current = () => {
+      if (cachedEsriLayerRef.current) {
+        cachedEsriLayerRef.current.show = false;
+        cachedEsriLayerRef.current.alpha = 0;
+      }
       applySatVisibility();
     };
 
@@ -1770,6 +2241,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     viewer.clock.shouldAnimate = false;
     initProceduralSky(viewer);
     viewer.scene.globe.shadows = Cesium.ShadowMode.RECEIVE_ONLY;
+    viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString("#2c4a3a");
 
     // Draw the Luisiana municipality boundary outline on the globe.
     void addLuisianaBoundary(viewer);
@@ -1855,14 +2327,11 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     // Render on demand — continuous redraw cooks weak GPUs while heavy GLBs stream in.
     viewer.scene.requestRenderMode = true;
     viewer.scene.maximumRenderTimeChange = Number.POSITIVE_INFINITY;
-    let lastFrameCap = 0;
+    // Strict target FPS cap (60 FPS default for smooth vsync, 30 FPS for power saving)
+    viewer.targetFrameRate = mapSettingsRef.current.targetFps ?? 60;
     const removeFrameNote = viewer.scene.postRender.addEventListener(() => {
       if (viewer.isDestroyed()) return;
       noteSceneFrame();
-      const cap = sceneTargetFrameRate();
-      if (cap === lastFrameCap) return;
-      lastFrameCap = cap;
-      viewer.targetFrameRate = cap > 0 ? cap : undefined;
     });
 
     motionBlurRef.current?.destroy();
@@ -1912,32 +2381,39 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       }
     };
 
+    let checkingGround = false;
     const keepCameraAboveGround = () => {
-      if (viewer.isDestroyed()) return;
-      clampCameraPitch();
-      const cam = viewer.camera;
-      const carto = cam.positionCartographic;
-      const sampled = viewer.scene.globe.getHeight(carto);
-      const ground =
-        typeof sampled === "number" && Number.isFinite(sampled) ? sampled : 0;
-      const minHeight = Math.max(
-        MIN_CAMERA_HEIGHT_M,
-        ground + MIN_TERRAIN_CLEARANCE_M,
-      );
+      if (viewer.isDestroyed() || checkingGround) return;
+      checkingGround = true;
+      try {
+        clampCameraPitch();
+        const cam = viewer.camera;
+        const carto = cam.positionCartographic;
+        if (!carto) return;
+        const sampled = viewer.scene.globe.getHeight(carto);
+        const ground =
+          typeof sampled === "number" && Number.isFinite(sampled) ? sampled : 0;
+        const minHeight = Math.max(
+          MIN_CAMERA_HEIGHT_M,
+          ground + MIN_TERRAIN_CLEARANCE_M,
+        );
 
-      if (carto.height >= minHeight) return;
+        if (carto.height >= minHeight) return;
 
-      // Lift only — keep the already-clamped pitch (do not setView, that flips).
-      const up = Cesium.Cartesian3.normalize(
-        Cesium.Cartesian3.fromRadians(carto.longitude, carto.latitude),
-        new Cesium.Cartesian3(),
-      );
-      const lift = minHeight - carto.height;
-      cam.position = Cesium.Cartesian3.add(
-        cam.position,
-        Cesium.Cartesian3.multiplyByScalar(up, lift, new Cesium.Cartesian3()),
-        new Cesium.Cartesian3(),
-      );
+        // Lift only — keep the already-clamped pitch (do not setView, that flips).
+        const up = Cesium.Cartesian3.normalize(
+          Cesium.Cartesian3.fromRadians(carto.longitude, carto.latitude),
+          new Cesium.Cartesian3(),
+        );
+        const lift = minHeight - carto.height;
+        cam.position = Cesium.Cartesian3.add(
+          cam.position,
+          Cesium.Cartesian3.multiplyByScalar(up, lift, new Cesium.Cartesian3()),
+          new Cesium.Cartesian3(),
+        );
+      } finally {
+        checkingGround = false;
+      }
     };
     const removeKeepAbove = viewer.camera.changed.addEventListener(keepCameraAboveGround);
     const removeKeepAboveMoveEnd = viewer.camera.moveEnd.addEventListener(keepCameraAboveGround);
@@ -1981,7 +2457,15 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       if (buildingsCancelled || viewer.isDestroyed()) return;
       clearBuildingPrimitives();
       const removed = removedBlockIdsRef.current;
-      const capped = footprints.slice(0, MAX_OSM_BUILDING_BLOCKS);
+
+      // Sort by proximity to town center (Municipal Office) so the most important 1200 buildings load
+      const sorted = [...footprints].sort((a, b) => {
+        const ca = a.ring[0] ? Math.hypot(a.ring[0][0] - MUNICIPAL_OFFICE.lon, a.ring[0][1] - MUNICIPAL_OFFICE.lat) : 999;
+        const cb = b.ring[0] ? Math.hypot(b.ring[0][0] - MUNICIPAL_OFFICE.lon, b.ring[0][1] - MUNICIPAL_OFFICE.lat) : 999;
+        return ca - cb;
+      });
+
+      const capped = sorted.slice(0, MAX_OSM_BUILDING_BLOCKS);
       const roof = Cesium.Color.fromCssColorString(OSM_BLOCK_COLOR).withAlpha(1);
       const kept: { b: BuildingFootprint; id: string }[] = [];
       for (let i = 0; i < capped.length; i++) {
@@ -2021,8 +2505,8 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         const ring = kept[bi].b.ring;
         const n =
           ring.length >= 2 &&
-          ring[0][0] === ring[ring.length - 1][0] &&
-          ring[0][1] === ring[ring.length - 1][1]
+            ring[0][0] === ring[ring.length - 1][0] &&
+            ring[0][1] === ring[ring.length - 1][1]
             ? ring.length - 1
             : ring.length;
         ringLens.push(n);
@@ -2033,26 +2517,13 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
 
       const heightAt = new Float64Array(verts.length);
       if (useDem && verts.length > 0) {
-        const SAMPLE_BATCH = 800;
-        for (let i = 0; i < verts.length; i += SAMPLE_BATCH) {
-          if (buildingsCancelled || viewer.isDestroyed()) return;
-          const end = Math.min(i + SAMPLE_BATCH, verts.length);
-          const cartos: Cesium.Cartographic[] = [];
-          for (let j = i; j < end; j++) {
-            cartos.push(Cesium.Cartographic.fromDegrees(verts[j].lon, verts[j].lat));
-          }
-          try {
-            const sampled = await Cesium.sampleTerrainMostDetailed(terrain, cartos);
-            for (let j = 0; j < sampled.length; j++) {
-              const raw = sampled[j]?.height;
-              heightAt[i + j] =
-                typeof raw === "number" && Number.isFinite(raw)
-                  ? exaggerateTerrainHeight(raw, exag, relH)
-                  : 0;
-            }
-          } catch (err) {
-            console.warn("[CesiumMap] terrain sample failed for buildings:", err);
-          }
+        for (let j = 0; j < verts.length; j++) {
+          const carto = Cesium.Cartographic.fromDegrees(verts[j].lon, verts[j].lat);
+          const raw = viewer.scene.globe.getHeight(carto);
+          heightAt[j] =
+            typeof raw === "number" && Number.isFinite(raw)
+              ? exaggerateTerrainHeight(raw, exag, relH)
+              : 0;
         }
       }
 
@@ -2145,8 +2616,8 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
             flat: false,
           }),
           asynchronous: true,
-          // Casters are municipality-clipped footprints only.
-          shadows: Cesium.ShadowMode.CAST_ONLY,
+          // Generic background blocks skip shadow pass so map stays 60fps (user models cast shadows)
+          shadows: Cesium.ShadowMode.DISABLED,
           compressVertices: true,
           cull: true,
           allowPicking:
@@ -2170,8 +2641,11 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       await mountBuildingFootprints(fps);
     };
 
-    (async () => {
+    // Delay OSM buildings fetch so GLB cold-cache downloads get bandwidth priority.
+    // 50ms caused buildings to compete with the initial GLB batch on first load.
+    window.setTimeout(async () => {
       try {
+        if (buildingsCancelled || viewer.isDestroyed()) return;
         const footprints = await fetchLuisianaBuildings();
         if (buildingsCancelled || viewer.isDestroyed()) return;
         buildingFootprintsRef.current = footprints;
@@ -2179,7 +2653,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       } catch (err) {
         console.warn("[CesiumMap] Luisiana buildings failed:", err);
       }
-    })();
+    }, 2500);
 
     viewer.entities.add({
       id: "municipal-office",
@@ -2210,11 +2684,45 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     tiltedRef.current = true;
     setCameraHomeView(viewer.camera);
 
+    // ── Loading overlay: hide black globe until the first base tiles render ──
+    // tileLoadProgressEvent fires with (tilesQueued). We watch for the first
+    // transition from > 0 → 0 (all pending tiles loaded), then wait one
+    // postRender so Cesium has actually painted those tiles to the canvas.
+    let tileLoadWatching = true;
+    const onTileProgress = (queueLength: number) => {
+      if (!tileLoadWatching || mapReadyRef.current) return;
+      if (queueLength === 0) {
+        // Tiles flushed — wait for the very next rendered frame.
+        const removePost = viewer.scene.postRender.addEventListener(() => {
+          if (typeof removePost === "function") removePost();
+          if (mapReadyRef.current) return;
+          mapReadyRef.current = true;
+          setMapReady(true);
+        });
+        viewer.scene.requestRender();
+      }
+    };
+    // Failsafe: mark ready after 4 s even if tiles never fully flush (slow connection).
+    const mapReadyTimer = window.setTimeout(() => {
+      if (mapReadyRef.current) return;
+      mapReadyRef.current = true;
+      setMapReady(true);
+    }, 4000);
+    const removeTileProgress = viewer.scene.globe.tileLoadProgressEvent.addEventListener(onTileProgress);
+
     viewerRef.current = viewer;
     loadedIdsRef.current.clear();
     setViewerReady((n) => n + 1);
 
+    // Extra cleanup captured in the return below.
+    const cleanupMapReady = () => {
+      tileLoadWatching = false;
+      window.clearTimeout(mapReadyTimer);
+      try { removeTileProgress(); } catch { /* ignore */ }
+    };
+
     return () => {
+      cleanupMapReady();
       try {
         rebuildBuildingsRef.current = null;
         applyScopeRef.current = null;
@@ -2266,6 +2774,9 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         buildingMaterialRef.current = null;
         loadedIdsRef.current.clear();
         modelAttachedRef.current.clear();
+        modelAttachedLodRef.current.clear();
+        modelVisibleRef.current.clear();
+        projectSpheresRef.current.clear();
         modelLoadingIdsRef.current.clear();
         modelLoadQueueRef.current = [];
         modelSourceUrlRef.current.clear();
@@ -2285,8 +2796,12 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         gibsImageryRef.current = null;
         satelliteImageryRef.current = null;
         osmBasemapRef.current = null;
+        cachedEsriLayerRef.current = null;
+        forceCachedEsriRef.current = () => { };
+        restoreOnlineImageryRef.current = () => { };
         hazardOverlayLayersRef.current.clear();
-        applySatelliteVisibilityRef.current = () => {};
+        applySatelliteVisibilityRef.current = () => { };
+        forceCachedEsriRef.current = () => { };
         if (viewerRef.current && !viewerRef.current.isDestroyed()) {
           try {
             viewerRef.current.destroy();
@@ -2301,7 +2816,35 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         viewerRef.current = null;
       }
     };
-  }, [visible]);
+  }, []);
+
+  // ── Pause / resume WebGL render loop when parked offscreen ─────────────
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer || viewer.isDestroyed()) return;
+    const shouldRun = visible && !paused;
+    viewer.useDefaultRenderLoop = true;
+    if (shouldRun) {
+      viewer.resize();
+      viewer.scene.requestRender();
+      const t1 = window.setTimeout(() => {
+        if (!viewer.isDestroyed()) {
+          viewer.resize();
+          viewer.scene.requestRender();
+        }
+      }, 50);
+      const t2 = window.setTimeout(() => {
+        if (!viewer.isDestroyed()) {
+          viewer.resize();
+          viewer.scene.requestRender();
+        }
+      }, 200);
+      return () => {
+        window.clearTimeout(t1);
+        window.clearTimeout(t2);
+      };
+    }
+  }, [visible, paused]);
 
   // ── Satellite overlay ────────────────────────────────────────────────────
   useEffect(() => {
@@ -2360,11 +2903,11 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
               manifest?.tiles?.length
                 ? manifest.tiles
                 : [
-                    {
-                      url: meta.url,
-                      rectangle: meta.rectangle,
-                    },
-                  ];
+                  {
+                    url: meta.url,
+                    rectangle: meta.rectangle,
+                  },
+                ];
 
             for (const tile of tiles) {
               if (cancelled || viewer.isDestroyed()) break;
@@ -2431,6 +2974,8 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();
   }, [buildingBlocksVisible, satellite, viewerReady]);
 
+
+
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer || viewer.isDestroyed() || !viewerReady) return;
@@ -2444,6 +2989,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       .then((areas) => {
         if (cancelled || viewer.isDestroyed()) return;
         addBarangayOverlay(viewer, areas);
+        highlightBarangay(viewer, areas, focusedBarangay);
       })
       .catch((err) => {
         console.warn("[CesiumMap] barangay overlay failed:", err);
@@ -2454,6 +3000,15 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     };
   }, [barangaysVisible, viewerReady]);
 
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer || viewer.isDestroyed() || !viewerReady || !barangaysVisible) return;
+    void loadBarangayAreas().then((areas) => {
+      if (viewer.isDestroyed()) return;
+      highlightBarangay(viewer, areas, focusedBarangay);
+    });
+  }, [focusedBarangay, barangaysVisible, viewerReady]);
+
   // ── 3D Terrain (Ion World Terrain or ArcGIS elevation) ───────────────────
   useEffect(() => {
     const viewer = viewerRef.current;
@@ -2462,7 +3017,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     let cancelled = false;
 
     (async () => {
-      if (!terrainEnabled) {
+      if (!terrainEnabled || isGlobeOfflineMode()) {
         viewer.terrainProvider = new Cesium.EllipsoidTerrainProvider();
         applyTerrainPerfSettings(viewer, false);
         // Ellipsoid collision is cheap — keep camera from going under the map.
@@ -2526,6 +3081,43 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     };
   }, [terrainEnabled, viewerReady]);
 
+  useEffect(() => {
+    if (!viewerReady) return;
+    const applyMode = (offline: boolean) => {
+      const viewer = viewerRef.current;
+      if (!viewer || viewer.isDestroyed()) return;
+      if (offline) {
+        viewer.terrainProvider = new Cesium.EllipsoidTerrainProvider();
+        applyTerrainPerfSettings(viewer, false);
+        forceCachedEsriRef.current();
+      } else {
+        restoreOnlineImageryRef.current();
+        if (terrainEnabled) {
+          void createLuisianaTerrainProvider()
+            .then((provider) => {
+              const v = viewerRef.current;
+              if (!v || v.isDestroyed() || isGlobeOfflineMode()) return;
+              v.terrainProvider = provider;
+              applyTerrainPerfSettings(v, true, {
+                screenSpaceError: terrainQualityToSse(mapSettingsRef.current.terrainQuality),
+                satelliteOn: satelliteEnabledRef.current,
+              });
+              v.scene.requestRender();
+            })
+            .catch(() => undefined);
+        }
+      }
+      viewer.scene.requestRender();
+    };
+    applyMode(isGlobeOfflineMode());
+    const onMode = (e: Event) => {
+      const on = Boolean((e as CustomEvent<{ on?: boolean }>).detail?.on);
+      applyMode(on);
+    };
+    window.addEventListener(OFFLINE_MODE_EVENT, onMode);
+    return () => window.removeEventListener(OFFLINE_MODE_EVENT, onMode);
+  }, [viewerReady, terrainEnabled]);
+
   // ── Map Settings (draw distance, terrain quality, shadows, fog) ───────────
   useEffect(() => {
     const viewer = viewerRef.current;
@@ -2542,6 +3134,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     // Shadow map quality preset (not tied to draw distance).
     applyCesiumShadowMap(viewer, mapSettings.shadowQuality);
     motionBlurRef.current?.setStrength((mapSettings.motionBlur ?? 30) / 100);
+    viewer.targetFrameRate = mapSettings.targetFps ?? 60;
 
     viewer.scene.requestRender();
   }, [mapSettings, terrainEnabled, viewerReady]);
@@ -2901,11 +3494,16 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       } else {
         const project = projectsRef.current.find((proj) => proj.id === hit.id);
         if (project) {
+          const xf = xformsRef.current.get(project.id);
+          const coords = formatLonLat(
+            xf?.lat ?? project.location.lat,
+            xf?.lon ?? project.location.lon,
+          );
           const cached = resolvedPlaceNameRef.current.get(project.id) ??
             (project.location
               ? syncPlaceName(project.location.lat, project.location.lon)
               : null);
-          setHoveredProject({ project, x, y, streetLabel: cached ?? null });
+          setHoveredProject({ project, x, y, streetLabel: cached ?? null, coords });
           if (
             !cached &&
             project.location?.lat != null &&
@@ -3225,6 +3823,8 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         if (poly) viewer.entities.remove(poly);
         loadedIdsRef.current.delete(id);
         modelAttachedRef.current.delete(id);
+        modelVisibleRef.current.delete(id);
+        projectSpheresRef.current.delete(id);
         modelSourceUrlRef.current.delete(id);
         xformsRef.current.delete(id);
         if (selectedIdRef.current === id) {
@@ -3247,6 +3847,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         const position = onGround
           ? Cesium.Cartesian3.fromDegrees(xf.lon, xf.lat)
           : Cesium.Cartesian3.fromDegrees(xf.lon, xf.lat, xf.heightM);
+        projectSpheresRef.current.set(p.id, new Cesium.BoundingSphere(position, 40));
         const heightRef = onGround
           ? Cesium.HeightReference.CLAMP_TO_GROUND
           : Cesium.HeightReference.RELATIVE_TO_GROUND;
@@ -3256,6 +3857,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         const isSitePin = Boolean(p.siteMarkerOnly);
         const pinColor = p.markerColor || p.mapSketch?.color || (isSitePin ? "#c47a1a" : "#151c28");
         const displayName = p.name?.trim() || "Untitled site";
+        const cameraHeightM = () => viewer.camera.positionCartographic.height;
         ent = viewer.entities.add({
           id: eid,
           name: displayName,
@@ -3274,38 +3876,75 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
             heightReference: heightRef,
             disableDepthTestDistance: Number.POSITIVE_INFINITY,
             show: new Cesium.CallbackProperty(
-              () => isSitePin || !modelAttachedRef.current.has(p.id),
+              () =>
+                isSitePin ||
+                !modelAttachedRef.current.has(p.id) ||
+                !modelVisibleRef.current.has(p.id),
               false,
             ),
           },
           label: {
-            text: isSitePin ? `📌 ${displayName}` : displayName,
-            font: isSitePin ? "bold 13px sans-serif" : "12px sans-serif",
+            text: new Cesium.CallbackProperty(
+              () => {
+                const showCoords = mapSettingsRef.current?.showCoordinates ?? true;
+                return infraLabelText(displayName, xf.lat, xf.lon, isSitePin, showCoords);
+              },
+              false,
+            ),
+            font: isSitePin ? "bold 12px sans-serif" : "11px sans-serif",
             fillColor: Cesium.Color.WHITE,
             outlineColor: Cesium.Color.BLACK,
             outlineWidth: 2,
             style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+            showBackground: true,
+            backgroundColor: Cesium.Color.fromCssColorString("#0c121ce6"),
+            backgroundPadding: new Cesium.Cartesian2(7, 5),
             verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-            pixelOffset: new Cesium.Cartesian2(0, isSitePin ? -22 : -18),
+            pixelOffset: new Cesium.Cartesian2(0, isSitePin ? -28 : -36),
             heightReference: heightRef,
             disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            scaleByDistance: new Cesium.NearFarScalar(400, 1.0, 9000, 0.35),
             show: new Cesium.CallbackProperty(
-              () =>
-                isSitePin ||
-                selectedIdRef.current === p.id ||
-                hoveredProjectIdRef.current === p.id ||
-                !modelAttachedRef.current.has(p.id),
+              () => {
+                const proj = projectsRef.current?.find((x) => x.id === p.id) ?? p;
+                const isSel = selectedIdRef.current === p.id;
+                const isHov = hoveredProjectIdRef.current === p.id;
+                if (isSel || isHov) return true;
+                if (proj.hideBadge) return false;
+                const showLabels = activeMapSettings?.showFloatingLabels ?? true;
+                if (!showLabels) return false;
+                return (
+                  isSitePin ||
+                  !modelAttachedRef.current.has(p.id) ||
+                  cameraHeightM() < INFRA_COORDS_LABEL_HEIGHT_M
+                );
+              },
               false,
             ),
           },
         });
         loadedIdsRef.current.add(p.id);
+        if (isPrimitiveShape(p.mapShape?.kind)) {
+          applyXformToEntity(ent, p, xf);
+          modelAttachedRef.current.add(p.id);
+        }
       } else {
         applyXformToEntity(ent, p, xf);
+        {
+          const onGround = Math.abs(xf.heightM) < 1e-4;
+          const pos = onGround
+            ? Cesium.Cartesian3.fromDegrees(xf.lon, xf.lat)
+            : Cesium.Cartesian3.fromDegrees(xf.lon, xf.lat, xf.heightM);
+          projectSpheresRef.current.set(p.id, new Cesium.BoundingSphere(pos, 40));
+        }
         applySitePinChrome(ent, p, {
           isAttached: (id) => modelAttachedRef.current.has(id),
+          isVisible: (id) => modelVisibleRef.current.has(id),
           isSelected: (id) => selectedIdRef.current === id,
           isHovered: (id) => hoveredProjectIdRef.current === id,
+          cameraHeightM: () => viewer.camera.positionCartographic.height,
+          lon: xf.lon,
+          lat: xf.lat,
         });
         if (ent.point && (p.markerColor || p.mapSketch?.color)) {
           const c = p.markerColor || p.mapSketch?.color || "#151c28";
@@ -3444,7 +4083,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       } catch {
         /* ignore */
       }
-      applyInfraClustersRef.current = () => {};
+      applyInfraClustersRef.current = () => { };
       if (!viewer.isDestroyed()) clearClusterEntities();
     };
   }, [viewerReady]);
@@ -3566,6 +4205,8 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         ent.shadows = new Cesium.ConstantProperty(Cesium.ShadowMode.DISABLED);
       }
       modelAttachedRef.current.delete(projectId);
+      modelAttachedLodRef.current.delete(projectId);
+      modelVisibleRef.current.delete(projectId);
       modelSourceUrlRef.current.delete(projectId);
       retainAttachedBytes();
       viewer.scene.requestRender();
@@ -3663,17 +4304,51 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       if (!p || !xf || !ent) return;
       // MPDC site pins stay as map markers — never load a GLB here.
       if (p.siteMarkerOnly) return;
+      if (isPrimitiveShape(p.mapShape?.kind)) {
+        applyMapShapeGraphics(ent, p, xf);
+        modelAttachedRef.current.add(projectId);
+        return;
+      }
 
       modelLoadingIdsRef.current.add(projectId);
       publishLoadUi();
 
       try {
-        const abs = absoluteAssetUrl(projectModelUrl(p));
+        const height = cameraHeightM();
         const dist = cameraDistanceTo(xf.lon, xf.lat);
         const force = selectedIdRef.current === projectId;
-        const unloadR = modelUnloadRadiusM(modelLoadRadiusM(cameraHeightM()));
-        if (!force && (unloadR <= 0 || dist > unloadR)) return;
+        // Low-Poly LOD1 only for extreme high-altitude regional overviews (height > 2000m AND dist > 1500m). Closer is ALWAYS full high-detail!
+        const wantLowPoly = !force && dist > 1500 && height > 2000;
+        const rawUrl = absoluteAssetUrl(projectModelUrl(p));
+        const abs = resolveLodGlbUrl(rawUrl, wantLowPoly);
+        const preloadR = modelPreloadRadiusM(height);
+        if (!force && (preloadR <= 0 || dist > preloadR)) return;
         if (!force && slotsOpen() < 0) return;
+
+        // ── Stagger GPU attachment across animation frames ──────────────────
+        // attachProjectGlbModel triggers Cesium to compile GLSL shaders for the
+        // model type — this is synchronous on the main thread. Attaching N models
+        // in one tick compiles N shaders in one frame → hard freeze.
+        // One requestAnimationFrame gap lets Cesium render a frame (finishing the
+        // previous compile) before we schedule the next shader set.
+        await new Promise<void>((r) => {
+          if (sceneIsLagging()) {
+            // Scene already dropping frames — give it 2 frames to catch up.
+            let tick = 0;
+            const step = () => { if (++tick >= 2) r(); else requestAnimationFrame(step); };
+            requestAnimationFrame(step);
+          } else {
+            requestAnimationFrame(() => r());
+          }
+        });
+        if (cancelled || viewer.isDestroyed()) return;
+        // Re-validate after the yield: camera may have panned, budget may be full.
+        if (!force && slotsOpen() < 0) return;
+        {
+          const distNow = cameraDistanceTo(xf.lon, xf.lat);
+          const preloadRNow = modelPreloadRadiusM(cameraHeightM());
+          if (!force && (preloadRNow <= 0 || distNow > preloadRNow)) return;
+        }
 
         // Blob if already in RAM; otherwise the HTTP URL so Cesium streams instead
         // of waiting for a 100MB+ ArrayBuffer before the first triangle.
@@ -3689,15 +4364,23 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
           uri,
           scale,
           heightReference: heightRef,
-          skipShadows: modelAttachedRef.current.size >= 8,
+          skipShadows: modelAttachedRef.current.size >= 40,
+          show: new Cesium.CallbackProperty(
+            () => modelVisibleRef.current.has(projectId),
+            false,
+          ),
         });
         applyXformToEntity(ent, p, xf);
         modelAttachedRef.current.add(projectId);
+        modelAttachedLodRef.current.set(projectId, wantLowPoly);
+        modelVisibleRef.current.add(projectId);
         modelSourceUrlRef.current.set(projectId, abs);
         viewer.scene.requestRender();
       } catch (err) {
         console.warn("[CesiumMap] model attach failed:", projectId, err);
         modelAttachedRef.current.delete(projectId);
+        modelAttachedLodRef.current.delete(projectId);
+        modelVisibleRef.current.delete(projectId);
         modelSourceUrlRef.current.delete(projectId);
       } finally {
         modelLoadingIdsRef.current.delete(projectId);
@@ -3708,6 +4391,12 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     const pumpQueue = () => {
       if (cancelled || viewer.isDestroyed()) return;
       if (cameraMovingRef.current) return;
+      // Back off when the scene is already dropping frames — adding another model's
+      // shader compile would make the freeze worse.
+      if (sceneIsStalling()) {
+        window.setTimeout(() => { if (!cancelled) pumpQueue(); }, 50);
+        return;
+      }
       sortQueueNearest();
       while (modelLoadQueueRef.current.length > 0) {
         const open = slotsOpen();
@@ -3731,6 +4420,11 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
           publishLoadUi();
           if (!cancelled) pumpQueue();
         });
+        // ── Only launch ONE attachment per pumpQueue call ──
+        // The rAF yield inside attachModel gates the next GPU compile to the
+        // following frame. Without this break, all slots fire in one tick,
+        // causing N simultaneous shader compilations → hard freeze.
+        break;
       }
       publishLoadUi();
     };
@@ -3748,17 +4442,27 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
 
     const reconcileLod = () => {
       if (cancelled || viewer.isDestroyed()) return;
-      if (cameraMovingRef.current) return;
       const height = cameraHeightM();
-      const loadR = modelLoadRadiusM(height);
-      const unloadR = modelUnloadRadiusM(loadR);
-      const budget = gpuModelBudget();
+      const visR = modelVisibleRadiusM(height);
+      const preloadR = modelPreloadRadiusM(height);
       const selected = selectedIdRef.current;
       let changed = false;
 
+      // ── Compute camera frustum volume ONCE per LOD tick (zero loop allocation) ──
+      let cullingVolume: Cesium.CullingVolume | null = null;
+      try {
+        cullingVolume = viewer.camera.frustum.computeCullingVolume(
+          viewer.camera.positionWC,
+          viewer.camera.directionWC,
+          viewer.camera.upWC,
+        );
+      } catch {
+        cullingVolume = null;
+      }
+
       type Scored = { id: string; dist: number; force: boolean };
-      const stay: Scored[] = [];
       const want: Scored[] = [];
+      const attachedList: Scored[] = [];
 
       for (const id of [...loadedIdsRef.current]) {
         const p = projectsRef.current.find((x) => x.id === id);
@@ -3774,44 +4478,76 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         const dist = cameraDistanceTo(xf.lon, xf.lat);
         const force = selected === id;
         const attached = modelAttachedRef.current.has(id);
+
+        // Check if model is inside camera's visual view frustum
+        const sphere = projectSpheresRef.current.get(id);
+        const inFrustum = force || (cullingVolume && sphere ? cullingVolume.computeVisibility(sphere) !== Cesium.Intersect.OUTSIDE : true);
+        const isVisible = force || (visR > 0 && dist <= visR && inFrustum);
+
         if (attached) {
-          if (force || (unloadR > 0 && dist < unloadR)) {
-            stay.push({ id, dist, force });
+          attachedList.push({ id, dist, force });
+          if (isVisible) {
+            // Instantly active in 0ms!
+            if (!modelVisibleRef.current.has(id)) {
+              modelVisibleRef.current.add(id);
+              changed = true;
+            }
+            // Dynamic LOD switch: full high-detail when closer (dist <= 1500m or height <= 2000m).
+            // Defer model swaps while camera is actively moving to keep camera motion 100% stutter-free at 60 FPS!
+            const curLowPoly = modelAttachedLodRef.current.get(id) ?? false;
+            const wantLowPoly = !force && dist > 1500 && height > 2000;
+            if (curLowPoly !== wantLowPoly && (!cameraMovingRef.current || force)) {
+              const rawUrl = absoluteAssetUrl(projectModelUrl(p));
+              const targetUrl = resolveLodGlbUrl(rawUrl, wantLowPoly);
+              const resolvedUri = resolveGlbUrlForAttach(targetUrl);
+              touchGlbCache(targetUrl);
+              const ent = viewer.entities.getById(entityIdFor(id));
+              if (ent?.model) {
+                ent.model.uri = new Cesium.ConstantProperty(resolvedUri);
+                modelAttachedLodRef.current.set(id, wantLowPoly);
+                modelSourceUrlRef.current.set(id, targetUrl);
+                changed = true;
+              }
+            }
           } else {
-            detachModel(id);
-            changed = true;
+            // Temporarily hide GLB when not visible in camera (show pin instead, 0 draw overhead)
+            if (modelVisibleRef.current.has(id)) {
+              modelVisibleRef.current.delete(id);
+              changed = true;
+            }
           }
-        } else if (force || (loadR > 0 && dist <= loadR)) {
+        } else if (force || (preloadR > 0 && dist <= preloadR)) {
+          // Preload models across the town ahead of time!
           want.push({ id, dist, force });
         }
       }
 
-      stay.sort((a, b) => {
-        if (a.force !== b.force) return a.force ? -1 : 1;
-        return a.dist - b.dist;
-      });
-      if (stay.length > budget) {
-        for (const extra of stay.slice(budget)) {
-          if (extra.force) continue;
-          detachModel(extra.id);
+      // Safety Cap for Standby Pool:
+      // If total compiled models in GPU memory exceed 80, hard-detach furthest hidden models
+      const MAX_GPU_MODELS = 80;
+      if (attachedList.length > MAX_GPU_MODELS) {
+        const evictable = attachedList
+          .filter((a) => !a.force && !modelVisibleRef.current.has(a.id))
+          .sort((a, b) => b.dist - a.dist);
+        for (const evict of evictable) {
+          if (modelAttachedRef.current.size <= MAX_GPU_MODELS) break;
+          detachModel(evict.id);
           changed = true;
         }
-        stay.length = Math.min(stay.length, budget);
       }
 
-      const keepIds = new Set(stay.map((s) => s.id));
       modelLoadQueueRef.current = modelLoadQueueRef.current.filter((id) => {
-        if (keepIds.has(id) || modelAttachedRef.current.has(id)) return false;
+        if (modelAttachedRef.current.has(id)) return false;
         return want.some((w) => w.id === id);
       });
 
-      const free = budget - modelAttachedRef.current.size - modelLoadingIdsRef.current.size;
-      if (free > 0) {
+      const open = slotsOpen();
+      if (open > 0 && want.length > 0) {
         want.sort((a, b) => {
           if (a.force !== b.force) return a.force ? -1 : 1;
           return a.dist - b.dist;
         });
-        let slots = free;
+        let slots = open;
         for (const w of want) {
           if (slots <= 0) break;
           if (modelAttachedRef.current.has(w.id) || modelLoadingIdsRef.current.has(w.id)) {
@@ -3841,9 +4577,9 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     };
     let lodChangedAt = 0;
     const onCamChanged = () => {
-      if (cameraMovingRef.current || sceneIsLagging()) return;
+      if (sceneIsLagging()) return;
       const now = performance.now();
-      if (now - lodChangedAt < 220) return;
+      if (now - lodChangedAt < 100) return;
       lodChangedAt = now;
       reconcileLod();
     };
@@ -3884,22 +4620,67 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     lodReconcileRef.current?.();
   }, [projects, viewerReady]);
 
-  // Warm RAM cache for small catalog GLBs so the next attach is a blob URL, not a refetch.
+  // Non-uniform width/depth/height: Cesium Entity scale is uniform, so stretch
+  // the loaded Model primitive each frame after the visualizer writes modelMatrix.
   useEffect(() => {
-    if (!viewerReady) return;
+    const viewer = viewerRef.current;
+    if (!viewer || viewer.isDestroyed() || !viewerReady) return;
+    const remove = viewer.scene.preRender.addEventListener(() => {
+      if (viewer.isDestroyed()) return;
+      const wanted = new Map<Cesium.Entity, LocalXform>();
+      for (const [id, xf] of xformsRef.current) {
+        const sx = xf.scaleX ?? 1;
+        const sy = xf.scaleY ?? 1;
+        const sz = xf.scaleZ ?? 1;
+        if (Math.abs(sx - 1) < 1e-5 && Math.abs(sy - 1) < 1e-5 && Math.abs(sz - 1) < 1e-5) {
+          continue;
+        }
+        const ent = viewer.entities.getById(entityIdFor(id));
+        if (ent) wanted.set(ent, xf);
+      }
+      if (wanted.size === 0) return;
+      forEachModelPrimitive(viewer.scene.primitives, (prim) => {
+        const owner = prim.id;
+        const xf =
+          owner instanceof Cesium.Entity
+            ? wanted.get(owner)
+            : undefined;
+        if (!xf || !prim.modelMatrix) return;
+        _stretchScale.x = xf.scaleX ?? 1;
+        _stretchScale.y = xf.scaleY ?? 1;
+        _stretchScale.z = xf.scaleZ ?? 1;
+        Cesium.Matrix4.multiplyByScale(prim.modelMatrix, _stretchScale, prim.modelMatrix);
+      });
+    });
+    return () => {
+      try {
+        if (typeof remove === "function") remove();
+      } catch {
+        /* viewer gone */
+      }
+    };
+  }, [viewerReady]);
+
+  // ── Warm all model GLBs into RAM cache gently AFTER map finishes initial render ──────────
+  useEffect(() => {
+    if (!mapReady) return;
     const urls = [
       ...new Set(
         projects
           .filter((p) => p?.location?.lon && p?.location?.lat && !p.siteMarkerOnly)
           .map((p) => absoluteAssetUrl(projectModelUrl(p))),
       ),
-    ].filter(isCatalogGlbUrl);
+    ].filter(Boolean);
     if (urls.length === 0) return;
-    void prefetchGlbUrls(urls, 3);
-  }, [projects, viewerReady]);
+    const timer = window.setTimeout(() => {
+      void prefetchGlbUrls(urls, 2);
+    }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [projects, mapReady]);
 
   const persistTransform = useCallback(async (projectId: string) => {
     const xf = xformsRef.current.get(projectId);
+    const current = projectsRef.current.find((x) => x.id === projectId);
     if (!xf || !xf.dirty || xf.modelLocked) return;
     setTransformSaving(true);
     setTransformMessage(null);
@@ -3909,8 +4690,17 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       rotationPitch: xf.pitchDeg ?? 0,
       rotationRoll: xf.rollDeg ?? 0,
       modelScale: xf.scaleMultiplier,
+      modelScaleX: xf.scaleX ?? 1,
+      modelScaleY: xf.scaleY ?? 1,
+      modelScaleZ: xf.scaleZ ?? 1,
       modelHeight: xf.heightM,
     };
+    if (current?.mapShape?.kind === "freeform") {
+      patch.mapShape = {
+        ...current.mapShape,
+        footprint: shiftedShapeFootprint(current, xf),
+      };
+    }
     try {
       try {
         await patchProject(projectId, patch);
@@ -3920,6 +4710,10 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         } catch {
           throw backendError;
         }
+      }
+      if (patch.mapShape && current) {
+        current.mapShape = patch.mapShape;
+        current.location = { lat: xf.lat, lon: xf.lon };
       }
       xf.dirty = false;
       xf.pendingSync = true;
@@ -3947,13 +4741,13 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     const p = sel ? projectsRef.current.find((x) => x.id === sel) : undefined;
     const show = Boolean(
       editModeRef.current &&
-        canEditModelsRef.current &&
-        sel &&
-        xf &&
-        p &&
-        !p.siteMarkerOnly &&
-        !xf.modelLocked &&
-        !modelsFrozenRef.current,
+      canEditModelsRef.current &&
+      sel &&
+      xf &&
+      p &&
+      !p.siteMarkerOnly &&
+      !xf.modelLocked &&
+      !modelsFrozenRef.current,
     );
     const h = viewer.camera.positionCartographic?.height ?? 400;
     try {
@@ -3961,7 +4755,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         show,
         lon: xf?.lon ?? 0,
         lat: xf?.lat ?? 0,
-        heightM: xf?.heightM ?? 0,
+        heightM: p && xf ? gizmoHeightFor(p, xf) : xf?.heightM ?? 0,
         rotationDeg: xf?.rotationDeg ?? 0,
         scaleMultiplier: xf?.scaleMultiplier ?? 1,
         tool: editToolRef.current,
@@ -4021,6 +4815,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     if (viewer && !viewer.isDestroyed()) {
       const ent = viewer.entities.getById(entityIdFor(snap.projectId));
       if (ent) applyXformToEntity(ent, p, xf);
+      pinGizmoToXform(p, xf);
       viewer.scene.requestRender();
     }
     if (selectedIdRef.current !== snap.projectId) setSelectedId(snap.projectId);
@@ -4265,13 +5060,18 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
 
       const pose = () => {
         applyXformToEntity(ent, p, xf);
+        pinGizmoToXform(p, xf);
         xf.dirty = true;
         didDrag = true;
         viewer.scene.requestRender();
         setTransformDirty(true);
         setTransformMessage(null);
-        bumpXform((n) => n + 1);
-        refreshEditGizmoRef.current(false);
+        if (!hudBumpRafRef.current) {
+          hudBumpRafRef.current = requestAnimationFrame(() => {
+            hudBumpRafRef.current = 0;
+            bumpXform((n) => n + 1);
+          });
+        }
       };
 
       if (moving) {
@@ -4334,10 +5134,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         const dy = lastY - move.endPosition.y;
         lastY = move.endPosition.y;
         const factor = dy > 0 ? 1 + dy * 0.008 : 1 / (1 + Math.abs(dy) * 0.008);
-        xf.scaleMultiplier = Math.max(
-          SCALE_MULT_MIN,
-          Math.min(SCALE_MULT_MAX, xf.scaleMultiplier * factor),
-        );
+        applyStretchFactor(xf, dragAxis, factor);
         pose();
       }
     }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
@@ -4548,14 +5345,12 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
             const grow = e.deltaY < 0;
             const step = e.ctrlKey || e.metaKey ? 1.35 : e.shiftKey ? 1.03 : 1.12;
             const factor = grow ? step : 1 / step;
-            xf.scaleMultiplier = Math.max(
-              SCALE_MULT_MIN,
-              Math.min(SCALE_MULT_MAX, xf.scaleMultiplier * factor),
-            );
+            applyStretchFactor(xf, editAxisRef.current, factor);
             xf.dirty = true;
             const ent = viewer.entities.getById(entityIdFor(sel));
             if (ent) {
               applyXformToEntity(ent, p, xf);
+              pinGizmoToXform(p, xf);
               viewer.scene.requestRender();
             }
             setTransformDirty(true);
@@ -4760,7 +5555,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     try {
       try {
         await patchProject(selectedId, patch);
-        void updateProjectInFirestore(selectedId, patch).catch(() => {});
+        void updateProjectInFirestore(selectedId, patch).catch(() => { });
       } catch (backendError) {
         try {
           await updateProjectInFirestore(selectedId, patch);
@@ -4783,8 +5578,12 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         if (ent) {
           applySitePinChrome(ent, nextProject, {
             isAttached: (id) => modelAttachedRef.current.has(id),
+            isVisible: (id) => modelVisibleRef.current.has(id),
             isSelected: (id) => selectedIdRef.current === id,
             isHovered: (id) => hoveredProjectIdRef.current === id,
+            cameraHeightM: () => viewer.camera.positionCartographic.height,
+            lon: xf?.lon,
+            lat: xf?.lat,
           });
           if (xf) {
             applyXformToEntity(ent, nextProject, xf);
@@ -4909,7 +5708,13 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
             );
           }
           if (renamed && currentProject) {
-            applyResolvedPlaceName(viewer, { ...currentProject, name: renamed }, renamed);
+            const xf = xformsRef.current.get(selectedId);
+            applyResolvedPlaceName(
+              viewer,
+              { ...currentProject, name: renamed },
+              renamed,
+              xf ? { lon: xf.lon, lat: xf.lat } : undefined,
+            );
           }
           viewer.scene.requestRender();
         }
@@ -4937,7 +5742,13 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     onProjectPatch?.(selectedId, { name: trimmed });
     const viewer = viewerRef.current;
     if (viewerAlive(viewer) && currentProject) {
-      applyResolvedPlaceName(viewer, { ...currentProject, name: trimmed }, trimmed);
+      const xf = xformsRef.current.get(selectedId);
+      applyResolvedPlaceName(
+        viewer,
+        { ...currentProject, name: trimmed },
+        trimmed,
+        xf ? { lon: xf.lon, lat: xf.lat } : undefined,
+      );
       viewer.scene.requestRender();
     }
   }
@@ -4975,6 +5786,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     const ent = viewer && !viewer.isDestroyed() ? viewer.entities.getById(entityIdFor(projectId)) : undefined;
     if (ent) {
       applyXformToEntity(ent, p, xf);
+      pinGizmoToXform(p, xf);
       viewer?.scene.requestRender();
     }
     setTransformDirty(true);
@@ -5041,13 +5853,13 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
   const panelProject =
     selectedProject && selectedXform
       ? {
-          ...selectedProject,
-          location: { lat: selectedXform.lat, lon: selectedXform.lon },
-          rotation: selectedXform.rotationDeg,
-          modelScale: selectedXform.scaleMultiplier,
-          modelHeight: selectedXform.heightM,
-          modelLocked: selectedXform.modelLocked,
-        }
+        ...selectedProject,
+        location: { lat: selectedXform.lat, lon: selectedXform.lon },
+        rotation: selectedXform.rotationDeg,
+        modelScale: selectedXform.scaleMultiplier,
+        modelHeight: selectedXform.heightM,
+        modelLocked: selectedXform.modelLocked,
+      }
       : selectedProject;
 
   const selectedTropicalSystem =
@@ -5065,8 +5877,6 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     [earthquakeGrid],
   );
 
-  if (!visible) return null;
-
   return (
     <>
       <div
@@ -5083,8 +5893,53 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
             position: "absolute",
             inset: 0,
             cursor: placementMode ? "crosshair" : blockRemoverActive ? "cell" : undefined,
+            opacity: mapReady ? 1 : 0,
+            transition: "opacity 0.55s ease",
           }}
         />
+        {/* ── Map loading overlay — hides the black globe until tiles render ── */}
+        {!mapReady && (
+          <div
+            aria-label="Loading map"
+            style={{
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "linear-gradient(160deg, #0d1520 0%, #0f2318 60%, #071209 100%)",
+              gap: 20,
+              zIndex: 2,
+              pointerEvents: "none",
+            }}
+          >
+            {/* Rotating ring spinner */}
+            <div
+              style={{
+                width: 52,
+                height: 52,
+                borderRadius: "50%",
+                border: "3px solid rgba(255,255,255,0.08)",
+                borderTop: "3px solid #4ade80",
+                animation: "cesium-map-spin 0.9s linear infinite",
+              }}
+            />
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: "rgba(255,255,255,0.55)",
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                fontFamily: "Inter, system-ui, sans-serif",
+              }}
+            >
+              Loading map…
+            </div>
+            <style>{`@keyframes cesium-map-spin { to { transform: rotate(360deg); } }`}</style>
+          </div>
+        )}
         {editMode && canEditModels && !modelsFrozen && (
           <div
             className="cesium-edit-tools"
@@ -5279,34 +6134,48 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
               position: "absolute",
               left: Math.min(
                 hoveredProject.x + 14,
-                (containerRef.current?.clientWidth ?? 360) - 260,
+                (containerRef.current?.clientWidth ?? 360) - 290,
               ),
               top: Math.min(
                 hoveredProject.y + 14,
-                (containerRef.current?.clientHeight ?? 400) - 130,
+                (containerRef.current?.clientHeight ?? 400) - 160,
               ),
               pointerEvents: "none",
               zIndex: 14,
-              width: 250,
-              maxWidth: "min(250px, calc(100% - 24px))",
+              width: 280,
+              maxWidth: "min(280px, calc(100% - 24px))",
               padding: "10px 12px",
               background: "rgba(12, 18, 28, 0.95)",
-              border: `2px solid ${
-                hoveredProject.project.siteMarkerOnly
+              border: `2px solid ${hoveredProject.project.siteMarkerOnly
                   ? hoveredProject.project.markerColor ||
-                    hoveredProject.project.mapSketch?.color ||
-                    "#c47a1a"
+                  hoveredProject.project.mapSketch?.color ||
+                  "#c47a1a"
                   : statusColor(hoveredProject.project.status)
-              }`,
+                }`,
               boxShadow: "3px 3px 0 rgba(0,0,0,0.4)",
               color: "#f4f6f8",
               fontSize: 12,
               lineHeight: 1.35,
             }}
           >
-            <div style={{ fontWeight: 700, marginBottom: 4 }}>{hoveredProject.project.name}</div>
+            <div style={{ fontWeight: 700, marginBottom: 2 }}>{hoveredProject.project.name}</div>
+            {hoveredProject.coords && (
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 700,
+                  fontVariantNumeric: "tabular-nums",
+                  letterSpacing: "0.01em",
+                  color: "#ffe566",
+                  marginBottom: 6,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {hoveredProject.coords}
+              </div>
+            )}
             <div style={{ opacity: 0.8, fontSize: 11, marginBottom: 6 }}>
-              {hoveredProject.streetLabel || hoverTypeLabel(hoveredProject.project)}
+              {(hoveredProject.streetLabel ? hoveredProject.streetLabel.replace(/\s*[-·•]\s*(Barangay|Brgy).*$/i, "").trim() : "") || hoverTypeLabel(hoveredProject.project)}
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11 }}>
               <span style={{ opacity: 0.7 }}>Status</span>
@@ -5344,8 +6213,8 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
               <div className="cesium-model-loading-title">{modelLoadUi.label}</div>
               <div className="cesium-model-loading-sub">
                 {modelLoadUi.remaining > 1
-                  ? `${modelLoadUi.remaining} nearby · ${modelLoadUi.attached}/${modelLoadUi.budget} in GPU`
-                  : `${modelLoadUi.attached}/${modelLoadUi.budget} models in view`}
+                  ? `${modelLoadUi.remaining} loading · ${modelLoadUi.attached} active in GPU`
+                  : `${modelLoadUi.attached} models in view`}
                 {modelLoadUi.cacheLabel ? ` · ${modelLoadUi.cacheLabel}` : ""}
               </div>
             </div>
@@ -5452,16 +6321,16 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
             <DualQuakeSummary score={selectedQuakeCompare} />
           ) : (
             <>
-          <div style={{ opacity: 0.85, marginBottom: 6 }}>
-            {selectedQuakeCell.source === "model" ? "Model prediction" : "PHIVOLCS EIL 2014"}
-            {" — "}
-            {classAdvice(selectedQuakeCell.cls)}
-          </div>
-          <div style={{ fontSize: 11, opacity: 0.8 }}>
-            <div>Ground shaking: PEIS {selectedQuakeCell.shakeClass.toUpperCase()}</div>
-            <div>EIL (slope failure): {selectedQuakeCell.eilClass}</div>
-            <div>Confidence: {Math.round(selectedQuakeCell.confidence * 100)}%</div>
-          </div>
+              <div style={{ opacity: 0.85, marginBottom: 6 }}>
+                {selectedQuakeCell.source === "model" ? "Model prediction" : "PHIVOLCS EIL 2014"}
+                {" — "}
+                {classAdvice(selectedQuakeCell.cls)}
+              </div>
+              <div style={{ fontSize: 11, opacity: 0.8 }}>
+                <div>Ground shaking: PEIS {selectedQuakeCell.shakeClass.toUpperCase()}</div>
+                <div>EIL (slope failure): {selectedQuakeCell.eilClass}</div>
+                <div>Confidence: {Math.round(selectedQuakeCell.confidence * 100)}%</div>
+              </div>
             </>
           )}
           <button
@@ -5487,363 +6356,452 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         ref={pickChromeRef}
         className={`cesium-pick-chrome${selectedProject && !modelsFrozen && editMode ? " has-hud" : ""}`}
       >
-      {panelProject && !modelsFrozen && !editMode && !readOnly && (
-        <PlaceSidePanel
-          project={panelProject}
-          onFlyHere={flyToSelected}
-          readOnly={readOnly || !canManipulateModels}
-          canAddPhotos={canAddPhotos}
-          onPhotosChange={onPhotosChange}
-          onClose={() => {
-            setSelectedId(null);
-            setConfirmDelete(false);
-            setEditOpen(false);
-          }}
-          onEdit={canEditModels ? openEdit : undefined}
-          onRename={canEditModels ? saveProjectName : undefined}
-          locationLabel={resolvedPlaceNameRef.current.get(panelProject.id) ?? null}
-          onToggleLock={
-            editMode && canEditModels && !panelProject.siteMarkerOnly
-              ? () => void handleToggleLock()
-              : undefined
-          }
-          canPromoteSitePin={canPromoteSitePin}
-          startConstructionBusy={startBuildBusy}
-          onStartConstruction={
-            canPromoteSitePin && panelProject.siteMarkerOnly
-              ? () => void handleStartConstruction()
-              : undefined
-          }
-          earthquakeScore={siteQuakeScore}
-        />
-      )}
+        {panelProject && !modelsFrozen && !editMode && !readOnly && (
+          <PlaceSidePanel
+            project={panelProject}
+            onFlyHere={flyToSelected}
+            readOnly={readOnly || !canManipulateModels}
+            canAddPhotos={canAddPhotos}
+            onPhotosChange={onPhotosChange}
+            onClose={() => {
+              setSelectedId(null);
+              setConfirmDelete(false);
+              setEditOpen(false);
+            }}
+            onEdit={canEditModels ? openEdit : undefined}
+            onRename={canEditModels ? saveProjectName : undefined}
+            locationLabel={resolvedPlaceNameRef.current.get(panelProject.id) ?? null}
+            onToggleLock={
+              editMode && canEditModels && !panelProject.siteMarkerOnly
+                ? () => void handleToggleLock()
+                : undefined
+            }
+            onToggleBadge={
+              canManipulateModels && panelProject
+                ? async () => {
+                    const nextVal = !panelProject.hideBadge;
+                    onProjectPatch?.(panelProject.id, { hideBadge: nextVal });
+                    try {
+                      await patchProject(panelProject.id, { hideBadge: nextVal });
+                    } catch (err) {
+                      console.warn("Failed to persist hideBadge:", err);
+                    }
+                  }
+                : undefined
+            }
+            canPromoteSitePin={canPromoteSitePin}
+            startConstructionBusy={startBuildBusy}
+            onStartConstruction={
+              canPromoteSitePin && panelProject.siteMarkerOnly
+                ? () => void handleStartConstruction()
+                : undefined
+            }
+            earthquakeScore={siteQuakeScore}
+          />
+        )}
 
-      {selectedProject && !modelsFrozen && editMode && (
-        <div
-          ref={hudRef}
-          className={`project-pick-hud${hudCollapsed ? " is-collapsed" : ""}`}
-        >
-          <div className="project-pick-hud-head">
-            <div
-              className="project-pick-hud-dot"
-              style={{ background: statusColor(selectedProject.status) }}
-            />
-            <div className="project-pick-hud-identity">
-              <div className="project-pick-hud-name">{selectedProject.name}</div>
-              <div className="project-pick-hud-meta">
-                <span>{statusLabel(selectedProject.status)}</span>
-                {selectedXform ? (
-                  <span className="project-pick-hud-pose">
-                    {selectedXform.lat.toFixed(5)}, {selectedXform.lon.toFixed(5)}
-                    {" · "}
-                    {Math.round(selectedXform.rotationDeg)}°
-                    {" · ×"}
-                    {selectedXform.scaleMultiplier >= 0.1
-                      ? selectedXform.scaleMultiplier.toFixed(2)
-                      : selectedXform.scaleMultiplier.toFixed(3)}
-                  </span>
-                ) : null}
-              </div>
-            </div>
-            <div className="project-pick-hud-tools">
-              {canEditModels && (
-                <button type="button" className="project-pick-hud-btn project-pick-hud-btn--edit" onClick={openEdit}>
-                  Edit
-                </button>
-              )}
-              <button
-                type="button"
-                className="project-pick-hud-btn"
-                onClick={() => setHudCollapsed((v) => !v)}
-                title={hudCollapsed ? "Expand controls" : "Collapse controls"}
-                aria-expanded={!hudCollapsed}
-              >
-                {hudCollapsed ? "▴" : "▾"}
-              </button>
-              <button
-                type="button"
-                className="project-pick-hud-btn project-pick-hud-btn--ghost"
-                onClick={() => {
-                  setSelectedId(null);
-                  setConfirmDelete(false);
-                  setEditOpen(false);
-                }}
-                title="Deselect"
-              >
-                ×
-              </button>
-            </div>
-          </div>
-
-          {!hudCollapsed && (
-            <>
-          {canEditModels && editMode && selectedXform && !locked && (
-            <div className="project-pick-hud-xyz">
-              <span className="project-pick-hud-axis" style={{ color: "#c0392b" }}>X</span>
-              <input
-                type="number"
-                step="0.00001"
-                value={selectedXform.lon}
-                title="Longitude (East / West)"
-                className="project-pick-hud-input"
-                onFocus={() => selectedId && pushEditUndo(selectedId)}
-                onChange={(e) => {
-                  const lon = Number(e.target.value);
-                  if (!Number.isFinite(lon) || !selectedId) return;
-                  commitLocalPose(selectedId, { lon }, false, false);
-                }}
-                onBlur={() => {
-                  if (!selectedId) return;
-                  dropEditUndoIfUnchanged(selectedId);
-                  void persistTransform(selectedId);
-                }}
+        {selectedProject && !modelsFrozen && editMode && (
+          <div
+            ref={hudRef}
+            className={`project-pick-hud${hudCollapsed ? " is-collapsed" : ""}`}
+          >
+            <div className="project-pick-hud-head">
+              <div
+                className="project-pick-hud-dot"
+                style={{ background: statusColor(selectedProject.status) }}
               />
-              <button type="button" title="West −1 m" onClick={() => nudgeSelected(-1, 0, 0)} className="project-pick-hud-nudge">
-                −1m
-              </button>
-              <button type="button" title="East +1 m" onClick={() => nudgeSelected(1, 0, 0)} className="project-pick-hud-nudge">
-                +1m
-              </button>
-
-              <span className="project-pick-hud-axis" style={{ color: "#27ae60" }}>Y</span>
-              <input
-                type="number"
-                step="0.00001"
-                value={selectedXform.lat}
-                title="Latitude (North / South)"
-                className="project-pick-hud-input"
-                onFocus={() => selectedId && pushEditUndo(selectedId)}
-                onChange={(e) => {
-                  const lat = Number(e.target.value);
-                  if (!Number.isFinite(lat) || !selectedId) return;
-                  commitLocalPose(selectedId, { lat }, false, false);
-                }}
-                onBlur={() => {
-                  if (!selectedId) return;
-                  dropEditUndoIfUnchanged(selectedId);
-                  void persistTransform(selectedId);
-                }}
-              />
-              <button type="button" title="South −1 m" onClick={() => nudgeSelected(0, -1, 0)} className="project-pick-hud-nudge">
-                −1m
-              </button>
-              <button type="button" title="North +1 m" onClick={() => nudgeSelected(0, 1, 0)} className="project-pick-hud-nudge">
-                +1m
-              </button>
-
-              <span className="project-pick-hud-axis" style={{ color: "#2980b9" }}>Z</span>
-              <input
-                type="number"
-                step="0.1"
-                value={selectedXform.heightM}
-                title="Height above ground (m). Keep 0 for ground — no elevation."
-                className="project-pick-hud-input"
-                onFocus={() => selectedId && pushEditUndo(selectedId)}
-                onChange={(e) => {
-                  const heightM = Number(e.target.value);
-                  if (!Number.isFinite(heightM) || !selectedId) return;
-                  commitLocalPose(
-                    selectedId,
-                    { heightM: Math.max(-50, Math.min(500, heightM)) },
-                    false,
-                    false,
-                  );
-                }}
-                onBlur={() => {
-                  if (!selectedId) return;
-                  dropEditUndoIfUnchanged(selectedId);
-                  void persistTransform(selectedId);
-                }}
-              />
-              <button
-                type="button"
-                title="Set Z = 0 (ground, no elevation)"
-                onClick={() => selectedId && commitLocalPose(selectedId, { heightM: 0 }, true)}
-                className="project-pick-hud-nudge"
-              >
-                Ground
-              </button>
-              <button type="button" title="Up +0.5 m" onClick={() => nudgeSelected(0, 0, 0.5)} className="project-pick-hud-nudge">
-                +0.5
-              </button>
-              <div className="project-pick-hud-xyz-hint">
-                X = lon · Y = lat · Z = height m (keep <b>0</b> for ground clamp — no elevation)
-              </div>
-            </div>
-          )}
-
-          {earthquakeEnabled && siteQuakeScore && (
-            <div className="project-pick-hud-note">
-              <DualQuakeSummary score={siteQuakeScore} ink />
-            </div>
-          )}
-
-          {selectedProject.siteMarkerOnly && !canPromoteSitePin && (
-            <div className="project-pick-hud-note">
-              Site pin only — no 3D GLB. Engineering places the model later.
-            </div>
-          )}
-
-          {canPromoteSitePin && selectedProject.siteMarkerOnly && (
-            <div className="project-pick-hud-build">
-              {confirmStartBuild ? (
-                <>
-                  <div className="project-pick-hud-build-copy">
-                    <strong>Itatayo na ba ito?</strong>
-                    <span>
-                      Lalabas ang Under Construction model sa pin. Ikaw pa rin ang maglalagay —
-                      move, rotate, at scale.
+              <div className="project-pick-hud-identity">
+                <div className="project-pick-hud-name">{selectedProject.name}</div>
+                <div className="project-pick-hud-meta">
+                  <span>{statusLabel(selectedProject.status)}</span>
+                  {selectedXform ? (
+                    <span className="project-pick-hud-pose">
+                      {formatLonLat(selectedXform.lat, selectedXform.lon)}
+                      {" · "}
+                      {Math.round(selectedXform.rotationDeg)}°
+                      {" · ×"}
+                      {selectedXform.scaleMultiplier >= 0.1
+                        ? selectedXform.scaleMultiplier.toFixed(2)
+                        : selectedXform.scaleMultiplier.toFixed(3)}
+                      {(selectedXform.scaleX ?? 1) !== 1 ||
+                        (selectedXform.scaleY ?? 1) !== 1 ||
+                        (selectedXform.scaleZ ?? 1) !== 1
+                        ? ` · W${(selectedXform.scaleX ?? 1).toFixed(2)} D${(selectedXform.scaleY ?? 1).toFixed(2)} H${(selectedXform.scaleZ ?? 1).toFixed(2)}`
+                        : ""}
                     </span>
+                  ) : null}
+                </div>
+              </div>
+              <div className="project-pick-hud-tools">
+                {canEditModels && (
+                  <button type="button" className="project-pick-hud-btn project-pick-hud-btn--edit" onClick={openEdit}>
+                    Edit
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="project-pick-hud-btn"
+                  onClick={() => setHudCollapsed((v) => !v)}
+                  title={hudCollapsed ? "Expand controls" : "Collapse controls"}
+                  aria-expanded={!hudCollapsed}
+                >
+                  {hudCollapsed ? "▴" : "▾"}
+                </button>
+                <button
+                  type="button"
+                  className="project-pick-hud-btn project-pick-hud-btn--ghost"
+                  onClick={() => {
+                    setSelectedId(null);
+                    setConfirmDelete(false);
+                    setEditOpen(false);
+                  }}
+                  title="Deselect"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+
+            {!hudCollapsed && (
+              <>
+                {canEditModels && editMode && selectedXform && !locked && (
+                  <div className="project-pick-hud-xyz">
+                    <span className="project-pick-hud-axis" style={{ color: "#c0392b" }}>X</span>
+                    <input
+                      type="number"
+                      step="0.00001"
+                      value={selectedXform.lon}
+                      title="Longitude (East / West)"
+                      className="project-pick-hud-input"
+                      onFocus={() => selectedId && pushEditUndo(selectedId)}
+                      onChange={(e) => {
+                        const lon = Number(e.target.value);
+                        if (!Number.isFinite(lon) || !selectedId) return;
+                        commitLocalPose(selectedId, { lon }, false, false);
+                      }}
+                      onBlur={() => {
+                        if (!selectedId) return;
+                        dropEditUndoIfUnchanged(selectedId);
+                        void persistTransform(selectedId);
+                      }}
+                    />
+                    <button type="button" title="West −1 m" onClick={() => nudgeSelected(-1, 0, 0)} className="project-pick-hud-nudge">
+                      −1m
+                    </button>
+                    <button type="button" title="East +1 m" onClick={() => nudgeSelected(1, 0, 0)} className="project-pick-hud-nudge">
+                      +1m
+                    </button>
+
+                    <span className="project-pick-hud-axis" style={{ color: "#27ae60" }}>Y</span>
+                    <input
+                      type="number"
+                      step="0.00001"
+                      value={selectedXform.lat}
+                      title="Latitude (North / South)"
+                      className="project-pick-hud-input"
+                      onFocus={() => selectedId && pushEditUndo(selectedId)}
+                      onChange={(e) => {
+                        const lat = Number(e.target.value);
+                        if (!Number.isFinite(lat) || !selectedId) return;
+                        commitLocalPose(selectedId, { lat }, false, false);
+                      }}
+                      onBlur={() => {
+                        if (!selectedId) return;
+                        dropEditUndoIfUnchanged(selectedId);
+                        void persistTransform(selectedId);
+                      }}
+                    />
+                    <button type="button" title="South −1 m" onClick={() => nudgeSelected(0, -1, 0)} className="project-pick-hud-nudge">
+                      −1m
+                    </button>
+                    <button type="button" title="North +1 m" onClick={() => nudgeSelected(0, 1, 0)} className="project-pick-hud-nudge">
+                      +1m
+                    </button>
+
+                    <span className="project-pick-hud-axis" style={{ color: "#2980b9" }}>Z</span>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={selectedXform.heightM}
+                      title="Height above ground (m). Keep 0 for ground — no elevation."
+                      className="project-pick-hud-input"
+                      onFocus={() => selectedId && pushEditUndo(selectedId)}
+                      onChange={(e) => {
+                        const heightM = Number(e.target.value);
+                        if (!Number.isFinite(heightM) || !selectedId) return;
+                        commitLocalPose(
+                          selectedId,
+                          { heightM: Math.max(-50, Math.min(500, heightM)) },
+                          false,
+                          false,
+                        );
+                      }}
+                      onBlur={() => {
+                        if (!selectedId) return;
+                        dropEditUndoIfUnchanged(selectedId);
+                        void persistTransform(selectedId);
+                      }}
+                    />
+                    <button
+                      type="button"
+                      title="Set Z = 0 (ground, no elevation)"
+                      onClick={() => selectedId && commitLocalPose(selectedId, { heightM: 0 }, true)}
+                      className="project-pick-hud-nudge"
+                    >
+                      Ground
+                    </button>
+                    <button type="button" title="Up +0.5 m" onClick={() => nudgeSelected(0, 0, 0.5)} className="project-pick-hud-nudge">
+                      +0.5
+                    </button>
+                    <div className="project-pick-hud-xyz-hint">
+                      X = lon · Y = lat · Z = height m (keep <b>0</b> for ground clamp — no elevation)
+                    </div>
                   </div>
+                )}
+
+                {canEditModels && editMode && selectedXform && !locked && !selectedProject.siteMarkerOnly && (
+                  <div className="project-pick-hud-xyz">
+                    {(
+                      [
+                        ["scaleX", "W", "Width", "#c0392b"],
+                        ["scaleY", "D", "Depth", "#27ae60"],
+                        ["scaleZ", "H", "Height", "#2980b9"],
+                      ] as const
+                    ).map(([key, short, label, color]) => (
+                      <Fragment key={key}>
+                        <span className="project-pick-hud-axis" style={{ color }} title={label}>
+                          {short}
+                        </span>
+                        <input
+                          type="number"
+                          step="0.05"
+                          min={SCALE_MULT_MIN}
+                          max={SCALE_MULT_MAX}
+                          value={Number((selectedXform[key] ?? 1).toFixed(3))}
+                          title={`${label} stretch (1 = original)`}
+                          className="project-pick-hud-input"
+                          onFocus={() => selectedId && pushEditUndo(selectedId)}
+                          onChange={(e) => {
+                            const n = Number(e.target.value);
+                            if (!Number.isFinite(n) || !selectedId) return;
+                            commitLocalPose(selectedId, { [key]: clampScaleMult(n) }, false, false);
+                          }}
+                          onBlur={() => {
+                            if (!selectedId) return;
+                            dropEditUndoIfUnchanged(selectedId);
+                            void persistTransform(selectedId);
+                          }}
+                        />
+                        <button
+                          type="button"
+                          title={`Narrower ${label.toLowerCase()}`}
+                          onClick={() =>
+                            selectedId &&
+                            commitLocalPose(
+                              selectedId,
+                              { [key]: clampScaleMult((selectedXform[key] ?? 1) / 1.1) },
+                              true,
+                            )
+                          }
+                          className="project-pick-hud-nudge"
+                        >
+                          −
+                        </button>
+                        <button
+                          type="button"
+                          title={`Widen ${label.toLowerCase()}`}
+                          onClick={() =>
+                            selectedId &&
+                            commitLocalPose(
+                              selectedId,
+                              { [key]: clampScaleMult((selectedXform[key] ?? 1) * 1.1) },
+                              true,
+                            )
+                          }
+                          className="project-pick-hud-nudge"
+                        >
+                          +
+                        </button>
+                      </Fragment>
+                    ))}
+                    <div className="project-pick-hud-xyz-hint">
+                      Width / depth / height stretch. Size tool: axis cubes stretch one side; center cube or scroll = overall size.
+                    </div>
+                  </div>
+                )}
+
+                {earthquakeEnabled && siteQuakeScore && (
+                  <div className="project-pick-hud-note">
+                    <DualQuakeSummary score={siteQuakeScore} ink />
+                  </div>
+                )}
+
+                {selectedProject.siteMarkerOnly && !canPromoteSitePin && (
+                  <div className="project-pick-hud-note">
+                    Site pin only — no 3D GLB. Engineering places the model later.
+                  </div>
+                )}
+
+                {canPromoteSitePin && selectedProject.siteMarkerOnly && (
+                  <div className="project-pick-hud-build">
+                    {confirmStartBuild ? (
+                      <>
+                        <div className="project-pick-hud-build-copy">
+                          <strong>Itatayo na ba ito?</strong>
+                          <span>
+                            Lalabas ang Under Construction model sa pin. Ikaw pa rin ang maglalagay —
+                            move, rotate, at scale.
+                          </span>
+                        </div>
+                        <div className="project-pick-hud-actions">
+                          <button
+                            type="button"
+                            className="project-pick-hud-action is-primary"
+                            disabled={startBuildBusy}
+                            onClick={() => void handleStartConstruction()}
+                          >
+                            {startBuildBusy ? "Sineset…" : "Oo, itayo na"}
+                          </button>
+                          <button
+                            type="button"
+                            className="project-pick-hud-action"
+                            disabled={startBuildBusy}
+                            onClick={() => setConfirmStartBuild(false)}
+                          >
+                            Hindi muna
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        className="project-pick-hud-action is-primary"
+                        onClick={() => setConfirmStartBuild(true)}
+                      >
+                        Itayo na (Under Construction)
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {editMode && canEditModels && selectedProject.siteMarkerOnly && onDeleteBuilding && (
+                  <div className="project-pick-hud-actions">
+                    {!confirmDelete ? (
+                      <button
+                        type="button"
+                        className="project-pick-hud-action project-pick-hud-action--danger"
+                        onClick={() => setConfirmDelete(true)}
+                      >
+                        Remove site pin
+                      </button>
+                    ) : (
+                      <div className="project-pick-hud-confirm">
+                        <button
+                          type="button"
+                          className="project-pick-hud-action project-pick-hud-action--danger"
+                          onClick={() => {
+                            if (selectedId) onDeleteBuilding?.(selectedId);
+                            setSelectedId(null);
+                            setConfirmDelete(false);
+                          }}
+                        >
+                          Yes, Remove
+                        </button>
+                        <button
+                          type="button"
+                          className="project-pick-hud-action"
+                          onClick={() => setConfirmDelete(false)}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {editMode && canEditModels && !selectedProject.siteMarkerOnly && (
+                  <div className="project-pick-hud-hint">
+                    {locked ? (
+                      <span className="project-pick-hud-hint-lock">
+                        Locked — unlock to move / rotate / scale
+                      </span>
+                    ) : (
+                      <>
+                        <span>
+                          {editTool === "rotate"
+                            ? "Rotate — drag left/right"
+                            : editTool === "scale"
+                              ? "Size — X cube widens, Y deepens, Z height. Center / scroll = overall"
+                              : "Move — drag the building"}
+                        </span>
+                        <span>Esc deselect · Ctrl+Z undo · Ctrl+Shift+Z redo</span>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {editMode && canEditModels && !selectedProject.siteMarkerOnly && (
                   <div className="project-pick-hud-actions">
                     <button
                       type="button"
-                      className="project-pick-hud-action is-primary"
-                      disabled={startBuildBusy}
-                      onClick={() => void handleStartConstruction()}
+                      className={`project-pick-hud-action${locked ? " is-warn" : ""}`}
+                      onClick={() => void handleToggleLock()}
+                      disabled={transformSaving}
                     >
-                      {startBuildBusy ? "Sineset…" : "Oo, itayo na"}
+                      {locked ? "Unlock" : "Lock"}
                     </button>
                     <button
                       type="button"
-                      className="project-pick-hud-action"
-                      disabled={startBuildBusy}
-                      onClick={() => setConfirmStartBuild(false)}
+                      className={`project-pick-hud-action${transformDirty && !locked ? " is-primary" : ""}`}
+                      onClick={() => selectedId && void persistTransform(selectedId)}
+                      disabled={transformSaving || !transformDirty || locked}
                     >
-                      Hindi muna
+                      {transformSaving
+                        ? "Saving…"
+                        : transformMessage ??
+                        (locked ? "Locked" : transformDirty ? "Save Position" : "Saved")}
                     </button>
+                    {onDeleteBuilding && (!confirmDelete ? (
+                      <button
+                        type="button"
+                        className="project-pick-hud-action project-pick-hud-action--danger"
+                        onClick={() => setConfirmDelete(true)}
+                      >
+                        Remove Building
+                      </button>
+                    ) : (
+                      <div className="project-pick-hud-confirm">
+                        <span className="project-pick-hud-confirm-label">
+                          Remove <strong>{selectedProject.name}</strong>?
+                        </span>
+                        <div className="project-pick-hud-confirm-row">
+                          <button
+                            type="button"
+                            className="project-pick-hud-action project-pick-hud-action--danger"
+                            onClick={() => {
+                              if (selectedId) onDeleteBuilding?.(selectedId);
+                              setSelectedId(null);
+                              setConfirmDelete(false);
+                            }}
+                          >
+                            Yes, Remove
+                          </button>
+                          <button
+                            type="button"
+                            className="project-pick-hud-action"
+                            onClick={() => setConfirmDelete(false)}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  className="project-pick-hud-action is-primary"
-                  onClick={() => setConfirmStartBuild(true)}
-                >
-                  Itayo na (Under Construction)
-                </button>
-              )}
-            </div>
-          )}
-
-          {editMode && canEditModels && selectedProject.siteMarkerOnly && onDeleteBuilding && (
-            <div className="project-pick-hud-actions">
-              {!confirmDelete ? (
-                <button
-                  type="button"
-                  className="project-pick-hud-action project-pick-hud-action--danger"
-                  onClick={() => setConfirmDelete(true)}
-                >
-                  Remove site pin
-                </button>
-              ) : (
-                <div className="project-pick-hud-confirm">
-                  <button
-                    type="button"
-                    className="project-pick-hud-action project-pick-hud-action--danger"
-                    onClick={() => {
-                      if (selectedId) onDeleteBuilding?.(selectedId);
-                      setSelectedId(null);
-                      setConfirmDelete(false);
-                    }}
-                  >
-                    Yes, Remove
-                  </button>
-                  <button
-                    type="button"
-                    className="project-pick-hud-action"
-                    onClick={() => setConfirmDelete(false)}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {editMode && canEditModels && !selectedProject.siteMarkerOnly && (
-            <div className="project-pick-hud-hint">
-              {locked ? (
-                <span className="project-pick-hud-hint-lock">
-                  Locked — unlock to move / rotate / scale
-                </span>
-              ) : (
-                <>
-                  <span>
-                    {editTool === "rotate"
-                      ? "Rotate — drag left/right"
-                      : editTool === "scale"
-                        ? "Size — drag up/down, or scroll on the model"
-                        : "Move — drag the building"}
-                  </span>
-                  <span>Esc deselect · Ctrl+Z undo · Ctrl+Shift+Z redo</span>
-                </>
-              )}
-            </div>
-          )}
-
-          {editMode && canEditModels && !selectedProject.siteMarkerOnly && (
-            <div className="project-pick-hud-actions">
-              <button
-                type="button"
-                className={`project-pick-hud-action${locked ? " is-warn" : ""}`}
-                onClick={() => void handleToggleLock()}
-                disabled={transformSaving}
-              >
-                {locked ? "Unlock" : "Lock"}
-              </button>
-              <button
-                type="button"
-                className={`project-pick-hud-action${transformDirty && !locked ? " is-primary" : ""}`}
-                onClick={() => selectedId && void persistTransform(selectedId)}
-                disabled={transformSaving || !transformDirty || locked}
-              >
-                {transformSaving
-                  ? "Saving…"
-                  : transformMessage ??
-                    (locked ? "Locked" : transformDirty ? "Save Position" : "Saved")}
-              </button>
-              {onDeleteBuilding && (!confirmDelete ? (
-                <button
-                  type="button"
-                  className="project-pick-hud-action project-pick-hud-action--danger"
-                  onClick={() => setConfirmDelete(true)}
-                >
-                  Remove Building
-                </button>
-              ) : (
-                <div className="project-pick-hud-confirm">
-                  <span className="project-pick-hud-confirm-label">
-                    Remove <strong>{selectedProject.name}</strong>?
-                  </span>
-                  <div className="project-pick-hud-confirm-row">
-                    <button
-                      type="button"
-                      className="project-pick-hud-action project-pick-hud-action--danger"
-                      onClick={() => {
-                        if (selectedId) onDeleteBuilding?.(selectedId);
-                        setSelectedId(null);
-                        setConfirmDelete(false);
-                      }}
-                    >
-                      Yes, Remove
-                    </button>
-                    <button
-                      type="button"
-                      className="project-pick-hud-action"
-                      onClick={() => setConfirmDelete(false)}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-            </>
-          )}
-        </div>
-      )}
+                )}
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {editOpen && editDraft && selectedProject && !modelsFrozen && !editMode && (

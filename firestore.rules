@@ -1,12 +1,28 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /projects/{document=**} {
-      allow read, write: if true;
-    }
+    // Password hashes and sessions live on the Express server, not here.
     match /accounts/{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
+    match /sessions/{document=**} {
+      allow read, write: if false;
+    }
+    // Staff may append an Activity line; nobody can wipe the log from the browser.
+    match /auditLogs/{document=**} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if false;
+    }
+    // Map pins: public read for the citizen globe. Full writes stay on /api/projects.
+    // The Android field app may only append photos (and the matching timestamps).
+    match /projects/{projectId} {
+      allow read: if true;
+      allow create, delete: if false;
+      allow update: if request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(["photos", "updatedAt", "activityLog"]);
+    }
+    // Planning board still uses the client until those APIs move to Express.
     match /proposals/{document=**} {
       allow read, write: if true;
     }
@@ -17,12 +33,6 @@ service cloud.firestore {
       allow read, write: if true;
     }
     match /documents/{document=**} {
-      allow read, write: if true;
-    }
-    match /sessions/{document=**} {
-      allow read, write: if true;
-    }
-    match /auditLogs/{document=**} {
       allow read, write: if true;
     }
   }

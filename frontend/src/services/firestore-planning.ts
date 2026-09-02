@@ -53,6 +53,7 @@ async function notifyPlanningUpdate(kind: string) {
   try {
     await fetch(backendUrl("/api/planning/notify"), {
       method: "POST",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ kind, at: new Date().toISOString() }),
     });

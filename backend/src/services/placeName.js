@@ -122,10 +122,12 @@ function formatBarangayLabel(raw) {
 }
 
 function formatLocationName(street, barangay) {
-  const road = cleanName(street);
+  let road = cleanName(street);
+  if (road) {
+    road = road.replace(/\s*[-·•]\s*(Barangay|Brgy).*$/i, "").trim();
+    return road;
+  }
   const brgy = formatBarangayLabel(barangay);
-  if (road && brgy) return `${road} · ${brgy}`;
-  if (road) return road;
   if (brgy) return brgy;
   return null;
 }

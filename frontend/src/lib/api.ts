@@ -22,7 +22,7 @@ export function backendUrl(path: string) {
 }
 
 export async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(backendUrl(path));
+  const res = await fetch(backendUrl(path), { credentials: "include" });
   if (!res.ok) throw new Error(`Request failed: ${res.status}`);
   return (await res.json()) as T;
 }
@@ -30,6 +30,7 @@ export async function getJson<T>(path: string): Promise<T> {
 async function sendJson<T>(path: string, method: string, body?: unknown): Promise<T> {
   const res = await fetch(backendUrl(path), {
     method,
+    credentials: "include",
     headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
@@ -84,15 +85,24 @@ export function fetchAccomplishmentReport(projectId: string) {
 export async function uploadProjectPhoto(
   projectId: string,
   file: File,
-  opts?: { caption?: string; milestoneId?: string | null; kind?: "site" | "progress" }
+  opts?: {
+    caption?: string;
+    milestoneId?: string | null;
+    kind?: "site" | "progress";
+    lat?: number | null;
+    lon?: number | null;
+  }
 ) {
   const form = new FormData();
   form.append("photo", file);
   if (opts?.caption) form.append("caption", opts.caption);
   if (opts?.milestoneId) form.append("milestoneId", opts.milestoneId);
   form.append("kind", opts?.kind === "site" ? "site" : "progress");
+  if (opts?.lat != null && Number.isFinite(opts.lat)) form.append("lat", String(opts.lat));
+  if (opts?.lon != null && Number.isFinite(opts.lon)) form.append("lon", String(opts.lon));
   const res = await fetch(backendUrl(`/api/projects/${projectId}/photos`), {
     method: "POST",
+    credentials: "include",
     body: form,
   });
   if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
@@ -109,6 +119,7 @@ export async function uploadPlanningAttachment(file: File) {
   form.append("file", file);
   const res = await fetch(backendUrl("/api/planning/attachments"), {
     method: "POST",
+    credentials: "include",
     body: form,
   });
   if (!res.ok) {
@@ -130,6 +141,7 @@ export async function uploadDocumentFile(file: File) {
   form.append("file", file);
   const res = await fetch(backendUrl("/api/documents/upload"), {
     method: "POST",
+    credentials: "include",
     body: form,
   });
   if (!res.ok) {
@@ -202,6 +214,60 @@ export function patchEngagement(
   body: { status?: EngagementStatus; staffNote?: string | null }
 ) {
   return sendJson<{ submission: EngagementSubmission }>(`/api/engagement/${id}`, "PATCH", body);
+}
+
+// ── Citizen Online Applications (Zoning & MPDC Certifications) ───────────
+export async function uploadCitizenDocument(
+  file: File
+): Promise<{ url: string; filename: string; originalName: string; size: number; mimeType?: string }> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch(backendUrl("/api/citizen/applications/upload"), {
+    method: "POST",
+    credentials: "include",
+    body: fd,
+  });
+  if (!res.ok) {
+    let msg = `Upload failed: ${res.status}`;
+    try {
+      const b = await res.json();
+      if (b?.error) msg = b.error;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+export async function submitCitizenApplication(
+  payload: Record<string, unknown>
+): Promise<{ ok: boolean; application: any }> {
+  return sendJson<{ ok: boolean; application: any }>("/api/citizen/applications", "POST", payload);
+}
+
+export async function trackCitizenApplication(trackingNumber: string): Promise<any | null> {
+  try {
+    const res = await getJson<{ ok: boolean; application: any }>(
+      `/api/citizen/applications/${encodeURIComponent(trackingNumber.trim())}`
+    );
+    return res.application || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchCitizenApplications(): Promise<any[]> {
+  try {
+    const res = await getJson<{ ok: boolean; applications: any[] }>("/api/citizen/applications");
+    return res.applications || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function patchCitizenApplication(id: string, patch: Record<string, unknown>): Promise<any> {
+  return sendJson<{ ok: boolean; application: any }>(`/api/citizen/applications/${id}`, "PATCH", patch);
 }
 
 /** Map public DTO → full Project shape for Cesium (fill staff-only fields with defaults). */

@@ -1,0 +1,172 @@
+[
+  {
+    "id": "app-1788300645986-54892",
+    "trackingNumber": "LUIS-ZC-2026-4349",
+    "serviceType": "zoning_certificate",
+    "applicant": {
+      "fullName": "dadsaa",
+      "contactPhone": "dsdsada",
+      "contactEmail": "dsadsa",
+      "address": "dasddsadsd",
+      "barangay": "Barangay Zone II (Poblacion)"
+    },
+    "lotDetails": {
+      "tctNo": "",
+      "taxDecNo": "",
+      "lotOwner": "",
+      "isApplicantOwner": false,
+      "proposedBuildingType": "",
+      "lotAreaSqM": 0,
+      "lotLocationDescription": ""
+    },
+    "uploads": {
+      "tctTaxDec": [
+        {
+          "url": "/uploads/czreq-1788300625249-340031511.jpg",
+          "filename": "czreq-1788300625249-340031511.jpg",
+          "originalName": "Gemini_Generated_Image_kmynoakmynoakmyn.jpg",
+          "size": 154011,
+          "mimeType": "image/jpeg",
+          "uploadedAt": "2026-09-01T22:10:25.267Z"
+        }
+      ],
+      "deedOrConsent": [],
+      "rptReceipt": [],
+      "brgyClearance": [],
+      "ploCert": [],
+      "photoDocs": [],
+      "denrLetter": [],
+      "studentIdLetter": []
+    },
+    "notes": "",
+    "status": "approved",
+    "stepProgress": {
+      "currentStep": 1,
+      "totalSteps": 3,
+      "step1Completed": true,
+      "step1At": "2026-09-01T22:10:45.986Z",
+      "step1By": "Online Resident Submission",
+      "step2Completed": false,
+      "step2At": null,
+      "step2By": null,
+      "step3Completed": false,
+      "step3At": null,
+      "step3By": null
+    },
+    "responsibleOfficers": [
+      {
+        "name": "Bon Ryan P. Pedron",
+        "role": "Admin Aide (Verification & Issuance)"
+      },
+      {
+        "name": "Edward B. Romulo, EnP.",
+        "role": "Zoning Officer (Review & Permit Preparation)"
+      },
+      {
+        "name": "Engr. Mario S. Baldovino",
+        "role": "MPDC (Final Approval & Signing)"
+      },
+      {
+        "name": "Randy A. Balasabas",
+        "role": "Admin Aide (Inspection & Verification)"
+      }
+    ],
+    "slaDays": 1,
+    "slaMinutes": 12,
+    "fee": "None (Free)",
+    "createdAt": "2026-09-01T22:10:45.986Z",
+    "updatedAt": "2026-09-01T22:59:37.695Z"
+  },
+  {
+    "id": "app-1788297076513-269464",
+    "trackingNumber": "LUIS-LT-2026-1622",
+    "serviceType": "land_titling",
+    "applicant": {
+      "fullName": "Mar Aldrei Avila",
+      "contactPhone": "09618907215",
+      "contactEmail": "maraldrei@gmail.com",
+      "address": "73 Ubaldo Suello St. Brgy Zone IV",
+      "barangay": "Barangay Zone IV (Poblacion)"
+    },
+    "lotDetails": {
+      "tctNo": "313 31321 31321 3",
+      "taxDecNo": "123 3232 1231",
+      "lotOwner": "Mar Aldrei Avila",
+      "isApplicantOwner": true,
+      "proposedBuildingType": "Commercial",
+      "lotAreaSqM": 130,
+      "lotLocationDescription": ""
+    },
+    "uploads": {
+      "tctTaxDec": [
+        {
+          "url": "/uploads/czreq-1788297053208-570758970.jpg",
+          "filename": "czreq-1788297053208-570758970.jpg",
+          "originalName": "Gemini_Generated_Image_kmynoakmynoakmyn.jpg",
+          "size": 154011,
+          "mimeType": "image/jpeg",
+          "uploadedAt": "2026-09-01T21:10:53.218Z"
+        }
+      ],
+      "deedOrConsent": [],
+      "rptReceipt": [],
+      "brgyClearance": [
+        {
+          "url": "/uploads/czreq-1788297055662-601485941.jpg",
+          "filename": "czreq-1788297055662-601485941.jpg",
+          "originalName": "Gemini_Generated_Image_kmynoakmynoakmyn.jpg",
+          "size": 154011,
+          "mimeType": "image/jpeg",
+          "uploadedAt": "2026-09-01T21:10:55.674Z"
+        }
+      ],
+      "ploCert": [],
+      "photoDocs": [],
+      "denrLetter": [
+        {
+          "url": "/uploads/czreq-1788297050931-799971111.jpg",
+          "filename": "czreq-1788297050931-799971111.jpg",
+          "originalName": "Gemini_Generated_Image_kmynoakmynoakmyn.jpg",
+          "size": 154011,
+          "mimeType": "image/jpeg",
+          "uploadedAt": "2026-09-01T21:10:50.945Z"
+        }
+      ],
+      "studentIdLetter": []
+    },
+    "notes": "",
+    "status": "submitted",
+    "stepProgress": {
+      "currentStep": 1,
+      "totalSteps": 3,
+      "step1Completed": true,
+      "step1At": "2026-09-01T21:11:16.513Z",
+      "step1By": "Online Resident Submission",
+      "step2Completed": false,
+      "step2At": null,
+      "step2By": null,
+      "step3Completed": false,
+      "step3At": null,
+      "step3By": null
+    },
+    "responsibleOfficers": [
+      {
+        "name": "Bon Ryan P. Pedron",
+        "role": "Admin Aide (Intake & Issuance)"
+      },
+      {
+        "name": "Edward B. Romulo, EnP.",
+        "role": "Zoning Officer (Review & Inspection)"
+      },
+      {
+        "name": "Randy A. Balasabas",
+        "role": "Admin Aide (Verification)"
+      }
+    ],
+    "slaDays": 1,
+    "slaMinutes": 12,
+    "fee": "None (Free)",
+    "createdAt": "2026-09-01T21:11:16.513Z",
+    "updatedAt": "2026-09-01T21:11:16.513Z"
+  }
+]

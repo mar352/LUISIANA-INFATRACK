@@ -35,8 +35,23 @@ export function GoogleHeatmapOverlay({
     const scratch = scratchRef.current ?? document.createElement("canvas");
     scratchRef.current = scratch;
 
+    let lastPaint = 0;
+    let pendingRaf: number | null = null;
+
     const paintCanvas = () => {
       if (dead || viewer.isDestroyed()) return;
+      const now = performance.now();
+      if (now - lastPaint < 33) {
+        if (pendingRaf == null) {
+          pendingRaf = window.requestAnimationFrame(() => {
+            pendingRaf = null;
+            paintCanvas();
+          });
+        }
+        return;
+      }
+      lastPaint = now;
+
       const cssW = viewer.scene.canvas.clientWidth;
       const cssH = viewer.scene.canvas.clientHeight;
       if (cssW < 2 || cssH < 2) return;
@@ -80,6 +95,7 @@ export function GoogleHeatmapOverlay({
 
     return () => {
       dead = true;
+      if (pendingRaf != null) window.cancelAnimationFrame(pendingRaf);
       if (typeof removeRender === "function") removeRender();
       window.removeEventListener("resize", paintCanvas);
     };

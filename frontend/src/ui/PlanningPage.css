@@ -51,7 +51,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 10px;
+  padding: 6px 12px;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -59,6 +59,7 @@
   background: rgba(255, 255, 255, 0.75);
   color: var(--muted, #555);
   white-space: nowrap;
+  border-radius: 999px;
 }
 
 .planning-live-pill.is-live {
@@ -98,11 +99,11 @@
   border: 1px solid var(--stroke, rgba(0, 0, 0, 0.18));
   background: var(--cream-deep);
   color: var(--ink, #1a1a1a);
-  padding: 8px 12px;
+  padding: 8px 14px;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  border-radius: 0;
+  border-radius: 999px;
 }
 
 .planning-btn.primary {
@@ -201,7 +202,7 @@
 }
 
 .planning-detail {
-  background: var(--cream, var(--cream));
+  background: var(--navy);
   padding: 0;
   overflow: hidden;
   min-width: 0;
@@ -224,15 +225,23 @@
 }
 
 .planning-detail-close {
-  border: 1px solid var(--stroke, rgba(0, 0, 0, 0.18));
-  background: transparent;
-  color: var(--ink, #1a1a1a);
+  border: 0;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
   width: 32px;
   height: 32px;
+  border-radius: 999px;
   font-size: 20px;
   line-height: 1;
   cursor: pointer;
   flex-shrink: 0;
+}
+
+.planning-detail-close:hover,
+.planning-detail-close:focus-visible {
+  background: var(--gold);
+  color: var(--on-gold);
+  outline: none;
 }
 
 .planning-close-confirm {
@@ -242,8 +251,9 @@
   justify-content: space-between;
   gap: 10px;
   padding: 10px 18px;
-  border-bottom: 1px solid var(--stroke, rgba(0, 0, 0, 0.1));
-  background: color-mix(in oklch, var(--cream, var(--cream)) 82%, #c47a1a);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 193, 7, 0.16);
+  color: #eef1f6;
   font-size: 13px;
   font-weight: 650;
 }
@@ -267,9 +277,9 @@
   border: 1px solid var(--stroke, rgba(0, 0, 0, 0.18));
   background: rgba(255, 255, 255, 0.75);
   color: var(--ink, #1a1a1a);
-  padding: 8px 10px;
+  padding: 8px 12px;
   font-size: 13px;
-  border-radius: 0;
+  border-radius: 12px;
 }
 
 .planning-toolbar .planning-input {
@@ -325,6 +335,7 @@
   padding: 12px;
   border: 1px solid rgba(21, 28, 40, 0.28);
   background: rgba(21, 28, 40, 0.07);
+  border-radius: 12px;
 }
 
 .planning-poll > label {
@@ -366,6 +377,7 @@
 .planning-site-cta {
   margin: 12px 0 16px;
   padding: 14px;
+  border-radius: 14px;
   border: 2px solid var(--gold);
   background: color-mix(in oklch, var(--gold-oklch) 14%, var(--cream));
   display: flex;
@@ -401,7 +413,7 @@
   display: block;
   width: 100%;
   margin-top: 8px;
-  padding: 8px 10px;
+  padding: 8px 12px;
   font-size: 12px;
   font-weight: 800;
   border: 2px solid var(--seed);
@@ -411,6 +423,7 @@
   pointer-events: auto;
   position: relative;
   z-index: 2;
+  border-radius: 999px;
 }
 
 .planning-card-pin-btn:hover {
@@ -421,7 +434,7 @@
   display: block;
   width: 100%;
   margin: 10px 0;
-  padding: 8px 10px;
+  padding: 8px 12px;
   border: 1px dashed rgba(0, 0, 0, 0.2);
   background: transparent;
   font: inherit;
@@ -430,6 +443,7 @@
   color: var(--muted, #555);
   cursor: pointer;
   text-align: left;
+  border-radius: 999px;
 }
 
 .planning-panel-intro {
@@ -446,6 +460,8 @@
   min-width: 160px;
   background: rgba(0, 0, 0, 0.03);
   border: 1px solid var(--stroke, rgba(0, 0, 0, 0.08));
+  border-radius: 14px;
+  overflow: hidden;
 }
 
 .planning-column-head {
@@ -489,6 +505,7 @@
   color: inherit;
   pointer-events: auto;
   position: relative;
+  border-radius: 12px;
 }
 
 .planning-card.selected {
@@ -527,7 +544,7 @@
   gap: 8px;
   margin-bottom: 12px;
   font-size: 12px;
-  color: var(--muted, #666);
+  color: rgba(238, 241, 246, 0.7);
 }
 
 .planning-pill {
@@ -859,6 +876,7 @@
   font-size: 12px;
   cursor: pointer;
   margin-top: 4px;
+  border-radius: 999px;
 }
 
 .planning-file-btn:hover {
@@ -868,10 +886,11 @@
 
 .planning-chip {
   font-size: 10px;
-  padding: 2px 6px;
+  padding: 2px 8px;
   border: 1px solid var(--stroke, rgba(0, 0, 0, 0.2));
   background: rgba(255, 255, 255, 0.5);
   color: var(--muted, #555);
+  border-radius: 999px;
 }
 
 .planning-chip-committee {
@@ -1079,7 +1098,9 @@
 .planning-modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(20, 20, 20, 0.45);
+  background: rgba(12, 16, 24, 0.58);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1093,13 +1114,17 @@
   width: min(520px, 100%);
   max-height: min(90vh, 100%);
   overflow: hidden;
-  background: var(--cream, var(--cream));
-  border: 2px solid var(--ink, #1a1a1a);
+  background: var(--navy);
+  color: #eef1f6;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 18px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
   padding: 0;
   display: flex;
   flex-direction: column;
   gap: 0;
   margin: auto;
+  font-family: var(--font);
 }
 
 .planning-modal--tall {
@@ -1110,7 +1135,7 @@
 .planning-modal-head {
   flex: 0 0 auto;
   padding: 16px 18px 10px;
-  border-bottom: 1px solid var(--stroke, rgba(0, 0, 0, 0.1));
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .planning-modal-body {
@@ -1142,7 +1167,7 @@
 .planning-modal-foot {
   flex: 0 0 auto;
   padding: 12px 18px 16px;
-  border-top: 1px solid var(--stroke, rgba(0, 0, 0, 0.1));
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
   background: inherit;
 }
 
@@ -1170,6 +1195,62 @@
   margin: 0;
   font-size: 1.1rem;
   text-wrap: balance;
+  color: #fff;
+}
+
+.planning-modal .planning-input,
+.planning-modal textarea,
+.planning-modal select {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #fff;
+  border-radius: 12px;
+}
+
+.planning-modal .planning-input::placeholder,
+.planning-modal textarea::placeholder {
+  color: rgba(238, 241, 246, 0.45);
+}
+
+.planning-modal .planning-input option,
+.planning-modal select option {
+  background: #151c28;
+  color: #eef1f6;
+}
+
+.planning-modal label:not(.planning-check):not(.planning-file-btn),
+.planning-modal .planning-muted,
+.planning-modal .planning-check-user {
+  color: rgba(238, 241, 246, 0.62);
+}
+
+.planning-modal .planning-btn {
+  border: 0;
+  background: rgba(255, 255, 255, 0.1);
+  color: #eef1f6;
+}
+
+.planning-modal .planning-btn.primary {
+  background: var(--gold);
+  color: var(--on-gold);
+  border-color: var(--gold);
+}
+
+.planning-modal .planning-btn.danger {
+  background: rgba(255, 77, 79, 0.18);
+  color: #ff9b9b;
+  border: 0;
+}
+
+.planning-modal .planning-file-btn {
+  border-color: rgba(255, 255, 255, 0.28);
+  color: #eef1f6;
+}
+
+.planning-modal .planning-check-list--offices {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
 }
 
 /* Legacy single-column modals (events/meetings) without head/body/foot */
@@ -1201,6 +1282,7 @@
     border-left: none;
     border-right: none;
     border-bottom: none;
+    border-radius: 18px 18px 0 0;
   }
 
   .planning-modal-row {
@@ -1254,11 +1336,9 @@
 
 [data-theme="dark"] .planning-top,
 [data-theme="dark"] .planning-tabs,
-[data-theme="dark"] .planning-detail,
 [data-theme="dark"] .planning-card,
 [data-theme="dark"] .planning-event-card,
 [data-theme="dark"] .planning-meeting-card,
-[data-theme="dark"] .planning-modal,
 [data-theme="dark"] .planning-cal-cell {
   background: rgba(30, 36, 32, 0.92);
   color: #e8e4da;
@@ -1269,9 +1349,9 @@
   border-color: rgba(255, 255, 255, 0.12);
 }
 
-[data-theme="dark"] .planning-modal-head,
-[data-theme="dark"] .planning-modal-foot {
-  border-color: rgba(255, 255, 255, 0.1);
+[data-theme="dark"] .planning-modal {
+  background: var(--navy);
+  color: #eef1f6;
 }
 
 [data-theme="dark"] .planning-check-user {

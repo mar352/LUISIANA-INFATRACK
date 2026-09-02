@@ -199,5 +199,18 @@ export function nextActorHint(status: PlanningProposalStatus): string {
 }
 
 export function requestKindLabel(kind: PlanningRequestKind | undefined): string {
-  return kind === "barangay_request" ? "Brgy request" : "Proposal";
+  switch (kind) {
+    case "barangay_request":
+      return "Brgy Request";
+    case "office_proposal":
+      return "Office Proposal";
+    case "zoning_certificate":
+      return "Zoning Certificate";
+    case "land_titling":
+      return "Land Titling (DENR)";
+    case "planning_research":
+      return "Research Data";
+    default:
+      return "Proposal";
+  }
 }

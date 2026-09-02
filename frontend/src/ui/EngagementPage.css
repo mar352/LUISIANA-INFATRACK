@@ -5,10 +5,10 @@
   display: flex;
   flex-direction: column;
   background:
-    radial-gradient(ellipse 70% 40% at 90% 0%, rgba(255, 193, 7, 0.14), transparent),
+    radial-gradient(ellipse 70% 40% at 90% 0%, rgba(255, 193, 7, 0.16), transparent),
     linear-gradient(180deg, var(--cream) 0%, var(--cream-deep) 100%);
   color: var(--ink, #1a1a1a);
-  font-family: "Segoe UI", system-ui, sans-serif;
+  font-family: var(--font);
 }
 
 .eg-top {
@@ -17,8 +17,9 @@
   justify-content: space-between;
   gap: 12px;
   padding: 12px 16px;
-  border-bottom: 2px solid rgba(0, 0, 0, 0.1);
-  background: rgba(255, 253, 248, 0.92);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--navy);
+  color: #eef1f6;
   flex-shrink: 0;
 }
 
@@ -39,24 +40,48 @@
 .eg-sub {
   margin: 2px 0 0;
   font-size: 11px;
-  color: #666;
+  color: rgba(238, 241, 246, 0.62);
 }
 
 .eg-btn {
   font: inherit;
+  font-family: var(--font);
   font-size: 13px;
   font-weight: 650;
-  padding: 8px 12px;
-  border: 1px solid rgba(0, 0, 0, 0.22);
-  background: transparent;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(21, 28, 40, 0.08);
   cursor: pointer;
   color: inherit;
 }
 
+.eg-top .eg-btn {
+  background: rgba(255, 255, 255, 0.1);
+  color: #eef1f6;
+}
+
+.eg-top .eg-btn:hover,
+.eg-top .theme-toggle.btn-amber:hover {
+  background: var(--gold);
+  color: var(--on-gold);
+  transform: none;
+  box-shadow: none;
+}
+
+.eg-top .theme-toggle.btn-amber {
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #eef1f6;
+  box-shadow: none;
+  min-height: 36px;
+}
+
 .eg-btn.primary {
-  background: var(--seed);
-  border-color: var(--seed);
-  color: #fff;
+  background: var(--gold);
+  color: var(--on-gold);
   font-weight: 700;
   margin-top: 8px;
   align-self: flex-start;
@@ -71,9 +96,11 @@
 }
 
 .eg-kpi {
-  padding: 10px 12px;
-  background: rgba(255, 253, 248, 0.9);
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  padding: 12px 14px;
+  background: #fff;
+  border: 1px solid var(--stroke, rgba(0, 0, 0, 0.1));
+  border-radius: 14px;
+  box-shadow: 0 8px 20px rgba(21, 28, 40, 0.06);
 }
 
 .eg-kpi-label {
@@ -102,6 +129,11 @@
   flex-shrink: 0;
 }
 
+.eg-toolbar .eg-btn:hover {
+  background: var(--gold);
+  color: var(--on-gold);
+}
+
 .eg-toolbar label,
 .eg-field {
   display: flex;
@@ -118,11 +150,21 @@
   font: inherit;
   font-weight: 400;
   font-size: 13px;
-  padding: 7px 10px;
-  border: 1px solid rgba(0, 0, 0, 0.2);
+  padding: 8px 12px;
+  border: 1px solid var(--stroke, rgba(0, 0, 0, 0.16));
+  border-radius: 12px;
   background: #fff;
   color: #1a1a1a;
   min-width: 140px;
+  box-shadow: none;
+}
+
+.eg-toolbar select:focus,
+.eg-field select:focus,
+.eg-field textarea:focus {
+  outline: none;
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px rgba(255, 193, 7, 0.22);
 }
 
 .eg-err {
@@ -132,6 +174,7 @@
   color: #8b1e1e;
   background: rgba(180, 40, 40, 0.08);
   border: 1px solid rgba(180, 40, 40, 0.25);
+  border-radius: 12px;
   flex-shrink: 0;
 }
 
@@ -159,20 +202,20 @@
 .eg-item {
   text-align: left;
   width: 100%;
-  padding: 10px 12px;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  background: rgba(255, 255, 255, 0.72);
+  padding: 12px 14px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: #fff;
   cursor: pointer;
   font: inherit;
   color: inherit;
-  box-shadow: none;
-  border-radius: 0;
+  box-shadow: 0 6px 16px rgba(21, 28, 40, 0.05);
+  border-radius: 14px;
   user-select: none;
 }
 
 .eg-item:hover {
-  background: rgba(255, 255, 255, 0.95);
-  border-color: rgba(0, 0, 0, 0.18);
+  background: color-mix(in oklch, var(--gold-oklch) 10%, #fff);
+  border-color: rgba(255, 193, 7, 0.35);
 }
 
 .eg-item:focus {
@@ -180,7 +223,7 @@
 }
 
 .eg-item:focus-visible {
-  outline: 2px solid var(--seed);
+  outline: 2px solid var(--gold);
   outline-offset: 1px;
 }
 
@@ -191,11 +234,12 @@
 }
 
 .eg-item .eg-kind {
-  color: var(--muted);
+  color: var(--navy);
 }
 
 .eg-item.is-selected .eg-kind {
-  color: var(--amber-ink);
+  color: var(--navy);
+  background: var(--gold);
 }
 
 .eg-item-top {
@@ -213,6 +257,23 @@
 .eg-meta { color: #666; }
 .eg-id { font-size: 11px; text-transform: none; letter-spacing: 0; font-weight: 600; }
 
+.eg-kind,
+.eg-status {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+}
+
+.eg-kind {
+  background: rgba(255, 193, 7, 0.18);
+  color: var(--navy);
+}
+
+.eg-status {
+  background: rgba(21, 28, 40, 0.08);
+}
+
 .eg-title {
   font-size: 14px;
   font-weight: 700;
@@ -227,9 +288,11 @@
 .eg-detail {
   overflow: auto;
   min-height: 0;
-  padding: 14px 16px;
-  background: rgba(255, 253, 248, 0.92);
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  padding: 16px 18px;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 16px;
+  box-shadow: 0 8px 20px rgba(21, 28, 40, 0.06);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -249,9 +312,10 @@
 
 .eg-contact {
   font-size: 13px;
-  padding: 8px 10px;
-  background: rgba(255, 193, 7, 0.08);
-  border: 1px solid rgba(255, 193, 7, 0.25);
+  padding: 10px 12px;
+  background: rgba(255, 193, 7, 0.1);
+  border: 1px solid rgba(255, 193, 7, 0.28);
+  border-radius: 12px;
 }
 
 .eg-empty {
@@ -286,28 +350,30 @@ html[data-theme="dark"] .eg-page,
   background:
     radial-gradient(ellipse 70% 40% at 90% 0%, rgba(255, 193, 7, 0.18), transparent),
     linear-gradient(180deg, #0f141c 0%, #151c28 100%);
-  color: #f0f0ec;
+  color: #eef1f6;
 }
 
-html[data-theme="dark"] .eg-top,
 html[data-theme="dark"] .eg-kpi,
 html[data-theme="dark"] .eg-item,
 html[data-theme="dark"] .eg-detail {
-  background: rgba(24, 28, 24, 0.92);
+  background: rgba(21, 28, 40, 0.72);
   border-color: rgba(255, 255, 255, 0.1);
 }
 
+html[data-theme="dark"] .eg-item:hover,
 html[data-theme="dark"] .eg-item.is-selected {
   background: rgba(255, 193, 7, 0.12);
   border-color: rgba(255, 193, 7, 0.45);
 }
 
-html[data-theme="dark"] .eg-item .eg-kind {
-  color: #9aaa9e;
+html[data-theme="dark"] .eg-kind {
+  background: rgba(255, 193, 7, 0.2);
+  color: var(--gold);
 }
 
 html[data-theme="dark"] .eg-item.is-selected .eg-kind {
-  color: var(--gold);
+  color: var(--on-gold);
+  background: var(--gold);
 }
 
 html[data-theme="dark"] .eg-sub,
@@ -315,13 +381,17 @@ html[data-theme="dark"] .eg-meta,
 html[data-theme="dark"] .eg-status,
 html[data-theme="dark"] .eg-empty,
 html[data-theme="dark"] .eg-kpi-label {
-  color: #aaa;
+  color: rgba(238, 241, 246, 0.62);
+}
+
+html[data-theme="dark"] .eg-status {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 html[data-theme="dark"] .eg-toolbar select,
 html[data-theme="dark"] .eg-field select,
 html[data-theme="dark"] .eg-field textarea {
-  background: #1c211c;
+  background: rgba(255, 255, 255, 0.08);
   border-color: rgba(255, 255, 255, 0.15);
-  color: #f0f0ec;
+  color: #eef1f6;
 }

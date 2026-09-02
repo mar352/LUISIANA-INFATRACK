@@ -1,11 +1,20 @@
 /**
  * Live MGB flood + rain-induced landslide at a point.
- * Public GeoRiskPH ArcGIS MapServers — no token, no HazardHunter scrape.
- * Luisiana bbox only. Empty identify = Safe (not in a mapped polygon).
+ * Public GeoRiskPH ArcGIS MapServers — no token.
+ *
+ * identify / query are NOT supported by these MapServers (returns 400).
+ * Instead we use the `export` operation to get a tiny PNG image centred on
+ * the point, then sample the centre pixel and match it against the known
+ * MGB legend palette colours.
+ *
+ * Luisiana bbox only. A fully-transparent pixel means the point is not
+ * inside any susceptibility polygon → "Safe".
  */
 
+import { PNG } from "pngjs";
+
 const UA = "INFA-TRACK-Luisiana/1.0 (municipal GIS; MGB flood/landslide)";
-const FETCH_TIMEOUT_MS = 12_000;
+const FETCH_TIMEOUT_MS = 18_000;
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const CACHE_MAX = 400;
 
@@ -14,20 +23,28 @@ const GEORISK_BASE = "https://ulap-hazards.georisk.gov.ph/arcgis/rest/services/M
 /** Generous municipality box; frontend still uses the precise polygon. */
 const LUISIANA_BBOX = { west: 121.44, south: 14.12, east: 121.58, north: 14.27 };
 
-const FLOOD_CODES = {
-  "01": "Low Susceptibility",
-  "02": "Moderate Susceptibility",
-  "03": "High Susceptibility",
-  "04": "Very High Susceptibility",
-};
+// ─── Legend palettes ──────────────────────────────────────────────────────────
+// Colours taken directly from the ArcGIS uniqueValueInfos renderer returned by
+// /MapServer/0?f=json for each service.
 
-const RIL_CODES = {
-  "01": "Debris Flow / Accumulation Zone",
-  "02": "Low Susceptibility",
-  "03": "Moderate Susceptibility",
-  "04": "High Susceptibility",
-  "05": "Very High Susceptibility",
-};
+const FLOOD_PALETTE = [
+  { r: 0,   g: 38,  b: 115, code: "04", value: "Very High Susceptibility" },
+  { r: 89,  g: 0,   b: 255, code: "03", value: "High Susceptibility" },
+  { r: 176, g: 69,  b: 255, code: "02", value: "Moderate Susceptibility" },
+  { r: 227, g: 209, b: 255, code: "01", value: "Low Susceptibility" },
+];
+
+const RIL_PALETTE = [
+  { r: 144, g: 36,  b: 0,   code: "05", value: "Very High Susceptibility" },
+  { r: 255, g: 0,   b: 0,   code: "04", value: "High Susceptibility" },
+  { r: 0,   g: 128, b: 0,   code: "03", value: "Moderate Susceptibility" },
+  { r: 255, g: 255, b: 0,   code: "02", value: "Low Susceptibility" },
+  { r: 0,   g: 0,   b: 0,   code: "01", value: "Debris Flow / Accumulation Zone" },
+];
+
+const UNAVAILABLE = { value: "Unavailable", code: null };
+
+// ─── Cache ────────────────────────────────────────────────────────────────────
 
 const cache = new Map();
 
@@ -44,6 +61,8 @@ function remember(key, value) {
   return value;
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 export function isInsideLuisianaBbox(lat, lon) {
   return (
     lon >= LUISIANA_BBOX.west &&
@@ -53,129 +72,96 @@ export function isInsideLuisianaBbox(lat, lon) {
   );
 }
 
-function attrMap(attributes) {
-  const out = {};
-  if (!attributes || typeof attributes !== "object") return out;
-  for (const [k, v] of Object.entries(attributes)) {
-    if (v == null) continue;
-    const s = String(v).trim();
-    if (!s || s === "Null" || s === "null") continue;
-    out[k] = s;
-    out[k.toLowerCase()] = s;
-  }
-  return out;
+/** Euclidean distance in RGB space. */
+function colourDist(r1, g1, b1, r2, g2, b2) {
+  return Math.sqrt((r1 - r2) ** 2 + (g1 - g2) ** 2 + (b1 - b2) ** 2);
 }
 
-function pick(map, keys) {
-  for (const k of keys) {
-    const v = map[k] ?? map[k.toLowerCase()];
-    if (v) return v;
-  }
-  return "";
-}
-
-function rankFromLabel(value) {
-  const v = String(value || "").toLowerCase();
-  if (v.includes("debris")) return 5;
-  if (v.includes("very high")) return 4;
-  if (v.includes("high")) return 3;
-  if (v.includes("moderate")) return 2;
-  if (v.includes("low")) return 1;
-  if (v === "safe") return 0;
-  return 0;
-}
-
-function decodeFlood(attributes) {
-  const m = attrMap(attributes);
-  const code = pick(m, ["fscode", "Flood Susceptibility"]).replace(/\D/g, "").padStart(2, "0");
-  const labeled = pick(m, ["Flood Susceptibility", "fscode"]);
-  if (FLOOD_CODES[code]) return { value: FLOOD_CODES[code], code };
-  if (FLOOD_CODES[labeled]) return { value: FLOOD_CODES[labeled], code: labeled };
-  if (/suscept/i.test(labeled)) {
-    const found = Object.entries(FLOOD_CODES).find(([, name]) =>
-      name.toLowerCase() === labeled.toLowerCase(),
-    );
-    return { value: labeled, code: found?.[0] ?? null };
-  }
-  return null;
-}
-
-function decodeRil(attributes) {
-  const m = attrMap(attributes);
-  const codeRaw = pick(m, ["rilscode", "RIL Susceptibility"]);
-  const code = /^\d{1,2}$/.test(codeRaw) ? codeRaw.padStart(2, "0") : "";
-  const labeled = pick(m, [
-    "RIL Susceptibility",
-    "lndslidesu",
-    "RIL Susceptibility Description",
-  ]);
-  if (RIL_CODES[code]) return { value: RIL_CODES[code], code };
-  if (/suscept|debris/i.test(labeled)) {
-    const found = Object.entries(RIL_CODES).find(([, name]) =>
-      name.toLowerCase() === labeled.toLowerCase(),
-    );
-    return { value: labeled, code: found?.[0] ?? null };
-  }
-  if (labeled === "LL" || labeled.toLowerCase() === "low") {
-    return { value: RIL_CODES["02"], code: "02" };
-  }
-  return code ? { value: RIL_CODES[code] || labeled || code, code } : null;
-}
-
-function worstLayer(results, decode) {
+/**
+ * Match a pixel RGBA against a known palette.
+ * Returns null when the pixel is transparent (alpha < 64) = outside polygon.
+ * Returns the closest palette entry within a colour-distance threshold of 80.
+ */
+function matchPalette(r, g, b, a, palette) {
+  if (a < 64) return null; // transparent → Safe
   let best = null;
-  let bestRank = -1;
-  for (const row of results) {
-    const decoded = decode(row?.attributes);
-    if (!decoded) continue;
-    const rank = rankFromLabel(decoded.value);
-    if (rank > bestRank) {
-      best = decoded;
-      bestRank = rank;
+  let bestDist = Infinity;
+  for (const entry of palette) {
+    const d = colourDist(r, g, b, entry.r, entry.g, entry.b);
+    if (d < bestDist) {
+      bestDist = d;
+      best = entry;
     }
   }
-  return best;
+  return bestDist < 80 ? { value: best.value, code: best.code } : null;
 }
 
-function identifyUrl(service, lon, lat) {
-  const pad = 0.02;
-  const params = new URLSearchParams({
-    f: "json",
-    geometry: `${lon},${lat}`,
-    geometryType: "esriGeometryPoint",
-    sr: "4326",
-    layers: "all:0",
-    tolerance: "3",
-    mapExtent: `${lon - pad},${lat - pad},${lon + pad},${lat + pad}`,
-    imageDisplay: "400,400,96",
-    returnGeometry: "false",
+/**
+ * Decode a raw PNG buffer and read the RGBA of the pixel at (px, py).
+ */
+function readPixel(buf, px, py) {
+  return new Promise((resolve, reject) => {
+    const png = new PNG();
+    png.parse(buf, (err, data) => {
+      if (err) return reject(err);
+      const idx = (data.width * py + px) * 4;
+      resolve({
+        r: data.data[idx],
+        g: data.data[idx + 1],
+        b: data.data[idx + 2],
+        a: data.data[idx + 3],
+      });
+    });
   });
-  return `${GEORISK_BASE}/${service}/MapServer/identify?${params}`;
 }
 
-async function identify(service, lon, lat) {
+/**
+ * Export a tiny (5×5 px) map image centred on the point using the ArcGIS
+ * MapServer `export` operation, then sample the centre pixel (2,2) and
+ * match it to the supplied palette.
+ *
+ * Returns { value, code } on a match, null for Safe (transparent), or throws.
+ */
+async function sampleLayer(service, lon, lat, palette) {
+  const pad = 0.003; // ~330 m radius — small enough for point precision
+  const bbox = `${lon - pad},${lat - pad},${lon + pad},${lat + pad}`;
+
+  const params = new URLSearchParams({
+    f: "image",
+    bbox,
+    bboxSR: "4326",
+    imageSR: "4326",
+    size: "5,5",
+    format: "png32",
+    transparent: "true",
+    dpi: "96",
+    layers: "show:0",
+  });
+
+  const url = `${GEORISK_BASE}/${service}/MapServer/export?${params}`;
+
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+
+  let buf;
   try {
-    const res = await fetch(identifyUrl(service, lon, lat), {
+    const res = await fetch(url, {
       signal: ctrl.signal,
-      headers: { Accept: "application/json", "User-Agent": UA },
+      headers: { "User-Agent": UA },
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const json = await res.json();
-    if (json?.error) throw new Error(json.error.message || "GeoRisk error");
-    return Array.isArray(json.results) ? json.results : [];
+    buf = Buffer.from(await res.arrayBuffer());
   } finally {
     clearTimeout(timer);
   }
+
+  const { r, g, b, a } = await readPixel(buf, 2, 2);
+  return matchPalette(r, g, b, a, palette);
 }
 
-const UNAVAILABLE = { value: "Unavailable", code: null };
-
-async function layerResult(service, lon, lat, decode) {
+async function layerResult(service, lon, lat, palette) {
   try {
-    const results = await identify(service, lon, lat);
-    const hit = worstLayer(results, decode);
+    const hit = await sampleLayer(service, lon, lat, palette);
     if (hit) return hit;
     return { value: "Safe", code: null };
   } catch (err) {
@@ -183,6 +169,8 @@ async function layerResult(service, lon, lat, decode) {
     return UNAVAILABLE;
   }
 }
+
+// ─── Public API ───────────────────────────────────────────────────────────────
 
 export async function assessGeorisk({ lat, lon }) {
   if (!isInsideLuisianaBbox(lat, lon)) {
@@ -194,8 +182,8 @@ export async function assessGeorisk({ lat, lon }) {
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.value;
 
   const [flood, landslide] = await Promise.all([
-    layerResult("Flood", lon, lat, decodeFlood),
-    layerResult("RainInducedLandslide", lon, lat, decodeRil),
+    layerResult("Flood",               lon, lat, FLOOD_PALETTE),
+    layerResult("RainInducedLandslide", lon, lat, RIL_PALETTE),
   ]);
 
   return remember(key, {

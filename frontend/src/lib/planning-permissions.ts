@@ -35,19 +35,20 @@ export function getPlanningPermissions(role: UserRole | null): PlanningPermissio
   const isViewer = role === "Viewer";
   const isBarangay = role === "Barangay Official";
   const isMpdC = role === "MPDC";
+  const isNegosyo = role === "Negosyo Center";
 
   return {
-    canView: true,
-    canCreate: !isViewer,
-    canComment: !isViewer,
+    canView: !isViewer && !isNegosyo,
+    canCreate: !isViewer && !isNegosyo,
+    canComment: !isViewer && !isNegosyo,
     canSetPriority: isMpdC,
     canAssign: isMpdC,
     canRecommend: isMpdC,
     canApprove: isMpdC,
     canChangeStatus: isMpdC,
-    canVote: !isViewer && !isBarangay,
-    canManageCalendar: !isViewer && !isBarangay,
-    canManageMeetings: (isMpdC || role === "Engineer") && !isBarangay,
+    canVote: !isViewer && !isBarangay && !isNegosyo,
+    canManageCalendar: !isViewer && !isBarangay && !isNegosyo,
+    canManageMeetings: (isMpdC || role === "Engineer") && !isBarangay && !isNegosyo,
   };
 }
 
@@ -56,7 +57,7 @@ export function allowedStatusTransitions(
   status: PlanningProposalStatus,
   role: UserRole | null,
 ): PlanningProposalStatus[] {
-  if (!role || role === "Viewer") return [];
+  if (!role || role === "Viewer" || role === "Negosyo Center") return [];
 
   // Submitters may only file / resubmit. MPDC owns the review pipeline.
   if (role !== "MPDC") {
@@ -87,9 +88,8 @@ export function allowedStatusTransitions(
   return next;
 }
 
-export function departmentForRole(role: UserRole): "MPDC" | "Engineering" | "Agriculture" | "Negosyo Center" {
+export function departmentForRole(role: UserRole): "MPDC" | "Engineering" | "Agriculture" {
   if (role === "Engineer") return "Engineering";
   if (role === "Agriculture") return "Agriculture";
-  if (role === "Negosyo Center") return "Negosyo Center";
   return "MPDC";
 }

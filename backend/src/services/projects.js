@@ -32,6 +32,7 @@ function modelTypeToLegacyType(modelType) {
   if (!modelType) return "Private Building";
   if (["road", "bridge", "water_tank", "solar_farm", "municipal_hall", "rhu"].includes(modelType)) return "Municipal Project";
   if (["barn"].includes(modelType)) return "Agricultural Structure";
+  if (modelType === "shape") return "Municipal Project";
   return "Private Building";
 }
 
@@ -50,6 +51,8 @@ function ensureProjectShape(p) {
       ...ph,
       // Legacy uploads were progress photos; keep them there.
       kind: ph.kind === "site" ? "site" : "progress",
+      lat: Number.isFinite(Number(ph.lat)) ? Number(ph.lat) : null,
+      lon: Number.isFinite(Number(ph.lon)) ? Number(ph.lon) : null,
     })),
     activityLog: Array.isArray(p.activityLog) ? p.activityLog : [],
     budgetTotal: p.budgetTotal ?? null,
@@ -64,11 +67,50 @@ function ensureProjectShape(p) {
     lifecyclePhase: p.lifecyclePhase ?? "Planning",
     rotation: Number.isFinite(Number(p.rotation)) ? Number(p.rotation) : 0,
     modelScale: Number.isFinite(Number(p.modelScale)) ? Number(p.modelScale) : 1,
+    modelScaleX: Number.isFinite(Number(p.modelScaleX)) ? Number(p.modelScaleX) : 1,
+    modelScaleY: Number.isFinite(Number(p.modelScaleY)) ? Number(p.modelScaleY) : 1,
+    modelScaleZ: Number.isFinite(Number(p.modelScaleZ)) ? Number(p.modelScaleZ) : 1,
     modelHeight: Number.isFinite(Number(p.modelHeight)) ? Number(p.modelHeight) : 0,
     modelLocked: Boolean(p.modelLocked),
     siteMarkerOnly: Boolean(p.siteMarkerOnly),
     markerColor: p.markerColor ? String(p.markerColor) : "",
     mapSketch: normalizeMapSketch(p.mapSketch),
+    mapShape: normalizeMapShape(p.mapShape),
+  };
+}
+
+const SHAPE_KINDS = [
+  "freeform",
+  "box",
+  "cylinder",
+  "gable",
+  "hip",
+  "pyramid",
+  "tree_broadleaf",
+  "tree_conifer",
+  "tree_bush",
+];
+
+function normalizeMapShape(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  if (!SHAPE_KINDS.includes(raw.kind)) return null;
+  const n = (v, fallback) => {
+    const x = Number(v);
+    return Number.isFinite(x) ? x : fallback;
+  };
+  const footprint = Array.isArray(raw.footprint)
+    ? raw.footprint
+        .map((c) => ({ lon: Number(c?.lon ?? c?.lng), lat: Number(c?.lat) }))
+        .filter((c) => Number.isFinite(c.lon) && Number.isFinite(c.lat))
+    : undefined;
+  return {
+    kind: raw.kind,
+    color: typeof raw.color === "string" && raw.color ? raw.color : "#c8ccd4",
+    width: n(raw.width, 8),
+    depth: n(raw.depth, 8),
+    height: n(raw.height, 8),
+    radius: n(raw.radius, 4),
+    ...(footprint && footprint.length >= 3 ? { footprint } : {}),
   };
 }
 
@@ -348,6 +390,7 @@ export function addProject({
   siteMarkerOnly,
   mapSketch,
   markerColor,
+  mapShape,
 }) {
   const projects = projectsSeed();
   const id = `P${nextId++}`;
@@ -367,6 +410,7 @@ export function addProject({
     modelLocked: siteMarkerOnly ? true : false,
     siteMarkerOnly: Boolean(siteMarkerOnly),
     mapSketch: sketch,
+    mapShape: normalizeMapShape(mapShape),
     markerColor: markerColor || sketch?.color || "",
     description: description || "",
     startDate: startDate || null,
@@ -488,10 +532,19 @@ export function updateProject(id, patch) {
     logActivity(project, "Map sketch updated.");
   }
 
+  if (patch.mapShape !== undefined) {
+    project.mapShape = normalizeMapShape(patch.mapShape);
+    logActivity(project, "Map shape updated.");
+  }
+
   if (patch.markerColor !== undefined) {
     project.markerColor = String(patch.markerColor || "");
     if (project.mapSketch) project.mapSketch = { ...project.mapSketch, color: project.markerColor || project.mapSketch.color };
     logActivity(project, "Marker color updated.");
+  }
+
+  if (patch.hideBadge !== undefined) {
+    project.hideBadge = Boolean(patch.hideBadge);
   }
 
   if (project.modelLocked) {
@@ -500,12 +553,18 @@ export function updateProject(id, patch) {
       patch.location !== undefined ||
       patch.rotation !== undefined ||
       patch.modelScale !== undefined ||
+      patch.modelScaleX !== undefined ||
+      patch.modelScaleY !== undefined ||
+      patch.modelScaleZ !== undefined ||
       patch.modelHeight !== undefined
     ) {
       // strip transform changes when locked (modelLocked toggle above still applies)
       delete patch.location;
       delete patch.rotation;
       delete patch.modelScale;
+      delete patch.modelScaleX;
+      delete patch.modelScaleY;
+      delete patch.modelScaleZ;
       delete patch.modelHeight;
     }
   }
@@ -527,6 +586,12 @@ export function updateProject(id, patch) {
       project.modelScale = Math.max(0.001, Math.min(100, scale));
     }
   }
+  for (const key of ["modelScaleX", "modelScaleY", "modelScaleZ"]) {
+    if (patch[key] !== undefined) {
+      const n = Number(patch[key]);
+      if (Number.isFinite(n)) project[key] = Math.max(0.001, Math.min(100, n));
+    }
+  }
   if (patch.modelHeight !== undefined) {
     const h = Number(patch.modelHeight);
     if (Number.isFinite(h)) {
@@ -538,6 +603,9 @@ export function updateProject(id, patch) {
     patch.location !== undefined ||
     patch.rotation !== undefined ||
     patch.modelScale !== undefined ||
+    patch.modelScaleX !== undefined ||
+    patch.modelScaleY !== undefined ||
+    patch.modelScaleZ !== undefined ||
     patch.modelHeight !== undefined
   ) {
     logActivity(project, "3D model position, rotation, or scale updated.");
@@ -635,11 +703,13 @@ export function removeProject(id) {
   return true;
 }
 
-export function addProjectPhoto(projectId, { url, caption, milestoneId, kind }) {
+export function addProjectPhoto(projectId, { url, caption, milestoneId, kind, lat, lon }) {
   const project = findProject(projectId);
   if (!project || !url) return null;
 
   const photoKind = kind === "site" ? "site" : "progress";
+  const gpsLat = Number(lat);
+  const gpsLon = Number(lon);
   const photo = {
     id: `PH${Date.now()}`,
     url: String(url),
@@ -647,6 +717,8 @@ export function addProjectPhoto(projectId, { url, caption, milestoneId, kind }) 
     kind: photoKind,
     milestoneId: photoKind === "progress" ? milestoneId || null : null,
     uploadedAt: new Date().toISOString(),
+    lat: Number.isFinite(gpsLat) ? gpsLat : null,
+    lon: Number.isFinite(gpsLon) ? gpsLon : null,
   };
   project.photos.unshift(photo);
   const label = photoKind === "site" ? "Site photo" : "Progress photo";
@@ -768,6 +840,8 @@ export function toPublicProject(p) {
     caption: ph.caption || "",
     kind: ph.kind === "site" ? "site" : "progress",
     uploadedAt: ph.uploadedAt,
+    lat: Number.isFinite(Number(ph.lat)) ? Number(ph.lat) : null,
+    lon: Number.isFinite(Number(ph.lon)) ? Number(ph.lon) : null,
   }));
   return {
     id: p.id,

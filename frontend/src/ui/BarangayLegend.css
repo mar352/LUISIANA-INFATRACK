@@ -55,12 +55,35 @@
 }
 
 .brgy-legend-list li {
+  margin: 0;
+}
+
+.brgy-legend-item {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 2px;
+  width: 100%;
+  margin: 0;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
   font-size: 12px;
   line-height: 1.3;
+  text-align: left;
+  cursor: pointer;
+}
+
+.brgy-legend-item:hover,
+.brgy-legend-item:focus-visible {
+  background: rgba(255, 255, 255, 0.1);
+  outline: none;
+}
+
+.brgy-legend-item.is-on {
+  background: rgba(255, 193, 7, 0.18);
 }
 
 .brgy-legend-swatch {

@@ -49,6 +49,7 @@ export function ProjectChat() {
     try {
       const res = await fetch(backendUrl("/api/chat"), {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: nextMessages }),
       });

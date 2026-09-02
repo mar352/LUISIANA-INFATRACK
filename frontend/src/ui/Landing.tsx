@@ -7,10 +7,15 @@ export type UserRole =
   | "Agriculture"
   | "Negosyo Center"
   | "Barangay Official"
+  | "Private Engineer"
   | "Viewer";
 
 export function isBarangayOfficial(role: UserRole | null | undefined): boolean {
   return role === "Barangay Official";
+}
+
+export function isPrivateEngineer(role: UserRole | null | undefined): boolean {
+  return role === "Private Engineer";
 }
 
 export function isMunicipalStaff(role: UserRole | null | undefined): boolean {
@@ -86,7 +91,7 @@ export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
     canSeeProjects: false,
     canSeeAlerts: false,
     canSeeBusinessPermits: true,
-    canSeePlanning: true,
+    canSeePlanning: false,
     canSeeEngagement: false,
   },
   "Barangay Official": {
@@ -100,6 +105,19 @@ export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
     canSeeAlerts: false,
     canSeeBusinessPermits: false,
     canSeePlanning: true,
+    canSeeEngagement: false,
+  },
+  "Private Engineer": {
+    label: "Private Engineer",
+    color: "#0d7377",
+    description: "Licensed Private Civil Engineers & Architects — submit blueprints, 3D designs, and progress logs",
+    canSeeWeather: true,
+    canSeeLayers: true,
+    canSeeRisk: true,
+    canSeeProjects: false,
+    canSeeAlerts: false,
+    canSeeBusinessPermits: false,
+    canSeePlanning: false,
     canSeeEngagement: false,
   },
   Viewer: {
@@ -123,6 +141,7 @@ export const ROLE_CREDENTIALS: Record<string, UserRole> = {
   agriculture: "Agriculture",
   negosyo: "Negosyo Center",
   barangay: "Barangay Official",
+  pengineer: "Private Engineer",
 };
 
 function CapsuleActions({
@@ -198,10 +217,12 @@ const PageWrap = ({ children }: { children: ReactNode }) => (
 const PageOverview = ({
   onEnter,
   onPublicPortal,
+  onOnlineServices,
   setActivePage,
 }: {
   onEnter: () => void;
   onPublicPortal: () => void;
+  onOnlineServices?: () => void;
   setActivePage: (page: LandingPageId) => void;
 }) => (
   <>
@@ -222,8 +243,12 @@ const PageOverview = ({
           Municipal GIS for where Luisiana builds infrastructure on safer ground — 3D map, site assessment, and department planning.
         </p>
         <CapsuleActions className="hero-cta">
-          <button type="button" className="btn-amber" onClick={onPublicPortal}>
-            Public Portal
+          <button
+            type="button"
+            className="btn-amber"
+            onClick={onOnlineServices || onPublicPortal}
+          >
+            Mag-apply Online
           </button>
           <button type="button" className="btn-ghost" onClick={onEnter}>
             Department Sign In
@@ -455,9 +480,11 @@ const PageAbout = ({ onEnter, onPublicPortal }: { onEnter: () => void; onPublicP
 export function LandingPage({
   onEnter,
   onPublicPortal,
+  onOnlineServices,
 }: {
   onEnter: () => void;
   onPublicPortal: () => void;
+  onOnlineServices?: () => void;
 }) {
   const [activePage, setActivePage] = useState<LandingPageId>("overview");
 
@@ -474,6 +501,7 @@ export function LandingPage({
       overview: (props: {
         onEnter: () => void;
         onPublicPortal: () => void;
+        onOnlineServices?: () => void;
       }) => <PageOverview {...props} setActivePage={setActivePage} />,
       features: PageFeatures,
       departments: PageDepartments,
@@ -510,8 +538,12 @@ export function LandingPage({
         <div className="landing-nav-actions">
           <ThemeToggle />
           <CapsuleActions>
-            <button type="button" className="btn-amber" onClick={onPublicPortal}>
-              Public Portal
+            <button
+              type="button"
+              className="btn-amber"
+              onClick={onOnlineServices || onPublicPortal}
+            >
+              Mag-apply Online
             </button>
             <button type="button" className="btn-ghost" onClick={onEnter}>
               Sign In
@@ -520,7 +552,11 @@ export function LandingPage({
         </div>
       </nav>
       <PageWrap>
-        <ActivePage onEnter={onEnter} onPublicPortal={onPublicPortal} />
+        <ActivePage
+          onEnter={onEnter}
+          onPublicPortal={onPublicPortal}
+          onOnlineServices={onOnlineServices}
+        />
       </PageWrap>
     </div>
   );

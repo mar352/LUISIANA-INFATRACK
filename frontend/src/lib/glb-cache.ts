@@ -28,9 +28,9 @@ function deviceMemoryGb(): number | undefined {
 /** RAM budget for decoded blob: URLs. GPU models are a separate cap. */
 export function glbMemoryBudgetBytes(): number {
   const gb = deviceMemoryGb();
-  if (gb != null && gb <= 4) return 48 * 1024 * 1024;
-  if (gb != null && gb <= 8) return 96 * 1024 * 1024;
-  return 160 * 1024 * 1024;
+  if (gb != null && gb <= 4) return 128 * 1024 * 1024;
+  if (gb != null && gb <= 8) return 256 * 1024 * 1024;
+  return 512 * 1024 * 1024;
 }
 
 function isCacheableUrl(url: string): boolean {
@@ -160,17 +160,20 @@ export function getCachedGlbUrl(absoluteUrl: string): Promise<string> {
       return absoluteUrl;
     }
 
-    let buf = await readFromCacheStorage(absoluteUrl);
-    let contentType = "model/gltf-binary";
-
-    if (!buf) {
+    if (!buf || buf.byteLength < 100) {
       const res = await fetch(absoluteUrl, { credentials: "same-origin" });
       if (!res.ok) {
         throw new Error(`[glb-cache] fetch failed ${res.status} for ${absoluteUrl}`);
       }
       contentType = res.headers.get("Content-Type") || contentType;
       buf = await res.arrayBuffer();
-      void writeToCacheStorage(absoluteUrl, buf, contentType);
+      if (buf.byteLength >= 100) {
+        void writeToCacheStorage(absoluteUrl, buf, contentType);
+      }
+    }
+
+    if (!buf || buf.byteLength < 100) {
+      throw new Error(`[glb-cache] buffer is empty or corrupted for ${absoluteUrl}`);
     }
 
     const blob = new Blob([buf], { type: contentType });
@@ -186,6 +189,10 @@ export function getCachedGlbUrl(absoluteUrl: string): Promise<string> {
   })()
     .catch((err) => {
       console.warn("[glb-cache] falling back to network URL:", err);
+      // If a .lod.glb fails, fall back to the base .glb URL
+      if (absoluteUrl.includes(".lod.glb")) {
+        return absoluteUrl.replace(".lod.glb", ".glb");
+      }
       return absoluteUrl;
     })
     .finally(() => {
@@ -196,7 +203,7 @@ export function getCachedGlbUrl(absoluteUrl: string): Promise<string> {
   return job;
 }
 
-/** Prefetch a list of model URLs (unique) with limited concurrency. */
+/** Prefetch a list of model URLs (unique) with limited concurrency and gentle pacing. */
 export async function prefetchGlbUrls(urls: string[], concurrency = 2): Promise<void> {
   const unique = [...new Set(urls.filter(Boolean))];
   let i = 0;
@@ -208,6 +215,8 @@ export async function prefetchGlbUrls(urls: string[], concurrency = 2): Promise<
       } catch {
         /* ignore */
       }
+      // Yield to main thread / network between fetches
+      await new Promise((r) => setTimeout(r, 60));
     }
   });
   await Promise.all(workers);
@@ -223,4 +232,14 @@ export function clearGlbMemoryCache() {
   }
   MEMORY.clear();
   INFLIGHT.clear();
+}
+
+/**
+ * Resolves the appropriate LOD URL for a model.
+ * If isLowPoly is true and model is a GLB, returns the *.lod.glb variant.
+ */
+export function resolveLodGlbUrl(baseGlbUrl: string, isLowPoly: boolean): string {
+  if (!baseGlbUrl || !isLowPoly) return baseGlbUrl;
+  if (baseGlbUrl.endsWith(".lod.glb")) return baseGlbUrl;
+  return baseGlbUrl.replace(/\.glb(\?.*)?$/i, ".lod.glb$1");
 }

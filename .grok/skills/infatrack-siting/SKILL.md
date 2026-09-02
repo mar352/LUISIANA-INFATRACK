@@ -23,8 +23,8 @@ Luisiana, Laguna GIS for **where to build infrastructure on safer ground**. Not 
 - MPDC pins first (`siteMarkerOnly: true`) — marker only, stay **Planned**
 - Engineer clicks a pin → confirm **Itatayo na ba ito?** → `modelType: construction`, unlock, Engineer still places (move / rotate / scale)
 - Only Engineer can remove a building. Do not show Remove Building to MPDC. Hide Remove Building / Remove site pin unless Edit Mode is on.
-- Placement Mode freezes existing models (no select / drag). Clicks only drop the new site.
-- Edit Mode is how you move a model: turn it on from the map chip (bottom-left, Engineer), click a building. Blender-style tools: Select (A), Move (G), Rotate (R), Scale (S), axis lock X/Y/Z, ENU gizmo on the model. Right-drag still rotates. Scroll scales only when the cursor is on the selected model or gizmo — otherwise the globe zooms. Hide the place-details panel in Edit Mode. Lock / Unlock only appears in Edit Mode. Outside Edit Mode, 3D models never move. After one model is selected, other models are not clickable — click empty ground (or ×) to deselect, then pick another.
+- Placement Mode freezes existing models (no select / drag). Clicks only drop the new site. No gizmo while placing. After Engineer confirms a new GLB, Placement Mode turns off and Edit Mode opens on that building with the gizmo.
+- Edit Mode is how you move a model: turn it on from the map chip (bottom-left, Engineer), click a building. Blender-style tools: Select (A), Move (G), Rotate (R), Scale (S), axis lock X/Y/Z, ENU gizmo on the model. Size tool: center cube / scroll = overall size; X cube = width, Y = depth, Z = height. HUD Width / Depth / Height nudges the same. Right-drag still rotates. Scroll scales only when the cursor is on the selected model or gizmo — otherwise the globe zooms. Hide the place-details panel in Edit Mode. Lock / Unlock only appears in Edit Mode. Outside Edit Mode, 3D models never move. After one model is selected, other models are not clickable — click empty ground (or ×) to deselect, then pick another.
 
 ## Tabs
 
@@ -32,10 +32,11 @@ Luisiana, Laguna GIS for **where to build infrastructure on safer ground**. Not 
 - **Climate** — station readings, tropical Invest/TC tracking, NASA GIBS overlays. Precipitation follows **tropical tracking**. **No NASA EONET.** No Events tab.
 - **Projects / Layers / Climate** stay map-first. Layers has no heatmap, weather overlay, storm-track, or development-priority heatmap toggles (not an MDRRM / heat console). Planning scores stay on the Planning board.
 - **Settings** — globe performance: draw distance, terrain quality, shadows, fog, motion blur. Saved on the device. Not an MDRRM console.
+- **Account** — signed-in staff change their own password (current + new, min 8 characters). Separate from globe Settings.
 
 ## Map shortcuts
 
-Left-rail SVG buttons toggle the common map layers (satellite, 3D blocks, projects, barangays, quake heatmap, climate readings, tropical) so staff do not have to open the side panel. Active = gold on navy. Hover shows the name. Barangays paints each of the 23 barangays a different color with a legend. Climate opens the station readings card on the map. No Street View. No KMZ overlay shortcuts.
+Left-rail SVG buttons toggle the common map layers (satellite, 3D blocks, projects, barangays, shapes, quake heatmap, climate readings, tropical) so staff do not have to open the side panel. Active = gold on navy. Hover shows the name. Barangays paints each of the 23 barangays a different color with a legend; click a legend row to fly the globe to that barangay. **Shapes** (Engineer) opens a palette of volumes (freeform / box / cylinder), roofs, and trees — click a tile then click the globe (freeform: draw a polygon, then Finish). Climate opens the station readings card on the map. No Street View. No KMZ overlay shortcuts.
 
 ## Map camera
 
@@ -55,4 +56,10 @@ Staff **Analytics** generates live municipal reports from map projects: CSV (pro
 
 ## Auth / audit
 
-Staff login is hashed + session. Activity log is a visible **Activity** button for staff. Firestore rules must allow `sessions` and `auditLogs` or login/audit fail.
+Staff login is hashed + session on the Express server (`POST /api/auth/login`). Change password is Settings → Account (`POST /api/auth/password`). Activity log is a visible **Activity** button for staff.
+
+## Field photos / QR
+
+Place panel: **Take photo** (rear camera on phones) and gallery upload. GPS is stamped on the photo when the browser allows geolocation. If the network is down, the photo is stored in IndexedDB on the device and uploaded when `online` (flush every 20s). **Asset QR** on Overview opens `?asset=<projectId>` and flies the globe to that site. Not an in-app QR scanner — phone camera scan of the printed/on-screen QR is enough.
+
+**Offline globe:** Left-rail **Offline mode** toggle. First turn-on downloads Luisiana Esri tiles if the pack is empty, then uses cache. Toggle off = live Ion/OSM globe. Service worker only intercepts Esri tiles while the toggle is on. 3D terrain is ellipsoid in offline mode. Not a nationwide pack.

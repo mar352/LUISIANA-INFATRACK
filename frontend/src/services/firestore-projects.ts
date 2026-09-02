@@ -8,8 +8,18 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { db, projectsCollection } from "../firebase";
-import type { Project } from "../types";
+import type { Project, ProjectPhoto } from "../types";
 import { writeAudit } from "./firestore-audit";
+
+function mergePhotos(prev?: ProjectPhoto[], next?: ProjectPhoto[]): ProjectPhoto[] {
+  const map = new Map<string, ProjectPhoto>();
+  for (const ph of [...(prev || []), ...(next || [])]) {
+    if (ph?.id) map.set(ph.id, ph);
+  }
+  return [...map.values()].sort((a, b) =>
+    String(b.uploadedAt || "").localeCompare(String(a.uploadedAt || "")),
+  );
+}
 
 /** Firestore rejects `undefined`; omit those fields and normalize optionals. */
 function sanitizeProjectForFirestore(project: Partial<Project> & { id: string }) {
@@ -196,6 +206,8 @@ export async function syncFirestoreWithBackend(projects: Project[]) {
         lifecyclePhase: p.lifecyclePhase || prev?.lifecyclePhase || "Planning",
         budgetTotal: p.budgetTotal ?? prev?.budgetTotal ?? null,
         budgetSpent: p.budgetSpent ?? prev?.budgetSpent ?? 0,
+        // Keep field-app photos that live only in Firestore
+        photos: mergePhotos(prev?.photos, p.photos),
         // Live map projects stay active in inventory
         archivedAt: null,
         updatedAt: p.updatedAt || prev?.updatedAt || new Date().toISOString(),
