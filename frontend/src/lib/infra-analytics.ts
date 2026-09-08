@@ -40,7 +40,8 @@ const DEPT_FILL: Record<string, string> = {
   MPDC: "#151c28",
   Engineering: "#ffc107",
   Agriculture: "#5b6b7c",
-  "Negosyo Center": "#c9a227",
+  "Treasury Office": "#059669",
+  "Negosyo Center": "#059669",
 };
 
 function modelLabel(modelType: string): string {

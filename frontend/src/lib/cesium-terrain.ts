@@ -4,6 +4,7 @@
  */
 
 import * as Cesium from "cesium";
+import { maptilerApiKey, maptilerTerrainUrl } from "./maptiler";
 
 const ARCGIS_ELEVATION_URL =
   "https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer";
@@ -11,27 +12,23 @@ const ARCGIS_ELEVATION_URL =
 /** Mild exaggeration — enough for hills without extra mesh stress. */
 export const LUISIANA_TERRAIN_EXAGGERATION = 1.35;
 
-/**
- * Higher = fewer terrain tiles / smoother camera (default Cesium is 2).
- * 8–10 stays readable for LGU overview and keeps pan/zoom usable.
- */
-export const LUISIANA_TERRAIN_SSE = 9;
+export const LUISIANA_TERRAIN_SSE = 1.25;
+
 
 /**
- * Prefer Cesium World Terrain when an Ion token is set; otherwise ArcGIS World Elevation.
- * Skip vertex normals + water mask — big win on bandwidth and GPU.
+ * Cesium terrain provider for the Luisiana globe (MapTiler Quantized-Mesh with ArcGIS Elevation fallback).
+ * Tuned for weaker GPUs: coarser SSE, no vertex normals / water mask.
  */
 export async function createLuisianaTerrainProvider(): Promise<Cesium.TerrainProvider> {
-  const ionToken = (import.meta.env.VITE_CESIUM_ION_TOKEN as string | undefined)?.trim();
-  if (ionToken) {
-    Cesium.Ion.defaultAccessToken = ionToken;
+  const key = maptilerApiKey();
+  if (key) {
     try {
-      return await Cesium.createWorldTerrainAsync({
+      return await Cesium.CesiumTerrainProvider.fromUrl(maptilerTerrainUrl(), {
         requestVertexNormals: false,
         requestWaterMask: false,
       });
     } catch (err) {
-      console.warn("[terrain] Ion world terrain failed, trying ArcGIS:", err);
+      console.warn("[terrain] MapTiler quantized mesh failed, trying ArcGIS elevation:", err);
     }
   }
 
@@ -60,13 +57,16 @@ export function applyTerrainPerfSettings(
     dynamicAtmosphereLightingFromSun?: boolean;
   };
 
+  if (viewer.scene.fog) {
+    viewer.scene.fog.enabled = false;
+  }
+
   if (enabled) {
     globe.maximumScreenSpaceError = opts?.screenSpaceError ?? LUISIANA_TERRAIN_SSE;
-    // Don't prefetch as aggressively while the camera moves.
-    globe.loadingDescendantLimit = 2;
-    globe.preloadSiblings = false;
-    globe.preloadAncestors = false;
-    if (typeof globe.tileCacheSize === "number") globe.tileCacheSize = 50;
+    globe.loadingDescendantLimit = 4;
+    globe.preloadSiblings = true;
+    globe.preloadAncestors = true;
+    if (typeof globe.tileCacheSize === "number") globe.tileCacheSize = 1000;
     globe.terrainExaggeration = LUISIANA_TERRAIN_EXAGGERATION;
     globe.terrainExaggerationRelativeHeight = 0;
     globe.depthTestAgainstTerrain = true;
@@ -74,11 +74,11 @@ export function applyTerrainPerfSettings(
     globe.dynamicAtmosphereLighting = true;
     globe.dynamicAtmosphereLightingFromSun = true;
   } else {
-    globe.maximumScreenSpaceError = 3.5;
-    globe.loadingDescendantLimit = 2;
-    globe.preloadSiblings = false;
-    globe.preloadAncestors = false;
-    if (typeof globe.tileCacheSize === "number") globe.tileCacheSize = 50;
+    globe.maximumScreenSpaceError = 1.25;
+    globe.loadingDescendantLimit = 4;
+    globe.preloadSiblings = true;
+    globe.preloadAncestors = true;
+    if (typeof globe.tileCacheSize === "number") globe.tileCacheSize = 1000;
     globe.terrainExaggeration = 1;
     globe.terrainExaggerationRelativeHeight = 0;
     globe.depthTestAgainstTerrain = false;

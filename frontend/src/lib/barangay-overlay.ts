@@ -43,11 +43,20 @@ export async function loadBarangayAreas(): Promise<BarangayArea[]> {
       const name = String(f.properties?.name ?? "").trim();
       const ring = f.geometry?.type === "Polygon" ? f.geometry.coordinates?.[0] : null;
       if (!name || !ring || ring.length < 4) continue;
+      let sumLon = 0;
+      let sumLat = 0;
+      const n = ring.length - 1;
+      for (let k = 0; k < n; k++) {
+        sumLon += ring[k][0];
+        sumLat += ring[k][1];
+      }
+      const centroidLon = Number((sumLon / n).toFixed(6));
+      const centroidLat = Number((sumLat / n).toFixed(6));
       list.push({
         name,
         color: f.properties?.color || "#c9a227",
-        lon: Number(f.properties?.lon) || ring[0][0],
-        lat: Number(f.properties?.lat) || ring[0][1],
+        lon: centroidLon,
+        lat: centroidLat,
         ring,
       });
     }
@@ -146,4 +155,47 @@ export function flyToBarangay(viewer: Cesium.Viewer, area: BarangayArea) {
       range,
     ),
   });
+}
+
+/** Reverse geocode a point (lon, lat) to its containing barangay polygon. */
+export function findBarangayForPoint(
+  lon: number,
+  lat: number,
+  areas: BarangayArea[],
+): string | null {
+  for (const a of areas) {
+    const ring = a.ring;
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, yi] = ring[i];
+      const [xj, yj] = ring[j];
+      const denom = yj - yi;
+      const intersect =
+        yi > lat !== yj > lat &&
+        lon < ((xj - xi) * (lat - yi)) / (denom === 0 ? Number.EPSILON : denom) + xi;
+      if (intersect) inside = !inside;
+    }
+    if (inside) return a.name;
+  }
+  return null;
+}
+
+/** Get the containing barangay for a point, or the closest one if on the boundary. */
+export function getNearestBarangay(
+  lon: number,
+  lat: number,
+  areas: BarangayArea[],
+): string {
+  const match = findBarangayForPoint(lon, lat, areas);
+  if (match) return match;
+  let best = areas[0]?.name || "Barangay Zone I (Poblacion)";
+  let minDist = Infinity;
+  for (const a of areas) {
+    const d = (a.lon - lon) ** 2 + (a.lat - lat) ** 2;
+    if (d < minDist) {
+      minDist = d;
+      best = a.name;
+    }
+  }
+  return best;
 }

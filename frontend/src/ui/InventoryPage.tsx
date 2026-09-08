@@ -51,7 +51,8 @@ const ROLE_PERMISSIONS: Record<string, {
   MPDC:             { canEdit: true,  canArchive: true,  canSeeBudget: true,  canSeeArchived: true,  departmentFilter: null },
   Engineer:         { canEdit: true,  canArchive: true,  canSeeBudget: true,  canSeeArchived: true,  departmentFilter: "Engineering" },
   Agriculture:      { canEdit: false, canArchive: false, canSeeBudget: false, canSeeArchived: false, departmentFilter: "Agriculture" },
-  "Negosyo Center": { canEdit: false, canArchive: false, canSeeBudget: false, canSeeArchived: false, departmentFilter: null },
+  "Treasury Office": { canEdit: false, canArchive: false, canSeeBudget: true, canSeeArchived: false, departmentFilter: null },
+  "Negosyo Center": { canEdit: false, canArchive: false, canSeeBudget: true, canSeeArchived: false, departmentFilter: null },
   "Barangay Official": { canEdit: false, canArchive: false, canSeeBudget: false, canSeeArchived: false, departmentFilter: null },
   Viewer:           { canEdit: false, canArchive: false, canSeeBudget: false, canSeeArchived: false, departmentFilter: null },
 };

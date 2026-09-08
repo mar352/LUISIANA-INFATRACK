@@ -3,15 +3,14 @@ import maplibregl, { Map as MapLibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { CesiumMap, type CesiumMapHandle } from "./CesiumMap";
 import { MapShortcuts } from "./MapShortcuts";
-import { ClimateReadingsCard } from "./ClimateReadingsCard";
 import { BarangayLegend } from "./BarangayLegend";
-import { ShapesPanel } from "./ShapesPanel";
 import { loadBarangayAreas, type BarangayArea } from "../lib/barangay-overlay";
 import InventoryPage from "./InventoryPage";
 import DocumentsPage from "./DocumentsPage";
 import AnalyticsPage from "./AnalyticsPage";
 import CitizenPortal from "./CitizenPortal";
-import OnlineApplicationWizard from "./OnlineApplicationWizard";
+import NewApplicationPage from "./NewApplicationPage";
+import ApplicantTrackingPage from "./ApplicantTrackingPage";
 import EngagementPage from "./EngagementPage";
 import { addProjectToFirestore } from "../services/firestore-projects";
 import type {
@@ -25,7 +24,6 @@ import type {
   PlanningProposal,
   Project,
   RiskZones,
-  WeatherSnapshot,
   ProjectStatus,
 } from "../types";
 import {
@@ -36,7 +34,7 @@ import {
   PROJECT_STATUS_COLORS,
 } from "../types";
 import { connectRealtime } from "../lib/realtime";
-import { BACKEND_URL, backendUrl } from "../lib/api";
+import { BACKEND_URL, backendUrl, fetchCitizenApplications } from "../lib/api";
 import { fetchPlanningEventsOnce, fetchPlanningMeetingsOnce, fetchProposalsOnce, updateProposal } from "../services/firestore-planning";
 import { departmentForRole } from "../lib/planning-permissions";
 import { buildOpsAlerts, type OpsAlert } from "../lib/ops-alerts";
@@ -51,23 +49,8 @@ import {
   type ShapeCatalogItem,
 } from "../lib/map-shapes";
 import { NotifyOpsList } from "./NotifyOpsList";
+import { StadiaStylePicker } from "./StadiaStylePicker";
 import { buildHeatmapPoints, type BBox, type HeatmapMetric } from "../lib/heatmap";
-import { formatGibsDate, getGibsLayerInfo, gibsWmtsTileUrl, type GibsLayerId } from "../lib/gibs";
-import {
-  applyMapSunLighting,
-  dateFromDisplaySolarHour,
-  formatSolarHour,
-  getCurrentSolarHour,
-  getSunPosition,
-  bearingDegFromSunCalcAzimuth,
-  sunPositionWithBearing,
-  sunDirectionFromPosition,
-  shadowGroundOffset,
-  shadowStretchFromAltitude,
-  daylightRasterScale,
-  ensureNightVeilLayer,
-  LUISIANA_CENTER,
-} from "../lib/solar";
 import {
   DEFAULT_MAP_SETTINGS,
   loadMapSettings,
@@ -76,24 +59,15 @@ import {
   type ShadowQuality,
   type TerrainQuality,
 } from "../lib/map-settings";
-import { SunAzimuthDial } from "./SunAzimuthDial";
-import { 
-  getTerrainSource, 
-  getSatelliteSource, 
-  createHillshadeLayer, 
+import {
+  getTerrainSource,
+  getSatelliteSource,
+  createHillshadeLayer,
   applyWebGLOptimizations,
   calculateTerrainExaggeration,
   type TerrainSource,
-  type SatelliteSource 
+  type SatelliteSource
 } from "../lib/terrain";
-import { calculateDistance } from "../lib/eonet";
-import {
-  fetchTropicalSystems,
-  getTropicalColor,
-  getTropicalIcon,
-  getTropicalStageMeta,
-  type TropicalSystem,
-} from "../lib/tropical-systems";
 import { detectOpenMapTilesSourceId, stadiaStyleUrl } from "../lib/stadia";
 import {
   ensureEditStreetLayers,
@@ -118,6 +92,7 @@ import { BARANGAY_LIST } from "../types";
 import { earthquakeProneModel, type EarthquakeGridCell, type EarthquakeTrainStatus } from "../lib/ml-earthquake";
 import { classAdvice, classColor } from "../lib/earthquake-labels";
 import { ProjectMonitoringPanel } from "./ProjectMonitoringPanel";
+import { EngineerApplicationsPage } from "./EngineerApplicationsPage";
 import { ThemeToggle } from "./ThemeToggle";
 import { ProjectChat } from "./ProjectChat";
 import { ChangePasswordForm } from "./ChangePasswordForm";
@@ -129,35 +104,39 @@ import {
   sessionForRole,
   type SessionUser,
 } from "../services/auth";
+import TreasuryOfficePage from "./TreasuryOfficePage";
 import NegosyoCenterPage from "./NegosyoCenterPage";
 import ZoningPermitsPage from "./ZoningPermitsPage";
 import { setAuditActor } from "../services/firestore-audit";
 import AuditPage from "./AuditPage";
 import PlanningPage from "./PlanningPage";
 import { PrivateEngineerPortal } from "./PrivateEngineerPortal";
+import { SiteProgressPopup } from "./SiteProgressPopup";
+import { InspectionTaskQueue } from "./InspectionTaskQueue";
+import { InspectionUpdateModal } from "./InspectionUpdateModal";
 
 // ── Dashboard icons ────────────────────────────────────────────────────────────
 const IconClipboard = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
-    <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
-    <line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/>
+    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+    <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+    <line x1="9" y1="12" x2="15" y2="12" /><line x1="9" y1="16" x2="13" y2="16" />
   </svg>
 );
 const IconCheck = () => (
   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="20 6 9 17 4 12"/>
+    <polyline points="20 6 9 17 4 12" />
   </svg>
 );
 const IconClock = () => (
   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+    <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
   </svg>
 );
 const IconWarn = () => (
   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-    <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+    <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
   </svg>
 );
 
@@ -165,67 +144,67 @@ const IconWarn = () => (
 const ModelIcons: Record<string, React.FC<{ size?: number; color?: string }>> = {
   office: ({ size = 18, color = "currentColor" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 9h18"/><path d="M9 21V9"/><path d="M7 6h.01"/><path d="M12 6h.01"/><path d="M17 6h.01"/>
+      <rect x="3" y="3" width="18" height="18" rx="1" /><path d="M3 9h18" /><path d="M9 21V9" /><path d="M7 6h.01" /><path d="M12 6h.01" /><path d="M17 6h.01" />
     </svg>
   ),
   school: ({ size = 18, color = "currentColor" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/>
+      <path d="M22 10v6M2 10l10-5 10 5-10 5z" /><path d="M6 12v5c3 3 9 3 12 0v-5" />
     </svg>
   ),
   hospital: ({ size = 18, color = "currentColor" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="3" width="18" height="18" rx="1"/><path d="M12 8v8"/><path d="M8 12h8"/>
+      <rect x="3" y="3" width="18" height="18" rx="1" /><path d="M12 8v8" /><path d="M8 12h8" />
     </svg>
   ),
   barangay_hall: ({ size = 18, color = "currentColor" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-4h6v4"/><path d="M9 10h.01"/><path d="M15 10h.01"/>
+      <path d="M3 21h18" /><path d="M5 21V7l7-4 7 4v14" /><path d="M9 21v-4h6v4" /><path d="M9 10h.01" /><path d="M15 10h.01" />
     </svg>
   ),
   municipal_hall: ({ size = 18, color = "currentColor" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 21h18"/><path d="M4 21V10l8-6 8 6v11"/><path d="M9 21v-6h6v6"/><path d="M12 4v3"/><path d="M8 14h.01"/><path d="M16 14h.01"/>
+      <path d="M3 21h18" /><path d="M4 21V10l8-6 8 6v11" /><path d="M9 21v-6h6v6" /><path d="M12 4v3" /><path d="M8 14h.01" /><path d="M16 14h.01" />
     </svg>
   ),
   rhu: ({ size = 18, color = "currentColor" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 21h18"/><path d="M5 21V9l7-5 7 5v12"/><path d="M12 11v6"/><path d="M9 14h6"/>
+      <path d="M3 21h18" /><path d="M5 21V9l7-5 7 5v12" /><path d="M12 11v6" /><path d="M9 14h6" />
     </svg>
   ),
   evacuation_center: ({ size = 18, color = "currentColor" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+      <path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" />
     </svg>
   ),
   road: ({ size = 18, color = "currentColor" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M5 21L9 3"/><path d="M19 21L15 3"/><path d="M9 12h6"/><path d="M10 7h4"/><path d="M10 17h4"/>
+      <path d="M5 21L9 3" /><path d="M19 21L15 3" /><path d="M9 12h6" /><path d="M10 7h4" /><path d="M10 17h4" />
     </svg>
   ),
   bridge: ({ size = 18, color = "currentColor" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M2 18h20"/><path d="M2 18c0-4 4-7 10-7s10 3 10 7"/><path d="M6 18v-3"/><path d="M18 18v-3"/>
+      <path d="M2 18h20" /><path d="M2 18c0-4 4-7 10-7s10 3 10 7" /><path d="M6 18v-3" /><path d="M18 18v-3" />
     </svg>
   ),
   water_tank: ({ size = 18, color = "currentColor" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <ellipse cx="12" cy="7" rx="9" ry="4"/><path d="M3 7v10c0 2.2 4 4 9 4s9-1.8 9-4V7"/><path d="M3 12c0 2.2 4 4 9 4s9-1.8 9-4"/>
+      <ellipse cx="12" cy="7" rx="9" ry="4" /><path d="M3 7v10c0 2.2 4 4 9 4s9-1.8 9-4V7" /><path d="M3 12c0 2.2 4 4 9 4s9-1.8 9-4" />
     </svg>
   ),
   solar_farm: ({ size = 18, color = "currentColor" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="M4.93 4.93l1.41 1.41"/><path d="M17.66 17.66l1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="M6.34 17.66l-1.41 1.41"/><path d="M19.07 4.93l-1.41 1.41"/>
+      <circle cx="12" cy="12" r="4" /><path d="M12 2v2" /><path d="M12 20v2" /><path d="M4.93 4.93l1.41 1.41" /><path d="M17.66 17.66l1.41 1.41" /><path d="M2 12h2" /><path d="M20 12h2" /><path d="M6.34 17.66l-1.41 1.41" /><path d="M19.07 4.93l-1.41 1.41" />
     </svg>
   ),
   barn: ({ size = 18, color = "currentColor" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 21h18"/><path d="M3 10l9-7 9 7"/><path d="M5 21V10"/><path d="M19 21V10"/><rect x="9" y="14" width="6" height="7"/>
+      <path d="M3 21h18" /><path d="M3 10l9-7 9 7" /><path d="M5 21V10" /><path d="M19 21V10" /><rect x="9" y="14" width="6" height="7" />
     </svg>
   ),
   construction: ({ size = 18, color = "currentColor" }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M2 20h20"/><path d="M6 20V10l6-6 6 6v10"/><path d="M12 20v-6"/><path d="M9 14h6"/><path d="M3 10h18"/>
+      <path d="M2 20h20" /><path d="M6 20V10l6-6 6 6v10" /><path d="M12 20v-6" /><path d="M9 14h6" /><path d="M3 10h18" />
     </svg>
   ),
 };
@@ -240,24 +219,16 @@ type LayerToggles = {
   satellite: boolean;
   terrain: boolean;
   heatmap: boolean;
-  weather: boolean;
-  gibsPrecip: boolean;
   risk: boolean;
   projects: boolean;
-  buildingBlocks: boolean;
-  stormTrack: boolean;
 };
 
 const DEFAULT_TOGGLES: LayerToggles = {
   satellite: false,
   terrain: false,
   heatmap: false,
-  weather: false,
-  gibsPrecip: false,
   risk: false,
   projects: true,
-  buildingBlocks: true,
-  stormTrack: false,
 };
 
 const BUILDING_EXTRUSION_OPACITY_DEFAULT = 1;
@@ -331,12 +302,50 @@ function levelColor(level: "LOW" | "MODERATE" | "HIGH") {
   return "rgba(61, 155, 95, 0.30)";
 }
 
-function formatAgo(iso: string) {
-  const ms = Date.now() - new Date(iso).getTime();
-  const s = Math.max(0, Math.round(ms / 1000));
-  if (s < 60) return `${s}s ago`;
-  const m = Math.round(s / 60);
-  return `${m}m ago`;
+function formatRealDate(iso?: string | null): string {
+  if (!iso) return "—";
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return String(iso);
+    return d.toLocaleDateString("en-PH", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  } catch {
+    return String(iso);
+  }
+}
+
+function formatAgo(iso: string): string {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    const dateStr = d.toLocaleDateString("en-PH", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+    const ms = Date.now() - d.getTime();
+    if (ms < 0) return dateStr;
+    const s = Math.round(ms / 1000);
+    if (s < 60) return `${dateStr} (just now)`;
+    const m = Math.round(s / 60);
+    if (m < 60) return `${dateStr} (${m}m ago)`;
+    const h = Math.round(m / 60);
+    if (h < 24) return `${dateStr} (${h}h ago)`;
+    const days = Math.round(h / 24);
+    return `${dateStr} (${days}d ago)`;
+  } catch {
+    return iso;
+  }
 }
 
 type PanelNotice = {
@@ -515,7 +524,8 @@ export default function App() {
 
   const [currentSession, setCurrentSession] = useState<SessionUser | null>(null);
   const currentRole = currentSession?.role ?? null;
-  const [screen, setScreen] = useState<"landing" | "login" | "app" | "inventory" | "planning" | "documents" | "analytics" | "engagement" | "citizen" | "services" | "audit" | "negosyo" | "permits">("landing");
+  const [screen, setScreen] = useState<"landing" | "login" | "app" | "inventory" | "planning" | "documents" | "analytics" | "engagement" | "citizen" | "services" | "audit" | "negosyo" | "treasury" | "permits" | "new_application" | "applicant_tracking" | "pengineer" | "engineer_applications">("landing");
+  const [trackingReference, setTrackingReference] = useState<string>("");
   const roleConfig = currentRole ? ROLE_CONFIGS[currentRole] : null;
   /** Keep Cesium alive briefly after leaving the map so logout/home doesn't white-screen on WebGL teardown. */
   const [mapHold, setMapHold] = useState(false);
@@ -540,9 +550,31 @@ export default function App() {
           if (!saved) return;
           setAuditActor(saved);
           setCurrentSession(saved);
-          setScreen(saved.role === "Barangay Official" ? "planning" : saved.role === "Negosyo Center" ? "negosyo" : "app");
+          setScreen(
+            saved.role === "Barangay Official"
+              ? "planning"
+              : saved.role === "Treasury Office" || saved.role === "Negosyo Center"
+                ? "treasury"
+                : saved.role === "Private Engineer"
+                  ? "pengineer"
+                  : saved.role === "MPDC"
+                    ? "permits"
+                    : "app"
+          );
         })
         .catch((err) => console.warn("[Auth] restore session failed:", err));
+    }
+
+    // Direct permanent tracking URL support: ?track=LUIS-ZC-2026-XXXX
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const trackParam = params.get("track") || params.get("tracking");
+      if (trackParam) {
+        setTrackingReference(trackParam);
+        setScreen("applicant_tracking");
+      }
+    } catch {
+      /* ignore */
     }
   }, []);
 
@@ -562,99 +594,21 @@ export default function App() {
   useEffect(() => {
     saveMapSettings(mapSettings);
   }, [mapSettings]);
-  const [solarHour, setSolarHour] = useState(() => getCurrentSolarHour());
-  const [solarFollowPht, setSolarFollowPht] = useState(true);
-  const [sunAzimuthDeg, setSunAzimuthDeg] = useState(() => {
-    const date = dateFromDisplaySolarHour(getCurrentSolarHour());
-    const pos = getSunPosition(LUISIANA_CENTER.lat, LUISIANA_CENTER.lon, date);
-    return bearingDegFromSunCalcAzimuth(pos.azimuthRad);
-  });
-  const sunLighting = useMemo(() => {
-    const date = dateFromDisplaySolarHour(solarHour);
-    const astro = getSunPosition(LUISIANA_CENTER.lat, LUISIANA_CENTER.lon, date);
-    const pos = sunPositionWithBearing(astro.altitudeRad, sunAzimuthDeg);
-    const [dx, dy, dz] = sunDirectionFromPosition(pos);
-    const lightPosition: [number, number, number] = pos.isDaylight
-      ? [dx * 100, dy * 100, Math.max(12, dz * 100)]
-      : [dx * 40, dy * 40, Math.max(8, Math.abs(dz) * 20)];
-    return {
-      pos,
-      lightPosition,
-      altitudeRad: pos.altitudeRad,
-      azimuthRad: pos.azimuthRad,
-      isDaylight: pos.isDaylight,
-      stretch: shadowStretchFromAltitude(pos.altitudeRad),
-      groundOffset: shadowGroundOffset(pos),
-    };
-  }, [solarHour, sunAzimuthDeg]);
-
-  const setSolarHourAndSyncAzimuth = (hour: number, followPht = false) => {
-    setSolarFollowPht(followPht);
-    setSolarHour(hour);
-    const date = dateFromDisplaySolarHour(hour);
-    const pos = getSunPosition(LUISIANA_CENTER.lat, LUISIANA_CENTER.lon, date);
-    setSunAzimuthDeg(bearingDegFromSunCalcAzimuth(pos.azimuthRad));
-  };
-
-  const syncSolarToPht = () => {
-    setSolarHourAndSyncAzimuth(getCurrentSolarHour(), true);
-  };
-
-  useEffect(() => {
-    if (!solarFollowPht) return;
-    const tick = () => setSolarHourAndSyncAzimuth(getCurrentSolarHour(), true);
-    tick();
-    const id = window.setInterval(tick, 1000);
-    return () => window.clearInterval(id);
-  }, [solarFollowPht]);
-
-  const solarOffPht = !solarFollowPht;
-
-  /** Keep Cesium camera still while Sun/Time overlay is being dragged. */
-  const setCesiumCameraInputs = (enabled: boolean) => {
-    cesiumMapRef.current?.setCameraInputsEnabled(enabled);
-  };
 
   const stopMapPointer = (e: SyntheticEvent) => {
     e.stopPropagation();
   };
 
-  const freezeCameraOnPointerDown = (e: PointerEvent | MouseEvent) => {
-    e.stopPropagation();
-    setCesiumCameraInputs(false);
-  };
-
-  const unfreezeCameraOnPointerUp = (e: SyntheticEvent) => {
-    e.stopPropagation();
-    setCesiumCameraInputs(true);
-  };
-
-  // Drive MapLibre basemap light + hillshade + night veil from SunCalc
-  useEffect(() => {
-    const map = mapInstance ?? mapRef.current;
-    if (!map) return;
-    const apply = () => {
-      applyMapSunLighting(map as any, sunLighting.pos, {
-        showHillshade: true,
-        beforeVeilId: BUILDING_EXTRUSION_LAYER,
-        satelliteOn: toggles.satellite,
-      });
-    };
-    if (map.isStyleLoaded()) apply();
-    else map.once("style.load", apply);
-    map.on("style.load", apply);
-    return () => {
-      map.off("style.load", apply);
-    };
-  }, [mapInstance, sunLighting, toggles.satellite]);
-  const [weather, setWeather] = useState<WeatherSnapshot | null>(null);
   const [heatPoints, setHeatPoints] = useState<HeatPoint[]>([]);
   const [riskZones, setRiskZones] = useState<RiskZones | null>(null);
   const [projects, setProjects] = useState<Project[]>(() => {
     try {
       const raw = localStorage.getItem("infatrack-projects-cache");
       const parsed = raw ? JSON.parse(raw) : [];
-      return Array.isArray(parsed) ? parsed : [];
+      const list = Array.isArray(parsed) ? parsed : [];
+      return list
+        .filter((p: any) => !p?.siteMarkerOnly || p?.isPrivateApplication)
+        .filter((p: any) => p?.modelType !== "custom" && !p?.customModelUrl);
     } catch {
       return [];
     }
@@ -680,7 +634,7 @@ export default function App() {
   }, [screen, currentSession, filteredProjects.length]);
 
   const [placementMode, setPlacementMode] = useState(false);
-  const [blockRemoverMode, setBlockRemoverMode] = useState(false);
+  const [newAppModalOpen, setNewAppModalOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [snapToRoad, setSnapToRoad] = useState(true);
   const [selectedModel, setSelectedModel] = useState<ModelType>("office");
@@ -699,16 +653,43 @@ export default function App() {
   const [shapesPanelOpen, setShapesPanelOpen] = useState(false);
   const [pendingShapeKind, setPendingShapeKind] = useState<MapShapeKind | null>(null);
   const pendingShapeKindRef = useRef<MapShapeKind | null>(null);
-  const pendingShapeFootprintRef = useRef<{ lon: number; lat: number }[] | null>(null);
+  const [pendingShapeFootprintRef] = useState(() => ({ current: null as { lon: number; lat: number }[] | null }));
+  const [selectedSitePin, setSelectedSitePin] = useState<Project | null>(null);
+  const [isInspectionQueueOpen, setIsInspectionQueueOpen] = useState(false);
+  const [inspectingProject, setInspectingProject] = useState<Project | null>(null);
+
+  const refreshProjects = async () => {
+    try {
+      const res = await fetch(backendUrl("/api/projects"), { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        const rawList = Array.isArray(data) ? data : (Array.isArray(data?.projects) ? data.projects : []);
+        const list = rawList
+          .filter((x: any) => !x?.siteMarkerOnly || x?.isPrivateApplication)
+          .filter((x: any) => x?.modelType !== "custom" && !x?.customModelUrl);
+        setProjects(list);
+      }
+    } catch (err) {
+      console.warn("refreshProjects error:", err);
+    }
+  };
 
   const placementToolbarOpen =
     ((pinProposal || pinCitizenApp) && currentRole === "MPDC" && screen === "app") ||
     (placementMode && currentRole === "Engineer" && screen === "app");
-  const eraseBlocksActive = placementToolbarOpen && placementTool === "erase";
-  const [sidebarTab, setSidebarTab] = useState<"notify" | "layers" | "settings" | "account" | "risk" | "projects" | "climate" | "events">("climate");
+  const [sidebarTab, setSidebarTab] = useState<"notify" | "layers" | "settings" | "account" | "risk" | "projects" | "climate" | "events" | "inspection">("notify");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
     typeof window !== "undefined" && window.matchMedia("(max-width: 1024px)").matches
   );
+
+  const inspectionTaskCount = useMemo(() => {
+    return projects.filter(
+      (p) =>
+        p.isPrivateApplication ||
+        p.siteMarkerOnly ||
+        (p.id && p.id.startsWith("infra-app-")),
+    ).length;
+  }, [projects]);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [compactChrome, setCompactChrome] = useState(
     () => typeof window !== "undefined" && window.matchMedia("(max-width: 768px)").matches,
@@ -721,20 +702,19 @@ export default function App() {
   const [planningMeetings, setPlanningMeetings] = useState<PlanningMeeting[]>([]);
   const [planningEvents, setPlanningEvents] = useState<PlanningEvent[]>([]);
   const [opsDismissedIds, setOpsDismissedIds] = useState<string[]>(() => loadOpsDismissedIds());
-  const refreshPlanningNoticesRef = useRef<() => void>(() => {});
+  const refreshPlanningNoticesRef = useRef<() => void>(() => { });
 
   // Set default tab based on role permissions
   useEffect(() => {
     if (roleConfig) {
       if (currentRole === "Engineer") setSidebarTab("notify");
       else if (currentRole === "MPDC") setSidebarTab("notify");
-      else if (roleConfig.canSeeWeather || roleConfig.canSeeLayers) setSidebarTab("climate");
+      else if (roleConfig.canSeeLayers) setSidebarTab("layers");
       else if (roleConfig.canSeeRisk) setSidebarTab("risk");
       else if (roleConfig.canSeeProjects) setSidebarTab("projects");
       else if (currentRole && currentRole !== "Viewer") setSidebarTab("account");
     }
     if (currentRole !== "Engineer") {
-      setBlockRemoverMode(false);
       setEditMode(false);
     }
     if (currentRole !== "MPDC") {
@@ -835,27 +815,12 @@ export default function App() {
   }, [sidebarCollapsed, screen, mapInstance]);
   const [heatMetric, setHeatMetric] = useState<HeatmapMetric>("combined");
   const [viewport, setViewport] = useState<{ bbox: BBox; zoom: number } | null>(null);
-  const [gibsLayer, setGibsLayer] = useState<GibsLayerId>("IMERG_Precipitation_Rate");
-  const [gibsDate, setGibsDate] = useState(() => {
-    // GIBS layers often lag “today” availability. Default to yesterday (UTC) to avoid 404 tiles.
-    const d = new Date();
-    d.setUTCDate(d.getUTCDate() - 1);
-    return formatGibsDate(d);
-  });
-  const [gibsOpacity, setGibsOpacity] = useState(0.62);
   const [buildingExtrusionOpacity, setBuildingExtrusionOpacity] = useState(BUILDING_EXTRUSION_OPACITY_DEFAULT);
   const [glbModelsOpacity, setGlbModelsOpacity] = useState(1);
-  const [gibsStatus, setGibsStatus] = useState<"loading" | "ok" | "unavailable">("loading");
 
-  const [climateReadingsOpen, setClimateReadingsOpen] = useState(false);
   const [barangaysVisible, setBarangaysVisible] = useState(false);
   const [barangayAreas, setBarangayAreas] = useState<BarangayArea[]>([]);
   const [focusedBarangay, setFocusedBarangay] = useState<string | null>(null);
-  const [tropicalEnabled, setTropicalEnabled] = useState(false);
-  const [tropicalSystems, setTropicalSystems] = useState<TropicalSystem[]>([]);
-  const [tropicalLoading, setTropicalLoading] = useState(false);
-  const [tropicalDisclaimer, setTropicalDisclaimer] = useState("");
-  const [tropicalError, setTropicalError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!barangaysVisible) {
@@ -876,10 +841,6 @@ export default function App() {
   });
   const [quakeGrid, setQuakeGrid] = useState<EarthquakeGridCell[]>([]);
 
-
-
-  // Map bearing tracked by CameraCompass (live rotate/pitch sync)
-
   // Keyboard shortcuts: +/- zoom, N = reset north, H = fly home
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -898,30 +859,6 @@ export default function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [toggles.satellite]);
-
-  useEffect(() => {
-    if (!tropicalEnabled) return;
-
-    const loadTropical = async () => {
-      setTropicalLoading(true);
-      try {
-        const response = await fetchTropicalSystems();
-        setTropicalSystems(response.systems ?? []);
-        setTropicalDisclaimer(response.disclaimer ?? "");
-        setTropicalError(response.error ?? null);
-      } catch (error) {
-        console.error("Failed to fetch tropical systems:", error);
-        setTropicalSystems([]);
-        setTropicalError(error instanceof Error ? error.message : "Failed to load");
-      } finally {
-        setTropicalLoading(false);
-      }
-    };
-
-    loadTropical();
-    const interval = setInterval(loadTropical, 20 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [tropicalEnabled]);
 
   useEffect(() => {
     if (!quakeModelEnabled) {
@@ -1063,11 +1000,11 @@ export default function App() {
           "circle-color": [
             "match", ["get", "status"],
             "Completed", PROJECT_STATUS_COLORS.Completed,
-            "Ongoing",   PROJECT_STATUS_COLORS.Ongoing,
-            "Delayed",   PROJECT_STATUS_COLORS.Delayed,
+            "Ongoing", PROJECT_STATUS_COLORS.Ongoing,
+            "Delayed", PROJECT_STATUS_COLORS.Delayed,
             "Suspended", PROJECT_STATUS_COLORS.Suspended,
-            "Planned",   PROJECT_STATUS_COLORS.Planned,
-            "Planning",  PROJECT_STATUS_COLORS.Planned,
+            "Planned", PROJECT_STATUS_COLORS.Planned,
+            "Planning", PROJECT_STATUS_COLORS.Planned,
             PROJECT_STATUS_COLORS.Planned,
           ],
           "circle-stroke-width": 1.5,
@@ -1120,28 +1057,6 @@ export default function App() {
       // Night veil — above rasters/hillshade, below 3d-buildings (opacity driven by sun)
       ensureNightVeilLayer(map as any, BUILDING_EXTRUSION_LAYER);
 
-      // ── GIBS precipitation (added before satellite so satellite sits on top) ──
-      if (!map.getSource("gibs-imerg")) {
-        map.addSource("gibs-imerg", {
-          type: "raster",
-          tiles: [gibsWmtsTileUrl({ layer: gibsLayer, date: gibsDate })],
-          tileSize: 256,
-          minzoom: 0,
-          maxzoom: 6,
-        } as any);
-      }
-      if (!map.getLayer("gibs-imerg-layer")) {
-        map.addLayer({
-          id: "gibs-imerg-layer",
-          type: "raster",
-          source: "gibs-imerg",
-          paint: {
-            "raster-opacity": DEFAULT_TOGGLES.gibsPrecip ? gibsOpacity : 0,
-            "raster-resampling": "linear",
-          },
-        } as any);
-      }
-
       // Satellite — insert before 3d-buildings when that layer exists
       const beforeBuildings = map.getLayer(BUILDING_EXTRUSION_LAYER)
         ? BUILDING_EXTRUSION_LAYER
@@ -1174,28 +1089,12 @@ export default function App() {
         paint: {
           "fill-color": [
             "match", ["get", "level"],
-            "HIGH",     "rgba(255,77,79,0.35)",
+            "HIGH", "rgba(255,77,79,0.35)",
             "MODERATE", "rgba(255,214,102,0.28)",
-            "LOW",      "rgba(61,155,95,0.15)",
+            "LOW", "rgba(61,155,95,0.15)",
             "rgba(255,255,255,0.0)",
           ],
           "fill-outline-color": "rgba(255,255,255,0.12)",
-        },
-      });
-
-      // Storm track
-      map.addSource("stormTrack", {
-        type: "geojson",
-        data: { type: "FeatureCollection", features: [] },
-      });
-      map.addLayer({
-        id: "storm-line",
-        type: "line",
-        source: "stormTrack",
-        paint: {
-          "line-color": "rgba(120, 200, 255, 0.85)",
-          "line-width": 2.5,
-          "line-opacity": 0.9,
         },
       });
 
@@ -1337,7 +1236,7 @@ export default function App() {
   const customModelFileRef = useRef<File | null>(null);
   // Set to true by BuildingOverlay when a building is clicked — prevents placement
   const buildingHitRef = useRef(false);
-  
+
   // Modal state for entering building details before placement
   const [showPlacementModal, setShowPlacementModal] = useState(false);
   const [pendingPlacement, setPendingPlacement] = useState<{ lng: number; lat: number } | null>(null);
@@ -1470,12 +1369,12 @@ export default function App() {
     const catalog = MODEL_CATALOG.find((m) => m.type === selectedModelRef.current);
     setModalProjectName(
       placingNameRef.current.trim() ||
-        (shapeKind ? shapeLabel(shapeKind) : `${catalog?.label ?? selectedModelRef.current}`),
+      (shapeKind ? shapeLabel(shapeKind) : `${catalog?.label ?? selectedModelRef.current}`),
     );
     setModalProjectType(
       catalog?.category === "Agriculture" ? "Agricultural Structure" :
-      catalog?.category === "Infrastructure" ? "Municipal Project" :
-      catalog?.category === "Construction" ? "Municipal Project" : "Private Building"
+        catalog?.category === "Infrastructure" ? "Municipal Project" :
+          catalog?.category === "Construction" ? "Municipal Project" : "Private Building"
     );
     setModalDepartment("Engineering");
     setModalStatus("Planned");
@@ -1526,7 +1425,6 @@ export default function App() {
     setPlacementTool(item.tool);
     setPlacementMode(true);
     setEditMode(false);
-    setBlockRemoverMode(false);
     setSidebarCollapsed(true);
     cesiumMapRef.current?.clearSketch();
   }
@@ -1546,7 +1444,6 @@ export default function App() {
     setPlacementTool("pin");
     setPlacementColor(MAP_SKETCH_COLORS[0]);
     setPlacementMode(true);
-    setBlockRemoverMode(false);
     setEditMode(false);
     setSidebarCollapsed(true);
     setScreen("app");
@@ -1562,7 +1459,6 @@ export default function App() {
     setPlacementTool("pin");
     setPlacementColor("#ffc107");
     setPlacementMode(true);
-    setBlockRemoverMode(false);
     setEditMode(false);
     setSidebarCollapsed(true);
     setScreen("app");
@@ -1784,11 +1680,11 @@ export default function App() {
       updatedAt: now,
       mapShape: pendingShapeKindRef.current
         ? makeMapShape(
-            pendingShapeKindRef.current,
-            pendingShapeKindRef.current === "freeform"
-              ? pendingShapeFootprintRef.current ?? undefined
-              : undefined,
-          )
+          pendingShapeKindRef.current,
+          pendingShapeKindRef.current === "freeform"
+            ? pendingShapeFootprintRef.current ?? undefined
+            : undefined,
+        )
         : undefined,
     };
 
@@ -1862,11 +1758,11 @@ export default function App() {
             customModelUrl,
             mapShape: pendingShapeKindRef.current
               ? makeMapShape(
-                  pendingShapeKindRef.current,
-                  pendingShapeKindRef.current === "freeform"
-                    ? pendingShapeFootprintRef.current ?? undefined
-                    : undefined,
-                )
+                pendingShapeKindRef.current,
+                pendingShapeKindRef.current === "freeform"
+                  ? pendingShapeFootprintRef.current ?? undefined
+                  : undefined,
+              )
               : undefined,
           }),
         });
@@ -1896,7 +1792,7 @@ export default function App() {
         pendingEditIdRef.current = localProject.id;
         console.warn("[Projects] Backend unavailable, saved placement directly to Firestore:", backendErr);
       }
-      
+
       setShowPlacementModal(false);
       setPendingPlacement(null);
       setModalProjectName("");
@@ -1905,7 +1801,6 @@ export default function App() {
       clearPendingShape();
       setEditMode(true);
       setSnapToRoad(true);
-      setBlockRemoverMode(false);
       setSidebarCollapsed(true);
     } catch (err) {
       console.error("Failed to place project:", err);
@@ -1960,112 +1855,17 @@ export default function App() {
     return () => window.removeEventListener("keydown", handleEsc);
   }, [showPlacementModal, pinProposal]);
 
-  function upsertGibsLayer(args: { layer: GibsLayerId; date: string; opacity: number; visible: boolean }) {
-    const map = mapRef.current;
-    if (!map) return;
-    if (!map.isStyleLoaded()) return;
-
-    const { layer, date, opacity, visible } = args;
-    const tileUrl = gibsWmtsTileUrl({ layer, date });
-
-    // MapLibre raster sources do not consistently support setTiles across versions.
-    // Recreate source+layer for reliable updates (prevents “stuck requesting old date”).
-    if (map.getLayer("gibs-imerg-layer")) map.removeLayer("gibs-imerg-layer");
-    if (map.getSource("gibs-imerg")) map.removeSource("gibs-imerg");
-
-    map.addSource("gibs-imerg", {
-      type: "raster",
-      tiles: [tileUrl],
-      tileSize: 256,
-      minzoom: 0,
-      maxzoom: 6,
-    } as any);
-
-    // Add above base map; below vectors if present.
-    map.addLayer(
-      {
-        id: "gibs-imerg-layer",
-        type: "raster",
-        source: "gibs-imerg",
-        paint: {
-          "raster-opacity": visible ? opacity : 0,
-          "raster-resampling": "linear",
-        },
-      } as any,
-      map.getLayer("risk-fill") ? "risk-fill" : undefined
-    );
-  }
-
-  async function resolveLatestGibsDate(layer: GibsLayerId, startDateIso: string) {
-    // Probe backwards until a known tile exists. Keeps UI stable and avoids 404 spam.
-    // We test a low zoom tile (z=1, x=0, y=0) for availability.
-    const base = "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/wmts.cgi";
-    const d = new Date(`${startDateIso}T00:00:00Z`);
-    for (let i = 0; i < 14; i++) {
-      const date = formatGibsDate(d);
-      const url =
-        base +
-        `?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0` +
-        `&LAYER=${encodeURIComponent(layer)}` +
-        `&STYLE=default` +
-        `&TILEMATRIXSET=GoogleMapsCompatible_Level6` +
-        `&TILEMATRIX=1&TILEROW=0&TILECOL=0` +
-        `&FORMAT=image/png` +
-        `&TIME=${encodeURIComponent(date)}`;
-      try {
-        const res = await fetch(url, { method: "HEAD" });
-        if (res.ok) return date;
-      } catch {
-        // ignore and continue
-      }
-      d.setUTCDate(d.getUTCDate() - 1);
-    }
-    return null;
-  }
-
-  // Auto-resolve to latest available GIBS date (prevents persistent 404s).
-  useEffect(() => {
-    let cancelled = false;
-    setGibsStatus("loading");
-    resolveLatestGibsDate(gibsLayer, gibsDate)
-      .then((date) => {
-        if (cancelled) return;
-        if (!date) {
-          setGibsStatus("unavailable");
-          return;
-        }
-        setGibsStatus("ok");
-        if (date !== gibsDate) setGibsDate(date);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setGibsStatus("unavailable");
-      });
-    return () => {
-      cancelled = true;
-    };
-    // Only when the user changes layer/date.
-  }, [gibsLayer, gibsDate]);
-
-  // Update NASA GIBS tiles when layer/date/opacity changes.
-  useEffect(() => {
-    upsertGibsLayer({
-      layer: gibsLayer,
-      date: gibsDate,
-      opacity: gibsOpacity,
-      visible: toggles.gibsPrecip && gibsStatus === "ok",
-    });
-  }, [gibsLayer, gibsDate, gibsOpacity, toggles.gibsPrecip, gibsStatus]);
-
   useEffect(() => {
     const socket = connectRealtime(BACKEND_URL);
     socket.on("connect", () => setConnected(true));
     socket.on("disconnect", () => setConnected(false));
 
-    socket.on("weather:update", (w) => setWeather(w));
     socket.on("risk:update", (z) => setRiskZones(z.zones));
     socket.on("projects:update", (p) => {
-      const list = Array.isArray(p?.projects) ? p.projects : [];
+      const rawList = Array.isArray(p?.projects) ? p.projects : [];
+      const list = rawList
+        .filter((x: any) => !x?.siteMarkerOnly || x?.isPrivateApplication)
+        .filter((x: any) => x?.modelType !== "custom" && !x?.customModelUrl);
       setProjects(list);
       try {
         localStorage.setItem("infatrack-projects-cache", JSON.stringify(list));
@@ -2092,7 +1892,7 @@ export default function App() {
       setMpdcNotices([]);
       setPlanningMeetings([]);
       setPlanningEvents([]);
-      refreshPlanningNoticesRef.current = () => {};
+      refreshPlanningNoticesRef.current = () => { };
       return;
     }
 
@@ -2120,6 +1920,58 @@ export default function App() {
         if (cancelled) return;
         if (currentRole === "Engineer") {
           setPlanningNotices(buildEngineerPlanningNotices(list, currentSession));
+        } else if (currentRole === "MPDC") {
+          try {
+            const apps = await fetchCitizenApplications();
+            const appNotices: PanelNotice[] = [];
+            for (const a of apps) {
+              const subDate = a.createdAt || a.submittedAt || a.updatedAt;
+              const payDate =
+                a.payment?.paidAt ||
+                a.payment?.payment_date ||
+                a.payment?.paymentDate ||
+                a.payment?.issuedAt ||
+                a.updatedAt ||
+                a.createdAt;
+              const inspDate =
+                a.latestInspection?.inspectedAt ||
+                a.latestInspection?.timestamp ||
+                a.updatedAt ||
+                a.createdAt;
+
+              if (a.status === "submitted" || a.status === "pending") {
+                appNotices.push({
+                  id: `app:${a.id}:submitted`,
+                  proposalId: a.id,
+                  title: `Bagong Aplikasyon: ${a.trackingNumber}`,
+                  message: `${a.applicantName || "Aplikante"} - ${a.projectTitle || "Zoning Permit"}. Isinumite: ${formatRealDate(subDate)}.`,
+                  at: subDate || "",
+                  kind: "review",
+                });
+              } else if (a.payment?.status === "paid" || Boolean(a.payment?.orNumber)) {
+                appNotices.push({
+                  id: `app:${a.id}:paid:${a.payment?.orNumber || "or"}`,
+                  proposalId: a.id,
+                  title: `Bayad sa Treasury: ${a.payment?.orNumber || "O.R. Issued"}`,
+                  message: `₱${Number(a.payment?.amount || 0).toLocaleString()} para kay ${a.applicantName} (${a.trackingNumber}). Nabayaran: ${formatRealDate(payDate)}.`,
+                  at: payDate || "",
+                  kind: "assigned",
+                });
+              } else if (a.status === "ocular_inspection" || a.status === "for_ocular_inspection") {
+                appNotices.push({
+                  id: `app:${a.id}:inspection`,
+                  proposalId: a.id,
+                  title: `Ocular Inspection: ${a.trackingNumber}`,
+                  message: `Site visit sa ${a.barangay || "Luisiana"} para kay ${a.applicantName || "Aplikante"}. Petsa: ${formatRealDate(inspDate)}.`,
+                  at: inspDate || "",
+                  kind: "review",
+                });
+              }
+            }
+            setMpdcNotices([...buildMpdcPlanningNotices(list, currentSession), ...appNotices]);
+          } catch {
+            setMpdcNotices(buildMpdcPlanningNotices(list, currentSession));
+          }
         } else {
           setMpdcNotices(buildMpdcPlanningNotices(list, currentSession));
         }
@@ -2143,7 +1995,7 @@ export default function App() {
     return () => {
       cancelled = true;
       window.clearInterval(interval);
-      refreshPlanningNoticesRef.current = () => {};
+      refreshPlanningNoticesRef.current = () => { };
     };
   }, [currentRole, currentSession]);
 
@@ -2206,8 +2058,8 @@ export default function App() {
     () =>
       isMunicipalStaff(currentRole)
         ? buildOpsAlerts(Array.isArray(projects) ? projects : [], planningMeetings, planningEvents, {
-            department: opsDept,
-          })
+          department: opsDept,
+        })
         : [],
     [currentRole, projects, planningMeetings, planningEvents, opsDept],
   );
@@ -2284,7 +2136,6 @@ export default function App() {
           bbox: viewport.bbox,
           zoom: viewport.zoom,
           metric: heatMetric,
-          weather,
           riskZones,
           projects,
           nowMs: Date.now(),
@@ -2293,7 +2144,7 @@ export default function App() {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [viewport, toggles.heatmap, heatMetric, weather, riskZones, projects]);
+  }, [viewport, toggles.heatmap, heatMetric, riskZones, projects]);
 
   // Push risk zones to Mapbox
   useEffect(() => {
@@ -2304,19 +2155,6 @@ export default function App() {
     src.setData(riskZones as any);
     map.setLayoutProperty("risk-fill", "visibility", toggles.risk ? "visible" : "none");
   }, [riskZones, toggles.risk]);
-
-  // Push storm track to Mapbox
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !weather?.stormTrack) return;
-    const src = map.getSource("stormTrack") as maplibregl.GeoJSONSource | undefined;
-    if (!src) return;
-    src.setData({
-      type: "FeatureCollection",
-      features: toggles.stormTrack ? [weather.stormTrack] : [],
-    } as any);
-    map.setLayoutProperty("storm-line", "visibility", toggles.stormTrack ? "visible" : "none");
-  }, [weather, toggles.stormTrack]);
 
   // Satellite imagery toggle
   useEffect(() => {
@@ -2365,7 +2203,7 @@ export default function App() {
         map.setPaintProperty(
           "satellite-layer",
           "raster-opacity",
-          toggles.satellite ? daylightRasterScale(sunLighting.pos) : 0,
+          toggles.satellite ? 1 : 0,
         );
       }
 
@@ -2377,7 +2215,7 @@ export default function App() {
 
     if (map.isStyleLoaded()) applySatellite();
     else map.once("style.load", applySatellite);
-  }, [toggles.satellite, buildingExtrusionOpacity, mapInstance, sunLighting.pos]);
+  }, [toggles.satellite, buildingExtrusionOpacity, mapInstance]);
 
   // Keep fill-extrusion opacity synced with the slider (and after style reload).
   useEffect(() => {
@@ -2429,13 +2267,13 @@ export default function App() {
           // Dynamic exaggeration based on zoom level for optimal visualization
           const currentZoom = map.getZoom();
           const exaggeration = calculateTerrainExaggeration(currentZoom);
-          
-          (map as any).setTerrain({ 
-            source: "terrain-dem", 
-            exaggeration: exaggeration 
+
+          (map as any).setTerrain({
+            source: "terrain-dem",
+            exaggeration: exaggeration
           });
           map.easeTo({ pitch: 75, duration: 600 });
-          
+
           // Show hillshade when terrain is enabled
           if (map.getLayer("hillshade")) {
             map.setLayoutProperty("hillshade", "visibility", "visible");
@@ -2443,7 +2281,7 @@ export default function App() {
         } else {
           (map as any).setTerrain(null);
           map.easeTo({ pitch: 30, duration: 600 });
-          
+
           // Keep hillshade visible — solar time drives illumination on the DEM
           // even when the 3D terrain mesh is off
           if (map.getLayer("hillshade")) {
@@ -2464,9 +2302,9 @@ export default function App() {
       const currentZoom = map.getZoom();
       const exaggeration = calculateTerrainExaggeration(currentZoom);
       try {
-        (map as any).setTerrain({ 
-          source: "terrain-dem", 
-          exaggeration: exaggeration 
+        (map as any).setTerrain({
+          source: "terrain-dem",
+          exaggeration: exaggeration
         });
       } catch {
         // ignore
@@ -2589,25 +2427,43 @@ export default function App() {
     screen === "analytics" ||
     screen === "inventory" ||
     screen === "engagement" ||
-    screen === "audit" ||
-    screen === "pengineer" ||
-    screen === "permits";
+    screen === "engineer_applications" ||
+    screen === "audit";
+
   /**
-   * Once the globe has been created, never tear it down in-SPA.
-   * Deferred Cesium destroy after logout painted Landing then white-screened.
+   * Only show the municipal 3D map shell for the Engineer role on the map view ("app") or its quick overlays.
+   * MPDC role should NEVER see or run this 3D map situation dashboard (it is strictly for Engineer).
+   * On standalone pages like Zoning Permits ("permits"), New Application ("new_application"),
+   * Negosyo ("negosyo"), Engineer Portal ("pengineer"), Landing, or Tracking:
+   * Completely shut down the municipal map so 0% GPU is consumed and no background maps lag the browser.
    */
-  const showMapShell = screen === "app" || staffOverlay || mapHold;
+  const isStandalonePage =
+    screen === "permits" ||
+    screen === "new_application" ||
+    screen === "applicant_tracking" ||
+    screen === "treasury" ||
+    screen === "negosyo" ||
+    screen === "pengineer" ||
+    screen === "landing" ||
+    screen === "login";
+
+  const showMapShell = !isStandalonePage && (screen === "app" || staffOverlay || mapHold);
   const parkMapShell = showMapShell && screen !== "app";
 
+  // MPDC role defaults to permits, but can view 3D map situation panel when selected
+  /* Role separation relaxed: MPDC can toggle between permits and 3D map */
+
   useEffect(() => {
-    if (screen === "app" || staffOverlay) setMapHold(true);
+    if (screen === "app" && currentRole !== "MPDC") setMapHold(true);
     if (screen === "citizen") setCitizenHold(true);
-  }, [screen, staffOverlay]);
+  }, [screen, currentRole]);
 
   function goHome() {
     const leaving = currentSession;
     setAuditActor(null);
     setCurrentSession(null);
+    setMapHold(false);
+    setCitizenHold(false);
     setScreen("landing");
     void logoutUser(leaving);
   }
@@ -2617,19 +2473,20 @@ export default function App() {
 
   return (
     <div
-      className={`appShell${
-        sidebarCollapsed || screen !== "app" ? " sidebar-collapsed" : ""
-      }${screen !== "app" ? " appShell--fullpage" : ""}`}
+      className={`appShell${sidebarCollapsed || screen !== "app" ? " sidebar-collapsed" : ""
+        }${screen !== "app" ? " appShell--fullpage" : ""}`}
     >
       {/* Landing page */}
       {screen === "landing" && (
         <LandingPage
           onEnter={() => setScreen("login")}
+          onNewApplication={() => setScreen("new_application")}
+          onTrackPermit={() => setScreen("applicant_tracking")}
           onPublicPortal={() => {
             setCurrentSession(sessionForRole("Viewer"));
             setScreen("citizen");
           }}
-          onOnlineServices={() => setScreen("services")}
+          onOnlineServices={() => setScreen("new_application")}
         />
       )}
 
@@ -2642,11 +2499,13 @@ export default function App() {
             setScreen(
               session.role === "Barangay Official"
                 ? "planning"
-                : session.role === "Negosyo Center"
-                ? "negosyo"
-                : session.role === "Private Engineer"
-                ? "pengineer"
-                : "app"
+                : session.role === "Treasury Office" || session.role === "Negosyo Center"
+                  ? "treasury"
+                  : session.role === "Private Engineer"
+                    ? "pengineer"
+                    : session.role === "MPDC"
+                      ? "permits"
+                      : "app"
             );
           }}
           onBack={() => setScreen("landing")}
@@ -2659,31 +2518,81 @@ export default function App() {
           <PrivateEngineerPortal
             onBack={goHome}
             session={currentSession}
-            onOpenLiveMap={() => {
+            onOpenLiveMap={(lon, lat) => {
               setSidebarCollapsed(false);
               setScreen("app");
+              if (lon != null && lat != null) {
+                setTimeout(() => {
+                  cesiumMapRef.current?.flyToLonLat(lon, lat, 1800);
+                }, 400);
+              }
             }}
           />
         </div>
       )}
 
-      {/* Dedicated Negosyo Center / BPLO Page (NO MAP) */}
-      {screen === "negosyo" && (
+      {/* Dedicated Treasury Office / Cashiering & Local Revenue Page (NO MAP) */}
+      {(screen === "treasury" || screen === "negosyo") && (
         <div style={{ position: "fixed", inset: 0, zIndex: 10000, overflowY: "auto", background: "#080c14" }}>
-          <NegosyoCenterPage onLogout={goHome} />
+          <TreasuryOfficePage onLogout={goHome} session={currentSession} />
         </div>
       )}
 
-      {/* Dedicated Online Services & Application Wizard Page */}
-      {screen === "services" && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 10000, overflowY: "auto", background: "var(--bg, #0f141d)" }}>
-          <OnlineApplicationWizard
-            onBack={() => setScreen("landing")}
-            onViewMap={() => {
-              setCurrentSession(sessionForRole("Viewer"));
-              setSidebarCollapsed(false);
-              setScreen("app");
+      {/* Dedicated Project Categorization & New Application Page */}
+      {screen === "new_application" && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 10000, overflowY: "auto", background: "var(--bg-root, #0b1120)" }}>
+          <NewApplicationPage
+            onBack={() => setScreen(currentRole === "MPDC" ? "permits" : currentSession ? "app" : "landing")}
+            onCreated={(payload, trackingNo) => {
+              const newProj: Project = {
+                id: `proj_${Date.now()}`,
+                name: payload.title,
+                type: payload.category === "agricultural" ? "barn" : payload.category === "municipal_project" ? "office" : "office",
+                category: payload.category === "agricultural" ? "Agriculture" : payload.category === "municipal_project" ? "Infrastructure" : "Building",
+                status: "Planned",
+                progress: 0,
+                budget: payload.estimatedCostPhp || 0,
+                spent: 0,
+                department: payload.implementingDepartment || "MPDC",
+                location: {
+                  lon: payload.lon ?? 121.509513,
+                  lat: payload.lat ?? 14.185435,
+                  barangay: payload.barangay,
+                },
+                description: `${
+                  payload.category === "agricultural"
+                    ? `Agricultural (Poultry/Piggery) Application [${payload.farmType || "Farm"}]`
+                    : payload.category === "municipal_project"
+                    ? `Municipal Project [${payload.fundingSource || "LGU Fund"}]`
+                    : `Private Infrastructure [${payload.buildingType || "Structure"}]`
+                } · Tracking: ${trackingNo} · Proponent: ${payload.applicantName}`,
+              };
+              setProjects((prev) => [newProj, ...prev]);
+              addProjectToFirestore(newProj).catch(() => undefined);
             }}
+            onTrackApplication={(trackingNo) => {
+              setTrackingReference(trackingNo);
+              setScreen("applicant_tracking");
+            }}
+            onViewOnMap={(lon, lat) => {
+              setScreen("app");
+              if (!currentSession) {
+                setCurrentSession(sessionForRole("Admin"));
+              }
+              setTimeout(() => {
+                cesiumMapRef.current?.flyToLonLat(lon, lat, 2200);
+              }, 200);
+            }}
+          />
+        </div>
+      )}
+
+      {/* Permanent Applicant Permit Tracking Page */}
+      {screen === "applicant_tracking" && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 10000, overflowY: "auto", background: "var(--bg-root, #0b1120)" }}>
+          <ApplicantTrackingPage
+            initialTrackingNo={trackingReference}
+            onBack={() => setScreen(currentSession ? "app" : "landing")}
           />
         </div>
       )}
@@ -2706,10 +2615,10 @@ export default function App() {
         </div>
       )}
 
-      {/* Inventory / Planning / Documents / Analytics / Zoning Permits — overlays; map stays parked underneath */}
+      {/* Inventory / Planning / Documents / Analytics / Zoning Permits — overlays */}
       {screen === "inventory" && (
         <InventoryPage
-          onBack={() => setScreen("app")}
+          onBack={() => setScreen(currentRole === "MPDC" ? "permits" : "app")}
           backendProjects={Array.isArray(projects) ? projects : []}
           currentRole={currentRole}
         />
@@ -2717,32 +2626,48 @@ export default function App() {
 
       {screen === "planning" && currentRole !== "Viewer" && (
         <PlanningPage
-          onBack={() => setScreen("app")}
+          onBack={() => setScreen(currentRole === "MPDC" ? "permits" : "app")}
           session={currentSession}
-          onPinSite={currentRole === "MPDC" ? startPinSite : undefined}
           projects={Array.isArray(projects) ? projects : []}
         />
       )}
 
       {screen === "permits" && isMunicipalStaff(currentRole) && (
         <ZoningPermitsPage
+          onBack={currentRole === "Engineer" || currentRole === "MPDC" ? () => setScreen("app") : undefined}
+          session={currentSession}
+          onLogout={goHome}
+          onNavigate={(target) => setScreen(target as any)}
+        />
+      )}
+
+      {screen === "engineer_applications" && (
+        <EngineerApplicationsPage
           onBack={() => setScreen("app")}
           session={currentSession}
-          onPinSite={currentRole === "MPDC" ? startPinCitizenSite : undefined}
+          onNavigateToProject={(projId) => {
+            setScreen("app");
+            setTimeout(() => {
+              cesiumMapRef.current?.flyToProject(projId);
+            }, 350);
+          }}
+          onApplicationApproved={() => {
+            refreshProjects();
+          }}
         />
       )}
 
       {screen === "documents" && isMunicipalStaff(currentRole) && (
-        <DocumentsPage onBack={() => setScreen("app")} session={currentSession} />
+        <DocumentsPage onBack={() => setScreen(currentRole === "MPDC" ? "permits" : "app")} session={currentSession} />
       )}
 
       {screen === "audit" && isMunicipalStaff(currentRole) && (
-        <AuditPage onBack={() => setScreen("app")} />
+        <AuditPage onBack={() => setScreen(currentRole === "MPDC" ? "permits" : "app")} />
       )}
 
       {screen === "analytics" && isMunicipalStaff(currentRole) && (
         <AnalyticsPage
-          onBack={() => setScreen("app")}
+          onBack={() => setScreen(currentRole === "MPDC" ? "permits" : "app")}
           projects={Array.isArray(projects) ? projects : []}
           captureMapPng={() => cesiumMapRef.current?.captureMapPng() ?? Promise.resolve(null)}
         />
@@ -2750,7 +2675,7 @@ export default function App() {
 
       {screen === "engagement" && roleConfig?.canSeeEngagement && (
         <EngagementPage
-          onBack={() => setScreen("app")}
+          onBack={() => setScreen(currentRole === "MPDC" ? "permits" : "app")}
           onFlyTo={(lon, lat) => {
             window.setTimeout(() => {
               cesiumMapRef.current?.flyToLonLat(lon, lat, 2500);
@@ -2761,2425 +2686,1873 @@ export default function App() {
 
       {/* Main map shell — stays alive while staff overlays are open */}
       {showMapShell && (
-      <div
-        className={parkMapShell ? "app-shell-parked" : undefined}
-        aria-hidden={parkMapShell}
-      >
-      <>
-      <div className="mapWrap">
-        <CesiumMap
-          ref={cesiumMapRef}
-          solarHour={solarHour}
-          sunAzimuthDeg={sunAzimuthDeg}
-          buildingBlocksVisible={toggles.buildingBlocks}
-          barangaysVisible={barangaysVisible}
-          focusedBarangay={focusedBarangay}
-          blockRemoverActive={
-            (blockRemoverMode && currentRole === "Engineer") || eraseBlocksActive
-          }
-          terrainEnabled={toggles.satellite}
-          satellite={toggles.satellite}
-          mapSettings={mapSettings}
-          tropicalEnabled={tropicalEnabled}
-          tropicalSystems={tropicalSystems}
-          earthquakeEnabled={quakeModelEnabled}
-          earthquakeGrid={quakeGrid}
-          projects={filteredProjects}
-          clusteringEnabled={infraFilter.clustering}
-          visible={!parkMapShell}
-          paused={parkMapShell}
-          placementMode={
-            (placementMode && currentRole === "Engineer") ||
-            (placementMode && currentRole === "MPDC" && (Boolean(pinProposal) || Boolean(pinCitizenApp)))
-          }
-          editMode={editMode && currentRole === "Engineer"}
-          placementTool={placementTool}
-          placementColor={placementColor}
-          onPlaceClick={openPlacementAt}
-          onPlaceSketch={handlePlaceSketch}
-          readOnly={currentRole === "Viewer" || isBarangayOfficial(currentRole)}
-          canManipulateModels={currentRole === "Engineer" || currentRole === "MPDC"}
-          canPromoteSitePin={currentRole === "Engineer"}
-          onProjectPatch={(projectId, patch) => {
-            setProjects((prev) =>
-              prev.map((p) => (p.id === projectId ? { ...p, ...patch } : p)),
-            );
-          }}
-          canAddPhotos={currentRole === "MPDC" || currentRole === "Engineer"}
-          onPhotosChange={(projectId, photos) => {
-            setProjects((prev) =>
-              prev.map((p) => (p.id === projectId ? { ...p, photos } : p)),
-            );
-          }}
-          gibs={{
-            enabled: toggles.gibsPrecip && gibsStatus === "ok",
-            layer: gibsLayer,
-            date: gibsDate,
-            opacity: gibsOpacity,
-          }}
-          onDeleteBuilding={
-            currentRole === "Engineer"
-              ? async (projectId) => {
-                  try {
-                    await fetch(backendUrl(`/api/projects/${projectId}`), {
-                      method: "DELETE",
-                      credentials: "include",
-                    });
-                  } catch (err) {
-                    console.error("Failed to delete project:", err);
-                  }
+        <div
+          className={parkMapShell ? "app-shell-parked" : undefined}
+          aria-hidden={parkMapShell}
+        >
+          <>
+            <div className="mapWrap">
+              <CesiumMap
+                ref={cesiumMapRef}
+                barangaysVisible={barangaysVisible}
+                focusedBarangay={focusedBarangay}
+                terrainEnabled={toggles.satellite}
+                satellite={toggles.satellite}
+                mapSettings={mapSettings}
+                earthquakeEnabled={quakeModelEnabled}
+                earthquakeGrid={quakeGrid}
+                projects={filteredProjects}
+                clusteringEnabled={infraFilter.clustering}
+                visible={!parkMapShell}
+                paused={parkMapShell}
+                placementMode={
+                  (placementMode && currentRole === "Engineer") ||
+                  (placementMode && currentRole === "MPDC" && (Boolean(pinProposal) || Boolean(pinCitizenApp)))
                 }
-              : undefined
-          }
-        />
+                editMode={false}
+                placementTool={placementTool}
+                placementColor={placementColor}
+                onPlaceClick={openPlacementAt}
+                onPlaceSketch={handlePlaceSketch}
+                readOnly={currentRole === "Viewer" || isBarangayOfficial(currentRole)}
+                canManipulateModels={false}
+                canPromoteSitePin={false}
+                onProjectPatch={(projectId, patch) => {
+                  setProjects((prev) =>
+                    prev.map((p) => (p.id === projectId ? { ...p, ...patch } : p)),
+                  );
+                }}
+                canAddPhotos={currentRole === "MPDC" || currentRole === "Engineer"}
+                onPhotosChange={(projectId, photos) => {
+                  setProjects((prev) =>
+                    prev.map((p) => (p.id === projectId ? { ...p, photos } : p)),
+                  );
+                }}
+                onSelectSitePin={(p) => {
+                  const hasUploadedPhoto =
+                    Boolean((p as any).latestInspection?.photoUrl) ||
+                    (Array.isArray((p as any).inspectionPhotos) && (p as any).inspectionPhotos.length > 0) ||
+                    (Array.isArray(p.photos) && p.photos.length > 0);
 
-        <ProjectChat />
-
-        {placementToolbarOpen ? (
-          <div className="placement-draw-toolbar">
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-              <span style={{ lineHeight: 1.35, flex: 1, minWidth: 140 }}>
-                {pinProposal ? (
-                  <>
-                    <b>Draw site</b> for <b>{pinProposal.title}</b> — pin / draw / area / erase blocks
-                  </>
-                ) : pinCitizenApp ? (
-                  <>
-                    <b>📍 I-pin ang Lokasyon ng Gusali</b> para kay <b>{pinCitizenApp.applicant?.fullName}</b> ({pinCitizenApp.trackingNumber}) — i-click ang lote sa mapa
-                  </>
-                ) : (
-                  <>
-                    <b>Place tools</b> — pin, draw, color, or delete OSM blocks
-                  </>
-                )}
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  setPinProposal(null);
-                  pinProposalRef.current = null;
-                  setPinCitizenApp(null);
-                  pinCitizenAppRef.current = null;
-                  setPlacementMode(false);
-                  setBlockRemoverMode(false);
-                  setPlacementTool("pin");
-                  clearPendingShape();
-                  cesiumMapRef.current?.clearSketch();
-                }}
-                style={{
-                  cursor: "pointer",
-                  flexShrink: 0,
-                  background: "var(--cream-deep)",
-                  border: "2px solid var(--ink)",
-                  color: "var(--ink)",
-                  padding: "6px 10px",
-                  fontSize: 11,
-                  fontWeight: 700,
-                }}
-              >
-                Cancel
-              </button>
-            </div>
-
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-              {(
-                [
-                  ["pin", "Pin"],
-                  ["line", "Draw"],
-                  ["area", "Area"],
-                  ["erase", "Delete blocks"],
-                ] as const
-              ).map(([id, label]) => (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => {
-                    setPlacementTool(id);
-                    cesiumMapRef.current?.clearSketch();
-                    if (id === "erase") {
-                      setBlockRemoverMode(true);
-                    } else {
-                      setBlockRemoverMode(false);
-                    }
-                  }}
-                  style={{
-                    cursor: "pointer",
-                    padding: "6px 10px",
-                    fontWeight: 700,
-                    border: "2px solid var(--ink)",
-                    background:
-                      placementTool === id
-                        ? id === "erase"
-                          ? "rgba(255,77,79,0.35)"
-                          : "var(--seed)"
-                        : "var(--cream-deep)",
-                    color: "var(--ink)",
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-              {placementTool !== "erase" && (
-                <>
-                  <span style={{ width: 1, height: 22, background: "var(--stroke)", margin: "0 4px" }} />
-                  {MAP_SKETCH_COLORS.map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      title={c}
-                      aria-label={`Color ${c}`}
-                      onClick={() => setPlacementColor(c)}
-                      style={{
-                        width: 22,
-                        height: 22,
-                        borderRadius: 0,
-                        cursor: "pointer",
-                        background: c,
-                        border:
-                          placementColor === c
-                            ? "3px solid var(--ink)"
-                            : "2px solid rgba(0,0,0,0.35)",
-                      }}
-                    />
-                  ))}
-                  <input
-                    type="color"
-                    value={placementColor}
-                    aria-label="Custom color"
-                    onChange={(e) => setPlacementColor(e.target.value)}
-                    style={{
-                      width: 28,
-                      height: 22,
-                      padding: 0,
-                      border: "2px solid var(--ink)",
-                      cursor: "pointer",
-                    }}
-                  />
-                </>
-              )}
-            </div>
-
-            {placementTool === "erase" && (
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                <span style={{ color: "var(--muted)", fontSize: 11 }}>
-                  Click gray OSM building blocks to remove them from the map.
-                </span>
-                <button
-                  type="button"
-                  onClick={() => cesiumMapRef.current?.restoreRemovedBlocks()}
-                  style={{
-                    cursor: "pointer",
-                    padding: "5px 10px",
-                    border: "2px solid var(--ink)",
-                    background: "var(--cream-deep)",
-                    fontWeight: 700,
-                  }}
-                >
-                  Restore all blocks
-                </button>
-              </div>
-            )}
-
-            {placementTool === "line" && (
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                <span style={{ color: "var(--muted)", fontSize: 11 }}>
-                  Hold and drag to draw. Release pauses — press Finish to save.
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    cesiumMapRef.current?.undoSketchVertex();
-                  }}
-                  style={{
-                    cursor: "pointer",
-                    padding: "5px 8px",
-                    border: "1px solid var(--stroke)",
-                    background: "var(--cream-deep)",
-                    fontWeight: 600,
-                  }}
-                >
-                  Undo
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    cesiumMapRef.current?.clearSketch();
-                  }}
-                  style={{
-                    cursor: "pointer",
-                    padding: "5px 8px",
-                    border: "1px solid var(--stroke)",
-                    background: "var(--cream-deep)",
-                    fontWeight: 600,
-                  }}
-                >
-                  Clear
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const ok = cesiumMapRef.current?.finishSketch() ?? false;
-                    if (!ok) {
-                      window.alert("Draw a longer stroke first (need at least 2 points).");
-                    }
-                  }}
-                  style={{
-                    cursor: "pointer",
-                    padding: "5px 10px",
-                    border: "2px solid var(--ink)",
-                    background: "var(--seed)",
-                    fontWeight: 800,
-                  }}
-                >
-                  Finish
-                </button>
-              </div>
-            )}
-
-            {placementTool === "area" && (
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-                <span style={{ color: "var(--muted)", fontSize: 11 }}>
-                  Click map to add points (≥3). Double-click last point or Finish.
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    cesiumMapRef.current?.undoSketchVertex();
-                  }}
-                  style={{
-                    cursor: "pointer",
-                    padding: "5px 8px",
-                    border: "1px solid var(--stroke)",
-                    background: "var(--cream-deep)",
-                    fontWeight: 600,
-                  }}
-                >
-                  Undo
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    cesiumMapRef.current?.clearSketch();
-                  }}
-                  style={{
-                    cursor: "pointer",
-                    padding: "5px 8px",
-                    border: "1px solid var(--stroke)",
-                    background: "var(--cream-deep)",
-                    fontWeight: 600,
-                  }}
-                >
-                  Clear
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const ok = cesiumMapRef.current?.finishSketch() ?? false;
-                    if (!ok) {
-                      window.alert("Need at least 3 points for an area.");
-                    }
-                  }}
-                  style={{
-                    cursor: "pointer",
-                    padding: "5px 10px",
-                    border: "2px solid var(--ink)",
-                    background: "var(--seed)",
-                    fontWeight: 800,
-                  }}
-                >
-                  Finish
-                </button>
-              </div>
-            )}
-          </div>
-        ) : null}
-
-        <div className={`topBar${moreMenuOpen ? " is-nav-open" : ""}`}>
-          <div className="topBar-brand">
-            <div className="topBar-brand-text">
-              <div className="brand">
-                INFA-TRACK <span className="brand-place">Luisiana</span>
-              </div>
-              <div className="sub">Municipal GIS for safer infrastructure siting</div>
-            </div>
-            <span
-              className="topBar-live-dot"
-              title={connected ? "Live" : "Offline"}
-              aria-label={connected ? "Live connection" : "Offline"}
-              style={{ background: connected ? "var(--accent)" : "rgba(255,77,79,0.9)" }}
-            />
-          </div>
-          <div className="topBar-toolbar">
-            {roleConfig && (
-              <div className="chip chip-role" style={{ borderColor: `${roleConfig.color}50`, color: roleConfig.color, fontWeight: 600 }}>
-                {roleConfig.label}
-              </div>
-            )}
-            <div className="chip chip-live">
-              <span className="dot" style={{ background: connected ? "var(--accent)" : "rgba(255,77,79,0.9)" }} />
-              {connected ? "Live" : "Offline"}
-            </div>
-            <div className="chip chip-risk topBar-hide-sm">
-              Risk:{" "}
-              <span style={{ color: topRisk.level === "HIGH" ? "var(--danger)" : topRisk.level === "MODERATE" ? "var(--warn)" : "var(--safe)" }}>
-                {topRisk.level}
-              </span>
-            </div>
-            <div className="chip chip-updates topBar-hide-mobile">Updates: 5s</div>
-          </div>
-          <div className="topBar-actions-primary">
-            <nav id="topBar-nav" className={`topBar-nav${moreMenuOpen ? " is-open" : ""}`} aria-label="App sections">
-            {roleConfig?.canSeePlanning && currentRole !== "Viewer" && (
-              <button
-                type="button"
-                className="topBar-nav-link"
-                onClick={() => {
-                  setMoreMenuOpen(false);
-                  setScreen("planning");
-                }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
-                  <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
-                  <rect x="8" y="2" width="8" height="4" rx="1" />
-                  <path d="M9 12h6M9 16h4" />
-                </svg>
-                <span className="topBar-exit-full">
-                  {isBarangayOfficial(currentRole) ? "Requests" : "Planning"}
-                </span>
-                <span className="topBar-exit-short">
-                  {isBarangayOfficial(currentRole) ? "Req" : "Plan"}
-                </span>
-              </button>
-            )}
-            {isMunicipalStaff(currentRole) && (
-              <button
-                type="button"
-                className="topBar-nav-link"
-                onClick={() => {
-                  setMoreMenuOpen(false);
-                  setScreen("documents");
-                }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                  <polyline points="14 2 14 8 20 8" />
-                  <line x1="16" y1="13" x2="8" y2="13" />
-                  <line x1="16" y1="17" x2="8" y2="17" />
-                  <polyline points="10 9 9 9 8 9" />
-                </svg>
-                <span className="topBar-exit-full">Documents</span>
-                <span className="topBar-exit-short">Docs</span>
-              </button>
-            )}
-            {isMunicipalStaff(currentRole) && (
-              <button
-                type="button"
-                className="topBar-nav-link"
-                onClick={() => {
-                  setMoreMenuOpen(false);
-                  setScreen("analytics");
-                }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
-                  <line x1="18" y1="20" x2="18" y2="10" />
-                  <line x1="12" y1="20" x2="12" y2="4" />
-                  <line x1="6" y1="20" x2="6" y2="14" />
-                </svg>
-                <span className="topBar-exit-full">Analytics</span>
-                <span className="topBar-exit-short">Stats</span>
-              </button>
-            )}
-            {roleConfig?.canSeeEngagement && (
-              <button
-                type="button"
-                className="topBar-nav-link"
-                onClick={() => {
-                  setMoreMenuOpen(false);
-                  setScreen("engagement");
-                }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                </svg>
-                <span className="topBar-exit-full">Engagement</span>
-                <span className="topBar-exit-short">Engage</span>
-              </button>
-            )}
-            {isMunicipalStaff(currentRole) && currentRole !== "Negosyo Center" && (
-              <button
-                type="button"
-                className="topBar-nav-link"
-                onClick={() => {
-                  setMoreMenuOpen(false);
-                  setScreen("inventory");
-                }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}><rect x="2" y="4" width="20" height="5" rx="1"/><path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9"/><path d="M10 13h4"/></svg>
-                <span className="topBar-exit-full">Inventory</span>
-                <span className="topBar-exit-short">Inv</span>
-              </button>
-            )}
-            {isMunicipalStaff(currentRole) && currentRole !== "Negosyo Center" && (
-              <button
-                type="button"
-                className="topBar-nav-link"
-                onClick={() => {
-                  setMoreMenuOpen(false);
-                  setScreen("permits");
-                }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
-                  <path d="M3 21h18M9 8h1M9 12h1M9 16h1M14 8h1M14 12h1M14 16h1M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16" />
-                </svg>
-                <span className="topBar-exit-full">Zoning Permits</span>
-                <span className="topBar-exit-short">Permits</span>
-              </button>
-            )}
-            {currentRole === "Viewer" && (
-              <button
-                type="button"
-                className="topBar-nav-link"
-                onClick={() => {
-                  setMoreMenuOpen(false);
-                  setScreen("citizen");
-                }}
-              >
-                <span className="topBar-exit-full">Portal</span>
-                <span className="topBar-exit-short">Portal</span>
-              </button>
-            )}
-            {currentRole && (
-              <button
-                type="button"
-                className="topBar-exit"
-                onClick={() => {
-                  setMoreMenuOpen(false);
-                  goHome();
-                }}
-              >
-                <span className="topBar-exit-full">{currentRole === "Viewer" ? "Exit Map" : "Sign Out"}</span>
-                <span className="topBar-exit-short">{currentRole === "Viewer" ? "Exit" : "Out"}</span>
-              </button>
-            )}
-            </nav>
-            {isMunicipalStaff(currentRole) && (
-              <button
-                type="button"
-                className="topBar-nav-link topBar-audit-btn"
-                title="Activity log and audit trail"
-                onClick={() => {
-                  setMoreMenuOpen(false);
-                  setScreen("audit");
-                }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <path d="M12 8v4l2.5 1.5" />
-                  <circle cx="12" cy="12" r="9" />
-                </svg>
-                <span className="topBar-exit-full">Activity</span>
-                <span className="topBar-exit-short">Log</span>
-              </button>
-            )}
-            <ThemeToggle iconOnly />
-            <button
-              type="button"
-              className="topBar-moreBtn"
-              aria-expanded={moreMenuOpen}
-              aria-controls="topBar-nav"
-              onClick={() => setMoreMenuOpen((v) => !v)}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
-                {moreMenuOpen ? (
-                  <path d="M18 6L6 18M6 6l12 12" />
-                ) : (
-                  <>
-                    <line x1="4" y1="7" x2="20" y2="7" />
-                    <line x1="4" y1="12" x2="20" y2="12" />
-                    <line x1="4" y1="17" x2="20" y2="17" />
-                  </>
-                )}
-              </svg>
-              <span>{moreMenuOpen ? "Close" : "Menu"}</span>
-            </button>
-          </div>
-        </div>
-        {moreMenuOpen && (
-          <button
-            type="button"
-            className="topBar-nav-backdrop"
-            aria-label="Close menu"
-            onClick={() => setMoreMenuOpen(false)}
-          />
-        )}
-
-        {/* Sun bearing dial + time — isolated from Cesium canvas mouse drag */}
-        {!editMode && (
-        <div
-          className="solar-map-controls"
-          title="Sun bearing & time (Luisiana)"
-          onPointerDown={stopMapPointer}
-          onMouseDown={stopMapPointer}
-          onWheel={(e) => {
-            e.stopPropagation();
-            e.preventDefault();
-          }}
-          onContextMenu={stopMapPointer}
-        >
-          <div className="solar-azimuth-wrap">
-            <div className="solar-map-slider-label">
-              <span>Sun</span>
-              <span className="solar-map-slider-time">
-                {Math.round(sunAzimuthDeg)}°
-                {!sunLighting.isDaylight ? " · night" : ""}
-              </span>
-            </div>
-            <SunAzimuthDial
-              value={sunAzimuthDeg}
-              onChange={setSunAzimuthDeg}
-              size={compactChrome ? 76 : 108}
-              onDragStateChange={(dragging) => setCesiumCameraInputs(!dragging)}
-            />
-            <div className="solar-azimuth-time">
-              <div className="solar-map-slider-label">
-                <span>Time</span>
-                <span className="solar-map-slider-time">{formatSolarHour(solarHour)}</span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={24}
-                step={1 / 3600}
-                value={solarHour}
-                aria-label="Solar time of day"
-                onChange={(e) => setSolarHourAndSyncAzimuth(Number(e.target.value))}
-                onPointerDown={freezeCameraOnPointerDown}
-                onPointerUp={unfreezeCameraOnPointerUp}
-                onPointerCancel={unfreezeCameraOnPointerUp}
-                onMouseUp={unfreezeCameraOnPointerUp}
-              />
-              <button
-                type="button"
-                className={`solar-sync-pht${solarOffPht ? " is-active" : ""}`}
-                onClick={syncSolarToPht}
-                title="Reset sun time to the current hour in Asia/Manila"
-              >
-                Sync to PHT
-              </button>
-            </div>
-          </div>
-        </div>
-        )}
-
-        {currentRole === "Engineer" && (
-          <div
-            className={`map-edit-mode${editMode ? " is-on" : ""}`}
-            onPointerDown={stopMapPointer}
-            onMouseDown={stopMapPointer}
-          >
-            <button
-              type="button"
-              className="map-edit-mode-btn"
-              aria-pressed={editMode}
-              title={editMode ? "Turn off Edit Mode" : "Move an existing 3D model"}
-              onClick={() => {
-                setEditMode((v) => {
-                  const next = !v;
-                  if (next) {
-                    setSnapToRoad(true);
-                    setPlacementMode(false);
-                    setBlockRemoverMode(false);
-                    setClimateReadingsOpen(false);
-                    setSidebarCollapsed(true);
+                  // Kung wala pang na-upload na litrato, ilabas agad ang inspection update modal!
+                  if (!hasUploadedPhoto && (currentRole === "Engineer" || currentRole === "Admin" || currentRole === "MPDC")) {
+                    setInspectingProject(p);
+                  } else {
+                    setSelectedSitePin(p);
                   }
-                  return next;
-                });
-              }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M5 9l-3 3 3 3" />
-                <path d="M9 5l3-3 3 3" />
-                <path d="M19 9l3 3-3 3" />
-                <path d="M9 19l3 3 3-3" />
-                <path d="M2 12h20" />
-                <path d="M12 2v20" />
-              </svg>
-              <span>{editMode ? "Editing" : "Edit models"}</span>
-            </button>
-            {editMode && (
-              <>
-                <span className="map-edit-mode-hint">Click a building · Move / Rotate / Size</span>
-                <button
-                  type="button"
-                  className="map-edit-mode-done"
-                  onClick={() => setEditMode(false)}
-                >
-                  Done
-                </button>
-              </>
-            )}
-          </div>
-        )}
-
-        {!editMode && (
-        <MapShortcuts
-          canSeeLayers={Boolean(roleConfig?.canSeeLayers)}
-          canSeeRisk={Boolean(roleConfig?.canSeeRisk)}
-          canSeeClimate={Boolean(roleConfig?.canSeeWeather || roleConfig?.canSeeLayers)}
-          satellite={toggles.satellite}
-          buildingBlocks={toggles.buildingBlocks}
-          projects={toggles.projects}
-          quakeHeat={quakeModelEnabled}
-          climateReadings={climateReadingsOpen}
-          tropical={tropicalEnabled}
-          barangays={barangaysVisible}
-          coordinates={mapSettings.showCoordinates ?? true}
-          labels={mapSettings.showFloatingLabels ?? true}
-          shapes={shapesPanelOpen}
-          canPlaceShapes={currentRole === "Engineer"}
-          placement={placementMode}
-          canPlace={currentRole === "Engineer" || currentRole === "MPDC"}
-          onPlacement={() => {
-            setPlacementMode((v) => {
-              const next = !v;
-              if (!next) {
-                setPinProposal(null);
-                pinProposalRef.current = null;
-                setBlockRemoverMode(false);
-                setPlacementTool("pin");
-                clearPendingShape();
-                cesiumMapRef.current?.clearSketch();
-              }
-              return next;
-            });
-          }}
-          onSatellite={() =>
-            setToggles((t) => {
-              const next = !t.satellite;
-              return { ...t, satellite: next, terrain: next };
-            })
-          }
-          onBuildingBlocks={() => setToggles((t) => ({ ...t, buildingBlocks: !t.buildingBlocks }))}
-          onProjects={() => setToggles((t) => ({ ...t, projects: !t.projects }))}
-          onBarangays={() => {
-            setBarangaysVisible((v) => !v);
-            setShapesPanelOpen(false);
-          }}
-          onCoordinates={() =>
-            setMapSettings((s) => ({
-              ...s,
-              showCoordinates: !(s.showCoordinates ?? true),
-            }))
-          }
-          onLabels={() =>
-            setMapSettings((s) => ({
-              ...s,
-              showFloatingLabels: !(s.showFloatingLabels ?? true),
-            }))
-          }
-          onShapes={() => {
-            setShapesPanelOpen((v) => !v);
-            setBarangaysVisible(false);
-          }}
-          onQuakeHeat={() => setQuakeModelEnabled((v) => !v)}
-          onClimateReadings={() => setClimateReadingsOpen((v) => !v)}
-          onTropical={() => {
-            setTropicalEnabled((on) => {
-              const next = !on;
-              setToggles((t) => ({ ...t, gibsPrecip: next }));
-              if (next) {
-                setGibsLayer((layer) =>
-                  layer.startsWith("IMERG_") ? layer : "IMERG_Precipitation_Rate",
-                );
-              }
-              return next;
-            });
-          }}
-          onPointerDown={stopMapPointer}
-        />
-        )}
-
-        {!editMode && shapesPanelOpen && currentRole === "Engineer" && (
-          <ShapesPanel
-            selectedKind={pendingShapeKind}
-            onSelect={startShapePlacement}
-            onClose={() => setShapesPanelOpen(false)}
-            onPointerDown={stopMapPointer}
-          />
-        )}
-
-        {!editMode && barangaysVisible && roleConfig?.canSeeLayers && (
-          <BarangayLegend
-            areas={barangayAreas}
-            selectedName={focusedBarangay}
-            onSelect={(area) => {
-              setFocusedBarangay(area.name);
-              cesiumMapRef.current?.flyToBarangay(area);
-            }}
-            onClose={() => setBarangaysVisible(false)}
-            onPointerDown={stopMapPointer}
-          />
-        )}
-
-        {!editMode && climateReadingsOpen && (roleConfig?.canSeeWeather || roleConfig?.canSeeLayers) && (
-          <ClimateReadingsCard
-            weather={weather}
-            onClose={() => setClimateReadingsOpen(false)}
-            onPointerDown={stopMapPointer}
-          />
-        )}
-
-        {/* ── Map Controls ── */}
-        <div
-          className="map-controls"
-          onPointerDown={stopMapPointer}
-          onMouseDown={stopMapPointer}
-          onWheel={(e) => {
-            e.stopPropagation();
-          }}
-        >
-          <button className="map-ctrl-btn" title="Zoom In (=)" type="button" onClick={() => cesiumMapRef.current?.zoomIn()}>+</button>
-          <button className="map-ctrl-btn" title="Zoom Out (-)" type="button" onClick={() => cesiumMapRef.current?.zoomOut()}>−</button>
-          <div className="map-ctrl-divider" />
-          <button
-            className="map-ctrl-btn"
-            title="Fly to Luisiana"
-            type="button"
-            onClick={() => cesiumMapRef.current?.flyHome()}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-              <polyline points="9 22 9 12 15 12 15 22"/>
-            </svg>
-          </button>
-          <button
-            className="map-ctrl-btn"
-            title="Toggle Tilt"
-            type="button"
-            onClick={() => cesiumMapRef.current?.toggleTilt()}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M2 20 L12 4 L22 20"/>
-              <line x1="2" y1="20" x2="22" y2="20"/>
-            </svg>
-          </button>
-          {currentRole === "Engineer" && !editMode && (
-            <>
-              <div className="map-ctrl-divider" />
-              <button
-                className={`map-ctrl-btn${blockRemoverMode ? " is-active" : ""}`}
-                title={blockRemoverMode ? "Block remover ON — click a building to delete" : "Remove 3D block"}
-                type="button"
-                aria-pressed={blockRemoverMode}
-                onClick={() => {
-                  setBlockRemoverMode((v) => !v);
-                  if (!blockRemoverMode) setPlacementMode(false);
                 }}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <polyline points="3 6 5 6 21 6" />
-                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                  <path d="M10 11v6" />
-                  <path d="M14 11v6" />
-                  <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                </svg>
-              </button>
-            </>
-          )}
-        </div>
-
-      </div>
-
-      {!sidebarCollapsed && (
-        <button
-          type="button"
-          className="sidePanel-backdrop"
-          aria-label="Close live situation panel"
-          onClick={() => setSidebarCollapsed(true)}
-        />
-      )}
-      <button
-        type="button"
-        className={`sidePanel-edgeToggle${sidebarCollapsed ? " is-collapsed" : ""}${
-          isMunicipalStaff(currentRole) && notifyBadgeCount > 0 ? " has-badge" : ""
-        }`}
-        aria-label={sidebarCollapsed ? "Expand side panel" : "Collapse side panel"}
-        title={
-          sidebarCollapsed
-            ? noticeUnreadCount > 0
-              ? `Expand panel · ${noticeUnreadCount} notification${noticeUnreadCount === 1 ? "" : "s"}`
-              : "Expand panel"
-            : "Collapse panel"
-        }
-        onClick={() => setSidebarCollapsed((v) => !v)}
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-          {sidebarCollapsed
-            ? <polyline points="15 18 9 12 15 6" />
-            : <polyline points="9 18 15 12 9 6" />}
-        </svg>
-        {isMunicipalStaff(currentRole) && notifyBadgeCount > 0 && (
-          <span className="sidePanel-edgeBadge" aria-hidden>{notifyBadgeCount > 9 ? "9+" : notifyBadgeCount}</span>
-        )}
-      </button>
-
-      <aside className={`sidePanel${sidebarCollapsed ? " is-collapsed" : ""}`} aria-hidden={sidebarCollapsed}>
-        <div className="sidePanel-head">
-          <div className="sectionTitle">
-            Live Situation Panel
-            {isMunicipalStaff(currentRole) && notifyBadgeCount > 0 && (
-              <span className="sidePanel-titleBadge" aria-label={`${notifyBadgeCount} notifications`}>
-                {notifyBadgeCount}
-              </span>
-            )}
-          </div>
-          <button
-            type="button"
-            className="sidePanel-collapseBtn"
-            aria-label="Collapse side panel"
-            title="Collapse panel"
-            onClick={() => setSidebarCollapsed(true)}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <polyline points="9 18 15 12 9 6" />
-            </svg>
-          </button>
-        </div>
-
-        {/* Tab Navigation */}
-        <div className="sidebar-tabs">
-          {isMunicipalStaff(currentRole) && (
-            <button
-              type="button"
-              className={`sidebar-tab${sidebarTab === "notify" ? " active" : ""}`}
-              onClick={() => setSidebarTab("notify")}
-            >
-              Notify
-              {notifyBadgeCount > 0 && (
-                <span className="sidebar-tab-badge">{notifyBadgeCount > 9 ? "9+" : notifyBadgeCount}</span>
-              )}
-            </button>
-          )}
-          {(roleConfig?.canSeeWeather || roleConfig?.canSeeLayers) && (
-            <button type="button" className={`sidebar-tab${sidebarTab === "climate" ? " active" : ""}`} onClick={() => setSidebarTab("climate")}>Climate</button>
-          )}
-          {roleConfig?.canSeeLayers && (
-            <button type="button" className={`sidebar-tab${sidebarTab === "layers" ? " active" : ""}`} onClick={() => setSidebarTab("layers")}>Layers</button>
-          )}
-          {roleConfig?.canSeeRisk && (
-            <button type="button" className={`sidebar-tab${sidebarTab === "risk" ? " active" : ""}`} onClick={() => setSidebarTab("risk")}>Risk</button>
-          )}
-          {roleConfig?.canSeeProjects && (
-            <button type="button" className={`sidebar-tab${sidebarTab === "projects" ? " active" : ""}`} onClick={() => setSidebarTab("projects")}>Projects</button>
-          )}
-          {(roleConfig?.canSeeLayers || roleConfig?.canSeeWeather || roleConfig?.canSeeRisk) && (
-            <button type="button" className={`sidebar-tab${sidebarTab === "settings" ? " active" : ""}`} onClick={() => setSidebarTab("settings")}>Settings</button>
-          )}
-          {currentRole && currentRole !== "Viewer" && (
-            <button type="button" className={`sidebar-tab${sidebarTab === "account" ? " active" : ""}`} onClick={() => setSidebarTab("account")}>Account</button>
-          )}
-        </div>
-
-        {currentRole === "Viewer" && (
-          <div className="card viewer-banner" style={{ marginBottom: 12 }}>
-            <div className="sectionTitle" style={{ marginBottom: 4 }}>Public Portal · Live Map</div>
-            <p style={{ margin: 0, fontSize: 11, color: "var(--muted2)", lineHeight: 1.5 }}>
-              View-only map with climate, layers, risk, and projects. Use <strong>Portal</strong> in the top bar for reporting, feedback, and transparency.
-            </p>
-          </div>
-        )}
-
-        {/* Tab Content */}
-        <div className="sidePanel-body">
-
-        {/* ── Engineer: Notifications ── */}
-        {sidebarTab === "notify" && currentRole === "Engineer" && (
-          <div style={{ marginBottom: 12 }}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 8,
-                marginBottom: 8,
-              }}
-            >
-              <div className="sectionTitle" style={{ margin: 0 }}>
-                Notifications
-              </div>
-              {activePlanningNotices.length > 0 && (
-                <button
-                  type="button"
-                  className="side-btn"
-                  onClick={dismissAllNotices}
-                >
-                  Clear all
-                </button>
-              )}
-            </div>
-            <p style={{ margin: "0 0 10px", fontSize: 12, color: "var(--muted)", lineHeight: 1.45 }}>
-              Planning items for Engineering. Live updates when the workspace changes.
-            </p>
-            {activePlanningNotices.length ? (
-              <div className="miniList">
-                {activePlanningNotices.map((n) => (
-                  <div
-                    key={n.id}
-                    className={`alert notice-card notice-${n.kind}`}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => {
-                      dismissNotice(n.id);
-                      setScreen("planning");
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        dismissNotice(n.id);
-                        setScreen("planning");
+                onDeleteBuilding={
+                  currentRole === "Engineer"
+                    ? async (projectId) => {
+                      try {
+                        await fetch(backendUrl(`/api/projects/${projectId}`), {
+                          method: "DELETE",
+                          credentials: "include",
+                        });
+                      } catch (err) {
+                        console.error("Failed to delete project:", err);
                       }
-                    }}
-                  >
-                    <div className="t">{n.title}</div>
-                    <div className="m">{n.message}</div>
-                    <div className="meta">
-                      Updated {formatAgo(n.at)} · Open Planning
-                      <button
-                        type="button"
-                        className="notice-dismiss"
-                        aria-label="Dismiss notification"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          dismissNotice(n.id);
-                        }}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="card" style={{ color: "var(--muted)", fontSize: 13 }}>
-                No open notifications. New returns and Engineering assignments will show up here.
-              </div>
-            )}
-            <NotifyOpsList
-              alerts={activeOpsAlerts}
-              formatAgo={formatAgo}
-              onOpen={openOpsAlert}
-              onDismiss={dismissOpsAlert}
-              onClearAll={dismissAllOpsAlerts}
-            />
-            {roleConfig?.canSeeAlerts && alerts.length > 0 && (
-              <>
-                <div className="sectionTitle" style={{ marginTop: 16, marginBottom: 8 }}>
-                  Risk alerts
-                </div>
-                <div className="miniList">
-                  {alerts.slice(0, 3).map((a) => (
-                    <div key={a.id} className="alert">
-                      <div className="t">{a.title}</div>
-                      <div className="m">{a.message}</div>
-                      <div className="meta">Triggered: {formatAgo(a.triggeredAt)}</div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* ── MPDC: Notifications ── */}
-        {sidebarTab === "notify" && currentRole === "MPDC" && (
-          <div style={{ marginBottom: 12 }}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 8,
-                marginBottom: 8,
-              }}
-            >
-              <div className="sectionTitle" style={{ margin: 0 }}>
-                Notifications
-              </div>
-              {activeMpdcNotices.length > 0 && (
-                <button
-                  type="button"
-                  className="side-btn"
-                  onClick={dismissAllMpdcNotices}
-                >
-                  Clear all
-                </button>
-              )}
-            </div>
-            <p style={{ margin: "0 0 10px", fontSize: 12, color: "var(--muted)", lineHeight: 1.45 }}>
-              Planning items requiring MPDC action — submissions and approvals. Live updates.
-            </p>
-            {activeMpdcNotices.length ? (
-              <div className="miniList">
-                {activeMpdcNotices.map((n) => (
-                  <div
-                    key={n.id}
-                    className={`alert notice-card notice-${n.kind}`}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => {
-                      dismissMpdcNotice(n.id);
-                      setScreen("planning");
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        dismissMpdcNotice(n.id);
-                        setScreen("planning");
-                      }
-                    }}
-                  >
-                    <div className="t">{n.title}</div>
-                    <div className="m">{n.message}</div>
-                    <div className="meta">
-                      Updated {formatAgo(n.at)} · Open Planning
-                      <button
-                        type="button"
-                        className="notice-dismiss"
-                        aria-label="Dismiss notification"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          dismissMpdcNotice(n.id);
-                        }}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="card" style={{ color: "var(--muted)", fontSize: 13 }}>
-                No open notifications. New submissions and items ready for approval will appear here.
-              </div>
-            )}
-            <NotifyOpsList
-              alerts={activeOpsAlerts}
-              formatAgo={formatAgo}
-              onOpen={openOpsAlert}
-              onDismiss={dismissOpsAlert}
-              onClearAll={dismissAllOpsAlerts}
-            />
-            {roleConfig?.canSeeAlerts && alerts.length > 0 && (
-              <>
-                <div className="sectionTitle" style={{ marginTop: 16, marginBottom: 8 }}>
-                  Risk alerts
-                </div>
-                <div className="miniList">
-                  {alerts.slice(0, 3).map((a) => (
-                    <div key={a.id} className="alert">
-                      <div className="t">{a.title}</div>
-                      <div className="m">{a.message}</div>
-                      <div className="meta">Triggered: {formatAgo(a.triggeredAt)}</div>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        )}
-
-        {sidebarTab === "notify" &&
-          isMunicipalStaff(currentRole) &&
-          currentRole !== "Engineer" &&
-          currentRole !== "MPDC" && (
-          <div style={{ marginBottom: 12 }}>
-            <div className="sectionTitle" style={{ marginBottom: 8 }}>
-              Notifications
-            </div>
-            <NotifyOpsList
-              alerts={activeOpsAlerts}
-              formatAgo={formatAgo}
-              onOpen={openOpsAlert}
-              onDismiss={dismissOpsAlert}
-              onClearAll={dismissAllOpsAlerts}
-            />
-          </div>
-        )}
-
-        {/* ── Negosyo Center: Business Permit Panel ── */}
-        {roleConfig?.canSeeBusinessPermits && (
-          <div className="card" style={{ marginBottom: 12 }}>
-            <div className="sectionTitle" style={{ marginBottom: 8 }}>Business Permit &amp; Licensing</div>
-            <div className="grid2">
-              <div className="stat">
-                <div className="v" style={{ color: "var(--warn)" }}>{projects.filter(p => p.department === "Negosyo Center" && p.status === "Ongoing").length}</div>
-                <div className="l">Pending Permits</div>
-              </div>
-              <div className="stat">
-                <div className="v" style={{ color: "var(--safe)" }}>{projects.filter(p => p.department === "Negosyo Center" && p.status === "Completed").length}</div>
-                <div className="l">Approved</div>
-              </div>
-              <div className="stat">
-                <div className="v" style={{ color: "var(--muted)" }}>{projects.filter(p => p.department === "Negosyo Center" && p.status === "Planned").length}</div>
-                <div className="l">For Review</div>
-              </div>
-              <div className="stat">
-                <div className="v">{projects.filter(p => p.department === "Negosyo Center").length}</div>
-                <div className="l">Total Applications</div>
-              </div>
-            </div>
-            <div style={{ marginTop: 12 }}>
-              <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em" }}>Recent Applications</div>
-              <div className="miniList">
-                {projects.filter(p => p.department === "Negosyo Center").slice(0, 5).map(p => (
-                  <div key={p.id} className="proj">
-                    <div className="n">{p.name}</div>
-                    <div className="s">
-                      <span style={{ color: p.status === "Completed" ? "var(--safe)" : p.status === "Ongoing" ? "var(--warn)" : "var(--muted)" }}>
-                      {p.status === "Completed"
-                        ? <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><IconCheck /> Approved</span>
-                        : p.status === "Ongoing"
-                        ? <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><IconClock /> Pending</span>
-                        : p.status === "Planned"
-                        ? <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><IconClipboard /> For Review</span>
-                        : <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><IconClipboard /> {p.status}</span>
-                      }
-                      </span>
-                      <span>{p.progress}%</span>
-                    </div>
-                    <div className="bar"><div style={{ width: `${p.progress}%` }} /></div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── Settings Tab ── */}
-        {sidebarTab === "settings" &&
-          (roleConfig?.canSeeLayers || roleConfig?.canSeeWeather || roleConfig?.canSeeRisk) && (
-        <div className="card" style={{ marginBottom: 12 }}>
-          <div className="sectionTitle" style={{ marginBottom: 8 }}>
-            Settings
-          </div>
-          <div className="hint" style={{ marginBottom: 10 }}>
-            Globe performance and view. Saved on this device.
-          </div>
-
-          <div
-            className="extrusion-opacity-control"
-            style={{
-              display: "flex",
-              gap: 10,
-              alignItems: "center",
-              marginBottom: 10,
-              paddingLeft: 2,
-            }}
-          >
-            <span className="pill">Draw distance</span>
-            <input
-              type="range"
-              min={5}
-              max={50}
-              step={1}
-              value={mapSettings.drawDistanceKm}
-              aria-label="3D draw distance in kilometers"
-              onChange={(e) =>
-                setMapSettings((s) => ({ ...s, drawDistanceKm: Number(e.target.value) }))
-              }
-              style={{ flex: 1 }}
-            />
-            <span style={{ fontSize: 11, color: "var(--muted)", minWidth: 40 }}>
-              {mapSettings.drawDistanceKm} km
-            </span>
-          </div>
-
-          <div style={{ marginBottom: 10, paddingLeft: 2 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
-              <span className="pill">Terrain quality</span>
-              <span style={{ fontSize: 11, color: "var(--muted)" }}>
-                {mapSettings.terrainQuality === "low"
-                  ? "Fastest"
-                  : mapSettings.terrainQuality === "high"
-                    ? "Sharpest"
-                    : "Balanced"}
-              </span>
-            </div>
-            <div className="side-seg">
-              {(["low", "medium", "high"] as TerrainQuality[]).map((q) => (
-                <button
-                  key={q}
-                  type="button"
-                  className={`side-seg-btn${mapSettings.terrainQuality === q ? " is-on" : ""}`}
-                  onClick={() => setMapSettings((s) => ({ ...s, terrainQuality: q }))}
-                >
-                  {q}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="toggleRow">
-            <div>
-              <label>Shadows</label>
-              <div className="hint">Soft sun shadows inside Luisiana only (day, near town)</div>
-            </div>
-            <div
-              className={`switch ${mapSettings.shadowsEnabled ? "on" : ""}`}
-              role="switch"
-              aria-checked={mapSettings.shadowsEnabled}
-              onClick={() => setMapSettings((s) => ({ ...s, shadowsEnabled: !s.shadowsEnabled }))}
-            />
-          </div>
-
-          <div style={{ marginBottom: 10, paddingLeft: 2, opacity: mapSettings.shadowsEnabled ? 1 : 0.55 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
-              <span className="pill">Shadow quality</span>
-              <span style={{ fontSize: 11, color: "var(--muted)" }}>
-                {mapSettings.shadowQuality === "low"
-                  ? "700 m · hard"
-                  : mapSettings.shadowQuality === "high"
-                    ? "2.2 km · soft"
-                    : "1.6 km · soft"}
-              </span>
-            </div>
-            <div className="side-seg">
-              {(["low", "medium", "high"] as ShadowQuality[]).map((q) => (
-                <button
-                  key={q}
-                  type="button"
-                  className={`side-seg-btn${mapSettings.shadowQuality === q ? " is-on" : ""}`}
-                  onClick={() => setMapSettings((s) => ({ ...s, shadowQuality: q }))}
-                >
-                  {q}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="toggleRow">
-            <div>
-              <label>Horizon fog</label>
-              <div className="hint">Fades far terrain in 3D tilt (helps FPS)</div>
-            </div>
-            <div
-              className={`switch ${mapSettings.fogEnabled ? "on" : ""}`}
-              role="switch"
-              aria-checked={mapSettings.fogEnabled}
-              onClick={() => setMapSettings((s) => ({ ...s, fogEnabled: !s.fogEnabled }))}
-            />
-          </div>
-
-          <div className="toggleRow">
-            <div>
-              <label>Floating 3D badges</label>
-              <div className="hint">Show floating title badges above 3D models</div>
-            </div>
-            <div
-              className={`switch ${mapSettings.showFloatingLabels ?? true ? "on" : ""}`}
-              role="switch"
-              aria-checked={mapSettings.showFloatingLabels ?? true}
-              onClick={() =>
-                setMapSettings((s) => ({
-                  ...s,
-                  showFloatingLabels: !(s.showFloatingLabels ?? true),
-                }))
-              }
-            />
-          </div>
-
-          <div className="toggleRow">
-            <div>
-              <label>GPS coordinates</label>
-              <div className="hint">Show latitude/longitude in floating badges</div>
-            </div>
-            <div
-              className={`switch ${mapSettings.showCoordinates ?? true ? "on" : ""}`}
-              role="switch"
-              aria-checked={mapSettings.showCoordinates ?? true}
-              onClick={() =>
-                setMapSettings((s) => ({
-                  ...s,
-                  showCoordinates: !(s.showCoordinates ?? true),
-                }))
-              }
-            />
-          </div>
-
-          <div
-            className="extrusion-opacity-control"
-            style={{
-              display: "flex",
-              gap: 10,
-              alignItems: "center",
-              marginBottom: 10,
-              paddingLeft: 2,
-            }}
-          >
-            <span className="pill">Motion blur</span>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              step={5}
-              value={mapSettings.motionBlur}
-              aria-label="Camera motion blur strength"
-              onChange={(e) =>
-                setMapSettings((s) => ({ ...s, motionBlur: Number(e.target.value) }))
-              }
-              style={{ flex: 1 }}
-            />
-            <span style={{ fontSize: 11, color: "var(--muted)", minWidth: 52 }}>
-              {mapSettings.motionBlur <= 0
-                ? "Off"
-                : mapSettings.motionBlur <= 30
-                  ? `${mapSettings.motionBlur}% soft`
-                  : mapSettings.motionBlur <= 70
-                    ? `${mapSettings.motionBlur}%`
-                    : `${mapSettings.motionBlur}% strong`}
-            </span>
-          </div>
-          <div className="hint" style={{ marginTop: -4, marginBottom: 10, paddingLeft: 2 }}>
-            Streak while panning the globe. 0 is off. Drag, then pan to preview.
-          </div>
-
-          <button
-            type="button"
-            className="side-btn"
-            style={{ marginBottom: 4 }}
-            onClick={() => setMapSettings({ ...DEFAULT_MAP_SETTINGS })}
-          >
-            Reset settings
-          </button>
-        </div>
-        )}
-
-        {sidebarTab === "account" && currentRole && currentRole !== "Viewer" && (
-        <div className="card" style={{ marginBottom: 12 }}>
-          <div className="sectionTitle" style={{ marginBottom: 8 }}>
-            Account
-          </div>
-          <div className="hint" style={{ marginBottom: 8 }}>
-            Signed in as <b>{currentSession?.username || currentRole}</b>
-            {currentSession?.department ? ` · ${currentSession.department}` : ""}.
-            Change this login’s password (at least 8 characters).
-          </div>
-          <ChangePasswordForm />
-        </div>
-        )}
-
-        {/* ── Layers Tab ── */}
-        {sidebarTab === "layers" && roleConfig?.canSeeLayers && (
-        <div className="card" style={{ marginBottom: 12 }}>
-          <div className="sectionTitle" style={{ marginBottom: 8 }}>
-            Layers
-          </div>
-          <div className="hint" style={{ marginBottom: 10 }}>
-            Show or hide map overlays. Globe performance lives in Settings.
-          </div>
-
-          {(
-            [
-              { k: "projects", title: "Infrastructure Projects", hint: "GLB models on map" },
-              { k: "buildingBlocks", title: "3D Blocks", hint: "Luisiana OSM building extrusions" },
-            ] as const
-          ).map((row) => (
-            <div key={row.k} className="toggleRow">
-              <div>
-                <label>{row.title}</label>
-                <div className="hint">{row.hint}</div>
-              </div>
-              <div
-                className={`switch ${toggles[row.k] ? "on" : ""}`}
-                role="switch"
-                aria-checked={toggles[row.k]}
-                onClick={() => setToggles((t) => ({ ...t, [row.k]: !t[row.k] }))}
+                    }
+                    : undefined
+                }
               />
-            </div>
-          ))}
 
-          {isMunicipalStaff(currentRole) && (
-            <div style={{ marginBottom: 10, paddingLeft: 2 }}>
-              <button
-                type="button"
-                className="side-btn"
-                title="Restore all deleted OSM blocks"
-                onClick={() => cesiumMapRef.current?.restoreRemovedBlocks()}
-              >
-                Restore blocks
-              </button>
-            </div>
-          )}
-
-          <div
-            className="extrusion-opacity-control"
-            style={{
-              display: "flex",
-              gap: 10,
-              alignItems: "center",
-              marginBottom: 10,
-              paddingLeft: 2,
-            }}
-          >
-            <span className="pill">GLB Models</span>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              value={glbModelsOpacity}
-              aria-label="Project GLB model opacity"
-              onChange={(e) => {
-                setGlbModelsOpacity(Number(e.target.value));
-              }}
-              style={{ flex: 1 }}
-            />
-            <span style={{ fontSize: 11, color: "var(--muted)", minWidth: 35 }}>
-              {Math.round(glbModelsOpacity * 100)}%
-            </span>
-          </div>
-
-          <div className="solar-time-control" style={{ marginBottom: 12, paddingLeft: 2 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
-              <span className="pill">Sun</span>
-              <span style={{ fontSize: 11, color: "var(--muted)", fontVariantNumeric: "tabular-nums" }}>
-                {Math.round(sunAzimuthDeg)}° · {formatSolarHour(solarHour)}
-                {sunLighting.isDaylight ? "" : " · night"}
-              </span>
-            </div>
-            <div className="solar-layers-bearing">
-              <SunAzimuthDial
-                value={sunAzimuthDeg}
-                onChange={setSunAzimuthDeg}
-                size={112}
-                onDragStateChange={(dragging) => setCesiumCameraInputs(!dragging)}
-              />
-              <div className="solar-azimuth-time" style={{ flex: 1, minWidth: 0 }}>
-                <div className="solar-map-slider-label">
-                  <span>Time</span>
-                  <span className="solar-map-slider-time">{formatSolarHour(solarHour)}</span>
-                </div>
-                <input
-                  type="range"
-                  className="solar-hour-slider"
-                  min={0}
-                  max={24}
-                  step={1 / 3600}
-                  value={solarHour}
-                  aria-label="Time of day for solar lighting"
-                  onChange={(e) => setSolarHourAndSyncAzimuth(Number(e.target.value))}
-                  onPointerDown={freezeCameraOnPointerDown}
-                  onPointerUp={unfreezeCameraOnPointerUp}
-                  onPointerCancel={unfreezeCameraOnPointerUp}
-                  onMouseUp={unfreezeCameraOnPointerUp}
-                  style={{ width: "100%" }}
+              {selectedSitePin && (
+                <SiteProgressPopup
+                  project={selectedSitePin}
+                  onClose={() => setSelectedSitePin(null)}
+                  onUpdateProgress={() => setInspectingProject(selectedSitePin)}
+                  canInspect={currentRole === "Engineer" || currentRole === "Admin"}
                 />
-                <button
-                  type="button"
-                  className={`solar-sync-pht${solarOffPht ? " is-active" : ""}`}
-                  onClick={syncSolarToPht}
-                  title="Reset sun time to the current hour in Asia/Manila"
-                >
-                  Sync to PHT
-                </button>
-                <div className="hint" style={{ marginTop: 6 }}>
-                  Dial = bearing (shadows). Slider = sun height / time of day.
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="toggleRow">
-            <div>
-              <label>Satellite</label>
-              <div className="hint">
-                HD aerial imagery + 3D terrain together — zoom in for rooftop detail
-              </div>
-            </div>
-            <div
-              className={`switch ${toggles.satellite ? "on" : ""}`}
-              role="switch"
-              aria-checked={toggles.satellite}
-              onClick={() =>
-                setToggles((t) => {
-                  const next = !t.satellite;
-                  return { ...t, satellite: next, terrain: next };
-                })
-              }
-            />
-          </div>
-        </div>
-        )}
-
-        {/* ── Risk Tab ── */}
-        {sidebarTab === "risk" && roleConfig?.canSeeRisk && (
-          <>
-        <div className="card" style={{ marginBottom: 12 }}>
-          <div className="sectionTitle" style={{ marginBottom: 8 }}>
-            Risk Summary
-          </div>
-          <div className="grid2">
-            <div className="stat">
-              <div className="v" style={{ color: "var(--danger)" }}>
-                {riskSummary.high}
-              </div>
-              <div className="l">High Risk</div>
-            </div>
-            <div className="stat">
-              <div className="v" style={{ color: "var(--warn)" }}>
-                {riskSummary.mod}
-              </div>
-              <div className="l">Moderate</div>
-            </div>
-            <div className="stat">
-              <div className="v" style={{ color: "var(--safe)" }}>
-                {riskSummary.low}
-              </div>
-              <div className="l">Safe</div>
-            </div>
-            <div className="stat">
-              <div className="v">{riskSummary.total}</div>
-              <div className="l">Zones</div>
-            </div>
-          </div>
-          <div style={{ marginTop: 10, fontSize: 12, color: "var(--muted)" }}>
-            Model: rainfall + slope (LGU explainable logic)
-          </div>
-        </div>
-
-        <div className="card" style={{ marginBottom: 12 }}>
-          <div className="sectionTitle" style={{ marginBottom: 8 }}>
-            Earthquake-prone model
-          </div>
-          <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12, lineHeight: 1.5 }}>
-            Heatmap = TensorFlow trained on PHIVOLCS EIL / GSH KMZ labels (not a photocopy of the
-            old sheet). Turn Satellite on for live DEM. Pula = HIGH, iwasan sa siting.
-          </div>
-          <div className="toggleRow" style={{ marginBottom: 10 }}>
-            <div>
-              <label>Show earthquake-prone heatmap</label>
-              <div className="hint">Model fills the municipal grid. Click a hot spot for class.</div>
-            </div>
-            <div
-              className={`switch ${quakeModelEnabled ? "on" : ""}`}
-              role="switch"
-              aria-checked={quakeModelEnabled}
-              onClick={() => setQuakeModelEnabled((v) => !v)}
-            />
-          </div>
-          {quakeModelEnabled && (
-            <div style={{ fontSize: 11, color: "var(--ink-soft)", lineHeight: 1.5 }}>
-              {quakeStatus.state === "loading" || quakeStatus.state === "training"
-                ? quakeStatus.message
-                : quakeStatus.state === "failed"
-                  ? `Failed: ${quakeStatus.message}`
-                  : quakeStatus.state === "ready"
-                    ? `Ready · ${quakeStatus.samples} labels${
-                        quakeStatus.accuracy != null
-                          ? ` · acc ${(quakeStatus.accuracy * 100).toFixed(0)}%`
-                          : ""
-                      }`
-                    : quakeStatus.message}
-              <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {(["SAFE", "LOW", "MODERATE", "HIGH"] as const).map((c) => (
-                  <span key={c} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-                    <span
-                      style={{
-                        width: 10,
-                        height: 10,
-                        background: classColor(c),
-                        border: "1px solid var(--ink)",
-                      }}
-                    />
-                    {c}
-                  </span>
-                ))}
-              </div>
-              <div style={{ marginTop: 6, color: "var(--muted)" }}>
-                Click a hot spot for class. Pin a site to see {classAdvice("HIGH")} vs {classAdvice("SAFE")}.
-              </div>
-            </div>
-          )}
-        </div>
-
-        {roleConfig?.canSeeAlerts && <>
-        <div style={{ marginBottom: 8 }} className="sectionTitle">
-          Real-Time Alerts
-        </div>
-        {alerts.length ? (
-          <div className="miniList">
-            {alerts.map((a) => (
-              <div key={a.id} className="alert">
-                <div className="t">{a.title}</div>
-                <div className="m">{a.message}</div>
-                <div className="meta">
-                  Recommended: {a.recommendedAction}
-                  <br />
-                  Triggered: {formatAgo(a.triggeredAt)}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="card" style={{ color: "var(--muted)", fontSize: 13 }}>
-            No high-risk alerts yet. The system will notify automatically when a zone transitions to HIGH risk.
-          </div>
-        )}
-        </>}
-          </>
-        )}
-
-        {/* ── Projects Tab ── */}
-        {sidebarTab === "projects" && (
-          <>
-        <div className="card infra-filter">
-          <div className="sectionTitle" style={{ marginBottom: 10 }}>
-            Filter &amp; cluster
-          </div>
-          <div className="infra-filter-count">
-            Showing <strong>{filteredProjects.length}</strong> of {projects.length} sites
-          </div>
-          <input
-            className="infra-filter-search"
-            type="search"
-            placeholder="Search name, barangay, type…"
-            value={infraFilter.query}
-            onChange={(e) => setInfraFilter((f) => ({ ...f, query: e.target.value }))}
-          />
-          <div className="infra-filter-label">Status</div>
-          <div className="infra-filter-chips">
-            {INFRA_STATUSES.map((s) => (
-              <button
-                key={s}
-                type="button"
-                className={`infra-chip${infraFilter.statuses.includes(s) ? " is-on" : ""}`}
-                onClick={() =>
-                  setInfraFilter((f) => ({ ...f, statuses: toggleListValue(f.statuses, s) }))
-                }
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-          <div className="infra-filter-label">Type</div>
-          <div className="infra-filter-chips">
-            {INFRA_CATEGORIES.map((c) => (
-              <button
-                key={c}
-                type="button"
-                className={`infra-chip${infraFilter.categories.includes(c) ? " is-on" : ""}`}
-                onClick={() =>
-                  setInfraFilter((f) => ({ ...f, categories: toggleListValue(f.categories, c) }))
-                }
-              >
-                {c}
-              </button>
-            ))}
-          </div>
-          <div className="infra-filter-row">
-            <label>
-              Office
-              <select
-                value={infraFilter.department}
-                onChange={(e) =>
-                  setInfraFilter((f) => ({
-                    ...f,
-                    department: e.target.value as InfraFilter["department"],
-                  }))
-                }
-              >
-                <option value="">All offices</option>
-                {INFRA_DEPARTMENTS.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Barangay
-              <select
-                value={infraFilter.barangay}
-                onChange={(e) => setInfraFilter((f) => ({ ...f, barangay: e.target.value }))}
-              >
-                <option value="">All barangays</option>
-                {BARANGAY_LIST.map((b) => (
-                  <option key={b} value={b}>
-                    {b}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <label className="infra-filter-cluster">
-            <input
-              type="checkbox"
-              checked={infraFilter.clustering}
-              onChange={(e) => setInfraFilter((f) => ({ ...f, clustering: e.target.checked }))}
-            />
-            Cluster nearby sites when zoomed out
-          </label>
-          <button
-            type="button"
-            className="infra-filter-reset"
-            onClick={() => setInfraFilter(DEFAULT_INFRA_FILTER)}
-          >
-            Reset filters
-          </button>
-        </div>
-        {/* ── Engineer: Place Infrastructure Models ── */}
-        {currentRole === "Engineer" && (
-          <div className="card" style={{ marginBottom: 12 }}>
-            <div className="sectionTitle" style={{ marginBottom: 10 }}>
-              Place Infrastructure
-            </div>
-
-            {/* Placement toggle */}
-            <button
-              type="button"
-              className={`side-cta${placementMode ? " is-on" : ""}`}
-              onClick={() => {
-                setPlacementMode((v) => {
-                  const next = !v;
-                  if (next) {
-                    setBlockRemoverMode(false);
-                    setEditMode(false);
-                  }
-                  return next;
-                });
-              }}
-            >
-              {placementMode ? (
-                <span style={{ display: "flex", alignItems: "center", gap: 7, justifyContent: "center" }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
-                  Placement Mode ON — Click globe to place
-                </span>
-              ) : (
-                <span style={{ display: "flex", alignItems: "center", gap: 7, justifyContent: "center" }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                  Enable Placement Mode
-                </span>
               )}
-            </button>
 
-            {/* Snap to Road */}
-            <label
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                marginBottom: 12,
-                fontSize: 12,
-                color: (editMode || placementMode) ? "var(--ink-soft)" : "var(--muted2)",
-                cursor: (editMode || placementMode) ? "pointer" : "not-allowed",
-                opacity: (editMode || placementMode) ? 1 : 0.55,
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={snapToRoad}
-                disabled={!editMode && !placementMode}
-                onChange={(e) => setSnapToRoad(e.target.checked)}
-              />
-              Snap to Road (magnet + align yaw)
-            </label>
+              <ProjectChat />
 
-            {/* Name input */}
-            <div style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>Project Name (optional)</div>
-              <input
-                value={placingName}
-                onChange={(e) => setPlacingName(e.target.value)}
-                placeholder="e.g. Brgy. Hall Phase 2"
-                style={{
-                  width: "100%", boxSizing: "border-box", padding: "7px 10px",
-                  borderRadius: 2, border: "1px solid var(--stroke)",
-                  background: "var(--cream-deep)", color: "var(--ink-soft)",
-                  fontSize: 12, outline: "none",
-                }}
-              />
-            </div>
-
-            {/* Rotation */}
-            <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
-              <span style={{ fontSize: 11, color: "var(--muted)", minWidth: 52 }}>Rotation</span>
-              <input type="range" min={0} max={360} step={15} value={placementRotation}
-                onChange={(e) => setPlacementRotation(Number(e.target.value))}
-                style={{ flex: 1 }} />
-              <span style={{ fontSize: 11, color: "var(--muted2)", minWidth: 32, textAlign: "right" }}>
-                {placementRotation}°
-              </span>
-            </div>
-
-            {/* Model catalog */}
-            {(["Building", "Infrastructure", "Agriculture", "Construction"] as const).map((cat) => (
-              <div key={cat} style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 10, color: "var(--muted2)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>{cat}</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                  {MODEL_CATALOG.filter((m) => m.category === cat && m.type !== "shape").map((m) => (
+              {placementToolbarOpen ? (
+                <div className="placement-draw-toolbar">
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <span style={{ lineHeight: 1.35, flex: 1, minWidth: 140 }}>
+                      {pinProposal ? (
+                        <>
+                          <b>Draw site</b> for <b>{pinProposal.title}</b> — pin / draw / area / erase blocks
+                        </>
+                      ) : pinCitizenApp ? (
+                        <>
+                          <b>📍 I-pin ang Lokasyon ng Gusali</b> para kay <b>{pinCitizenApp.applicant?.fullName}</b> ({pinCitizenApp.trackingNumber}) — i-click ang lote sa mapa
+                        </>
+                      ) : (
+                        <>
+                          <b>Place tools</b> — pin, draw, color, or delete OSM blocks
+                        </>
+                      )}
+                    </span>
                     <button
-                      key={m.type}
                       type="button"
-                      className={`side-seg-btn${selectedModel === m.type ? " is-on" : ""}`}
                       onClick={() => {
-                        setSelectedModel(m.type);
+                        setPinProposal(null);
+                        pinProposalRef.current = null;
+                        setPinCitizenApp(null);
+                        pinCitizenAppRef.current = null;
+                        setPlacementMode(false);
+                        setPlacementTool("pin");
                         clearPendingShape();
-                        if (m.type !== "custom") {
-                          setCustomModelFile(null);
-                          setCustomModelPreview(null);
-                          setCustomModelTextureReport(null);
-                        }
+                        cesiumMapRef.current?.clearSketch();
                       }}
-                      title={m.description}
-                      style={{ textAlign: "left", width: "100%", padding: "8px 10px" }}
+                      style={{
+                        cursor: "pointer",
+                        flexShrink: 0,
+                        background: "var(--cream-deep)",
+                        border: "2px solid var(--ink)",
+                        color: "var(--ink)",
+                        padding: "6px 10px",
+                        fontSize: 11,
+                        fontWeight: 700,
+                      }}
                     >
-                      <div style={{ marginBottom: 4, display: "flex", alignItems: "center", color: selectedModel === m.type ? "var(--on-gold)" : "var(--muted)" }}>
-                        {(() => { const Ic = ModelIcons[m.icon] ?? ModelIcons.construction; return <Ic size={18} />; })()}
-                      </div>
-                      <div style={{ fontSize: 11, fontWeight: 600 }}>{m.label}</div>
+                      Cancel
                     </button>
-                  ))}
-                </div>
-              </div>
-            ))}
-
-            {/* Custom Model Upload */}
-            {selectedModel === "custom" && (
-              <div style={{ 
-                marginTop: 12, 
-                padding: "12px", 
-                background: "color-mix(in oklch, var(--gold-oklch) 12%, var(--cream))", 
-                border: "1px solid color-mix(in oklch, var(--gold-oklch) 40%, var(--stroke))", 
-                borderRadius: 2 
-              }}>
-                <div style={{ fontSize: 11, color: "var(--seed)", fontWeight: 600, marginBottom: 8 }}>
-                  Upload Custom GLB Model
-                </div>
-                <div style={{ fontSize: 10, color: "var(--muted)", lineHeight: 1.45, marginBottom: 8 }}>
-                  Blender viewport textures do not count. Image Texture must plug into Principled BSDF
-                  Base Color, then File → External Data → Pack Resources, export glTF Binary (.glb).
-                  White mesh = maps never made it into the file. Run
-                  scripts/blender_fix_materials_for_gltf.py before export. Max 500MB.
-                </div>
-                <input
-                  type="file"
-                  accept=".glb,.gltf"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      setCustomModelFile(file);
-                      setCustomModelPreview(file.name);
-                      setCustomModelTextureReport(null);
-                      void inspectGlbFile(file).then(setCustomModelTextureReport);
-                    }
-                  }}
-                  style={{
-                    width: "100%",
-                    padding: "8px",
-                    borderRadius: 0,
-                    border: "1px solid var(--stroke)",
-                    background: "rgba(0,0,0,0.3)",
-                    color: "var(--ink-soft)",
-                    fontSize: 11,
-                    cursor: "pointer",
-                  }}
-                />
-                {customModelPreview && (
-                  <div style={{ 
-                    marginTop: 8, 
-                    fontSize: 10, 
-                    color: "var(--muted)",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6
-                  }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--seed)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                    {customModelPreview}
-                    {customModelTextureReport && (
-                      <span>
-                        · {customModelTextureReport.texturedMaterials}/{customModelTextureReport.materials} textured
-                      </span>
-                    )}
                   </div>
-                )}
-                {customModelTextureReport?.warning && (
-                  <div
-                    style={{
-                      marginTop: 8,
-                      fontSize: 10,
-                      color: "var(--seed)",
-                      background: "color-mix(in oklch, var(--warn) 12%, var(--cream))",
-                      border: "1px solid color-mix(in oklch, var(--warn) 40%, var(--stroke))",
-                      padding: "8px 10px",
-                      lineHeight: 1.45,
-                    }}
-                  >
-                    {customModelTextureReport.warning}
-                  </div>
-                )}
-                <div style={{ 
-                  marginTop: 8, 
-                  fontSize: 10, 
-                  color: "var(--muted2)", 
-                  lineHeight: 1.45,
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: 6,
-                  padding: "6px 8px",
-                  background: "rgba(74, 222, 128, 0.08)",
-                  border: "1px solid rgba(74, 222, 128, 0.25)",
-                  borderRadius: 2,
-                }}>
-                  <span style={{ color: "#4ade80", fontWeight: 700, fontSize: 11 }}>⚡</span>
-                  <span style={{ color: "var(--ink-soft)" }}>
-                    <strong>Auto-Optimization Enabled:</strong> Uploaded BIM/CAD geometry is automatically merged, textures compressed, and Draco-encoded on the server for instant map rendering.
-                  </span>
-                </div>
-              </div>
-            )}
 
-            {/* Placed projects list with delete */}
-            {projects.filter((p) => p.department === "Engineering").length > 0 && (
-              <div style={{ marginTop: 8 }}>
-                <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 6 }}>Placed by Engineer</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 160, overflowY: "auto" }}>
-                  {projects.filter((p) => p.department === "Engineering").map((p) => (
-                    <div key={p.id} style={{
-                      display: "flex", alignItems: "center", gap: 6, padding: "6px 8px",
-                      background: "var(--cream-ink)", borderRadius: 0,
-                      border: "1px solid var(--stroke2)",
-                    }}>
-                      <span style={{ display: "flex", alignItems: "center", color: "var(--muted)" }}>
-                        {(() => { const ic = MODEL_CATALOG.find((m) => m.type === p.modelType)?.icon ?? "construction"; const Ic = ModelIcons[ic] ?? ModelIcons.construction; return <Ic size={15} />; })()}
-                      </span>
-                      <span style={{ flex: 1, fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {displayNameForProject(p)}
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                    {(
+                      [
+                        ["pin", "Pin"],
+                        ["line", "Draw"],
+                        ["area", "Area"],
+                      ] as const
+                    ).map(([id, label]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => {
+                          setPlacementTool(id);
+                          cesiumMapRef.current?.clearSketch();
+                        }}
+                        style={{
+                          cursor: "pointer",
+                          padding: "6px 10px",
+                          fontWeight: 700,
+                          border: "2px solid var(--ink)",
+                          background:
+                            placementTool === id
+                              ? "var(--seed)"
+                              : "var(--cream-deep)",
+                          color: "var(--ink)",
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                    <>
+                      <span style={{ width: 1, height: 22, background: "var(--stroke)", margin: "0 4px" }} />
+                      {MAP_SKETCH_COLORS.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          title={c}
+                          aria-label={`Color ${c}`}
+                          onClick={() => setPlacementColor(c)}
+                          style={{
+                            width: 22,
+                            height: 22,
+                            borderRadius: 0,
+                            cursor: "pointer",
+                            background: c,
+                            border:
+                              placementColor === c
+                                ? "3px solid var(--ink)"
+                                : "2px solid rgba(0,0,0,0.35)",
+                          }}
+                        />
+                      ))}
+                      <input
+                        type="color"
+                        value={placementColor}
+                        aria-label="Custom color"
+                        onChange={(e) => setPlacementColor(e.target.value)}
+                        style={{
+                          width: 28,
+                          height: 22,
+                          padding: 0,
+                          border: "2px solid var(--ink)",
+                          cursor: "pointer",
+                        }}
+                      />
+                    </>
+                  </div>
+
+                  {placementTool === "line" && (
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                      <span style={{ color: "var(--muted)", fontSize: 11 }}>
+                        Hold and drag to draw. Release pauses — press Finish to save.
                       </span>
                       <button
                         type="button"
-                        className="side-btn-danger"
-                        onClick={async () => {
-                          await fetch(backendUrl(`/api/projects/${p.id}`), {
-                            method: "DELETE",
-                            credentials: "include",
-                          });
+                        onClick={() => {
+                          cesiumMapRef.current?.undoSketchVertex();
                         }}
-                      >✕</button>
+                        style={{
+                          cursor: "pointer",
+                          padding: "5px 8px",
+                          border: "1px solid var(--stroke)",
+                          background: "var(--cream-deep)",
+                          fontWeight: 600,
+                        }}
+                      >
+                        Undo
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          cesiumMapRef.current?.clearSketch();
+                        }}
+                        style={{
+                          cursor: "pointer",
+                          padding: "5px 8px",
+                          border: "1px solid var(--stroke)",
+                          background: "var(--cream-deep)",
+                          fontWeight: 600,
+                        }}
+                      >
+                        Clear
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const ok = cesiumMapRef.current?.finishSketch() ?? false;
+                          if (!ok) {
+                            window.alert("Draw a longer stroke first (need at least 2 points).");
+                          }
+                        }}
+                        style={{
+                          cursor: "pointer",
+                          padding: "5px 10px",
+                          border: "2px solid var(--ink)",
+                          background: "var(--seed)",
+                          fontWeight: 800,
+                        }}
+                      >
+                        Finish
+                      </button>
                     </div>
-                  ))}
+                  )}
+
+                  {placementTool === "area" && (
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                      <span style={{ color: "var(--muted)", fontSize: 11 }}>
+                        Click map to add points (≥3). Double-click last point or Finish.
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          cesiumMapRef.current?.undoSketchVertex();
+                        }}
+                        style={{
+                          cursor: "pointer",
+                          padding: "5px 8px",
+                          border: "1px solid var(--stroke)",
+                          background: "var(--cream-deep)",
+                          fontWeight: 600,
+                        }}
+                      >
+                        Undo
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          cesiumMapRef.current?.clearSketch();
+                        }}
+                        style={{
+                          cursor: "pointer",
+                          padding: "5px 8px",
+                          border: "1px solid var(--stroke)",
+                          background: "var(--cream-deep)",
+                          fontWeight: 600,
+                        }}
+                      >
+                        Clear
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const ok = cesiumMapRef.current?.finishSketch() ?? false;
+                          if (!ok) {
+                            window.alert("Need at least 3 points for an area.");
+                          }
+                        }}
+                        style={{
+                          cursor: "pointer",
+                          padding: "5px 10px",
+                          border: "2px solid var(--ink)",
+                          background: "var(--seed)",
+                          fontWeight: 800,
+                        }}
+                      >
+                        Finish
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : null}
+
+              <div className={`topBar${moreMenuOpen ? " is-nav-open" : ""}`}>
+                <div className="topBar-brand">
+                  <div className="topBar-brand-text">
+                    <div className="brand">
+                      INFA-TRACK <span className="brand-place">Luisiana</span>
+                    </div>
+                    <div className="sub">Municipal GIS for safer infrastructure siting</div>
+                  </div>
+                  <span
+                    className="topBar-live-dot"
+                    title={connected ? "Live" : "Offline"}
+                    aria-label={connected ? "Live connection" : "Offline"}
+                    style={{ background: connected ? "var(--accent)" : "rgba(255,77,79,0.9)" }}
+                  />
+                </div>
+                <div className="topBar-toolbar">
+                  {roleConfig && (
+                    <div className="chip chip-role" style={{ borderColor: `${roleConfig.color}50`, color: roleConfig.color, fontWeight: 600 }}>
+                      {roleConfig.label}
+                    </div>
+                  )}
+                  <div className="chip chip-live">
+                    <span className="dot" style={{ background: connected ? "var(--accent)" : "rgba(255,77,79,0.9)" }} />
+                    {connected ? "Live" : "Offline"}
+                  </div>
+                  <div className="chip chip-risk topBar-hide-sm">
+                    Risk:{" "}
+                    <span style={{ color: topRisk.level === "HIGH" ? "var(--danger)" : topRisk.level === "MODERATE" ? "var(--warn)" : "var(--safe)" }}>
+                      {topRisk.level}
+                    </span>
+                  </div>
+                  <div className="chip chip-updates topBar-hide-mobile">Updates: 5s</div>
+                </div>
+                <div className="topBar-actions-primary">
+                  <nav id="topBar-nav" className={`topBar-nav${moreMenuOpen ? " is-open" : ""}`} aria-label="App sections">
+                    {roleConfig?.canSeePlanning && currentRole !== "Viewer" && (
+                      <button
+                        type="button"
+                        className="topBar-nav-link"
+                        onClick={() => {
+                          setMoreMenuOpen(false);
+                          setScreen("planning");
+                        }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
+                          <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+                          <rect x="8" y="2" width="8" height="4" rx="1" />
+                          <path d="M9 12h6M9 16h4" />
+                        </svg>
+                        <span className="topBar-exit-full">
+                          {isBarangayOfficial(currentRole) ? "Requests" : "Planning"}
+                        </span>
+                        <span className="topBar-exit-short">
+                          {isBarangayOfficial(currentRole) ? "Req" : "Plan"}
+                        </span>
+                      </button>
+                    )}
+                    {currentRole === "Engineer" && (
+                      <button
+                        type="button"
+                        className="topBar-nav-link"
+                        onClick={() => {
+                          setMoreMenuOpen(false);
+                          setScreen("engineer_applications");
+                        }}
+                        style={{ borderColor: "rgba(56, 189, 248, 0.45)", color: "#38bdf8" }}
+                        title="Talaan ng mga Bayad na Aplikasyon mula Treasury para sa Engineering Clearance & Pinning"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
+                          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+                        </svg>
+                        <span className="topBar-exit-full">Clearance &amp; Pinning</span>
+                        <span className="topBar-exit-short">Clearance</span>
+                      </button>
+                    )}
+                    {currentRole === "MPDC" && (
+                      <button
+                        type="button"
+                        className="topBar-nav-link"
+                        onClick={() => {
+                          setMoreMenuOpen(false);
+                          setScreen("permits");
+                        }}
+                        style={currentRole === "MPDC" ? { borderColor: "rgba(255, 193, 7, 0.45)", color: "#ffc107" } : undefined}
+                        title="Talaan ng mga Natanggap na Aplikasyon (Zoning Permits)"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
+                          <path d="M3 21h18M9 8h1M9 12h1M9 16h1M14 8h1M14 12h1M14 16h1M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16" />
+                        </svg>
+                        <span className="topBar-exit-full">Permits / Talaan</span>
+                        <span className="topBar-exit-short">Permits</span>
+                      </button>
+                    )}
+                    {isMunicipalStaff(currentRole) && (
+                      <button
+                        type="button"
+                        className="topBar-nav-link"
+                        onClick={() => {
+                          setMoreMenuOpen(false);
+                          setScreen("documents");
+                        }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                          <polyline points="14 2 14 8 20 8" />
+                          <line x1="16" y1="13" x2="8" y2="13" />
+                          <line x1="16" y1="17" x2="8" y2="17" />
+                          <polyline points="10 9 9 9 8 9" />
+                        </svg>
+                        <span className="topBar-exit-full">Documents</span>
+                        <span className="topBar-exit-short">Docs</span>
+                      </button>
+                    )}
+                    {isMunicipalStaff(currentRole) && (
+                      <button
+                        type="button"
+                        className="topBar-nav-link"
+                        onClick={() => {
+                          setMoreMenuOpen(false);
+                          setScreen("analytics");
+                        }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
+                          <line x1="18" y1="20" x2="18" y2="10" />
+                          <line x1="12" y1="20" x2="12" y2="4" />
+                          <line x1="6" y1="20" x2="6" y2="14" />
+                        </svg>
+                        <span className="topBar-exit-full">Analytics</span>
+                        <span className="topBar-exit-short">Stats</span>
+                      </button>
+                    )}
+                    {roleConfig?.canSeeEngagement && (
+                      <button
+                        type="button"
+                        className="topBar-nav-link"
+                        onClick={() => {
+                          setMoreMenuOpen(false);
+                          setScreen("engagement");
+                        }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
+                          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                        </svg>
+                        <span className="topBar-exit-full">Engagement</span>
+                        <span className="topBar-exit-short">Engage</span>
+                      </button>
+                    )}
+                    {isMunicipalStaff(currentRole) && currentRole !== "Negosyo Center" && (
+                      <button
+                        type="button"
+                        className="topBar-nav-link"
+                        onClick={() => {
+                          setMoreMenuOpen(false);
+                          setScreen("inventory");
+                        }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}><rect x="2" y="4" width="20" height="5" rx="1" /><path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9" /><path d="M10 13h4" /></svg>
+                        <span className="topBar-exit-full">Inventory</span>
+                        <span className="topBar-exit-short">Inv</span>
+                      </button>
+                    )}
+                    {currentRole === "Viewer" && (
+                      <button
+                        type="button"
+                        className="topBar-nav-link"
+                        onClick={() => {
+                          setMoreMenuOpen(false);
+                          setScreen("citizen");
+                        }}
+                      >
+                        <span className="topBar-exit-full">Portal</span>
+                        <span className="topBar-exit-short">Portal</span>
+                      </button>
+                    )}
+                    {currentRole && (
+                      <button
+                        type="button"
+                        className="topBar-exit"
+                        onClick={() => {
+                          setMoreMenuOpen(false);
+                          goHome();
+                        }}
+                      >
+                        <span className="topBar-exit-full">{currentRole === "Viewer" ? "Exit Map" : "Sign Out"}</span>
+                        <span className="topBar-exit-short">{currentRole === "Viewer" ? "Exit" : "Out"}</span>
+                      </button>
+                    )}
+                  </nav>
+                  {isMunicipalStaff(currentRole) && (
+                    <button
+                      type="button"
+                      className="topBar-nav-link topBar-audit-btn"
+                      title="Activity log and audit trail"
+                      onClick={() => {
+                        setMoreMenuOpen(false);
+                        setScreen("audit");
+                      }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                        <path d="M12 8v4l2.5 1.5" />
+                        <circle cx="12" cy="12" r="9" />
+                      </svg>
+                      <span className="topBar-exit-full">Activity</span>
+                      <span className="topBar-exit-short">Log</span>
+                    </button>
+                  )}
+                  <ThemeToggle iconOnly />
+                  <button
+                    type="button"
+                    className="topBar-moreBtn"
+                    aria-expanded={moreMenuOpen}
+                    aria-controls="topBar-nav"
+                    onClick={() => setMoreMenuOpen((v) => !v)}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
+                      {moreMenuOpen ? (
+                        <path d="M18 6L6 18M6 6l12 12" />
+                      ) : (
+                        <>
+                          <line x1="4" y1="7" x2="20" y2="7" />
+                          <line x1="4" y1="12" x2="20" y2="12" />
+                          <line x1="4" y1="17" x2="20" y2="17" />
+                        </>
+                      )}
+                    </svg>
+                    <span>{moreMenuOpen ? "Close" : "Menu"}</span>
+                  </button>
                 </div>
               </div>
-            )}
-          </div>
-        )}
+              {moreMenuOpen && (
+                <button
+                  type="button"
+                  className="topBar-nav-backdrop"
+                  aria-label="Close menu"
+                  onClick={() => setMoreMenuOpen(false)}
+                />
+              )}
 
-        {roleConfig?.canSeeProjects && (
-          <ProjectMonitoringPanel
-            projects={filteredProjects}
-            currentRole={currentRole}
-            mapRef={mapRef}
-            cesiumMapRef={cesiumMapRef}
-            readOnly={currentRole === "Viewer" || isBarangayOfficial(currentRole)}
-          />
-        )}
-        </>
-        )}
 
-        {/* ── Climate Tab ── */}
-        {sidebarTab === "climate" && (roleConfig?.canSeeWeather || roleConfig?.canSeeLayers) && (
-          <div className="card" style={{ marginBottom: 12 }}>
-            <div className="sectionTitle" style={{ marginBottom: 8 }}>
-              Climate Readings
-            </div>
-            <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12, lineHeight: 1.5 }}>
-              Live station values for Luisiana — readable numbers, not particle visualizations.
-            </div>
-
-            <div className="grid2" style={{ marginBottom: 12 }}>
-              <div className="stat">
-                <div className="v">{weather ? `${Math.round(weather.windSpeedMps * 3.6)} kph` : "—"}</div>
-                <div className="l">Wind Speed</div>
-              </div>
-              <div className="stat">
-                <div className="v">
-                  {weather
-                    ? (() => {
-                        const dirs = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
-                        const label = dirs[Math.round(((weather.windDirectionDeg % 360) + 360) % 360 / 45) % 8];
-                        return `${label} · ${Math.round(weather.windDirectionDeg)}°`;
-                      })()
-                    : "—"}
-                </div>
-                <div className="l">Wind Direction</div>
-              </div>
-              <div className="stat">
-                <div className="v">{weather ? `${weather.temperatureC.toFixed(1)}°C` : "—"}</div>
-                <div className="l">Air Temperature</div>
-              </div>
-              <div className="stat">
-                <div className="v">{weather ? `${weather.rainfallMm.toFixed(1)} mm` : "—"}</div>
-                <div className="l">Rainfall</div>
-              </div>
-              <div className="stat">
-                <div className="v">{weather ? `${weather.humidityPct ?? "—"}%` : "—"}</div>
-                <div className="l">Humidity</div>
-              </div>
-              <div className="stat">
-                <div className="v">{weather ? `${weather.cloudinessPct}%` : "—"}</div>
-                <div className="l">Cloud Cover</div>
-              </div>
-              <div className="stat">
-                <div className="v">{weather ? `${weather.pressureHpa ?? "—"} hPa` : "—"}</div>
-                <div className="l">Pressure</div>
-              </div>
-              <div className="stat">
-                <div className="v">{weather ? `${(weather.rainfallIntensity * 100).toFixed(0)}%` : "—"}</div>
-                <div className="l">Rain Intensity</div>
-              </div>
-            </div>
-
-            {weather && (
-              <div style={{
-                marginBottom: 14,
-                padding: "10px 12px",
-                borderLeft: "4px solid var(--accent)",
-                background: "var(--cream-deep)",
-                fontSize: 12,
-                lineHeight: 1.45,
-                color: "var(--ink-soft)",
-              }}>
-                <strong style={{ color: "var(--ink)" }}>Hangin:</strong>{" "}
-                {Math.round(weather.windSpeedMps * 3.6) >= 118
-                  ? `Bagyo-level wind signal — ${Math.round(weather.windSpeedMps * 3.6)} kph. Limit outdoor / elevated work.`
-                  : Math.round(weather.windSpeedMps * 3.6) >= 62
-                    ? `Strong breeze at ${Math.round(weather.windSpeedMps * 3.6)} kph. Secure loose materials on site.`
-                    : Math.round(weather.windSpeedMps * 3.6) >= 30
-                      ? `Moderate wind at ${Math.round(weather.windSpeedMps * 3.6)} kph from ${["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(((weather.windDirectionDeg % 360) + 360) % 360 / 45) % 8]}.`
-                      : `Light wind at ${Math.round(weather.windSpeedMps * 3.6)} kph — conditions are manageable for outdoor operations.`}
-                <div style={{ marginTop: 6, fontSize: 11, color: "var(--muted2)" }}>
-                  Source: {weather.source} · Updated {formatAgo(weather.observedAt)}
-                </div>
-              </div>
-            )}
-
-            {weather?.forecast?.length ? (
-              <div style={{ marginBottom: 16 }}>
-                <div className="sectionTitle" style={{ marginBottom: 8 }}>Next hours (text forecast)</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-                  {weather.forecast.slice(0, 6).map((f) => {
-                    const kph = Math.round(f.windSpeedMps * 3.6);
-                    const dirs = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
-                    const dir = dirs[Math.round(((f.windDirectionDeg % 360) + 360) % 360 / 45) % 8];
-                    return (
-                      <div key={f.hour} style={{
-                        display: "grid",
-                        gridTemplateColumns: "3.2rem 1fr",
-                        gap: 10,
-                        padding: "8px 0",
-                        borderBottom: "1px solid var(--stroke2)",
-                        fontSize: 12,
-                      }}>
-                        <div style={{ fontWeight: 700, color: "var(--burnt-deep)" }}>+{f.hour}h</div>
-                        <div style={{ color: "var(--ink-soft)", lineHeight: 1.4 }}>
-                          Temp <strong style={{ color: "var(--ink)" }}>{f.temperatureC}°C</strong>
-                          {" · "}Wind <strong style={{ color: "var(--ink)" }}>{kph} kph {dir}</strong>
-                          {" · "}Rain <strong style={{ color: "var(--ink)" }}>{f.rainfallMm} mm</strong>
-                          {" · "}Clouds <strong style={{ color: "var(--ink)" }}>{f.cloudinessPct}%</strong>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : null}
-
-            <div className="sectionTitle" style={{ marginBottom: 8 }}>
-              Tropical systems (Invest / TC)
-            </div>
-            <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12, lineHeight: 1.5 }}>
-              West Pacific Invests and named cyclones from RAMMB/CIRA. Invests inside the Philippine AOI are labeled LPA-watch.
-            </div>
-
-            <div className="toggleRow" style={{ marginBottom: 16 }}>
-              <div>
-                <label>Enable tropical tracking</label>
-                <div className="hint">Invest / TC tracks + NASA GIBS precip</div>
-              </div>
-              <div
-                className={`switch ${tropicalEnabled ? "on" : ""}`}
-                role="switch"
-                aria-checked={tropicalEnabled}
-                onClick={() => {
-                  setTropicalEnabled((on) => {
-                    const next = !on;
-                    setToggles((t) => ({ ...t, gibsPrecip: next }));
-                    if (next) {
-                      setGibsLayer((layer) =>
-                        layer.startsWith("IMERG_") ? layer : "IMERG_Precipitation_Rate"
-                      );
+              <MapShortcuts
+                canSeeLayers={Boolean(roleConfig?.canSeeLayers)}
+                canSeeRisk={Boolean(roleConfig?.canSeeRisk)}
+                satellite={toggles.satellite}
+                projects={toggles.projects}
+                quakeHeat={quakeModelEnabled}
+                barangays={barangaysVisible}
+                currentStyle={mapSettings.basemapStyle || "outdoors"}
+                onSelectStyle={(style) => {
+                  setMapSettings((s) => ({ ...s, basemapStyle: style }));
+                  if (style === "alidade_satellite") {
+                    setToggles((t) => ({ ...t, satellite: true, terrain: true }));
+                  } else if (toggles.satellite) {
+                    setToggles((t) => ({ ...t, satellite: false, terrain: false }));
+                  }
+                }}
+                coordinates={mapSettings.showCoordinates ?? true}
+                labels={mapSettings.showFloatingLabels ?? true}
+                placement={placementMode}
+                canPlace={currentRole === "Engineer" || currentRole === "MPDC"}
+                onPlacement={() => {
+                  setPlacementMode((v) => {
+                    const next = !v;
+                    if (!next) {
+                      setPinProposal(null);
+                      pinProposalRef.current = null;
+                      setPlacementTool("pin");
+                      clearPendingShape();
+                      cesiumMapRef.current?.clearSketch();
                     }
                     return next;
                   });
                 }}
+                onSatellite={() =>
+                  setToggles((t) => {
+                    const next = !t.satellite;
+                    return { ...t, satellite: next, terrain: next };
+                  })
+                }
+                onProjects={() => setToggles((t) => ({ ...t, projects: !t.projects }))}
+                onBarangays={() => {
+                  setBarangaysVisible((v) => !v);
+                  setShapesPanelOpen(false);
+                }}
+                onCoordinates={() =>
+                  setMapSettings((s) => ({
+                    ...s,
+                    showCoordinates: !(s.showCoordinates ?? true),
+                  }))
+                }
+                onLabels={() =>
+                  setMapSettings((s) => ({
+                    ...s,
+                    showFloatingLabels: !(s.showFloatingLabels ?? true),
+                  }))
+                }
+                onQuakeHeat={() => setQuakeModelEnabled((v) => !v)}
+                onPointerDown={stopMapPointer}
               />
-            </div>
 
-            {tropicalLoading && (
-              <div style={{ marginTop: 8, fontSize: 11, color: "var(--muted)", display: "flex", alignItems: "center", gap: 6 }}>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--warn, #d4a017)", animation: "pulse 1.5s infinite" }} />
-                Loading tropical systems...
-              </div>
-            )}
+              {barangaysVisible && roleConfig?.canSeeLayers && (
+                <BarangayLegend
+                  areas={barangayAreas}
+                  selectedName={focusedBarangay}
+                  onSelect={(area) => {
+                    setFocusedBarangay(area.name);
+                    cesiumMapRef.current?.flyToBarangay(area);
+                  }}
+                  onClose={() => setBarangaysVisible(false)}
+                  onPointerDown={stopMapPointer}
+                />
+              )}
 
-            {!tropicalLoading && tropicalEnabled && tropicalError && (
-              <div style={{ marginTop: 8, fontSize: 11, color: "var(--warn)" }}>
-                {tropicalError}
-              </div>
-            )}
-
-            {!tropicalLoading && tropicalEnabled && !tropicalError && tropicalSystems.length === 0 && (
-              <div style={{ marginTop: 8, fontSize: 11, color: "var(--muted)" }}>
-                No active West Pacific systems reported
-              </div>
-            )}
-
-            {!tropicalLoading && tropicalEnabled && tropicalSystems.length > 0 && (
-              <div style={{ marginTop: 8, fontSize: 11, color: "var(--ink-soft)", display: "flex", alignItems: "center", gap: 6 }}>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--warn, #d4a017)" }} />
-                {tropicalSystems.length} system{tropicalSystems.length !== 1 ? "s" : ""} tracked
-              </div>
-            )}
-
-            {tropicalEnabled && tropicalSystems.length > 0 && (
-              <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--stroke2)" }}>
-                <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
-                  Active systems
-                </div>
-                <div style={{ maxHeight: 320, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
-                  {tropicalSystems.map((system) => {
-                    const color = getTropicalColor(system);
-                    const meta = getTropicalStageMeta(system.stage);
-                    const distance = Math.round(
-                      calculateDistance(14.1856, 121.5167, system.lat, system.lon),
-                    );
-                    return (
-                      <div
-                        key={system.id}
-                        onClick={() => {
-                          cesiumMapRef.current?.flyToLonLat(system.lon, system.lat, 400_000);
-                          mapRef.current?.flyTo({
-                            center: [system.lon, system.lat],
-                            zoom: 5,
-                            duration: 2000,
-                          });
-                        }}
-                        style={{
-                          padding: 10,
-                          background: "var(--cream-deep)",
-                          border: `1px solid ${color}55`,
-                          borderRadius: 2,
-                          cursor: "pointer",
-                        }}
-                      >
-                        <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-                          <span style={{ fontSize: 16, flexShrink: 0, color }}>{getTropicalIcon(system)}</span>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--ink)", marginBottom: 4, lineHeight: 1.3 }}>
-                              {system.label}
-                            </div>
-                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", fontSize: 10, color: "var(--muted)" }}>
-                              <span style={{ color }}>{meta.title}</span>
-                              <span>•</span>
-                              <span>{system.intensityKt} kt</span>
-                              <span>•</span>
-                              <span>{distance.toLocaleString()} km away</span>
-                              {system.lpaWatch && (
-                                <>
-                                  <span>•</span>
-                                  <span style={{ color: "#c47a1a" }}>LPA-watch</span>
-                                </>
-                              )}
-                            </div>
-                            <div style={{ fontSize: 9, color: "var(--muted2)", marginTop: 4 }}>
-                              Observed: {new Date(system.observedAt).toLocaleString()}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            <div style={{ marginTop: 12, marginBottom: 16, padding: 12, background: "rgba(196,122,26,0.08)", border: "1px solid rgba(196,122,26,0.2)", borderRadius: 2 }}>
-              <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.6 }}>
-                {tropicalDisclaimer ||
-                  "Positions from RAMMB/CIRA TC Realtime (JTWC-derived). Not an official PAGASA bulletin."}
-              </div>
-            </div>
-
-            {roleConfig?.canSeeLayers && tropicalEnabled && (
-            <>
-            <div className="sectionTitle" style={{ marginBottom: 8 }}>
-              NASA GIBS Map Layers
-            </div>
-            <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12, lineHeight: 1.5 }}>
-              Precipitation follows tropical tracking above. Other overlays use the same on/off.
-            </div>
-
-            {/* Precipitation Layers */}
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 11, color: "var(--amber-ink)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
-                ☔ Precipitation (Ulan)
-              </div>
-              <div className="hint" style={{ marginBottom: 8 }}>
-                Turns on/off with tropical tracking
-                {tropicalEnabled ? " · active" : " · off"}
-              </div>
-              <div className="side-seg">
-                {(
-                  [
-                    ["IMERG_Precipitation_Rate", "IMERG Rate"],
-                    ["IMERG_Precipitation_Rate_30min", "IMERG 30min"],
-                  ] as const
-                ).map(([k, label]) => (
-                  <button
-                    key={k}
-                    type="button"
-                    className={`side-seg-btn${gibsLayer === k ? " is-on" : ""}`}
-                    onClick={() => setGibsLayer(k)}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 11, color: "rgba(255,140,60,0.85)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
-                Temperature
-              </div>
-              <div className="side-seg">
+              {/* ── Map Controls ── */}
+              <div
+                className="map-controls"
+                onPointerDown={stopMapPointer}
+                onMouseDown={stopMapPointer}
+                onWheel={(e) => {
+                  e.stopPropagation();
+                }}
+              >
+                <button className="map-ctrl-btn" title="Zoom In (=)" type="button" onClick={() => cesiumMapRef.current?.zoomIn()}>+</button>
+                <button className="map-ctrl-btn" title="Zoom Out (-)" type="button" onClick={() => cesiumMapRef.current?.zoomOut()}>−</button>
+                <div className="map-ctrl-divider" />
                 <button
+                  className="map-ctrl-btn"
+                  title="Fly to Luisiana"
                   type="button"
-                  className={`side-seg-btn${gibsLayer === "AIRS_L2_Surface_Air_Temperature_Day" ? " is-on" : ""}`}
-                  onClick={() => setGibsLayer("AIRS_L2_Surface_Air_Temperature_Day")}
+                  onClick={() => cesiumMapRef.current?.flyHome()}
                 >
-                  Air Temp
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                    <polyline points="9 22 9 12 15 12 15 22" />
+                  </svg>
+                </button>
+                <button
+                  className="map-ctrl-btn"
+                  title="Toggle Tilt"
+                  type="button"
+                  onClick={() => cesiumMapRef.current?.toggleTilt()}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M2 20 L12 4 L22 20" />
+                    <line x1="2" y1="20" x2="22" y2="20" />
+                  </svg>
                 </button>
               </div>
+
             </div>
 
-            {/* Atmosphere Layers */}
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 11, color: "rgba(255,215,0,0.85)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
-                🌫️ Atmosphere (Hangin)
-              </div>
-              <div className="side-seg">
-                {(
-                  [
-                    ["MODIS_Terra_Aerosol", "Air Quality"],
-                    ["MODIS_Aqua_Cloud_Top_Temp_Day", "Cloud Temp"],
-                    ["AIRS_L2_Surface_Relative_Humidity_Day", "Humidity"],
-                  ] as const
-                ).map(([k, label]) => (
-                  <button
-                    key={k}
-                    type="button"
-                    className={`side-seg-btn${gibsLayer === k ? " is-on" : ""}`}
-                    onClick={() => setGibsLayer(k)}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Opacity Control */}
-            <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--stroke2)" }}>
-              <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
-                <span className="pill">Opacity</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={0.9}
-                  step={0.05}
-                  value={gibsOpacity}
-                  onChange={(e) => setGibsOpacity(Number(e.target.value))}
-                  style={{ flex: 1 }}
-                />
-                <span style={{ fontSize: 11, color: "var(--muted)", minWidth: 35 }}>
-                  {Math.round(gibsOpacity * 100)}%
-                </span>
-              </div>
-
-              {/* Date Control */}
-              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                <span className="pill">Date</span>
-                <input
-                  type="date"
-                  value={gibsDate}
-                  onChange={(e) => setGibsDate(e.target.value)}
-                  style={{
-                    flex: 1,
-                    background: "rgba(0,0,0,0.15)",
-                    border: "1px solid var(--stroke)",
-                    borderRadius: 0,
-                    padding: "6px 8px",
-                    color: "var(--ink-soft)",
-                    fontSize: 11,
-                  }}
-                />
-              </div>
-
-              {/* Status Indicator */}
-              {gibsStatus === "loading" && (
-                <div style={{ marginTop: 10, fontSize: 11, color: "rgba(255,215,0,0.85)", display: "flex", alignItems: "center", gap: 6 }}>
-                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: "rgba(255,215,0,0.85)", animation: "pulse 1.5s infinite" }} />
-                  Loading climate data...
-                </div>
-              )}
-              {gibsStatus === "unavailable" && (
-                <div style={{ marginTop: 10, fontSize: 11, color: "rgba(255,77,79,0.85)" }}>
-                  ⚠️ Data unavailable for this date
-                </div>
-              )}
-              {gibsStatus === "ok" && toggles.gibsPrecip && (
-                <div style={{ marginTop: 10, fontSize: 11, color: "var(--amber-ink)", display: "flex", alignItems: "center", gap: 6 }}>
-                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--gold)" }} />
-                  Climate data active
-                </div>
-              )}
-            </div>
-
-            {/* Info Box */}
-            <div style={{ marginTop: 16, padding: 12, background: "color-mix(in oklch, var(--gold-oklch) 10%, var(--cream))", border: "1px solid var(--stroke)", borderRadius: 2 }}>
-              <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.6 }}>
-                💡 <strong>Tip:</strong> Use yesterday's date for most reliable data. Some layers have 1-2 day processing lag.
-              </div>
-            </div>
-            </>
+            {!sidebarCollapsed && (
+              <button
+                type="button"
+                className="sidePanel-backdrop"
+                aria-label="Close live situation panel"
+                onClick={() => setSidebarCollapsed(true)}
+              />
             )}
-          </div>
-        )}
+            <button
+              type="button"
+              className={`sidePanel-edgeToggle${sidebarCollapsed ? " is-collapsed" : ""}${isMunicipalStaff(currentRole) && notifyBadgeCount > 0 ? " has-badge" : ""
+                }`}
+              aria-label={sidebarCollapsed ? "Expand side panel" : "Collapse side panel"}
+              title={
+                sidebarCollapsed
+                  ? noticeUnreadCount > 0
+                    ? `Expand panel · ${noticeUnreadCount} notification${noticeUnreadCount === 1 ? "" : "s"}`
+                    : "Expand panel"
+                  : "Collapse panel"
+              }
+              onClick={() => setSidebarCollapsed((v) => !v)}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                {sidebarCollapsed
+                  ? <polyline points="15 18 9 12 15 6" />
+                  : <polyline points="9 18 15 12 9 6" />}
+              </svg>
+              {isMunicipalStaff(currentRole) && notifyBadgeCount > 0 && (
+                <span className="sidePanel-edgeBadge" aria-hidden>{notifyBadgeCount > 9 ? "9+" : notifyBadgeCount}</span>
+              )}
+            </button>
 
+            <aside className={`sidePanel${sidebarCollapsed ? " is-collapsed" : ""}`} aria-hidden={sidebarCollapsed}>
+              <div className="sidePanel-head">
+                <div className="sectionTitle">
+                  Live Situation Panel
+                  {isMunicipalStaff(currentRole) && notifyBadgeCount > 0 && (
+                    <span className="sidePanel-titleBadge" aria-label={`${notifyBadgeCount} notifications`}>
+                      {notifyBadgeCount}
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  className="sidePanel-collapseBtn"
+                  aria-label="Collapse side panel"
+                  title="Collapse panel"
+                  onClick={() => setSidebarCollapsed(true)}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <polyline points="9 18 15 12 9 6" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Tab Navigation */}
+              <div className="sidebar-tabs">
+                {isMunicipalStaff(currentRole) && (
+                  <button
+                    type="button"
+                    className={`sidebar-tab${sidebarTab === "notify" ? " active" : ""}`}
+                    onClick={() => setSidebarTab("notify")}
+                  >
+                    Notify
+                    {notifyBadgeCount > 0 && (
+                      <span className="sidebar-tab-badge">{notifyBadgeCount > 9 ? "9+" : notifyBadgeCount}</span>
+                    )}
+                  </button>
+                )}
+                {(currentRole === "Engineer" || currentRole === "Admin" || currentRole === "MPDC") && (
+                  <button
+                    type="button"
+                    className={`sidebar-tab${sidebarTab === "inspection" ? " active" : ""}`}
+                    onClick={() => setSidebarTab("inspection")}
+                  >
+                    Inspection
+                    {inspectionTaskCount > 0 && (
+                      <span className="sidebar-tab-badge" style={{ background: "#ef4444" }}>
+                        {inspectionTaskCount}
+                      </span>
+                    )}
+                  </button>
+                )}
+                {roleConfig?.canSeeLayers && (
+                  <button type="button" className={`sidebar-tab${sidebarTab === "layers" ? " active" : ""}`} onClick={() => setSidebarTab("layers")}>Layers</button>
+                )}
+                {roleConfig?.canSeeRisk && (
+                  <button type="button" className={`sidebar-tab${sidebarTab === "risk" ? " active" : ""}`} onClick={() => setSidebarTab("risk")}>Risk</button>
+                )}
+                {roleConfig?.canSeeProjects && (
+                  <button type="button" className={`sidebar-tab${sidebarTab === "projects" ? " active" : ""}`} onClick={() => setSidebarTab("projects")}>Projects</button>
+                )}
+                {(roleConfig?.canSeeLayers || roleConfig?.canSeeRisk) && (
+                  <button type="button" className={`sidebar-tab${sidebarTab === "settings" ? " active" : ""}`} onClick={() => setSidebarTab("settings")}>Settings</button>
+                )}
+                {currentRole && currentRole !== "Viewer" && (
+                  <button type="button" className={`sidebar-tab${sidebarTab === "account" ? " active" : ""}`} onClick={() => setSidebarTab("account")}>Account</button>
+                )}
+              </div>
+
+              {currentRole === "Viewer" && (
+                <div className="card viewer-banner" style={{ marginBottom: 12 }}>
+                  <div className="sectionTitle" style={{ marginBottom: 4 }}>Public Portal · Live Map</div>
+                  <p style={{ margin: 0, fontSize: 11, color: "var(--muted2)", lineHeight: 1.5 }}>
+                    View-only map with layers, risk, and projects. Use <strong>Portal</strong> in the top bar for reporting, feedback, and transparency.
+                  </p>
+                </div>
+              )}
+
+              {/* Tab Content */}
+              <div className="sidePanel-body">
+
+                {/* ── Engineer: Notifications ── */}
+                {sidebarTab === "notify" && currentRole === "Engineer" && (
+                  <div style={{ marginBottom: 12 }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 8,
+                        marginBottom: 8,
+                      }}
+                    >
+                      <div className="sectionTitle" style={{ margin: 0 }}>
+                        Notifications
+                      </div>
+                      {activePlanningNotices.length > 0 && (
+                        <button
+                          type="button"
+                          className="side-btn"
+                          onClick={dismissAllNotices}
+                        >
+                          Clear all
+                        </button>
+                      )}
+                    </div>
+                    <p style={{ margin: "0 0 10px", fontSize: 12, color: "var(--muted)", lineHeight: 1.45 }}>
+                      Planning items for Engineering. Live updates when the workspace changes.
+                    </p>
+                    {activePlanningNotices.length ? (
+                      <div className="miniList">
+                        {activePlanningNotices.map((n) => (
+                          <div
+                            key={n.id}
+                            className={`alert notice-card notice-${n.kind}`}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => {
+                              dismissNotice(n.id);
+                              setScreen("planning");
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                dismissNotice(n.id);
+                                setScreen("planning");
+                              }
+                            }}
+                          >
+                            <div className="t">{n.title}</div>
+                            <div className="m">{n.message}</div>
+                            <div className="meta">
+                              Updated {formatAgo(n.at)} · Open Planning
+                              <button
+                                type="button"
+                                className="notice-dismiss"
+                                aria-label="Dismiss notification"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  dismissNotice(n.id);
+                                }}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="card" style={{ color: "var(--muted)", fontSize: 13 }}>
+                        No open notifications. New returns and Engineering assignments will show up here.
+                      </div>
+                    )}
+
+                    <NotifyOpsList
+                      alerts={activeOpsAlerts}
+                      formatAgo={formatAgo}
+                      onOpen={openOpsAlert}
+                      onDismiss={dismissOpsAlert}
+                      onClearAll={dismissAllOpsAlerts}
+                    />
+                    {roleConfig?.canSeeAlerts && alerts.length > 0 && (
+                      <>
+                        <div className="sectionTitle" style={{ marginTop: 16, marginBottom: 8 }}>
+                          Risk alerts
+                        </div>
+                        <div className="miniList">
+                          {alerts.slice(0, 3).map((a) => (
+                            <div key={a.id} className="alert">
+                              <div className="t">{a.title}</div>
+                              <div className="m">{a.message}</div>
+                              <div className="meta">Triggered: {formatAgo(a.triggeredAt)}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* ── Dedicated Inspection Tab Content ── */}
+                {sidebarTab === "inspection" && (
+                  <div style={{ marginBottom: 16 }}>
+                    <InspectionTaskQueue
+                      embedded={true}
+                      projects={projects}
+                      selectedProjectId={selectedSitePin?.id}
+                      onLocateProject={(p) => {
+                        if (p.location) {
+                          cesiumMapRef.current?.flyToLonLat(p.location.lon, p.location.lat, 1200);
+                          setSelectedSitePin(p);
+                        }
+                      }}
+                      onInspectProject={(p) => {
+                        setInspectingProject(p);
+                      }}
+                    />
+                  </div>
+                )}
+
+                {/* ── MPDC: Notifications ── */}
+                {sidebarTab === "notify" && currentRole === "MPDC" && (
+                  <div style={{ marginBottom: 12 }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 8,
+                        marginBottom: 8,
+                      }}
+                    >
+                      <div className="sectionTitle" style={{ margin: 0 }}>
+                        Notifications
+                      </div>
+                      {activeMpdcNotices.length > 0 && (
+                        <button
+                          type="button"
+                          className="side-btn"
+                          onClick={dismissAllMpdcNotices}
+                        >
+                          Clear all
+                        </button>
+                      )}
+                    </div>
+                    <p style={{ margin: "0 0 10px", fontSize: 12, color: "var(--muted)", lineHeight: 1.45 }}>
+                      Planning items requiring MPDC action — submissions and approvals. Live updates.
+                    </p>
+                    {activeMpdcNotices.length ? (
+                      <div className="miniList">
+                        {activeMpdcNotices.map((n) => (
+                          <div
+                            key={n.id}
+                            className={`alert notice-card notice-${n.kind}`}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => {
+                              dismissMpdcNotice(n.id);
+                              if (n.id.startsWith("app:")) {
+                                setScreen("permits");
+                              } else {
+                                setScreen("planning");
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                dismissMpdcNotice(n.id);
+                                if (n.id.startsWith("app:")) {
+                                  setScreen("permits");
+                                } else {
+                                  setScreen("planning");
+                                }
+                              }
+                            }}
+                          >
+                            <div className="t">{n.title}</div>
+                            <div className="m">{n.message}</div>
+                            <div className="meta">
+                              Updated {formatAgo(n.at)} · Open Planning
+                              <button
+                                type="button"
+                                className="notice-dismiss"
+                                aria-label="Dismiss notification"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  dismissMpdcNotice(n.id);
+                                }}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="card" style={{ color: "var(--muted)", fontSize: 13 }}>
+                        No open notifications. New submissions and items ready for approval will appear here.
+                      </div>
+                    )}
+                    <NotifyOpsList
+                      alerts={activeOpsAlerts}
+                      formatAgo={formatAgo}
+                      onOpen={openOpsAlert}
+                      onDismiss={dismissOpsAlert}
+                      onClearAll={dismissAllOpsAlerts}
+                    />
+                    {roleConfig?.canSeeAlerts && alerts.length > 0 && (
+                      <>
+                        <div className="sectionTitle" style={{ marginTop: 16, marginBottom: 8 }}>
+                          Risk alerts
+                        </div>
+                        <div className="miniList">
+                          {alerts.slice(0, 3).map((a) => (
+                            <div key={a.id} className="alert">
+                              <div className="t">{a.title}</div>
+                              <div className="m">{a.message}</div>
+                              <div className="meta">Triggered: {formatAgo(a.triggeredAt)}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {sidebarTab === "notify" &&
+                  isMunicipalStaff(currentRole) &&
+                  currentRole !== "Engineer" &&
+                  currentRole !== "MPDC" && (
+                    <div style={{ marginBottom: 12 }}>
+                      <div className="sectionTitle" style={{ marginBottom: 8 }}>
+                        Notifications
+                      </div>
+                      <NotifyOpsList
+                        alerts={activeOpsAlerts}
+                        formatAgo={formatAgo}
+                        onOpen={openOpsAlert}
+                        onDismiss={dismissOpsAlert}
+                        onClearAll={dismissAllOpsAlerts}
+                      />
+                    </div>
+                  )}
+
+                {/* ── Treasury Office / Negosyo: Business Permit Panel ── */}
+                {roleConfig?.canSeeBusinessPermits && (
+                  <div className="card" style={{ marginBottom: 12 }}>
+                    <div className="sectionTitle" style={{ marginBottom: 8 }}>Treasury &amp; Local Business Registry</div>
+                    <div className="grid2">
+                      <div className="stat">
+                        <div className="v" style={{ color: "var(--warn)" }}>{projects.filter(p => (p.department === "Treasury Office" || p.department === "Negosyo Center") && p.status === "Ongoing").length}</div>
+                        <div className="l">Pending Permits</div>
+                      </div>
+                      <div className="stat">
+                        <div className="v" style={{ color: "var(--safe)" }}>{projects.filter(p => (p.department === "Treasury Office" || p.department === "Negosyo Center") && p.status === "Completed").length}</div>
+                        <div className="l">Approved</div>
+                      </div>
+                      <div className="stat">
+                        <div className="v" style={{ color: "var(--muted)" }}>{projects.filter(p => (p.department === "Treasury Office" || p.department === "Negosyo Center") && p.status === "Planned").length}</div>
+                        <div className="l">For Review</div>
+                      </div>
+                      <div className="stat">
+                        <div className="v">{projects.filter(p => p.department === "Treasury Office" || p.department === "Negosyo Center").length}</div>
+                        <div className="l">Total Records</div>
+                      </div>
+                    </div>
+                    <div style={{ marginTop: 12 }}>
+                      <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em" }}>Recent Applications</div>
+                      <div className="miniList">
+                        {projects.filter(p => p.department === "Treasury Office" || p.department === "Negosyo Center").slice(0, 5).map(p => (
+                          <div key={p.id} className="proj">
+                            <div className="n">{p.name}</div>
+                            <div className="s">
+                              <span style={{ color: p.status === "Completed" ? "var(--safe)" : p.status === "Ongoing" ? "var(--warn)" : "var(--muted)" }}>
+                                {p.status === "Completed"
+                                  ? <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><IconCheck /> Approved</span>
+                                  : p.status === "Ongoing"
+                                    ? <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><IconClock /> Pending</span>
+                                    : p.status === "Planned"
+                                      ? <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><IconClipboard /> For Review</span>
+                                      : <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><IconClipboard /> {p.status}</span>
+                                }
+                              </span>
+                              <span>{p.progress}%</span>
+                            </div>
+                            <div className="bar"><div style={{ width: `${p.progress}%` }} /></div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Settings Tab ── */}
+                {sidebarTab === "settings" &&
+                  (roleConfig?.canSeeLayers || roleConfig?.canSeeRisk) && (
+                    <div className="card" style={{ marginBottom: 12 }}>
+                      <div className="sectionTitle" style={{ marginBottom: 8 }}>
+                        Settings
+                      </div>
+                      <div className="hint" style={{ marginBottom: 10 }}>
+                        Globe performance and view. Saved on this device.
+                      </div>
+
+                      <div
+                        className="extrusion-opacity-control"
+                        style={{
+                          display: "flex",
+                          gap: 10,
+                          alignItems: "center",
+                          marginBottom: 10,
+                          paddingLeft: 2,
+                        }}
+                      >
+                        <span className="pill">Draw distance</span>
+                        <input
+                          type="range"
+                          min={5}
+                          max={50}
+                          step={1}
+                          value={mapSettings.drawDistanceKm}
+                          aria-label="3D draw distance in kilometers"
+                          onChange={(e) =>
+                            setMapSettings((s) => ({ ...s, drawDistanceKm: Number(e.target.value) }))
+                          }
+                          style={{ flex: 1 }}
+                        />
+                        <span style={{ fontSize: 11, color: "var(--muted)", minWidth: 40 }}>
+                          {mapSettings.drawDistanceKm} km
+                        </span>
+                      </div>
+
+                      <div style={{ marginBottom: 10, paddingLeft: 2 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+                          <span className="pill">Terrain quality</span>
+                          <span style={{ fontSize: 11, color: "var(--muted)" }}>
+                            {mapSettings.terrainQuality === "low"
+                              ? "Fastest"
+                              : mapSettings.terrainQuality === "high"
+                                ? "Sharpest"
+                                : "Balanced"}
+                          </span>
+                        </div>
+                        <div className="side-seg">
+                          {(["low", "medium", "high"] as TerrainQuality[]).map((q) => (
+                            <button
+                              key={q}
+                              type="button"
+                              className={`side-seg-btn${mapSettings.terrainQuality === q ? " is-on" : ""}`}
+                              onClick={() => setMapSettings((s) => ({ ...s, terrainQuality: q }))}
+                            >
+                              {q}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="toggleRow">
+                        <div>
+                          <label>Shadows</label>
+                          <div className="hint">Soft sun shadows inside Luisiana only (day, near town)</div>
+                        </div>
+                        <div
+                          className={`switch ${mapSettings.shadowsEnabled ? "on" : ""}`}
+                          role="switch"
+                          aria-checked={mapSettings.shadowsEnabled}
+                          onClick={() => setMapSettings((s) => ({ ...s, shadowsEnabled: !s.shadowsEnabled }))}
+                        />
+                      </div>
+
+                      <div style={{ marginBottom: 10, paddingLeft: 2, opacity: mapSettings.shadowsEnabled ? 1 : 0.55 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+                          <span className="pill">Shadow quality</span>
+                          <span style={{ fontSize: 11, color: "var(--muted)" }}>
+                            {mapSettings.shadowQuality === "low"
+                              ? "700 m · hard"
+                              : mapSettings.shadowQuality === "high"
+                                ? "2.2 km · soft"
+                                : "1.6 km · soft"}
+                          </span>
+                        </div>
+                        <div className="side-seg">
+                          {(["low", "medium", "high"] as ShadowQuality[]).map((q) => (
+                            <button
+                              key={q}
+                              type="button"
+                              className={`side-seg-btn${mapSettings.shadowQuality === q ? " is-on" : ""}`}
+                              onClick={() => setMapSettings((s) => ({ ...s, shadowQuality: q }))}
+                            >
+                              {q}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="toggleRow">
+                        <div>
+                          <label>Horizon fog</label>
+                          <div className="hint">Fades far terrain in 3D tilt (helps FPS)</div>
+                        </div>
+                        <div
+                          className={`switch ${mapSettings.fogEnabled ? "on" : ""}`}
+                          role="switch"
+                          aria-checked={mapSettings.fogEnabled}
+                          onClick={() => setMapSettings((s) => ({ ...s, fogEnabled: !s.fogEnabled }))}
+                        />
+                      </div>
+
+                      <div className="toggleRow">
+                        <div>
+                          <label>Floating 3D badges</label>
+                          <div className="hint">Show floating title badges above 3D models</div>
+                        </div>
+                        <div
+                          className={`switch ${mapSettings.showFloatingLabels ?? true ? "on" : ""}`}
+                          role="switch"
+                          aria-checked={mapSettings.showFloatingLabels ?? true}
+                          onClick={() =>
+                            setMapSettings((s) => ({
+                              ...s,
+                              showFloatingLabels: !(s.showFloatingLabels ?? true),
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <div className="toggleRow">
+                        <div>
+                          <label>GPS coordinates</label>
+                          <div className="hint">Show latitude/longitude in floating badges</div>
+                        </div>
+                        <div
+                          className={`switch ${mapSettings.showCoordinates ?? true ? "on" : ""}`}
+                          role="switch"
+                          aria-checked={mapSettings.showCoordinates ?? true}
+                          onClick={() =>
+                            setMapSettings((s) => ({
+                              ...s,
+                              showCoordinates: !(s.showCoordinates ?? true),
+                            }))
+                          }
+                        />
+                      </div>
+
+                      <div
+                        className="extrusion-opacity-control"
+                        style={{
+                          display: "flex",
+                          gap: 10,
+                          alignItems: "center",
+                          marginBottom: 10,
+                          paddingLeft: 2,
+                        }}
+                      >
+                        <span className="pill">Motion blur</span>
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          step={5}
+                          value={mapSettings.motionBlur}
+                          aria-label="Camera motion blur strength"
+                          onChange={(e) =>
+                            setMapSettings((s) => ({ ...s, motionBlur: Number(e.target.value) }))
+                          }
+                          style={{ flex: 1 }}
+                        />
+                        <span style={{ fontSize: 11, color: "var(--muted)", minWidth: 52 }}>
+                          {mapSettings.motionBlur <= 0
+                            ? "Off"
+                            : mapSettings.motionBlur <= 30
+                              ? `${mapSettings.motionBlur}% soft`
+                              : mapSettings.motionBlur <= 70
+                                ? `${mapSettings.motionBlur}%`
+                                : `${mapSettings.motionBlur}% strong`}
+                        </span>
+                      </div>
+                      <div className="hint" style={{ marginTop: -4, marginBottom: 10, paddingLeft: 2 }}>
+                        Streak while panning the globe. 0 is off. Drag, then pan to preview.
+                      </div>
+
+                      <button
+                        type="button"
+                        className="side-btn"
+                        style={{ marginBottom: 4 }}
+                        onClick={() => setMapSettings({ ...DEFAULT_MAP_SETTINGS })}
+                      >
+                        Reset settings
+                      </button>
+                    </div>
+                  )}
+
+                {sidebarTab === "account" && currentRole && currentRole !== "Viewer" && (
+                  <div className="card" style={{ marginBottom: 12 }}>
+                    <div className="sectionTitle" style={{ marginBottom: 8 }}>
+                      Account
+                    </div>
+                    <div className="hint" style={{ marginBottom: 8 }}>
+                      Signed in as <b>{currentSession?.username || currentRole}</b>
+                      {currentSession?.department ? ` · ${currentSession.department}` : ""}.
+                      Change this login’s password (at least 8 characters).
+                    </div>
+                    <ChangePasswordForm />
+                  </div>
+                )}
+
+                {/* ── Layers Tab ── */}
+                {sidebarTab === "layers" && roleConfig?.canSeeLayers && (
+                  <div className="card" style={{ marginBottom: 12 }}>
+                    <div className="sectionTitle" style={{ marginBottom: 8 }}>
+                      Layers
+                    </div>
+                    <div className="hint" style={{ marginBottom: 10 }}>
+                      Show or hide map overlays. Globe performance lives in Settings.
+                    </div>
+
+                    {(
+                      [
+                        { k: "projects", title: "Infrastructure Projects", hint: "GLB models on map" },
+                      ] as const
+                    ).map((row) => (
+                      <div key={row.k} className="toggleRow">
+                        <div>
+                          <label>{row.title}</label>
+                          <div className="hint">{row.hint}</div>
+                        </div>
+                        <div
+                          className={`switch ${toggles[row.k] ? "on" : ""}`}
+                          role="switch"
+                          aria-checked={toggles[row.k]}
+                          onClick={() => setToggles((t) => ({ ...t, [row.k]: !t[row.k] }))}
+                        />
+                      </div>
+                    ))}
+
+                    <div
+                      className="extrusion-opacity-control"
+                      style={{
+                        display: "flex",
+                        gap: 10,
+                        alignItems: "center",
+                        marginBottom: 10,
+                        paddingLeft: 2,
+                      }}
+                    >
+                      <span className="pill">GLB Models</span>
+                      <input
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        value={glbModelsOpacity}
+                        aria-label="Project GLB model opacity"
+                        onChange={(e) => {
+                          setGlbModelsOpacity(Number(e.target.value));
+                        }}
+                        style={{ flex: 1 }}
+                      />
+                      <span style={{ fontSize: 11, color: "var(--muted)", minWidth: 35 }}>
+                        {Math.round(glbModelsOpacity * 100)}%
+                      </span>
+                    </div>
+
+                    <div className="toggleRow">
+                      <div>
+                        <label>Satellite</label>
+                        <div className="hint">
+                          HD aerial imagery + 3D terrain together — zoom in for rooftop detail
+                        </div>
+                      </div>
+                      <div
+                        className={`switch ${toggles.satellite ? "on" : ""}`}
+                        role="switch"
+                        aria-checked={toggles.satellite}
+                        onClick={() =>
+                          setToggles((t) => {
+                            const next = !t.satellite;
+                            return { ...t, satellite: next, terrain: next };
+                          })
+                        }
+                      />
+                    </div>
+
+                    {/* Stadia Maps Style Theme */}
+                    <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--stroke)" }}>
+                      <div className="sectionTitle" style={{ marginBottom: 4, fontSize: 12 }}>
+                        Stadia Basemap Style
+                      </div>
+                      <div className="hint" style={{ marginBottom: 8 }}>
+                        Choose cartography style: Outdoors, Watercolor, Minimal Light, Dark, Stamen Terrain, Toner B&amp;W, or Satellite.
+                      </div>
+                      <StadiaStylePicker
+                        currentStyle={mapSettings.basemapStyle || "outdoors"}
+                        onSelectStyle={(style) => {
+                          setMapSettings((s) => ({ ...s, basemapStyle: style }));
+                          if (style === "alidade_satellite") {
+                            setToggles((t) => ({ ...t, satellite: true, terrain: true }));
+                          } else if (toggles.satellite) {
+                            setToggles((t) => ({ ...t, satellite: false, terrain: false }));
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Risk Tab ── */}
+                {sidebarTab === "risk" && roleConfig?.canSeeRisk && (
+                  <>
+                    <div className="card" style={{ marginBottom: 12 }}>
+                      <div className="sectionTitle" style={{ marginBottom: 8 }}>
+                        Risk Summary
+                      </div>
+                      <div className="grid2">
+                        <div className="stat">
+                          <div className="v" style={{ color: "var(--danger)" }}>
+                            {riskSummary.high}
+                          </div>
+                          <div className="l">High Risk</div>
+                        </div>
+                        <div className="stat">
+                          <div className="v" style={{ color: "var(--warn)" }}>
+                            {riskSummary.mod}
+                          </div>
+                          <div className="l">Moderate</div>
+                        </div>
+                        <div className="stat">
+                          <div className="v" style={{ color: "var(--safe)" }}>
+                            {riskSummary.low}
+                          </div>
+                          <div className="l">Safe</div>
+                        </div>
+                        <div className="stat">
+                          <div className="v">{riskSummary.total}</div>
+                          <div className="l">Zones</div>
+                        </div>
+                      </div>
+                      <div style={{ marginTop: 10, fontSize: 12, color: "var(--muted)" }}>
+                        Model: rainfall + slope (LGU explainable logic)
+                      </div>
+                    </div>
+
+                    <div className="card" style={{ marginBottom: 12 }}>
+                      <div className="sectionTitle" style={{ marginBottom: 8 }}>
+                        Earthquake-prone model
+                      </div>
+                      <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 12, lineHeight: 1.5 }}>
+                        Heatmap = TensorFlow trained on PHIVOLCS EIL / GSH KMZ labels (not a photocopy of the
+                        old sheet). Turn Satellite on for live DEM. Pula = HIGH, iwasan sa siting.
+                      </div>
+                      <div className="toggleRow" style={{ marginBottom: 10 }}>
+                        <div>
+                          <label>Show earthquake-prone heatmap</label>
+                          <div className="hint">Model fills the municipal grid. Click a hot spot for class.</div>
+                        </div>
+                        <div
+                          className={`switch ${quakeModelEnabled ? "on" : ""}`}
+                          role="switch"
+                          aria-checked={quakeModelEnabled}
+                          onClick={() => setQuakeModelEnabled((v) => !v)}
+                        />
+                      </div>
+                      {quakeModelEnabled && (
+                        <div style={{ fontSize: 11, color: "var(--ink-soft)", lineHeight: 1.5 }}>
+                          {quakeStatus.state === "loading" || quakeStatus.state === "training"
+                            ? quakeStatus.message
+                            : quakeStatus.state === "failed"
+                              ? `Failed: ${quakeStatus.message}`
+                              : quakeStatus.state === "ready"
+                                ? `Ready · ${quakeStatus.samples} labels${quakeStatus.accuracy != null
+                                  ? ` · acc ${(quakeStatus.accuracy * 100).toFixed(0)}%`
+                                  : ""
+                                }`
+                                : quakeStatus.message}
+                          <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 8 }}>
+                            {(["SAFE", "LOW", "MODERATE", "HIGH"] as const).map((c) => (
+                              <span key={c} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                                <span
+                                  style={{
+                                    width: 10,
+                                    height: 10,
+                                    background: classColor(c),
+                                    border: "1px solid var(--ink)",
+                                  }}
+                                />
+                                {c}
+                              </span>
+                            ))}
+                          </div>
+                          <div style={{ marginTop: 6, color: "var(--muted)" }}>
+                            Click a hot spot for class. Pin a site to see {classAdvice("HIGH")} vs {classAdvice("SAFE")}.
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {roleConfig?.canSeeAlerts && <>
+                      <div style={{ marginBottom: 8 }} className="sectionTitle">
+                        Real-Time Alerts
+                      </div>
+                      {alerts.length ? (
+                        <div className="miniList">
+                          {alerts.map((a) => (
+                            <div key={a.id} className="alert">
+                              <div className="t">{a.title}</div>
+                              <div className="m">{a.message}</div>
+                              <div className="meta">
+                                Recommended: {a.recommendedAction}
+                                <br />
+                                Triggered: {formatAgo(a.triggeredAt)}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="card" style={{ color: "var(--muted)", fontSize: 13 }}>
+                          No high-risk alerts yet. The system will notify automatically when a zone transitions to HIGH risk.
+                        </div>
+                      )}
+                    </>}
+                  </>
+                )}
+
+                {/* ── Projects Tab ── */}
+                {sidebarTab === "projects" && (
+                  <>
+                    <div className="card infra-filter">
+                      <div className="sectionTitle" style={{ marginBottom: 10 }}>
+                        Filter &amp; cluster
+                      </div>
+                      <div className="infra-filter-count">
+                        Showing <strong>{filteredProjects.length}</strong> of {projects.length} sites
+                      </div>
+                      <input
+                        className="infra-filter-search"
+                        type="search"
+                        placeholder="Search name, barangay, type…"
+                        value={infraFilter.query}
+                        onChange={(e) => setInfraFilter((f) => ({ ...f, query: e.target.value }))}
+                      />
+                      <div className="infra-filter-label">Status</div>
+                      <div className="infra-filter-chips">
+                        {INFRA_STATUSES.map((s) => (
+                          <button
+                            key={s}
+                            type="button"
+                            className={`infra-chip${infraFilter.statuses.includes(s) ? " is-on" : ""}`}
+                            onClick={() =>
+                              setInfraFilter((f) => ({ ...f, statuses: toggleListValue(f.statuses, s) }))
+                            }
+                          >
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="infra-filter-label">Type</div>
+                      <div className="infra-filter-chips">
+                        {INFRA_CATEGORIES.map((c) => (
+                          <button
+                            key={c}
+                            type="button"
+                            className={`infra-chip${infraFilter.categories.includes(c) ? " is-on" : ""}`}
+                            onClick={() =>
+                              setInfraFilter((f) => ({ ...f, categories: toggleListValue(f.categories, c) }))
+                            }
+                          >
+                            {c}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="infra-filter-row">
+                        <label>
+                          Office
+                          <select
+                            value={infraFilter.department}
+                            onChange={(e) =>
+                              setInfraFilter((f) => ({
+                                ...f,
+                                department: e.target.value as InfraFilter["department"],
+                              }))
+                            }
+                          >
+                            <option value="">All offices</option>
+                            {INFRA_DEPARTMENTS.map((d) => (
+                              <option key={d} value={d}>
+                                {d}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label>
+                          Barangay
+                          <select
+                            value={infraFilter.barangay}
+                            onChange={(e) => setInfraFilter((f) => ({ ...f, barangay: e.target.value }))}
+                          >
+                            <option value="">All barangays</option>
+                            {BARANGAY_LIST.map((b) => (
+                              <option key={b} value={b}>
+                                {b}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                      <label className="infra-filter-cluster">
+                        <input
+                          type="checkbox"
+                          checked={infraFilter.clustering}
+                          onChange={(e) => setInfraFilter((f) => ({ ...f, clustering: e.target.checked }))}
+                        />
+                        Cluster nearby sites when zoomed out
+                      </label>
+                      <button
+                        type="button"
+                        className="infra-filter-reset"
+                        onClick={() => setInfraFilter(DEFAULT_INFRA_FILTER)}
+                      >
+                        Reset filters
+                      </button>
+                    </div>
+                    {/* ── Engineer: Place Infrastructure Models ── */}
+                    {currentRole === "Engineer" && (
+                      <div className="card" style={{ marginBottom: 12 }}>
+                        <div className="sectionTitle" style={{ marginBottom: 10 }}>
+                          Place Infrastructure
+                        </div>
+
+                        {/* Placement toggle */}
+                        <button
+                          type="button"
+                          className={`side-cta${placementMode ? " is-on" : ""}`}
+                          onClick={() => {
+                            setPlacementMode((v) => {
+                              const next = !v;
+                              if (next) {
+                                setEditMode(false);
+                              }
+                              return next;
+                            });
+                          }}
+                        >
+                          {placementMode ? (
+                            <span style={{ display: "flex", alignItems: "center", gap: 7, justifyContent: "center" }}>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 8v4" /><path d="M12 16h.01" /></svg>
+                              Placement Mode ON — Click globe to place
+                            </span>
+                          ) : (
+                            <span style={{ display: "flex", alignItems: "center", gap: 7, justifyContent: "center" }}>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></svg>
+                              Enable Placement Mode
+                            </span>
+                          )}
+                        </button>
+
+                        {/* Snap to Road */}
+                        <label
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            marginBottom: 12,
+                            fontSize: 12,
+                            color: placementMode ? "var(--ink-soft)" : "var(--muted2)",
+                            cursor: placementMode ? "pointer" : "not-allowed",
+                            opacity: placementMode ? 1 : 0.55,
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={snapToRoad}
+                            disabled={!placementMode}
+                            onChange={(e) => setSnapToRoad(e.target.checked)}
+                          />
+                          Snap to Road (magnet + align yaw)
+                        </label>
+
+                        {/* Name input */}
+                        <div style={{ marginBottom: 10 }}>
+                          <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>Project Name (optional)</div>
+                          <input
+                            value={placingName}
+                            onChange={(e) => setPlacingName(e.target.value)}
+                            placeholder="e.g. Brgy. Hall Phase 2"
+                            style={{
+                              width: "100%", boxSizing: "border-box", padding: "7px 10px",
+                              borderRadius: 2, border: "1px solid var(--stroke)",
+                              background: "var(--cream-deep)", color: "var(--ink-soft)",
+                              fontSize: 12, outline: "none",
+                            }}
+                          />
+                        </div>
+
+                        {/* Rotation */}
+                        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
+                          <span style={{ fontSize: 11, color: "var(--muted)", minWidth: 52 }}>Rotation</span>
+                          <input type="range" min={0} max={360} step={15} value={placementRotation}
+                            onChange={(e) => setPlacementRotation(Number(e.target.value))}
+                            style={{ flex: 1 }} />
+                          <span style={{ fontSize: 11, color: "var(--muted2)", minWidth: 32, textAlign: "right" }}>
+                            {placementRotation}°
+                          </span>
+                        </div>
+
+                        {/* Model catalog */}
+                        {(["Building", "Infrastructure", "Agriculture", "Construction"] as const).map((cat) => (
+                          <div key={cat} style={{ marginBottom: 10 }}>
+                            <div style={{ fontSize: 10, color: "var(--muted2)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>{cat}</div>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                              {MODEL_CATALOG.filter((m) => m.category === cat && m.type !== "shape").map((m) => (
+                                <button
+                                  key={m.type}
+                                  type="button"
+                                  className={`side-seg-btn${selectedModel === m.type ? " is-on" : ""}`}
+                                  onClick={() => {
+                                    setSelectedModel(m.type);
+                                    clearPendingShape();
+                                    if (m.type !== "custom") {
+                                      setCustomModelFile(null);
+                                      setCustomModelPreview(null);
+                                      setCustomModelTextureReport(null);
+                                    }
+                                  }}
+                                  title={m.description}
+                                  style={{ textAlign: "left", width: "100%", padding: "8px 10px" }}
+                                >
+                                  <div style={{ marginBottom: 4, display: "flex", alignItems: "center", color: selectedModel === m.type ? "var(--on-gold)" : "var(--muted)" }}>
+                                    {(() => { const Ic = ModelIcons[m.icon] ?? ModelIcons.construction; return <Ic size={18} />; })()}
+                                  </div>
+                                  <div style={{ fontSize: 11, fontWeight: 600 }}>{m.label}</div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+
+                        {/* Custom Model Upload */}
+                        {selectedModel === "custom" && (
+                          <div style={{
+                            marginTop: 12,
+                            padding: "12px",
+                            background: "color-mix(in oklch, var(--gold-oklch) 12%, var(--cream))",
+                            border: "1px solid color-mix(in oklch, var(--gold-oklch) 40%, var(--stroke))",
+                            borderRadius: 2
+                          }}>
+                            <div style={{ fontSize: 11, color: "var(--seed)", fontWeight: 600, marginBottom: 8 }}>
+                              Upload Custom GLB Model
+                            </div>
+                            <div style={{ fontSize: 10, color: "var(--muted)", lineHeight: 1.45, marginBottom: 8 }}>
+                              Blender viewport textures do not count. Image Texture must plug into Principled BSDF
+                              Base Color, then File → External Data → Pack Resources, export glTF Binary (.glb).
+                              White mesh = maps never made it into the file. Run
+                              scripts/blender_fix_materials_for_gltf.py before export. Max 500MB.
+                            </div>
+                            <input
+                              type="file"
+                              accept=".glb,.gltf"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  setCustomModelFile(file);
+                                  setCustomModelPreview(file.name);
+                                  setCustomModelTextureReport(null);
+                                  void inspectGlbFile(file).then(setCustomModelTextureReport);
+                                }
+                              }}
+                              style={{
+                                width: "100%",
+                                padding: "8px",
+                                borderRadius: 0,
+                                border: "1px solid var(--stroke)",
+                                background: "rgba(0,0,0,0.3)",
+                                color: "var(--ink-soft)",
+                                fontSize: 11,
+                                cursor: "pointer",
+                              }}
+                            />
+                            {customModelPreview && (
+                              <div style={{
+                                marginTop: 8,
+                                fontSize: 10,
+                                color: "var(--muted)",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 6
+                              }}>
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--seed)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <polyline points="20 6 9 17 4 12" />
+                                </svg>
+                                {customModelPreview}
+                                {customModelTextureReport && (
+                                  <span>
+                                    · {customModelTextureReport.texturedMaterials}/{customModelTextureReport.materials} textured
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                            {customModelTextureReport?.warning && (
+                              <div
+                                style={{
+                                  marginTop: 8,
+                                  fontSize: 10,
+                                  color: "var(--seed)",
+                                  background: "color-mix(in oklch, var(--warn) 12%, var(--cream))",
+                                  border: "1px solid color-mix(in oklch, var(--warn) 40%, var(--stroke))",
+                                  padding: "8px 10px",
+                                  lineHeight: 1.45,
+                                }}
+                              >
+                                {customModelTextureReport.warning}
+                              </div>
+                            )}
+                            <div style={{
+                              marginTop: 8,
+                              fontSize: 10,
+                              color: "var(--muted2)",
+                              lineHeight: 1.45,
+                              display: "flex",
+                              alignItems: "flex-start",
+                              gap: 6,
+                              padding: "6px 8px",
+                              background: "rgba(74, 222, 128, 0.08)",
+                              border: "1px solid rgba(74, 222, 128, 0.25)",
+                              borderRadius: 2,
+                            }}>
+                              <span style={{ color: "#4ade80", fontWeight: 700, fontSize: 11 }}>⚡</span>
+                              <span style={{ color: "var(--ink-soft)" }}>
+                                <strong>Auto-Optimization Enabled:</strong> Uploaded BIM/CAD geometry is automatically merged, textures compressed, and Draco-encoded on the server for instant map rendering.
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Placed projects list with delete */}
+                        {projects.filter((p) => p.department === "Engineering" && !p.siteMarkerOnly).length > 0 && (
+                          <div style={{ marginTop: 8 }}>
+                            <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 6 }}>Placed by Engineer</div>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 160, overflowY: "auto" }}>
+                              {projects.filter((p) => p.department === "Engineering" && !p.siteMarkerOnly).map((p) => (
+                                <div key={p.id} style={{
+                                  display: "flex", alignItems: "center", gap: 6, padding: "6px 8px",
+                                  background: "var(--cream-ink)", borderRadius: 0,
+                                  border: "1px solid var(--stroke2)",
+                                }}>
+                                  <span style={{ display: "flex", alignItems: "center", color: "var(--muted)" }}>
+                                    {(() => { const ic = MODEL_CATALOG.find((m) => m.type === p.modelType)?.icon ?? "construction"; const Ic = ModelIcons[ic] ?? ModelIcons.construction; return <Ic size={15} />; })()}
+                                  </span>
+                                  <span style={{ flex: 1, fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                    {displayNameForProject(p)}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    className="side-btn-danger"
+                                    onClick={async () => {
+                                      await fetch(backendUrl(`/api/projects/${p.id}`), {
+                                        method: "DELETE",
+                                        credentials: "include",
+                                      });
+                                    }}
+                                  >✕</button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {roleConfig?.canSeeProjects && (
+                      <ProjectMonitoringPanel
+                        projects={filteredProjects}
+                        currentRole={currentRole}
+                        mapRef={mapRef}
+                        cesiumMapRef={cesiumMapRef}
+                        readOnly={currentRole === "Viewer" || isBarangayOfficial(currentRole)}
+                      />
+                    )}
+                  </>
+                )}
+
+
+
+              </div>
+              {/* End Tab Content */}
+
+              {currentRole === "Negosyo Center" && (
+                <div className="card" style={{ marginTop: 12, borderColor: "rgba(255,214,102,0.2)" }}>
+                  <div style={{ fontSize: 12, color: "var(--muted2)", lineHeight: 1.5 }}>
+                    The map shows the Luisiana area. Your dashboard above is focused on business permit processing.
+                  </div>
+                </div>
+              )}
+            </aside>
+          </>
         </div>
-        {/* End Tab Content */}
-
-        {currentRole === "Negosyo Center" && (
-          <div className="card" style={{ marginTop: 12, borderColor: "rgba(255,214,102,0.2)" }}>
-            <div style={{ fontSize: 12, color: "var(--muted2)", lineHeight: 1.5 }}>
-              The map shows the Luisiana area. Your dashboard above is focused on business permit processing.
-            </div>
-          </div>
-        )}
-      </aside>
-      </>
-      </div>
       )}
-      
+
       {/* Placement Modal - Enter Building Details */}
       {showPlacementModal && pendingPlacement && (
         <div
@@ -5290,7 +4663,7 @@ export default function App() {
                   <option value="MPDC">MPDC</option>
                   <option value="Engineering">Engineering</option>
                   <option value="Agriculture">Agriculture</option>
-                  <option value="Negosyo Center">Negosyo Center</option>
+                  <option value="Treasury Office">Treasury Office</option>
                 </select>
               </div>
 
@@ -5441,6 +4814,8 @@ export default function App() {
         </div>
       )}
 
+
+
       {cookieConsent === "pending" && (
         <div className="cookie-banner-overlay">
           <div className="cookie-banner">
@@ -5472,6 +4847,30 @@ export default function App() {
           </div>
         </div>
       )}
+
+      <InspectionUpdateModal
+        isOpen={Boolean(inspectingProject)}
+        onClose={() => setInspectingProject(null)}
+        project={inspectingProject}
+        onSuccess={(_updated) => {
+          refreshProjects();
+          if (inspectingProject) {
+            setSelectedSitePin((prev) =>
+              prev?.id === inspectingProject.id
+                ? {
+                    ...prev,
+                    numericProgress: _updated.progress,
+                    progress: _updated.progress,
+                    stage: _updated.inspectionStage || _updated.stage,
+                    latestInspection: _updated.latestInspection,
+                    inspectionPhotos: _updated.inspectionPhotos,
+                  }
+                : prev,
+            );
+          }
+        }}
+        currentInspector={currentSession?.fullName || currentSession?.username || "Municipal Engineer"}
+      />
     </div>
   );
 }

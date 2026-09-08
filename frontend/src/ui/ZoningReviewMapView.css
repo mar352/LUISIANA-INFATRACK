@@ -1,0 +1,404 @@
+/* ── ZoningReviewMapView.css · Review Stage Map & Hazard Layout ── */
+
+.zrm-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+}
+
+/* ── Officer Stage Header Banner ── */
+.zrm-header-banner {
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.85));
+  border: 1px solid rgba(255, 193, 7, 0.35);
+  border-radius: 14px;
+  padding: 16px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.zrm-header-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  flex: 1;
+}
+
+.zrm-stage-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #ffc107;
+  color: #0b1120;
+  font-size: 10.5px;
+  font-weight: 900;
+  padding: 5px 10px;
+  border-radius: 6px;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.zrm-title {
+  margin: 0 0 4px;
+  font-size: 14.5px;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.zrm-desc {
+  margin: 0;
+  font-size: 12px;
+  color: #94a3b8;
+  line-height: 1.4;
+  max-width: 680px;
+}
+
+.zrm-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.zrm-save-pin-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.zrm-save-pin-btn:hover:not(:disabled) {
+  background: rgba(56, 189, 248, 0.28);
+  color: #bae6fd;
+  border-color: #38bdf8;
+  transform: translateY(-1px);
+}
+
+.zrm-save-pin-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.zrm-endorse-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #10b981;
+  color: #ffffff;
+  border: 1px solid #10b981;
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.35);
+  white-space: nowrap;
+}
+
+.zrm-endorse-btn:hover {
+  background: #059669;
+  transform: translateY(-1px);
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.5);
+}
+
+/* ── Toast Alert ── */
+.zrm-toast-alert {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(16, 185, 129, 0.18);
+  border: 1px solid rgba(16, 185, 129, 0.45);
+  color: #34d399;
+  padding: 10px 18px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.zrm-toast-close {
+  background: transparent;
+  border: none;
+  color: #34d399;
+  margin-left: auto;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+/* ── Map Section ── */
+.zrm-map-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.zrm-map-label-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 4px;
+  gap: 12px;
+}
+
+.zrm-map-label-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.zrm-map-coords-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: #94a3b8;
+  font-family: monospace;
+}
+
+.zrm-map-coords-pill strong {
+  color: #38bdf8;
+  font-weight: 800;
+}
+
+/* ── 2 Columns Assessment Grid (Bottom) ── */
+.zrm-eval-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+@media (max-width: 900px) {
+  .zrm-eval-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── LUISIANA SITING ASSESSMENT (Exact Match with Application) ── */
+.app-assess-card {
+  width: 100%;
+  padding: 18px 20px 20px;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+}
+
+.app-assess-card-title {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #38bdf8;
+  margin-bottom: 12px;
+}
+
+.app-assess-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+
+.app-assess-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 12.5px;
+}
+
+.app-assess-row dt {
+  color: rgba(255, 255, 255, 0.72);
+  margin: 0;
+}
+
+.app-assess-row dd {
+  margin: 0;
+  font-weight: 700;
+  text-align: right;
+}
+
+.app-assess-note {
+  margin: 12px 0 14px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.app-assess-report-btn {
+  width: 100%;
+  padding: 9px 14px;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: 8px;
+  color: #38bdf8;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+  margin-top: auto;
+}
+
+.app-assess-report-btn:hover {
+  background: rgba(56, 189, 248, 0.22);
+  color: #7dd3fc;
+  border-color: #38bdf8;
+}
+
+/* ── CLUP Zoning Card ── */
+.zrm-clup-card {
+  width: 100%;
+  padding: 18px 20px 20px;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+}
+
+.zrm-clup-title {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ffc107;
+  margin-bottom: 12px;
+}
+
+.zrm-clup-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.zrm-clup-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12.5px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.zrm-clup-row.full {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.zrm-clup-lbl {
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.zrm-clup-val {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #ffffff;
+}
+
+.zrm-clup-pill {
+  font-size: 11px;
+  font-weight: 900;
+  color: #ffc107;
+  background: rgba(255, 193, 7, 0.15);
+  border: 1px solid rgba(255, 193, 7, 0.35);
+  padding: 2px 7px;
+  border-radius: 5px;
+}
+
+.zrm-conformity-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  padding: 3px 9px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 800;
+}
+
+.zrm-clup-desc {
+  margin: 0;
+  font-size: 11.5px;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+
+/* ── Ocular Inspection Protocol Box ── */
+.zrm-inspection-protocol {
+  margin-top: 14px;
+  background: rgba(255, 193, 7, 0.06);
+  border: 1px solid rgba(255, 193, 7, 0.25);
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.zrm-ip-head {
+  font-size: 11.5px;
+  color: #ffc107;
+  font-weight: 800;
+}
+
+.zrm-ip-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.zrm-ip-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 11.5px;
+  color: #cbd5e1;
+  line-height: 1.35;
+}
+
+.zrm-ip-list li svg {
+  color: #ffc107;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.zrm-ip-list li strong {
+  color: #ffffff;
+}

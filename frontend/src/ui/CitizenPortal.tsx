@@ -9,7 +9,7 @@ import {
 } from "../lib/api";
 import { CesiumMap, type CesiumMapHandle } from "./CesiumMap";
 import TransparencyDashboard from "./TransparencyDashboard";
-import OnlineApplicationWizard from "./OnlineApplicationWizard";
+import NewApplicationPage from "./NewApplicationPage";
 import { ThemeToggle } from "./ThemeToggle";
 import "./CitizenPortal.css";
 
@@ -258,9 +258,10 @@ export default function CitizenPortal({ onBack, onOpenLiveMap, onOpenOnlineServi
       <div className={`cp-body ${tab === "apply" ? "cp-body--apply" : ""}`}>
         <PortalErrorBoundary label="Portal section">
           {tab === "apply" && (
-            <OnlineApplicationWizard
+            <NewApplicationPage
               onBack={() => setTab("projects")}
-              onViewMap={onOpenLiveMap}
+              onCreated={() => setTab("projects")}
+              onViewOnMap={onOpenLiveMap}
             />
           )}
 
@@ -381,7 +382,6 @@ export default function CitizenPortal({ onBack, onOpenLiveMap, onOpenOnlineServi
                   clusteringEnabled={false}
                   terrainEnabled={false}
                   satellite={false}
-                  buildingBlocksVisible
                   onProjectSelect={(id) => setSelectedId(id)}
                 />
                 <div className="cp-map-hint">

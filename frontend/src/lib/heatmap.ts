@@ -1,4 +1,4 @@
-import type { HeatPoint, Project, RiskZones, WeatherSnapshot } from "../types";
+import type { HeatPoint, Project, RiskZones } from "../types";
 
 export type HeatmapMetric = "combined" | "rainfall" | "landslide" | "infrastructure";
 
@@ -39,8 +39,9 @@ function polygonCentroid(polygon: number[][][]) {
   let lat = 0;
   const n = ring.length - 1; // last == first
   for (let i = 0; i < n; i++) {
-    lon += ring[i][0];
-    lat += ring[i][1];
+    const pt = ring[i];
+    lon += pt[0];
+    lat += pt[1];
   }
   return { lon: lon / n, lat: lat / n };
 }
@@ -90,24 +91,18 @@ function infraWeightAtPoint(lon: number, lat: number, projects: Project[]) {
   return clamp01(sum / 4.5);
 }
 
-function rainfallWeight(weather: WeatherSnapshot | null) {
-  // Data-driven rainfall intensity (no fake moving storm core).
-  return clamp01(weather?.rainfallIntensity ?? 0.25);
-}
-
 export function buildHeatmapPoints(args: {
   bbox: BBox;
   zoom: number;
   metric: HeatmapMetric;
-  weather: WeatherSnapshot | null;
   riskZones: RiskZones | null;
   projects: Project[];
   nowMs?: number;
 }) {
-  const { bbox, zoom, metric, weather, riskZones, projects } = args;
+  const { bbox, zoom, metric, riskZones, projects } = args;
   const now = args.nowMs ?? Date.now();
 
-  const rain = rainfallWeight(weather);
+  const rain = 0.25;
 
   // Primary sampling sources:
   // - landslide/rainfall/combined: derived from actual risk zones (spatially aligned)

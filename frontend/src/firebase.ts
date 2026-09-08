@@ -1,5 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDvFfBmwRh8q_WDhb50QmCagGTAwwq6FgU",
@@ -13,6 +14,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
+export const storage = getStorage(app);
 export const projectsCollection = collection(db, "projects");
 export const proposalsCollection = collection(db, "proposals");
 export const planningEventsCollection = collection(db, "planningEvents");
@@ -20,3 +22,4 @@ export const planningMeetingsCollection = collection(db, "planningMeetings");
 export const documentsCollection = collection(db, "documents");
 export const auditLogsCollection = collection(db, "auditLogs");
 export const sessionsCollection = collection(db, "sessions");
+

@@ -69,7 +69,12 @@ export function ProjectMonitoringPanel({
   const detailRef = useRef<HTMLDivElement | null>(null);
 
   const filtered = useMemo(
-    () => projects.filter((p) => (currentRole === "Engineer" ? p.department === "Engineering" : true)),
+    () =>
+      projects.filter(
+        (p) =>
+          !p.siteMarkerOnly &&
+          (currentRole === "Engineer" ? p.department === "Engineering" : true)
+      ),
     [projects, currentRole]
   );
 

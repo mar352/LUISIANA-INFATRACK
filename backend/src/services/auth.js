@@ -23,6 +23,7 @@ const STAFF_ROLES = new Set([
   "MPDC",
   "Engineer",
   "Agriculture",
+  "Treasury Office",
   "Negosyo Center",
   "Barangay Official",
   "Private Engineer",
@@ -32,7 +33,8 @@ const SEED = [
   { username: "mpdc", password: "impact2024", role: "MPDC", label: "MPDC", department: "Municipal Planning & Development Coordinator" },
   { username: "engineer", password: "impact2024", role: "Engineer", label: "Engineer", department: "Infrastructure & Engineering Office" },
   { username: "agriculture", password: "impact2024", role: "Agriculture", label: "Agriculture", department: "Municipal Agriculture Office" },
-  { username: "negosyo", password: "impact2024", role: "Negosyo Center", label: "Negosyo Center", department: "Business Permit & Licensing Office" },
+  { username: "treasury", password: "impact2024", role: "Treasury Office", label: "Treasury Office", department: "Municipal Treasury Office" },
+  { username: "negosyo", password: "impact2024", role: "Treasury Office", label: "Treasury Office", department: "Municipal Treasury Office" },
   { username: "barangay", password: "impact2024", role: "Barangay Official", label: "Barangay Official", department: "Barangay Hall — Luisiana" },
   { username: "pengineer", password: "impact2024", role: "Private Engineer", label: "Private Engineer", department: "Private Professional / Design Engineer" },
 ];

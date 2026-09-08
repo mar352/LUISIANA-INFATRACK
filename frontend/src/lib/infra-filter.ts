@@ -31,6 +31,7 @@ export const INFRA_DEPARTMENTS: Project["department"][] = [
   "MPDC",
   "Engineering",
   "Agriculture",
+  "Treasury Office",
   "Negosyo Center",
 ];
 
@@ -40,7 +41,7 @@ export const DEFAULT_INFRA_FILTER: InfraFilter = {
   categories: [...INFRA_CATEGORIES],
   department: "",
   barangay: "",
-  clustering: true,
+  clustering: false,
 };
 
 export function categoryForModel(type: ModelType | undefined): InfraCategory {
@@ -50,6 +51,14 @@ export function categoryForModel(type: ModelType | undefined): InfraCategory {
 export function filterInfrastructure(projects: Project[], f: InfraFilter): Project[] {
   const q = f.query.trim().toLowerCase();
   return projects.filter((p) => {
+    if ((p as any).isPrivateApplication || (p as any).trackingNumber || p.id === "pinpoint_site_pin") {
+      if (f.barangay && (p.barangay || "") !== f.barangay) return false;
+      if (q) {
+        const hay = `${p.name} ${p.barangay || ""} ${p.status || ""}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    }
     if (f.statuses.length > 0 && !f.statuses.includes(p.status)) return false;
     if (f.categories.length > 0 && !f.categories.includes(categoryForModel(p.modelType))) {
       return false;

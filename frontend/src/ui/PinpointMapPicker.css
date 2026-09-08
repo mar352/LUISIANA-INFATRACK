@@ -1,0 +1,605 @@
+/* ── PinpointMapPicker.css · Interactive Location Pinpoint Map ── */
+
+.pinpoint-map-wrapper {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  overflow: hidden;
+  background: #0f172a;
+  position: relative;
+  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.5);
+  margin-top: 12px;
+}
+
+.pinpoint-map-header {
+  padding: 10px 14px;
+  background: rgba(15, 23, 42, 0.95);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pinpoint-map-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #38bdf8;
+}
+
+.pinpoint-toggles-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pinpoint-toggle-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.85);
+  padding: 5px 11px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.18s ease;
+  user-select: none;
+}
+
+.pinpoint-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: #fff;
+}
+
+.pinpoint-toggle-btn.active {
+  background: #0284c7;
+  border-color: #38bdf8;
+  color: #fff;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.35);
+}
+
+.pinpoint-style-spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #38bdf8;
+  border-radius: 50%;
+  animation: pinpoint-spin 0.6s linear infinite;
+  margin-left: 3px;
+}
+
+@keyframes pinpoint-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.pinpoint-dropdown-wrap {
+  position: relative;
+}
+
+.pinpoint-menu-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 100;
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 10px;
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.6);
+  padding: 6px;
+  min-width: 210px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.pinpoint-menu-popover--scrollable {
+  max-height: 290px;
+  overflow-y: auto;
+  min-width: 240px;
+}
+
+.pinpoint-menu-popover--scrollable::-webkit-scrollbar {
+  width: 5px;
+}
+
+.pinpoint-menu-popover--scrollable::-webkit-scrollbar-thumb {
+  background: rgba(56, 189, 248, 0.3);
+  border-radius: 4px;
+}
+
+.pinpoint-menu-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 5px 2px;
+}
+
+.pinpoint-menu-section-header {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #38bdf8;
+  padding: 4px 8px 3px;
+  font-weight: 700;
+}
+
+.pinpoint-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 10px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  transition: all 0.15s ease;
+}
+
+.pinpoint-menu-item:hover {
+  background: rgba(56, 189, 248, 0.15);
+  color: #fff;
+}
+
+.pinpoint-menu-item.active {
+  background: #0284c7;
+  color: #fff;
+  font-weight: 700;
+}
+
+.pinpoint-map-hint {
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.pinpoint-map-container {
+  width: 100%;
+  height: 400px;
+  position: relative;
+  background: #0b1120;
+}
+
+/* Boundary Alert Toast */
+.pinpoint-boundary-alert {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 120;
+  background: rgba(225, 29, 72, 0.95);
+  color: #ffffff;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 8px 24px rgba(225, 29, 72, 0.45), 0 2px 6px rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  animation: pinpointAlertSlide 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
+}
+
+@keyframes pinpointAlertSlide {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -10px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.pinpoint-map-container .cesium-viewer,
+.pinpoint-map-container .cesium-viewer-cesiumWidgetContainer,
+.pinpoint-map-container .cesium-widget,
+.pinpoint-map-container canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+
+.pinpoint-map-container .cesium-viewer-bottom {
+  display: none !important;
+}
+
+/* Coordinates Floating Badge */
+.pinpoint-coords-badge {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  z-index: 10;
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  border-radius: 8px;
+  padding: 7px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+
+.pinpoint-coords-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.55);
+  font-weight: 700;
+}
+
+.pinpoint-coords-val {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: #38bdf8;
+}
+
+/* Floating Controls */
+.pinpoint-controls {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pinpoint-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: bold;
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.pinpoint-btn:hover {
+  background: #0284c7;
+  border-color: #38bdf8;
+  color: #fff;
+  transform: scale(1.05);
+}
+
+/* Custom Marker Pin Animation */
+.pinpoint-custom-marker {
+  cursor: grab;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translate(-50%, -100%);
+}
+
+.pinpoint-custom-marker:active {
+  cursor: grabbing;
+}
+
+.pinpoint-marker-pulse {
+  position: absolute;
+  bottom: 0;
+  width: 14px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(56, 189, 248, 0.6);
+  animation: pinpoint-pulse 1.8s infinite ease-out;
+}
+
+@keyframes pinpoint-pulse {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(2.8);
+    opacity: 0;
+  }
+}
+
+/* ── Live Hazard Banner (System Check) below the Map ── */
+.pinpoint-hazard-banner {
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(15, 23, 42, 0.95);
+  font-size: 12.5px;
+  line-height: 1.4;
+  transition: all 0.25s ease;
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
+}
+
+.pinpoint-hazard-banner-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.pinpoint-hazard-banner-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pinpoint-hazard-banner-text {
+  font-weight: 600;
+}
+
+.pinpoint-hazard-banner-tag {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 5px;
+  flex-shrink: 0;
+}
+
+/* Status Variations */
+.pinpoint-hazard-banner.safe {
+  background: rgba(6, 78, 59, 0.35);
+  border-top-color: rgba(16, 185, 129, 0.35);
+}
+.pinpoint-hazard-banner.safe .pinpoint-hazard-banner-text {
+  color: #6ee7b7;
+}
+.pinpoint-hazard-banner.safe .pinpoint-hazard-banner-tag {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+.pinpoint-hazard-banner.alert {
+  background: rgba(136, 19, 55, 0.4);
+  border-top-color: rgba(244, 63, 94, 0.4);
+}
+.pinpoint-hazard-banner.alert .pinpoint-hazard-banner-text {
+  color: #fda4af;
+}
+.pinpoint-hazard-banner.alert .pinpoint-hazard-banner-tag {
+  background: rgba(244, 63, 94, 0.2);
+  color: #fb7185;
+  border: 1px solid rgba(244, 63, 94, 0.4);
+}
+
+.pinpoint-hazard-banner.moderate {
+  background: rgba(120, 53, 15, 0.35);
+  border-top-color: rgba(245, 158, 11, 0.35);
+}
+.pinpoint-hazard-banner.moderate .pinpoint-hazard-banner-text {
+  color: #fde68a;
+}
+.pinpoint-hazard-banner.moderate .pinpoint-hazard-banner-tag {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.pinpoint-hazard-banner.checking {
+  background: rgba(15, 23, 42, 0.7);
+  border-top-color: rgba(56, 189, 248, 0.2);
+}
+.pinpoint-hazard-banner.checking .pinpoint-hazard-banner-text {
+  color: #93c5fd;
+}
+.pinpoint-hazard-banner.checking .pinpoint-hazard-banner-tag {
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+/* ── Fullscreen Map Overlay Mode ── */
+.pinpoint-map-wrapper.pinpoint-map-wrapper--fullscreen {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  border: none !important;
+  z-index: 999999 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  box-shadow: none !important;
+  background: #020617 !important;
+}
+
+.pinpoint-map-wrapper.pinpoint-map-wrapper--fullscreen .pinpoint-map-header {
+  border-radius: 0 !important;
+  padding: 10px 20px !important;
+  background: rgba(15, 23, 42, 0.98) !important;
+  border-bottom: 1px solid rgba(56, 189, 248, 0.25) !important;
+}
+
+.pinpoint-map-wrapper.pinpoint-map-wrapper--fullscreen .pinpoint-map-container {
+  flex: 1 1 0% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+}
+
+.pinpoint-map-wrapper.pinpoint-map-wrapper--fullscreen .pinpoint-hazard-banner {
+  border-radius: 0 !important;
+  padding: 10px 20px !important;
+  background: rgba(15, 23, 42, 0.98) !important;
+}
+
+/* Floating Fullscreen Exit Pill */
+.pinpoint-fullscreen-exit-pill {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 150;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(56, 189, 248, 0.6);
+  color: #ffffff;
+  padding: 8px 18px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.65), 0 0 16px rgba(56, 189, 248, 0.35);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: pinpointAlertSlide 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.pinpoint-fullscreen-exit-pill:hover {
+  background: #0284c7;
+  border-color: #38bdf8;
+  color: #fff;
+  transform: translateX(-50%) scale(1.05);
+  box-shadow: 0 10px 32px rgba(2, 132, 199, 0.5);
+}
+
+.pinpoint-btn.active {
+  background: #0284c7;
+  border-color: #38bdf8;
+  color: #fff;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.4);
+}
+
+/* ── Real-time CLUP Zoning Status Pills and Badges ── */
+.pinpoint-zone-pill {
+  background: rgba(15, 23, 42, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.9);
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  user-select: none;
+  transition: all 0.2s ease;
+}
+
+.pinpoint-zone-pill.is-commercial {
+  background: rgba(245, 158, 11, 0.18);
+  border-color: rgba(251, 191, 36, 0.5);
+  color: #fbbf24;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.25);
+}
+
+.pinpoint-zone-pill.is-outlying {
+  background: rgba(56, 189, 248, 0.14);
+  border-color: rgba(56, 189, 248, 0.38);
+  color: #7dd3fc;
+}
+
+.pinpoint-menu-zone-badge {
+  font-size: 9.5px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pinpoint-menu-zone-badge.is-comm {
+  background: rgba(245, 158, 11, 0.25);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.45);
+}
+
+.pinpoint-menu-zone-badge.is-outlying {
+  background: rgba(56, 189, 248, 0.16);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.38);
+}
+
+/* Coordinates Floating Badge Zoning Details */
+.pinpoint-coords-brgy {
+  font-size: 11px;
+  font-weight: 700;
+  color: #f1f5f9;
+  margin-top: 1px;
+}
+
+.pinpoint-coords-zone-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  border: 1px solid;
+  font-size: 10.5px;
+  font-weight: 700;
+  margin-top: 3px;
+  letter-spacing: 0.02em;
+}
+
+.pinpoint-coords-zone-pill.is-commercial {
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.28);
+}
+
+.pinpoint-coords-zone-pill.is-outlying {
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.18);
+}
+
+/* Hazard & Zoning Banner */
+.pinpoint-hazard-banner-tags {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pinpoint-banner-zone-tag {
+  font-size: 10.5px;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: 6px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.pinpoint-banner-zone-tag.is-commercial {
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.25);
+}
+
+.pinpoint-banner-zone-tag.is-outlying {
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.18);
+}

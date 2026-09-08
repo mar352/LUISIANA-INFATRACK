@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { listCitizenApplications } from "./citizenApplications.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -142,11 +143,95 @@ function hasRecentActivity(project, prefix) {
 function saveState() {
   const dir = path.dirname(DATA_PATH);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  const toSave = (state || []).filter((p) => !p.isPrivateApplication && !p.siteMarkerOnly);
   fs.writeFileSync(
     DATA_PATH,
-    JSON.stringify({ projects: state, nextId }, null, 2),
+    JSON.stringify({ projects: toSave, nextId }, null, 2),
     "utf8"
   );
+}
+
+export function getPrivateInfraProjects() {
+  try {
+    const apps = listCitizenApplications();
+    const privates = [];
+    for (const app of apps) {
+      const isPrivate =
+        app.category === "private_infrastructure" ||
+        app.serviceType === "zoning_certificate" ||
+        Boolean(app.lotDetails?.proposedBuildingType);
+      const lat = Number(app.latitude ?? app.lotDetails?.lat ?? app.coordinates?.lat);
+      const lon = Number(app.longitude ?? app.lotDetails?.lon ?? app.coordinates?.lon);
+      if (!isPrivate || !lat || !lon) continue;
+
+      // STRICT: Wag muna i-pin sa map yung mga hindi pa na-a-approve ng Engineer!
+      // Tanging ang mga may engineerApproved === true o status === "approved_for_construction" ang mai-pin.
+      const isApprovedToPin =
+        app.engineerApproved === true ||
+        app.status === "approved_for_construction";
+
+      if (!isApprovedToPin) continue;
+
+      const title =
+        app.projectTitle ||
+        app.title ||
+        `${app.applicant?.fullName || "Private"} - ${app.lotDetails?.proposedBuildingType || "Residential"}`;
+      const name = `${title} (${app.trackingNumber})`;
+
+      const numericProgress = Number(app.latestInspection?.progress ?? app.progress ?? (app.status === "approved" ? 100 : 0));
+      const stage = app.latestInspection?.stage || (numericProgress >= 100 ? "after_construction" : numericProgress >= 50 ? "during_construction" : "before_construction");
+      const pinColor = numericProgress >= 100 ? "#22c55e" : numericProgress >= 50 ? "#eab308" : "#ef4444";
+      const pinCategory = numericProgress >= 100 ? "green" : numericProgress >= 50 ? "yellow" : "red";
+
+      privates.push({
+        id: app.id || app.trackingNumber,
+        name,
+        modelType: "office",
+        type: "Private Building",
+        department: "Engineering",
+        status: numericProgress >= 100 ? "Completed" : numericProgress >= 50 ? "Ongoing" : "Planned",
+        progress: numericProgress,
+        inspectionStage: stage,
+        location: { lat, lon },
+        rotation: 0,
+        modelLocked: true,
+        siteMarkerOnly: true,
+        isPrivateApplication: true,
+        mapSketch: null,
+        markerColor: pinColor,
+        pinCategory,
+        latestInspection: app.latestInspection || null,
+        inspectionPhotos: Array.isArray(app.inspectionPhotos) ? app.inspectionPhotos : [],
+        applicantName: app.applicant?.fullName || "",
+        trackingNumber: app.trackingNumber,
+        buildingType: app.lotDetails?.proposedBuildingType || "Residential",
+        description: `Private Infrastructure Application: ${app.trackingNumber} | Proponent: ${app.applicant?.fullName || "—"} | Lot: ${app.lotDetails?.lotLocationDescription || app.applicant?.address || "Luisiana"}`,
+        startDate: app.createdAt || null,
+        targetEndDate: null,
+        budgetTotal: app.estimatedCost || null,
+        budgetSpent: 0,
+        barangay: app.applicant?.barangay || "",
+        fundingSource: "Private / Proponent",
+        contractor: app.applicant?.fullName || "Private Property Owner",
+        lifecyclePhase: numericProgress >= 100 ? "Turnover" : numericProgress >= 50 ? "Construction" : "Planning",
+        milestones: [],
+        issues: [],
+        photos: [],
+        activityLog: [
+          {
+            at: app.createdAt || new Date().toISOString(),
+            message: `Private infrastructure submitted & pinned via application ${app.trackingNumber}.`,
+          },
+        ],
+        updatedAt: app.updatedAt || app.createdAt || new Date().toISOString(),
+        isPrivateApplication: true,
+      });
+    }
+    return privates;
+  } catch (err) {
+    console.warn("[projects] failed to load private infra projects:", err.message);
+    return [];
+  }
 }
 
 function loadFromDisk() {
@@ -155,11 +240,13 @@ function loadFromDisk() {
     const raw = JSON.parse(fs.readFileSync(DATA_PATH, "utf8"));
     const now = new Date().toISOString();
     let repaired = false;
-    const projects = (raw.projects || []).map((p) => {
-      const shaped = ensureProjectShape(p);
-      if (repairSitePinSimulation(shaped, now)) repaired = true;
-      return shaped;
-    });
+    const projects = (raw.projects || [])
+      .filter((p) => !p.siteMarkerOnly && !p.isPrivateApplication && p.modelType !== "custom" && !p.customModelUrl)
+      .map((p) => {
+        const shaped = ensureProjectShape(p);
+        if (repairSitePinSimulation(shaped, now)) repaired = true;
+        return shaped;
+      });
     nextId = raw.nextId ?? 1;
     if (repaired) {
       state = projects;
@@ -173,18 +260,22 @@ function loadFromDisk() {
 }
 
 export function projectsSeed() {
-  if (state) return state;
-
-  const loaded = loadFromDisk();
-  if (loaded) {
-    state = loaded;
-    return state;
+  if (!state) {
+    const loaded = loadFromDisk();
+    if (loaded) {
+      state = loaded.filter((p) => !p.siteMarkerOnly && !p.isPrivateApplication && p.modelType !== "custom" && !p.customModelUrl);
+    } else {
+      state = [];
+      nextId = 1;
+      saveState();
+    }
+  } else if (state.some((p) => (p.siteMarkerOnly && !p.isPrivateApplication) || p.modelType === "custom" || p.customModelUrl)) {
+    state = state.filter((p) => (!p.siteMarkerOnly || p.isPrivateApplication) && p.modelType !== "custom" && !p.customModelUrl);
+    saveState();
   }
 
-  state = [];
-  nextId = 1;
-  saveState();
-  return state;
+  const privates = getPrivateInfraProjects();
+  return [...state, ...privates];
 }
 
 function findProject(id) {

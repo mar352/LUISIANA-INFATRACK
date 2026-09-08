@@ -5,6 +5,7 @@ export type UserRole =
   | "MPDC"
   | "Engineer"
   | "Agriculture"
+  | "Treasury Office"
   | "Negosyo Center"
   | "Barangay Official"
   | "Private Engineer"
@@ -23,6 +24,7 @@ export function isMunicipalStaff(role: UserRole | null | undefined): boolean {
     role === "MPDC" ||
     role === "Engineer" ||
     role === "Agriculture" ||
+    role === "Treasury Office" ||
     role === "Negosyo Center"
   );
 }
@@ -31,7 +33,6 @@ export interface RoleConfig {
   label: string;
   color: string;
   description: string;
-  canSeeWeather: boolean;
   canSeeLayers: boolean;
   canSeeRisk: boolean;
   canSeeProjects: boolean;
@@ -46,7 +47,6 @@ export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
     label: "MPDC",
     color: "#151c28",
     description: "Municipal Planning & Development Coordinator",
-    canSeeWeather: true,
     canSeeLayers: true,
     canSeeRisk: true,
     canSeeProjects: true,
@@ -59,7 +59,6 @@ export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
     label: "Engineer",
     color: "#8a6500",
     description: "Infrastructure & Engineering Office",
-    canSeeWeather: true,
     canSeeLayers: true,
     canSeeRisk: true,
     canSeeProjects: true,
@@ -72,7 +71,6 @@ export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
     label: "Agriculture",
     color: "#3d4f6b",
     description: "Municipal Agriculture Office",
-    canSeeWeather: true,
     canSeeLayers: false,
     canSeeRisk: true,
     canSeeProjects: false,
@@ -81,11 +79,22 @@ export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
     canSeePlanning: true,
     canSeeEngagement: false,
   },
+  "Treasury Office": {
+    label: "Treasury Office",
+    color: "#059669",
+    description: "Municipal Treasury Office — Revenue, Payment Collections & Official Receipts (O.R.)",
+    canSeeLayers: false,
+    canSeeRisk: false,
+    canSeeProjects: false,
+    canSeeAlerts: false,
+    canSeeBusinessPermits: true,
+    canSeePlanning: false,
+    canSeeEngagement: false,
+  },
   "Negosyo Center": {
-    label: "Negosyo Center",
-    color: "#5b6b7c",
-    description: "Business Permit & Licensing Office",
-    canSeeWeather: false,
+    label: "Treasury Office",
+    color: "#059669",
+    description: "Municipal Treasury Office — Revenue, Payment Collections & Official Receipts (O.R.)",
     canSeeLayers: false,
     canSeeRisk: false,
     canSeeProjects: false,
@@ -98,7 +107,6 @@ export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
     label: "Barangay Official",
     color: "#6B4F2A",
     description: "Barangay hall — submit infrastructure requests for MPDC review",
-    canSeeWeather: true,
     canSeeLayers: true,
     canSeeRisk: true,
     canSeeProjects: true,
@@ -111,7 +119,6 @@ export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
     label: "Private Engineer",
     color: "#0d7377",
     description: "Licensed Private Civil Engineers & Architects — submit blueprints, 3D designs, and progress logs",
-    canSeeWeather: true,
     canSeeLayers: true,
     canSeeRisk: true,
     canSeeProjects: false,
@@ -124,7 +131,6 @@ export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
     label: "Public Viewer",
     color: "#151c28",
     description: "Citizen portal access — live map, projects, and public reporting",
-    canSeeWeather: true,
     canSeeLayers: true,
     canSeeRisk: true,
     canSeeProjects: true,
@@ -139,7 +145,8 @@ export const ROLE_CREDENTIALS: Record<string, UserRole> = {
   mpdc: "MPDC",
   engineer: "Engineer",
   agriculture: "Agriculture",
-  negosyo: "Negosyo Center",
+  treasury: "Treasury Office",
+  negosyo: "Treasury Office",
   barangay: "Barangay Official",
   pengineer: "Private Engineer",
 };
@@ -201,11 +208,10 @@ const FEATURE_ICON_MAP: Record<FeatureIcon, () => JSX.Element> = {
 
 const FEATURES: { icon: FeatureIcon; title: string; desc: string }[] = [
   { icon: "map", title: "3D municipal globe", desc: "Cesium map of Luisiana with satellite imagery, 3D models, and barangay colors." },
-  { icon: "cloud", title: "Climate & tropical", desc: "Station readings, NASA GIBS overlays, and West Pacific Invest / tropical tracking." },
   { icon: "alert", title: "Risk assessment tools", desc: "Click a site for flood, rain-induced landslide, PEIS, EIL 2014, and the terrain model. Luisiana only." },
   { icon: "building", title: "Infrastructure tracking", desc: "Pin, place, and monitor municipal projects with progress, photos, and reports." },
   { icon: "bell", title: "Disaster-resilient planning", desc: "Barangay requests, MPDC siting review, Engineer placement — build on safer ground." },
-  { icon: "clipboard", title: "Business permits", desc: "Negosyo Center dashboard for tracking permit applications and approvals." },
+  { icon: "clipboard", title: "Treasury Collections", desc: "Municipal Treasury dashboard for Order of Payment collections, O.R. issuance, and business taxes." },
 ];
 
 type LandingPageId = "overview" | "features" | "departments" | "risk" | "about";
@@ -218,11 +224,15 @@ const PageOverview = ({
   onEnter,
   onPublicPortal,
   onOnlineServices,
+  onNewApplication,
+  onTrackPermit,
   setActivePage,
 }: {
   onEnter: () => void;
   onPublicPortal: () => void;
   onOnlineServices?: () => void;
+  onNewApplication?: () => void;
+  onTrackPermit?: () => void;
   setActivePage: (page: LandingPageId) => void;
 }) => (
   <>
@@ -246,10 +256,29 @@ const PageOverview = ({
           <button
             type="button"
             className="btn-amber"
-            onClick={onOnlineServices || onPublicPortal}
+            onClick={onNewApplication || onOnlineServices || onPublicPortal}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
           >
-            Mag-apply Online
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            <span>New Application</span>
           </button>
+          {onTrackPermit && (
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={onTrackPermit}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "#38bdf8", borderColor: "rgba(56, 189, 248, 0.4)" }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <span>Track Permit</span>
+            </button>
+          )}
           <button type="button" className="btn-ghost" onClick={onEnter}>
             Department Sign In
           </button>
@@ -300,7 +329,7 @@ const PageOverview = ({
     <section className="ed-section">
       <div className="ed-rail">
         <h2>Offices on the line</h2>
-        <p>MPDC · Engineer · Agriculture · Negosyo Center · Barangay</p>
+        <p>MPDC · Engineer · Agriculture · Treasury Office · Barangay</p>
       </div>
       <div className="ed-body">
         <div className="dept-stack">
@@ -308,7 +337,7 @@ const PageOverview = ({
             { name: "MPDC", desc: "Pins sites and reviews siting" },
             { name: "Engineer", desc: "Places and builds the model" },
             { name: "Agriculture", desc: "Climate and risk for farm sites" },
-            { name: "Negosyo Center", desc: "Business permits" },
+            { name: "Treasury Office", desc: "Payments, O.R. issuance & business taxes" },
             { name: "Barangay Official", desc: "Requests infrastructure" },
           ].map((d) => (
             <div key={d.name} className="dept-row">
@@ -389,7 +418,6 @@ const PageDepartments = ({ onEnter, onPublicPortal }: { onEnter: () => void; onP
             </div>
             <div className="dept-perms">
               {[
-                cfg.canSeeWeather && "Climate & tropical",
                 cfg.canSeeLayers && "Map layers",
                 cfg.canSeeRisk && "Siting assessment",
                 cfg.canSeeProjects && "Infrastructure projects",
@@ -446,10 +474,10 @@ const PageAbout = ({ onEnter, onPublicPortal }: { onEnter: () => void; onPublicP
     <div className="about-prose">
       <h2>Built for Luisiana&apos;s municipal government</h2>
       <p>
-        INFA-TRACK is the municipal GIS for Luisiana, Laguna — where to pin and place infrastructure on safer ground. MPDC, Engineering, Agriculture, Negosyo Center, and barangay halls share one 3D map.
+        INFA-TRACK is the municipal GIS for Luisiana, Laguna — where to pin and place infrastructure on safer ground. MPDC, Engineering, Agriculture, Treasury Office, and barangay halls share one 3D map.
       </p>
       <p>
-        Site assessment uses PHIVOLCS 2014 sheets, a local terrain model, and live MGB flood / landslide layers. Climate uses station readings and NASA GIBS. Residents open the Public Portal for the map and projects without signing in.
+        Site assessment uses PHIVOLCS 2014 sheets, a local terrain model, and live MGB flood / landslide layers. Residents open the Public Portal for the map and projects without signing in.
       </p>
       <CapsuleActions>
         <button type="button" className="btn-amber" onClick={onPublicPortal}>Open Public Portal</button>
@@ -466,7 +494,6 @@ const PageAbout = ({ onEnter, onPublicPortal }: { onEnter: () => void; onPublicP
         { label: "Live hazards", value: "MGB flood & landslide" },
         { label: "Seismic", value: "PHIVOLCS 2014 + terrain" },
         { label: "Globe", value: "Cesium / ESRI" },
-        { label: "Climate", value: "Stations + NASA GIBS" },
       ].map((item) => (
         <div key={item.label} className="meta-row">
           <span className="k">{item.label}</span>
@@ -481,10 +508,14 @@ export function LandingPage({
   onEnter,
   onPublicPortal,
   onOnlineServices,
+  onNewApplication,
+  onTrackPermit,
 }: {
   onEnter: () => void;
   onPublicPortal: () => void;
   onOnlineServices?: () => void;
+  onNewApplication?: () => void;
+  onTrackPermit?: () => void;
 }) {
   const [activePage, setActivePage] = useState<LandingPageId>("overview");
 
@@ -502,6 +533,8 @@ export function LandingPage({
         onEnter: () => void;
         onPublicPortal: () => void;
         onOnlineServices?: () => void;
+        onNewApplication?: () => void;
+        onTrackPermit?: () => void;
       }) => <PageOverview {...props} setActivePage={setActivePage} />,
       features: PageFeatures,
       departments: PageDepartments,
@@ -538,12 +571,32 @@ export function LandingPage({
         <div className="landing-nav-actions">
           <ThemeToggle />
           <CapsuleActions>
+            {onTrackPermit && (
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={onTrackPermit}
+                style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "#38bdf8" }}
+                title="Subaybayan ang Aplikasyon / Track Permit"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <span>Track Permit</span>
+              </button>
+            )}
             <button
               type="button"
               className="btn-amber"
-              onClick={onOnlineServices || onPublicPortal}
+              onClick={onNewApplication || onOnlineServices || onPublicPortal}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
             >
-              Mag-apply Online
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              <span>New Application</span>
             </button>
             <button type="button" className="btn-ghost" onClick={onEnter}>
               Sign In
@@ -556,6 +609,8 @@ export function LandingPage({
           onEnter={onEnter}
           onPublicPortal={onPublicPortal}
           onOnlineServices={onOnlineServices}
+          onNewApplication={onNewApplication}
+          onTrackPermit={onTrackPermit}
         />
       </PageWrap>
     </div>
