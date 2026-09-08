@@ -1,0 +1,695 @@
+/* ── NewApplicationPage.css · Dedicated Page for Project Categorization & Intake ── */
+
+.new-app-page {
+  min-height: 100vh;
+  background: var(--bg-root, #0b1120);
+  color: var(--ink, #f3f4f6);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow-x: hidden;
+}
+
+/* Page Navigation Header */
+.new-app-nav {
+  height: 64px;
+  padding: 0 28px;
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.new-app-nav-left {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.new-app-back-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #fff;
+  padding: 7px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  transition: all 0.18s ease;
+}
+
+.new-app-back-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.25);
+  transform: translateX(-2px);
+}
+
+.new-app-nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.new-app-nav-brand img {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+}
+
+.new-app-nav-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -0.01em;
+}
+
+.new-app-nav-sub {
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* Stepper Bar */
+.new-app-page-stepper {
+  background: rgba(0, 0, 0, 0.25);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 14px 28px;
+  display: flex;
+  justify-content: center;
+}
+
+.new-app-stepper-inner {
+  width: 100%;
+  max-width: 800px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.new-app-page-step {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.new-app-page-step.active {
+  color: #38bdf8;
+}
+
+.new-app-page-step.completed {
+  color: #10b981;
+}
+
+.new-app-page-step-badge {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.new-app-page-step.active .new-app-page-step-badge {
+  background: #0284c7;
+  color: #fff;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.45);
+}
+
+.new-app-page-step.completed .new-app-page-step-badge {
+  background: #10b981;
+  color: #fff;
+}
+
+.new-app-page-step-divider {
+  flex: 1;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Page Body Container */
+.new-app-page-main {
+  flex: 1;
+  width: 100%;
+  max-width: 1020px;
+  margin: 0 auto;
+  padding: 36px 24px 60px;
+}
+
+/* Header Heading */
+.new-app-heading-wrap {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.new-app-main-heading {
+  font-size: 26px;
+  font-weight: 800;
+  color: #fff;
+  margin: 0 0 8px;
+  letter-spacing: -0.02em;
+}
+
+.new-app-main-lead {
+  font-size: 14.5px;
+  color: rgba(255, 255, 255, 0.65);
+  max-width: 600px;
+  margin: 0 auto;
+  line-height: 1.5;
+}
+
+/* Category Grid on Dedicated Page */
+.new-app-page-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 22px;
+  margin-bottom: 36px;
+}
+
+@media (max-width: 860px) {
+  .new-app-page-cards-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.new-app-page-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 2px solid rgba(255, 255, 255, 0.09);
+  border-radius: 16px;
+  padding: 28px 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+}
+
+.new-app-page-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(56, 189, 248, 0.65);
+  background: rgba(56, 189, 248, 0.06);
+  box-shadow: 0 16px 32px -8px rgba(0, 0, 0, 0.45);
+}
+
+.new-app-page-card.selected {
+  border-color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.4), 0 16px 32px -8px rgba(0, 0, 0, 0.4);
+}
+
+.new-app-card-icon-wrap {
+  width: 68px;
+  height: 68px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: transform 0.2s;
+}
+
+.new-app-page-card:hover .new-app-card-icon-wrap {
+  transform: scale(1.06);
+}
+
+.new-app-card-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 8px;
+}
+
+.new-app-card-badge {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  margin-bottom: 14px;
+}
+
+.new-app-card-desc {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.65);
+  line-height: 1.5;
+  margin-bottom: 18px;
+  flex: 1;
+}
+
+.new-app-card-features {
+  width: 100%;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.75);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.new-app-card-features li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.new-app-card-features svg {
+  flex-shrink: 0;
+  color: #10b981;
+}
+
+/* Form Container on Page */
+.new-app-form-panel {
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 32px;
+  box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.45);
+}
+
+.new-app-form-header {
+  margin-bottom: 24px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.new-app-form-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #38bdf8;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 4px;
+}
+
+.new-app-form-sub {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* Page Bottom Navigation */
+.new-app-page-footer {
+  margin-top: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.new-app-page-btn {
+  padding: 12px 24px;
+  border-radius: 9px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.18s ease;
+  border: none;
+}
+
+.new-app-page-btn-secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.new-app-page-btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+
+.new-app-page-btn-primary {
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+  color: #fff;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  box-shadow: 0 4px 14px rgba(2, 132, 199, 0.35);
+}
+
+.new-app-page-btn-primary:hover {
+  background: #0284c7;
+  border-color: #38bdf8;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(2, 132, 199, 0.4);
+}
+
+/* ── Luisiana Siting Assessment Card (Exact match with Pic 2) ── */
+.app-assess-card {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 20px 24px 22px;
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.35);
+}
+
+.app-assess-card-title {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 12px;
+}
+
+.app-assess-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+
+.app-assess-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 13px;
+}
+
+.app-assess-row dt {
+  color: rgba(255, 255, 255, 0.72);
+  margin: 0;
+}
+
+.app-assess-row dd {
+  margin: 0;
+  font-weight: 700;
+  text-align: right;
+}
+
+.app-assess-note {
+  margin: 14px 0 14px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.app-assess-report-btn {
+  width: 100%;
+  padding: 9px 14px;
+  background: rgba(255, 255, 255, 0.09);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 8px;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+}
+
+.app-assess-report-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.35);
+  transform: translateY(-1px);
+}
+
+.new-app-page-btn-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   DOCUMENT UPLOAD SECTION (TCT, Tax Dec, Barangay Clearance)
+   ══════════════════════════════════════════════════════════════ */
+.new-app-docs-section {
+  grid-column: 1 / -1;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 16px;
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-top: 10px;
+}
+
+.new-app-docs-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.new-app-docs-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 15px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -0.01em;
+}
+
+.new-app-docs-sub {
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.new-app-docs-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 1050px) {
+  .new-app-docs-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 680px) {
+  .new-app-docs-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.new-app-upload-box {
+  background: rgba(30, 41, 59, 0.5);
+  border: 2px dashed rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
+  padding: 18px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  transition: all 0.2s ease;
+  position: relative;
+  cursor: pointer;
+}
+
+.new-app-upload-box:hover {
+  border-color: #38bdf8;
+  background: rgba(56, 189, 248, 0.06);
+  transform: translateY(-2px);
+}
+
+.new-app-upload-box.attached {
+  border-style: solid;
+  border-color: #10b981;
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.new-app-upload-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #38bdf8;
+  transition: all 0.2s ease;
+}
+
+.new-app-upload-box.attached .new-app-upload-icon {
+  background: rgba(16, 185, 129, 0.15);
+  border-color: #10b981;
+  color: #34d399;
+}
+
+.new-app-upload-title {
+  font-size: 13.5px;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1.3;
+}
+
+.new-app-upload-desc {
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.55);
+  line-height: 1.35;
+  min-height: 32px;
+}
+
+.new-app-upload-status {
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.new-app-upload-status.pending {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.new-app-upload-status.success {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+}
+
+.new-app-upload-status.uploading {
+  background: rgba(56, 189, 248, 0.2);
+  color: #38bdf8;
+}
+
+.new-app-file-preview-wrap {
+  width: 100%;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.new-app-file-name {
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+  text-align: left;
+}
+
+.new-app-file-remove-btn {
+  background: transparent;
+  border: none;
+  color: #ef4444;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 4px;
+}
+
+.new-app-file-remove-btn:hover {
+  text-decoration: underline;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   MISSING FIELD VALIDATION & INDICATORS
+   ══════════════════════════════════════════════════════════════ */
+.new-app-input.is-missing-field,
+.new-app-select.is-missing-field {
+  border-color: #ef4444 !important;
+  background: rgba(239, 68, 68, 0.09) !important;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.25) !important;
+}
+
+.new-app-upload-box.is-missing-box {
+  border-color: #ef4444 !important;
+  background: rgba(239, 68, 68, 0.08) !important;
+  box-shadow: 0 0 0 1.5px rgba(239, 68, 68, 0.3) !important;
+}
+
+.new-app-missing-alert {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: 12px;
+  padding: 12px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: new-app-shake 0.3s ease-in-out;
+}
+
+@keyframes new-app-shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-4px); }
+  40%, 80% { transform: translateX(4px); }
+}
+
+.new-app-missing-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.new-app-missing-chip {
+  background: rgba(239, 68, 68, 0.22);
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  color: #fecaca;
+  padding: 3px 9px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.new-app-docs-counter {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.new-app-docs-counter.complete {
+  background: rgba(16, 185, 129, 0.2);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #34d399;
+}
+
+.new-app-docs-counter.incomplete {
+  background: rgba(245, 158, 11, 0.18);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  color: #fbbf24;
+}
+
+.new-app-upload-status.missing {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  font-weight: 700;
+}

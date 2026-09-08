@@ -4,33 +4,6 @@ export type { MapShape, MapShapeKind } from "./lib/map-shapes";
 
 export type HeatPoint = [number, number, number]; // [lon,lat,weight]
 
-export type WeatherForecastHour = {
-  hour: number;
-  temperatureC: number;
-  rainfallMm: number;
-  cloudinessPct: number;
-  windSpeedMps: number;
-  windDirectionDeg: number;
-};
-
-export type WeatherSnapshot = {
-  source: string;
-  lat: number;
-  lon: number;
-  seed: number;
-  observedAt: string;
-  temperatureC: number;
-  windSpeedMps: number;
-  windDirectionDeg: number;
-  rainfallMm: number;
-  cloudinessPct: number;
-  humidityPct: number;
-  pressureHpa: number;
-  rainfallIntensity: number;
-  stormTrack: GeoJSON.Feature<GeoJSON.LineString, { kind: "stormTrack" }>;
-  forecast: WeatherForecastHour[]; // next 6 hours from ECMWF
-};
-
 export type RiskFeature = GeoJSON.Feature<
   GeoJSON.Polygon,
   {
@@ -206,7 +179,7 @@ export type PublicProject = {
   name: string;
   modelType: ModelType;
   type: "Municipal Project" | "Private Building" | "Agricultural Structure";
-  department: "MPDC" | "Engineering" | "Agriculture" | "Negosyo Center";
+  department: "MPDC" | "Engineering" | "Agriculture" | "Treasury Office" | "Negosyo Center";
   status: ProjectStatus;
   progress: number;
   location: { lat: number; lon: number };
@@ -269,7 +242,7 @@ export type Project = {
   name: string;
   modelType: ModelType;
   type: "Municipal Project" | "Private Building" | "Agricultural Structure";
-  department: "MPDC" | "Engineering" | "Agriculture" | "Negosyo Center";
+  department: "MPDC" | "Engineering" | "Agriculture" | "Treasury Office" | "Negosyo Center";
   status: ProjectStatus;
   progress: number;
   location: { lat: number; lon: number };
@@ -319,6 +292,29 @@ export type Project = {
   photos: ProjectPhoto[];
   activityLog: ProjectActivity[];
   updatedAt: string;
+  isPrivateApplication?: boolean;
+  trackingNumber?: string;
+  applicantName?: string;
+  applicationId?: string;
+  numericProgress?: number;
+  stage?: string;
+  pinColor?: string;
+  latestInspection?: {
+    stage: string;
+    progress: number;
+    photoUrl?: string;
+    remarks?: string;
+    inspectedAt: string;
+    inspector?: string;
+  } | null;
+  inspectionPhotos?: Array<{
+    url: string;
+    stage: string;
+    progress: number;
+    uploadedAt: string;
+    remarks?: string;
+    inspector?: string;
+  }>;
 };
 
 export type ProjectAccomplishmentReport = {
@@ -495,6 +491,7 @@ export type CitizenApplication = {
   slaDays?: number;
   slaMinutes?: number;
   fee?: string;
+  dataHash?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -663,5 +660,58 @@ export const DOCUMENT_CATEGORIES: DocumentCategory[] = [
   "permit",
   "feasibility_study",
 ];
+
+/* ── 3 Main Application Intake Categories ── */
+export type ApplicationCategory =
+  | "private_infrastructure"
+  | "agricultural"
+  | "municipal_project";
+
+export type AgriculturalFarmType =
+  | "poultry_broiler"
+  | "poultry_layer"
+  | "piggery_swine"
+  | "livestock_cattle"
+  | "agro_processing";
+
+export type MunicipalFundingSource =
+  | "20_dev_fund"
+  | "general_fund"
+  | "national_subsidy"
+  | "calamity_fund"
+  | "special_education_fund"
+  | "external_grant";
+
+export type NewApplicationPayload = {
+  category: ApplicationCategory;
+  title: string;
+  applicantName: string;
+  contactPhone: string;
+  contactEmail: string;
+  barangay: string;
+  locationDescription?: string;
+  lotAreaSqM?: number;
+  estimatedCostPhp?: number;
+  lon?: number;
+  lat?: number;
+  // Private Infra specific
+  tctNo?: string;
+  taxDecNo?: string;
+  buildingType?: string;
+  isOwner?: boolean;
+  // Agricultural specific
+  farmType?: AgriculturalFarmType;
+  headCapacity?: number;
+  wasteManagement?: string;
+  bufferComplianceConfirmed?: boolean;
+  // Municipal specific
+  implementingDepartment?: string;
+  fundingSource?: MunicipalFundingSource;
+  cipCode?: string;
+  targetBeneficiaries?: string;
+  notes?: string;
+  zoningClassification?: string;
+};
+
 
 

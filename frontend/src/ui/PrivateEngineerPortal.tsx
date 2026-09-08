@@ -10,7 +10,7 @@ type Tab = "projects" | "plans" | "siting" | "progress";
 type Props = {
   onBack: () => void;
   session: SessionUser | null;
-  onOpenLiveMap?: () => void;
+  onOpenLiveMap?: (lon?: number, lat?: number) => void;
 };
 
 /* ── Vector SVG Icons ── */
@@ -72,7 +72,7 @@ export function PrivateEngineerPortal({ onBack, session, onOpenLiveMap }: Props)
   const [selectedApp, setSelectedApp] = useState<any | null>(null);
 
   // Siting tool calculator state
-  const [calcBarangay, setCalcBarangay] = useState("Poblacion Zone I");
+  const [calcBarangay, setCalcBarangay] = useState("Barangay Zone I (Poblacion)");
   const [calcLat, setCalcLat] = useState("14.1854");
   const [calcLon, setCalcLon] = useState("121.5095");
   const [calcBuildingHeightM, setCalcBuildingHeightM] = useState("8.5");
@@ -118,13 +118,30 @@ export function PrivateEngineerPortal({ onBack, session, onOpenLiveMap }: Props)
       .finally(() => setLoading(false));
   }, []);
 
+  const isPrivateInfraPinned = (app: any) => {
+    const isPrivate =
+      app.category === "private_infrastructure" ||
+      app.serviceType === "zoning_certificate" ||
+      Boolean(app.lotDetails?.proposedBuildingType);
+    const hasPin = Boolean(
+      (app.latitude && app.longitude) ||
+      (app.lotDetails?.lat && app.lotDetails?.lon) ||
+      (app.coordinates?.lat && app.coordinates?.lon)
+    );
+    return isPrivate && hasPin;
+  };
+
   const filteredApps = useMemo(() => {
     return applications.filter((app) => {
+      if (!isPrivateInfraPinned(app)) return false;
+
       const matchSearch =
         !search.trim() ||
         app.trackingNumber?.toLowerCase().includes(search.toLowerCase()) ||
         app.applicant?.fullName?.toLowerCase().includes(search.toLowerCase()) ||
         app.property?.proposedBuildingType?.toLowerCase().includes(search.toLowerCase()) ||
+        app.lotDetails?.proposedBuildingType?.toLowerCase().includes(search.toLowerCase()) ||
+        app.projectTitle?.toLowerCase().includes(search.toLowerCase()) ||
         app.applicant?.barangay?.toLowerCase().includes(search.toLowerCase());
 
       const matchStatus =
@@ -138,10 +155,11 @@ export function PrivateEngineerPortal({ onBack, session, onOpenLiveMap }: Props)
   }, [applications, search, statusFilter]);
 
   const kpis = useMemo(() => {
-    const total = applications.length;
-    const approved = applications.filter((a) => a.status === "approved").length;
-    const inReview = applications.filter((a) => a.status === "in_review" || a.status === "ocular_inspection").length;
-    const pending = applications.filter((a) => a.status === "submitted" || !a.status).length;
+    const privates = applications.filter(isPrivateInfraPinned);
+    const total = privates.length;
+    const approved = privates.filter((a) => a.status === "approved").length;
+    const inReview = privates.filter((a) => a.status === "in_review" || a.status === "ocular_inspection").length;
+    const pending = privates.filter((a) => a.status === "submitted" || !a.status).length;
     return { total, approved, inReview, pending };
   }, [applications]);
 
@@ -158,7 +176,7 @@ export function PrivateEngineerPortal({ onBack, session, onOpenLiveMap }: Props)
       faultDistanceM,
       slopePct,
       floodRisk,
-      zoningZone: calcBarangay.includes("Zone") ? "R-2 Medium Density Residential" : "A-1 Agricultural / Rural",
+      zoningZone: calcBarangay.includes("Zone") ? "Urban / Commercial Zone" : "Rural Zone",
       safeToBuild,
     });
   };
@@ -342,6 +360,7 @@ export function PrivateEngineerPortal({ onBack, session, onOpenLiveMap }: Props)
                     <th>Aplikante / May-ari</th>
                     <th>Uri ng Gusali</th>
                     <th>Barangay</th>
+                    <th>📍 Lokasyon (Pinned Site)</th>
                     <th>Sukat ng Lupa</th>
                     <th>Katayuan</th>
                     <th>Aksyon</th>
@@ -350,54 +369,76 @@ export function PrivateEngineerPortal({ onBack, session, onOpenLiveMap }: Props)
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan={7} style={{ textAlign: "center", padding: 24, color: "var(--muted)" }}>
+                      <td colSpan={8} style={{ textAlign: "center", padding: 24, color: "var(--muted)" }}>
                         Kinukuha ang mga proyekto...
                       </td>
                     </tr>
                   ) : filteredApps.length === 0 ? (
                     <tr>
-                      <td colSpan={7} style={{ textAlign: "center", padding: 24, color: "var(--muted)" }}>
-                        Walang nakitang proyekto.
+                      <td colSpan={8} style={{ textAlign: "center", padding: 24, color: "var(--muted)" }}>
+                        Walang nakitang pribadong imprastraktura na may pinned location.
                       </td>
                     </tr>
                   ) : (
-                    filteredApps.map((app) => (
-                      <tr key={app.id || app.trackingNumber}>
-                        <td>
-                          <strong>{app.trackingNumber}</strong>
-                        </td>
-                        <td>{app.applicant?.fullName || "—"}</td>
-                        <td>{app.property?.proposedBuildingType || "Residential"}</td>
-                        <td>{app.applicant?.barangay || "—"}</td>
-                        <td>{app.property?.lotAreaSqM ? `${app.property.lotAreaSqM} sq.m.` : "—"}</td>
-                        <td>
-                          <span
-                            className={`pe-status-badge ${
-                              app.status === "approved"
-                                ? "approved"
+                    filteredApps.map((app) => {
+                      const lat = Number(app.latitude || app.lotDetails?.lat || app.coordinates?.lat);
+                      const lon = Number(app.longitude || app.lotDetails?.lon || app.coordinates?.lon);
+                      return (
+                        <tr key={app.id || app.trackingNumber}>
+                          <td>
+                            <strong>{app.trackingNumber}</strong>
+                          </td>
+                          <td>{app.applicant?.fullName || "—"}</td>
+                          <td>{app.property?.proposedBuildingType || app.lotDetails?.proposedBuildingType || "Residential"}</td>
+                          <td>{app.applicant?.barangay || "—"}</td>
+                          <td>
+                            <span style={{ fontFamily: "monospace", fontSize: "0.82rem", color: "#38bdf8", fontWeight: 600 }}>
+                              📍 {lat ? `${lat.toFixed(4)}°N, ${lon.toFixed(4)}°E` : "—"}
+                            </span>
+                          </td>
+                          <td>{app.property?.lotAreaSqM || app.lotDetails?.lotAreaSqM ? `${app.property?.lotAreaSqM || app.lotDetails?.lotAreaSqM} sq.m.` : "—"}</td>
+                          <td>
+                            <span
+                              className={`pe-status-badge ${
+                                app.status === "approved"
+                                  ? "approved"
+                                  : app.status === "in_review"
+                                  ? "in_review"
+                                  : "submitted"
+                              }`}
+                            >
+                              {app.status === "approved"
+                                ? "✓ Zoning Approved"
                                 : app.status === "in_review"
-                                ? "in_review"
-                                : "submitted"
-                            }`}
-                          >
-                            {app.status === "approved"
-                              ? "✓ Zoning Approved"
-                              : app.status === "in_review"
-                              ? "⏳ Under MEO Review"
-                              : "📄 Submitted"}
-                          </span>
-                        </td>
-                        <td>
-                          <button
-                            type="button"
-                            className="pe-btn-action"
-                            onClick={() => setSelectedApp(app)}
-                          >
-                            Tingnan Detalye
-                          </button>
-                        </td>
-                      </tr>
-                    ))
+                                ? "⏳ Under MEO Review"
+                                : "📄 Submitted"}
+                            </span>
+                          </td>
+                          <td>
+                            <div style={{ display: "flex", gap: 6 }}>
+                              <button
+                                type="button"
+                                className="pe-btn-action"
+                                onClick={() => setSelectedApp(app)}
+                              >
+                                Detalye
+                              </button>
+                              {onOpenLiveMap && lat && lon && (
+                                <button
+                                  type="button"
+                                  className="pe-btn-action"
+                                  style={{ background: "rgba(56, 189, 248, 0.15)", border: "1px solid #38bdf8", color: "#38bdf8" }}
+                                  title="Tingnan ang lokasyon sa 3D Mapa"
+                                  onClick={() => onOpenLiveMap(lon, lat)}
+                                >
+                                  📍 Mapa
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -733,7 +774,7 @@ export function PrivateEngineerPortal({ onBack, session, onOpenLiveMap }: Props)
               <div className="pe-siting-metric">
                 <span>MPDC Zoning Clearance:</span>
                 <strong className={selectedApp.status === "approved" ? "pe-metric-safe" : "pe-metric-warn"}>
-                  {selectedApp.status === "approved" ? "✓ Approved & Site Pinned" : "⏳ In Review"}
+                  {selectedApp.status === "approved" ? "✓ Approved" : "⏳ In Review"}
                 </strong>
               </div>
               <div className="pe-siting-metric">

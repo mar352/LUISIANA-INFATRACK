@@ -1,0 +1,450 @@
+/* ── InspectionTaskQueue.css · Inspection Task Queue (Embedded & Drawer) ── */
+
+/* ── Embedded Mode (Inside Live Situation Panel) ── */
+.itq-embedded {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.itq-embedded .itq-header {
+  padding: 0 0 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.itq-embedded .itq-title {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: #f8fafc;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 2px;
+}
+
+.itq-embedded .itq-subtitle {
+  font-size: 11.5px;
+  color: var(--muted, #94a3b8);
+  margin: 0;
+  line-height: 1.35;
+}
+
+.itq-embedded .itq-search-wrap {
+  padding: 0;
+  border-bottom: none;
+}
+
+.itq-embedded .itq-list {
+  padding: 2px 0;
+  max-height: 520px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ── Standalone Drawer Mode ── */
+.itq-drawer {
+  position: absolute;
+  top: 64px;
+  right: 0;
+  bottom: 0;
+  width: 380px;
+  max-width: 90vw;
+  background: rgba(15, 23, 42, 0.72);
+  backdrop-filter: blur(22px) saturate(1.2);
+  -webkit-backdrop-filter: blur(22px) saturate(1.2);
+  border-left: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: -10px 0 36px rgba(0, 0, 0, 0.45);
+  z-index: 95;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  transform: translateX(0);
+}
+
+.itq-drawer.is-collapsed {
+  transform: translateX(100%);
+  pointer-events: none;
+}
+
+.itq-toggle-tab {
+  position: absolute;
+  top: 18px;
+  left: -48px;
+  width: 48px;
+  height: 48px;
+  background: #0284c7;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-right: none;
+  border-radius: 12px 0 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: -4px 4px 14px rgba(0, 0, 0, 0.4);
+  pointer-events: auto;
+  transition: background 0.18s ease;
+}
+
+.itq-toggle-tab:hover {
+  background: #0369a1;
+}
+
+.itq-badge-count {
+  position: absolute;
+  top: -4px;
+  right: 4px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 2px solid #0f172a;
+}
+
+.itq-drawer .itq-header {
+  padding: 18px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.itq-drawer .itq-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #f8fafc;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 4px;
+}
+
+.itq-drawer .itq-subtitle {
+  font-size: 12px;
+  color: #94a3b8;
+  margin: 0;
+  line-height: 1.35;
+}
+
+.itq-close-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #cbd5e1;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.itq-close-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+.itq-drawer .itq-search-wrap {
+  padding: 12px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.itq-drawer .itq-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ── Modern Search Filter Bar ── */
+.itq-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.itq-search-icon {
+  position: absolute;
+  left: 11px;
+  font-size: 13px;
+  opacity: 0.65;
+  pointer-events: none;
+}
+
+.itq-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 9px 32px 9px 32px;
+  font-size: 12.5px;
+  color: #f8fafc;
+  outline: none;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.itq-search-input::placeholder {
+  color: rgba(148, 163, 184, 0.7);
+  font-size: 12px;
+}
+
+.itq-search-input:focus {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.22);
+}
+
+.itq-search-clear {
+  position: absolute;
+  right: 8px;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(255, 255, 255, 0.12);
+  color: #cbd5e1;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.itq-search-clear:hover {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
+/* ── Empty State ── */
+.itq-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 28px 16px;
+  color: #64748b;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 12px;
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+}
+
+.itq-empty-state svg {
+  width: 36px;
+  height: 36px;
+  opacity: 0.5;
+  color: #38bdf8;
+}
+
+/* ── Interactive Task Card ── */
+.itq-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 14px;
+  padding: 13px 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
+  text-align: left;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+.itq-card:hover {
+  background: rgba(255, 255, 255, 0.075);
+  border-color: rgba(56, 189, 248, 0.45);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.38), 0 0 0 1px rgba(56, 189, 248, 0.22);
+}
+
+.itq-card:active {
+  transform: translateY(0) scale(0.99);
+}
+
+.itq-card:focus-visible {
+  outline: none;
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.4);
+}
+
+/* Active / Selected Card State */
+.itq-card.is-selected {
+  background: rgba(56, 189, 248, 0.1);
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 1px #38bdf8, 0 8px 24px rgba(56, 189, 248, 0.22);
+}
+
+/* Card Top Row */
+.itq-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.itq-card-tracking {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+  font-weight: 700;
+  font-size: 12px;
+  color: #38bdf8;
+  letter-spacing: 0.04em;
+  display: inline-flex;
+  align-items: center;
+}
+
+.itq-tracking-hash {
+  opacity: 0.55;
+  margin-right: 2px;
+}
+
+/* Stage Status Pills */
+.itq-stage-pill {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  letter-spacing: 0.02em;
+}
+
+.itq-stage-dot-circle {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.itq-stage-pill.stage-before {
+  background: rgba(239, 68, 68, 0.16);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.38);
+}
+
+.itq-stage-pill.stage-during {
+  background: rgba(245, 158, 11, 0.16);
+  color: #fde047;
+  border: 1px solid rgba(245, 158, 11, 0.38);
+}
+
+.itq-stage-pill.stage-after {
+  background: rgba(34, 197, 94, 0.16);
+  color: #86efac;
+  border: 1px solid rgba(34, 197, 94, 0.38);
+}
+
+/* Project Name */
+.itq-card-project-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #f8fafc;
+  line-height: 1.4;
+  margin: 1px 0;
+  word-break: break-word;
+}
+
+/* Metadata Row (Applicant, Barangay, Category) */
+.itq-card-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  font-size: 11.5px;
+  color: #94a3b8;
+}
+
+.itq-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Card Footer / Action Row */
+.itq-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 9px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.itq-card-locate-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #94a3b8;
+  transition: color 0.15s ease;
+}
+
+.itq-card:hover .itq-card-locate-hint {
+  color: #38bdf8;
+}
+
+.itq-arrow {
+  transition: transform 0.18s ease;
+  font-weight: 700;
+}
+
+.itq-card:hover .itq-arrow {
+  transform: translateX(3px);
+}
+
+/* Inspect Button */
+.itq-btn-inspect {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 13px !important;
+  border-radius: 999px !important;
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%) !important;
+  border: 1px solid rgba(56, 189, 248, 0.35) !important;
+  color: #ffffff !important;
+  font-size: 11.5px !important;
+  font-weight: 700 !important;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.35);
+  transition: all 0.18s ease;
+  font-family: inherit;
+}
+
+.itq-btn-inspect:hover {
+  background: linear-gradient(135deg, #0369a1 0%, #075985 100%) !important;
+  border-color: rgba(56, 189, 248, 0.6) !important;
+  transform: scale(1.04);
+  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.5);
+}
+
+.itq-btn-inspect:active {
+  transform: scale(0.98);
+}

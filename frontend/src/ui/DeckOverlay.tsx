@@ -1,9 +1,9 @@
-﻿import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { MapboxOverlay } from "@deck.gl/mapbox";
 import { HeatmapLayer } from "@deck.gl/aggregation-layers";
 import { PolygonLayer, ColumnLayer, ScatterplotLayer } from "@deck.gl/layers";
 import { AmbientLight, DirectionalLight, LightingEffect } from "@deck.gl/core";
-import type { HeatPoint, WeatherSnapshot } from "../types";
+import type { HeatPoint } from "../types";
 import { generateSolarGrid, getSolarColor, type SolarDataPoint } from "../lib/solar";
 import { generateSlopeGrid, type SlopePoint } from "../lib/slope";
 import { getRiskColor, type RiskPrediction } from "../lib/ml-risk";
@@ -12,8 +12,7 @@ type Props = {
   map: any;
   enabledHeatmap: boolean;
   heatPoints: HeatPoint[];
-  enabledWeather: boolean;
-  weather: WeatherSnapshot | null;
+  enabledWeather?: boolean;
   sunLightPosition?: [number, number, number];
   shadowsEnabled?: boolean;
   enabledSolar?: boolean;
@@ -81,108 +80,10 @@ function clamp01(n: number) {
   return Math.max(0, Math.min(1, n));
 }
 
-/**
- * A lightweight "cloud feel" overlay rendered as moving dots on a canvas.
- * This keeps the map-first UX (weather appears on the map) without requiring
- * heavy raster tile providers for the demo.
- */
-function WeatherCanvasOverlay({ enabled, weather }: { enabled: boolean; weather: WeatherSnapshot | null }) {
-  const ref = useRef<HTMLCanvasElement | null>(null);
-  const [size, setSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => {
-      const rect = el.getBoundingClientRect();
-      setSize({ w: Math.max(1, Math.floor(rect.width)), h: Math.max(1, Math.floor(rect.height)) });
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  useEffect(() => {
-    const canvas = ref.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    canvas.width = size.w;
-    canvas.height = size.h;
-
-    let raf = 0;
-    let t0 = performance.now();
-
-    const render = (t: number) => {
-      raf = requestAnimationFrame(render);
-      if (!enabled) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        return;
-      }
-
-      const dt = (t - t0) / 1000;
-      t0 = t;
-      const cloudiness = clamp01((weather?.cloudinessPct ?? 40) / 100);
-      const rain = clamp01(weather?.rainfallIntensity ?? 0.25);
-      const wind = clamp01((weather?.windSpeedMps ?? 2) / 12);
-
-      // Full clear each frame so weather overlay never darkens/hides the map.
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      const count = Math.floor(120 + cloudiness * 420);
-      const speed = 10 + wind * 55;
-
-      for (let i = 0; i < count; i++) {
-        const x = ((i * 97.3 + t * speed * (0.3 + wind)) % canvas.width + canvas.width) % canvas.width;
-        const y = ((i * 41.7 + t * speed * 0.12) % canvas.height + canvas.height) % canvas.height;
-        const a = 0.05 + cloudiness * 0.14;
-
-        ctx.beginPath();
-        ctx.fillStyle = `rgba(200, 235, 255, ${a})`;
-        ctx.arc(x, y, 1 + cloudiness * 1.4, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Light rain streaks when rainfall is high.
-        if (rain > 0.35 && (i % 7 === 0)) {
-          ctx.strokeStyle = `rgba(120, 200, 255, ${0.08 + rain * 0.12})`;
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(x, y);
-          ctx.lineTo(x + wind * 6, y + 10 + rain * 18);
-          ctx.stroke();
-        }
-      }
-
-      // keep dt used (prevents unused lint complaints if strict settings change)
-      void dt;
-    };
-
-    raf = requestAnimationFrame(render);
-    return () => cancelAnimationFrame(raf);
-  }, [enabled, weather, size.h, size.w]);
-
-  return (
-    <canvas
-      ref={ref}
-      style={{
-        position: "absolute",
-        inset: 0,
-        pointerEvents: "none",
-        opacity: enabled ? 0.38 : 0,
-        transition: "opacity 120ms ease",
-        mixBlendMode: "normal",
-      }}
-    />
-  );
-}
-
 export function DeckGLOverlay({
   map,
   enabledHeatmap,
   heatPoints,
-  enabledWeather,
-  weather,
   sunLightPosition,
   shadowsEnabled = true,
   enabledSolar = false,
@@ -503,8 +404,6 @@ export function DeckGLOverlay({
 
   return (
     <>
-      <WeatherCanvasOverlay enabled={enabledWeather} weather={weather} />
-
       {/* AI Risk Prediction Tooltip */}
       {hoveredRisk && (
         <div

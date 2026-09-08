@@ -1,6 +1,4 @@
-/**
- * Cesium map performance / view settings (Layers → Map Settings).
- */
+import type { StadiaMapStyleId } from "./stadia";
 
 export type TerrainQuality = "low" | "medium" | "high";
 
@@ -9,6 +7,8 @@ export type ShadowQuality = "low" | "medium" | "high";
 export type TargetFps = 30 | 60;
 
 export type MapSettings = {
+  /** Selected Stadia / Stamen basemap style (outdoors, watercolor, alidade_smooth, etc.). */
+  basemapStyle?: StadiaMapStyleId;
   /** Local 3D camera far plane (km). */
   drawDistanceKm: number;
   /** Terrain mesh detail — low is smoothest. */
@@ -33,12 +33,13 @@ export type MapSettings = {
 };
 
 export const DEFAULT_MAP_SETTINGS: MapSettings = {
+  basemapStyle: "outdoors",
   drawDistanceKm: 18,
   terrainQuality: "medium",
-  shadowsEnabled: true,
-  shadowQuality: "medium",
-  fogEnabled: true,
-  motionBlur: 30,
+  shadowsEnabled: false,
+  shadowQuality: "low",
+  fogEnabled: false,
+  motionBlur: 0,
   targetFps: 60,
   showFloatingLabels: true,
   showCoordinates: true,
@@ -46,11 +47,11 @@ export const DEFAULT_MAP_SETTINGS: MapSettings = {
 
 const STORAGE_KEY = "infatrack-map-settings-v1";
 
-/** Screen-space error: higher = fewer tiles / faster. */
+/** Screen-space error: lower = sharper crisp tiles even when zooming out / panning. */
 export function terrainQualityToSse(q: TerrainQuality): number {
-  if (q === "low") return 12;
-  if (q === "high") return 6;
-  return 9;
+  if (q === "low") return 2.5;
+  if (q === "high") return 1.25;
+  return 1.8;
 }
 
 /** Cesium shadowMap knobs for Low / Medium / High. */

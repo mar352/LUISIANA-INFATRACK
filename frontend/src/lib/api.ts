@@ -257,6 +257,79 @@ export async function trackCitizenApplication(trackingNumber: string): Promise<a
   }
 }
 
+export async function submitCitizenReceipt(
+  trackingNumber: string,
+  data: {
+    orNumber: string;
+    paidAmount?: number;
+    paidAt?: string;
+    file?: File;
+    receiptUrl?: string;
+    receiptOriginalName?: string;
+    receiptSize?: number;
+  }
+): Promise<{ ok: boolean; application: any }> {
+  const fd = new FormData();
+  if (data.file) {
+    fd.append("file", data.file);
+  }
+  if (data.orNumber) fd.append("orNumber", data.orNumber);
+  if (data.paidAmount !== undefined) fd.append("paidAmount", String(data.paidAmount));
+  if (data.paidAt) fd.append("paidAt", data.paidAt);
+  if (data.receiptUrl) fd.append("receiptUrl", data.receiptUrl);
+  if (data.receiptOriginalName) fd.append("receiptOriginalName", data.receiptOriginalName);
+  if (data.receiptSize !== undefined) fd.append("receiptSize", String(data.receiptSize));
+
+  const res = await fetch(backendUrl(`/api/citizen/applications/${encodeURIComponent(trackingNumber)}/receipt`), {
+    method: "POST",
+    credentials: "include",
+    body: fd,
+  });
+  if (!res.ok) {
+    let msg = `Submission failed: ${res.status}`;
+    try {
+      const b = await res.json();
+      if (b?.error) msg = b.error;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+export async function reuploadCitizenDocument(
+  trackingNumber: string,
+  docKey: string,
+  docTitle: string,
+  file: File
+): Promise<{ ok: boolean; application: any; message: string }> {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("docKey", docKey);
+  fd.append("docTitle", docTitle);
+
+  const res = await fetch(
+    backendUrl(`/api/citizen/applications/${encodeURIComponent(trackingNumber)}/reupload-doc`),
+    {
+      method: "POST",
+      credentials: "include",
+      body: fd,
+    }
+  );
+  if (!res.ok) {
+    let msg = `Upload failed: ${res.status}`;
+    try {
+      const b = await res.json();
+      if (b?.error) msg = b.error;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
 export async function fetchCitizenApplications(): Promise<any[]> {
   try {
     const res = await getJson<{ ok: boolean; applications: any[] }>("/api/citizen/applications");

@@ -66,7 +66,7 @@ export function GlobeOfflineButton() {
     : on
       ? "Offline mode on — using saved Luisiana tiles. Click to go live."
       : meta
-        ? "Use saved Luisiana tiles (no live Ion/OSM). Click to turn on."
+        ? "Use saved Luisiana tiles (no live MapTiler/OSM). Click to turn on."
         : `First click downloads ~${estimate.tiles} tiles, then turns Offline mode on.`;
 
   return (

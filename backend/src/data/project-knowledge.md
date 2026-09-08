@@ -26,12 +26,10 @@ INFA-TRACK (IMPACT-Luisiana) is a real-time **GIS infrastructure and disaster mo
 - Viewer is read-only for 3D model transforms
 - Barangay Official submits barangay infrastructure requests only (no approve / no model placement)
 
-## Map / layers / weather
+## Map / layers
 - OpenFreeMap Liberty vector basemap (openmaptiles)
 - Optional OSM street raster toggle
-- Live Situation panel tabs: Climate, Layers, Risk, Projects
-- **Climate / weather**: live readings for Luisiana (wind, temperature, rainfall, humidity, etc.) come from the app backend/weather APIs shown in the Climate tab — do **not** invent a day/night forecast, fake °F/°C conversions, or fill-in-the-blank weather templates
-- Also: heatmap, risk zones, GIBS climate, terrain/hillshade, EONET events, AI risk (role-dependent)
+- Live Situation panel tabs: Layers, Risk, Projects
 - Infrastructure projects as GLB 3D models on the map
 
 ## Projects / 3D models

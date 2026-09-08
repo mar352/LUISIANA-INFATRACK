@@ -1,0 +1,165 @@
+/* 🌐 PanoramaViewer.css — Three.js Google Street View 360/Pano Experience */
+
+.panorama-viewer-container {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  user-select: none;
+  touch-action: none;
+  background: #090d16;
+}
+
+/* Dedicated mount wrap for Three.js canvas */
+.panorama-canvas-wrap {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  z-index: 1;
+}
+
+.panorama-viewer-container.is-grabbing .panorama-canvas-wrap {
+  cursor: grabbing;
+}
+
+.panorama-canvas-wrap canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+
+/* Loading Overlay */
+.panorama-loading-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: rgba(9, 13, 22, 0.88);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  z-index: 5;
+  color: #f8fafc;
+  pointer-events: none;
+}
+
+.panorama-spinner {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 3px solid rgba(56, 189, 248, 0.2);
+  border-top-color: #38bdf8;
+  animation: panoSpin 0.9s linear infinite;
+}
+
+@keyframes panoSpin {
+  to { transform: rotate(360deg); }
+}
+
+.panorama-loading-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: #cbd5e1;
+  letter-spacing: 0.02em;
+}
+
+/* Controls Hub (Bottom Right, Google Maps Style) */
+.panorama-controls-hub {
+  position: absolute;
+  bottom: 24px;
+  right: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 10;
+}
+
+.panorama-ctrl-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  padding: 0;
+}
+
+.panorama-ctrl-btn:hover {
+  background: rgba(30, 41, 59, 0.95);
+  border-color: rgba(56, 189, 248, 0.6);
+  color: #38bdf8;
+  transform: scale(1.05);
+}
+
+.panorama-ctrl-btn.is-active {
+  background: rgba(56, 189, 248, 0.25);
+  border-color: #38bdf8;
+  color: #38bdf8;
+  box-shadow: 0 0 16px rgba(56, 189, 248, 0.4);
+}
+
+/* Street View Drag Hint Banner */
+.panorama-drag-hint {
+  position: absolute;
+  top: 90px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 23, 42, 0.78);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  padding: 6px 14px;
+  color: #cbd5e1;
+  font-size: 11.5px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  pointer-events: none;
+  z-index: 8;
+  animation: panoHintFade 6s forwards;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.panorama-drag-hint svg {
+  color: #38bdf8;
+}
+
+@keyframes panoHintFade {
+  0% { opacity: 0; transform: translate(-50%, -10px); }
+  10% { opacity: 1; transform: translate(-50%, 0); }
+  75% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -10px); pointer-events: none; }
+}
+
+@media (max-width: 768px) {
+  .panorama-controls-hub {
+    bottom: 75px;
+    right: 10px;
+    gap: 6px;
+  }
+  .panorama-ctrl-btn {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+  }
+  .panorama-drag-hint {
+    top: 60px;
+    font-size: 10.5px;
+    padding: 5px 12px;
+  }
+}

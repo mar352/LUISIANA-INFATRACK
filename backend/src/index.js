@@ -10,8 +10,6 @@ import fs from "fs";
 import { spawn } from "child_process";
 
 import { buildHeatPointsForBbox, computeRiskZones } from "./services/risk.js";
-import { getWeatherSnapshot } from "./services/weather.js";
-import { getTropicalSystems } from "./services/tropicalSystems.js";
 import {
   projectsSeed,
   tickProjects,
@@ -41,7 +39,14 @@ import {
   getCitizenApplicationByTracking,
   createCitizenApplication,
   updateCitizenApplication,
+  addCitizenApplicationRemark,
+  submitOfficialReceipt,
+  reuploadCitizenDocument,
+  updateSiteInspection,
+  addApplicationSidePhoto,
+  getApplicationPhotos,
 } from "./services/citizenApplications.js";
+import { initDb } from "./services/db.js";
 import { createAlertFromRisk } from "./services/alerts.js";
 import { buildSlopeCache } from "./services/dem.js";
 import { chatWithOllama, getChatConfig } from "./services/chat.js";
@@ -188,14 +193,7 @@ function multerErrorHandler(err, _req, res, next) {
 
 const app = express();
 app.disable("x-powered-by");
-app.use((req, res, next) => {
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("X-Frame-Options", "DENY");
-  res.setHeader("Referrer-Policy", "no-referrer");
-  next();
-});
-app.use(express.json({ limit: "2mb" }));
-app.use("/uploads", express.static(uploadsDir));
+
 app.use(
   cors({
     origin: (origin, cb) => {
@@ -207,6 +205,29 @@ app.use(
     },
     credentials: true,
   })
+);
+
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  // Do NOT deny frames on uploads so PDFs and images can be embedded in-system
+  if (!req.path.startsWith("/uploads")) {
+    res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  }
+  res.setHeader("Referrer-Policy", "no-referrer");
+  next();
+});
+
+app.use(express.json({ limit: "2mb" }));
+
+app.use(
+  "/uploads",
+  (req, res, next) => {
+    res.removeHeader("X-Frame-Options");
+    res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    next();
+  },
+  express.static(uploadsDir)
 );
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
@@ -241,7 +262,7 @@ app.post("/api/auth/logout", (req, res) => {
 
 app.get("/api/auth/me", (req, res) => {
   const s = sessionFromRequest(req);
-  if (!s) return res.status(401).json({ error: "Sign in required." });
+  if (!s) return res.json({ user: null });
   res.json({
     user: { username: s.username, role: s.role, department: s.department },
   });
@@ -307,30 +328,6 @@ app.get("/api/georisk-assess", async (req, res) => {
  * Map viewport-driven endpoints
  * The frontend calls these with the current map bounding box.
  */
-app.get("/api/weather", async (req, res) => {
-  // Default to Luisiana, Laguna for LGU focus
-  const { lat = "14.19", lon = "121.51" } = req.query;
-  const snapshot = await getWeatherSnapshot({
-    lat: Number(lat),
-    lon: Number(lon),
-  });
-  res.json(snapshot);
-});
-
-/** West Pacific Invest / TC systems (RAMMB proxy; PH AOI → LPA-watch). */
-app.get("/api/tropical-systems", async (req, res) => {
-  const force = req.query.refresh === "1" || req.query.refresh === "true";
-  try {
-    const payload = await getTropicalSystems({ force });
-    res.json(payload);
-  } catch (err) {
-    console.error("tropical-systems:", err);
-    res.status(502).json({
-      error: err instanceof Error ? err.message : "Failed to fetch tropical systems",
-      systems: [],
-    });
-  }
-});
 
 app.get("/api/heatmap", (req, res) => {
   const { west, south, east, north } = req.query;
@@ -753,12 +750,251 @@ app.patch("/api/citizen/applications/:id", requireStaff, (req, res) => {
     return res.status(404).json({ error: "Application not found." });
   }
   io.emit("planning:application_updated", {
+    id: updated.id,
     trackingNumber: updated.trackingNumber,
     status: updated.status,
+    notes: updated.notes,
+    remarks: updated.remarks,
+    application: updated,
     at: updated.updatedAt,
   });
+  io.emit("citizen:application_notes", {
+    id: updated.id,
+    trackingNumber: updated.trackingNumber,
+    notes: updated.notes,
+    remarks: updated.remarks,
+    application: updated,
+    at: updated.updatedAt,
+  });
+  if (updated.payment?.status === "paid" || updated.or_number) {
+    io.emit("treasury:payment_confirmed", {
+      trackingNumber: updated.trackingNumber,
+      orNumber: updated.or_number || updated.payment?.orNumber,
+      amountPaid: updated.amount_paid || updated.payment?.amount_paid,
+      status: updated.status,
+      at: updated.updatedAt,
+    });
+  }
   res.json({ ok: true, application: updated });
 });
+
+app.post("/api/citizen/applications/:trackingNumber/remarks", (req, res) => {
+  const remark = addCitizenApplicationRemark(req.params.trackingNumber, req.body || {});
+  if (!remark) {
+    return res.status(404).json({ error: "Application not found." });
+  }
+  io.emit("planning:application_remark", {
+    trackingNumber: req.params.trackingNumber,
+    remark,
+  });
+  res.json({ ok: true, remark });
+});
+
+app.post(
+  "/api/citizen/applications/:trackingNumber/receipt",
+  uploadCitizenRequirement.single("file"),
+  (req, res) => {
+    try {
+      const trackingNumber = req.params.trackingNumber;
+      let receiptUrl = req.body?.receiptUrl || "";
+      let originalName = req.body?.receiptOriginalName || "Official_Receipt.jpg";
+      let size = Number(req.body?.receiptSize) || 0;
+
+      if (req.file) {
+        receiptUrl = `/uploads/${req.file.filename}`;
+        originalName = req.file.originalname;
+        size = req.file.size;
+
+        // Mirror to dist/uploads if folder exists
+        try {
+          const distUploads = path.join(__dirname, "../../frontend/dist/uploads");
+          if (fs.existsSync(path.dirname(distUploads))) {
+            fs.mkdirSync(distUploads, { recursive: true });
+            fs.copyFileSync(
+              path.join(uploadsDir, req.file.filename),
+              path.join(distUploads, req.file.filename)
+            );
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+
+      if (!receiptUrl) {
+        return res.status(400).json({ error: "Kinakailangan ang litrato o kopya ng Official Receipt (O.R.)." });
+      }
+
+      const updated = submitOfficialReceipt(trackingNumber, {
+        orNumber: req.body?.orNumber,
+        paidAmount: req.body?.paidAmount,
+        paidAt: req.body?.paidAt,
+        receiptUrl,
+        receiptOriginalName: originalName,
+        receiptSize: size,
+      });
+
+      if (!updated) {
+        return res.status(404).json({ error: "Hindi natagpuan ang aplikasyon." });
+      }
+
+      io.emit("planning:application_updated", {
+        trackingNumber: updated.trackingNumber,
+        status: updated.status,
+        at: updated.updatedAt,
+      });
+
+      io.emit("planning:receipt_submitted", {
+        trackingNumber: updated.trackingNumber,
+        orNumber: updated.payment?.orNumber,
+        paidAmount: updated.payment?.paidAmount,
+        at: updated.updatedAt,
+      });
+
+      res.json({ ok: true, application: updated });
+    } catch (err) {
+      console.warn("[Receipt Upload]", err);
+      res.status(500).json({ error: err?.message || "Nabigong i-save ang resibo." });
+    }
+  }
+);
+
+app.post(
+  "/api/citizen/applications/:trackingNumber/reupload-doc",
+  uploadCitizenRequirement.single("file"),
+  (req, res) => {
+    try {
+      const trackingNumber = req.params.trackingNumber;
+      const docKey = req.body?.docKey || "tctTaxDec";
+      const docTitle = req.body?.docTitle || docKey;
+
+      if (!req.file) {
+        return res.status(400).json({ error: "Kinakailangang mag-upload ng file." });
+      }
+
+      // Mirror to dist/uploads if folder exists
+      try {
+        const distUploads = path.join(__dirname, "../../frontend/dist/uploads");
+        if (fs.existsSync(path.dirname(distUploads))) {
+          fs.mkdirSync(distUploads, { recursive: true });
+          fs.copyFileSync(
+            path.join(uploadsDir, req.file.filename),
+            path.join(distUploads, req.file.filename)
+          );
+        }
+      } catch {
+        /* ignore */
+      }
+
+      const fileObj = {
+        url: `/uploads/${req.file.filename}`,
+        filename: req.file.filename,
+        originalName: req.file.originalname,
+        size: req.file.size,
+        mimeType: req.file.mimetype,
+      };
+
+      const updated = reuploadCitizenDocument(trackingNumber, {
+        docKey,
+        docTitle,
+        file: fileObj,
+      });
+
+      if (!updated) {
+        return res.status(404).json({ error: "Hindi natagpuan ang aplikasyon." });
+      }
+
+      io.emit("planning:application_updated", {
+        trackingNumber: updated.trackingNumber,
+        status: updated.status,
+        at: updated.updatedAt,
+      });
+
+      res.json({
+        ok: true,
+        application: updated,
+        message: `Matagumpay na nai-upload ang bagong kopya para sa ${docTitle}.`,
+      });
+    } catch (err) {
+      console.warn("[Doc Reupload Error]", err);
+      res.status(500).json({ error: err?.message || "Nabigong i-upload ang dokumento." });
+    }
+  }
+);
+
+const inspectionStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, uploadsDir),
+  filename: (_req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, "insp-" + uniqueSuffix + path.extname(file.originalname).toLowerCase());
+  },
+});
+
+const uploadInspectionPhoto = multer({
+  storage: inspectionStorage,
+  limits: { fileSize: 25 * 1024 * 1024 },
+});
+
+app.post(
+  "/api/citizen/applications/:id/inspection",
+  uploadInspectionPhoto.single("photo"),
+  (req, res) => {
+    try {
+      const idOrTracking = req.params.id;
+      const stage = req.body?.stage || "before_construction";
+      const progress = req.body?.progress !== undefined && req.body?.progress !== "" ? Number(req.body.progress) : undefined;
+      const remarks = req.body?.remarks || "";
+      const inspector = req.body?.inspector || "Engr. Mario S. Baldovino (Municipal Engineering Office)";
+
+      let photoUrl = "";
+      if (req.file) {
+        photoUrl = `/uploads/${req.file.filename}`;
+        try {
+          const distUploads = path.join(__dirname, "../../frontend/dist/uploads");
+          if (fs.existsSync(path.dirname(distUploads))) {
+            fs.mkdirSync(distUploads, { recursive: true });
+            fs.copyFileSync(
+              path.join(uploadsDir, req.file.filename),
+              path.join(distUploads, req.file.filename)
+            );
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+
+      const updated = updateSiteInspection(idOrTracking, {
+        stage,
+        progress,
+        photoUrl,
+        remarks,
+        inspector,
+      });
+
+      if (!updated) {
+        return res.status(404).json({ error: "Hindi natagpuan ang aplikasyon." });
+      }
+
+      // Real-time broadcast to map and tracker
+      io.emit("projects:update", emitProjectsPayload());
+      io.emit("planning:application_updated", {
+        trackingNumber: updated.trackingNumber,
+        status: updated.status,
+        progress: updated.progress,
+        inspectionStage: updated.inspectionStage,
+        at: updated.updatedAt,
+      });
+
+      res.json({
+        ok: true,
+        application: updated,
+        message: "Matagumpay na na-update ang site inspection progress.",
+      });
+    } catch (err) {
+      console.warn("[Site Inspection Error]", err);
+      res.status(500).json({ error: err?.message || "Nabigong i-save ang inspeksyon." });
+    }
+  }
+);
 
 const documentStorage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadsDir),
@@ -779,6 +1015,70 @@ const uploadDocument = multer({
       cb(new Error("Allowed: .jpg, .jpeg, .png, .webp, .pdf, .doc, .docx"));
     }
   },
+});
+
+
+// Upload a 2D side/supporting photo for an application
+app.post(
+  "/api/citizen/applications/:id/side-photos",
+  uploadInspectionPhoto.single("photo"),
+  (req, res) => {
+    try {
+      const idOrTracking = req.params.id;
+      const stage = req.body?.stage || "during";
+      const caption = req.body?.caption || "Side Inspection Photo";
+      const inspector = req.body?.inspector || "Municipal Engineering Office";
+
+      if (!req.file) {
+        return res.status(400).json({ error: "Walang na-upload na litrato." });
+      }
+
+      const photoUrl = `/uploads/${req.file.filename}`;
+      try {
+        const distUploads = path.join(__dirname, "../../frontend/dist/uploads");
+        if (fs.existsSync(path.dirname(distUploads))) {
+          fs.mkdirSync(distUploads, { recursive: true });
+          fs.copyFileSync(
+            path.join(uploadsDir, req.file.filename),
+            path.join(distUploads, req.file.filename)
+          );
+        }
+      } catch {
+        /* ignore */
+      }
+
+      const result = addApplicationSidePhoto(idOrTracking, {
+        photoUrl,
+        stage,
+        caption,
+        inspector,
+      });
+
+      if (!result) {
+        return res.status(404).json({ error: "Hindi natagpuan ang aplikasyon." });
+      }
+
+      io.emit("projects:update", emitProjectsPayload());
+      res.json({ ok: true, application: result.app, sidePhoto: result.sidePhoto });
+    } catch (err) {
+      console.error("Side photo upload error:", err);
+      res.status(500).json({ error: "Failed to upload side photo" });
+    }
+  }
+);
+
+// GET all inspection & side photos from PostgreSQL site_inspection_photos table
+app.get("/api/citizen/applications/:id/photos", async (req, res) => {
+  try {
+    const idOrTracking = req.params.id;
+    const photoType = req.query.type || null;
+    const stage = req.query.stage || null;
+    const photos = await getApplicationPhotos(idOrTracking, photoType, stage);
+    res.json({ ok: true, photos });
+  } catch (err) {
+    console.error("GET application photos error:", err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
 });
 
 app.post("/api/documents/upload", requireStaff, (req, res, next) => {
@@ -843,7 +1143,6 @@ io.on("connection", (socket) => {
 
 /**
  * Real-time loop (simulation fallback)
- * - emits weather snapshots
  * - emits heatmap points
  * - emits landslide risk zones
  * - emits project progress updates
@@ -859,16 +1158,15 @@ setInterval(async () => {
     north: 14.27,
   };
 
-  const weather = await getWeatherSnapshot({ lat: 14.19, lon: 121.51 });
-  const heatmap = buildHeatPointsForBbox(bbox, { seed: weather.seed });
+  const seed = Date.now();
+  const heatmap = buildHeatPointsForBbox(bbox, { seed });
   const zones = computeRiskZones({
     bbox,
-    rainfallIntensity: weather.rainfallIntensity,
-    seed: weather.seed,
+    rainfallIntensity: 0.2,
+    seed,
   });
   const projects = tickProjects();
 
-  io.emit("weather:update", weather);
   io.emit("heatmap:update", { points: heatmap, generatedAt: new Date().toISOString() });
   io.emit("risk:update", { zones, generatedAt: new Date().toISOString() });
   io.emit("projects:update", { projects, generatedAt: new Date().toISOString() });
@@ -885,6 +1183,8 @@ setInterval(async () => {
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`[INFA-TRACK] backend listening on http://0.0.0.0:${PORT}`);
+  // Initialize PostgreSQL database connection and migrations
+  void initDb();
   // Large GLB uploads can take a while on slow disks / Wi‑Fi.
   server.timeout = 10 * 60 * 1000;
   server.headersTimeout = 11 * 60 * 1000;

@@ -12,8 +12,6 @@ import { dateFromDisplaySolarHour, getSunPosition, LUISIANA_CENTER, sunEnuFromAl
 import { patchProject } from "../lib/api";
 import { updateProjectInFirestore } from "../services/firestore-projects";
 import { writeAudit } from "../services/firestore-audit";
-import { gibsWmtsTileUrl, GIBS_LAYERS, type GibsLayerId } from "../lib/gibs";
-import { createGibsHoverSampler, type GibsSampleResult } from "../lib/gibs-sample";
 import {
   clearGlbMemoryCache,
   getGlbMemoryStats,
@@ -54,7 +52,6 @@ import {
 } from "../lib/cesium-edit-gizmo";
 import { isPrimitiveShape, isRoadShape, isTreeShape } from "../lib/map-shapes";
 import { getRoadTileTexture } from "../lib/road-tile-texture";
-import { fetchLuisianaBuildings, type BuildingFootprint } from "../lib/osm-buildings";
 import {
   applyTerrainPerfSettings,
   createLuisianaTerrainProvider,
@@ -75,6 +72,10 @@ import {
 import {
   OSM_RASTER_ATTRIBUTION,
   OSM_RASTER_TILE_URL,
+  STADIA_ATTRIBUTION,
+  STADIA_DEFAULT_STYLE,
+  STADIA_SATELLITE_STYLE,
+  stadiaRasterTileUrl,
 } from "../lib/stadia";
 import { getSatelliteSource } from "../lib/terrain";
 import { isGlobeOfflineMode, OFFLINE_MODE_EVENT } from "../lib/globe-offline";
@@ -89,13 +90,6 @@ import { registerTerrainSatSampler, type TerrainSatSample } from "../lib/terrain
 import { PlaceSidePanel } from "./PlaceSidePanel";
 import { GoogleHeatmapOverlay } from "./GoogleHeatmapOverlay";
 import { quakeHeatWeight } from "../lib/google-heatmap";
-import {
-  formatTropicalInfo,
-  getTropicalColor,
-  getTropicalIcon,
-  getTropicalStageMeta,
-  type TropicalSystem,
-} from "../lib/tropical-systems";
 import { HAZARD_OVERLAYS, loadHazardTilesManifest } from "../lib/hazard-overlays";
 import { addLuisianaBoundary } from "../lib/luisiana-boundary";
 import {
@@ -135,16 +129,6 @@ const GLOBE_FAR_M = 10_000_000_000;
 const LOCAL_3D_FAR_M = 2_000_000;
 const LOCAL_3D_FOG_SSE_FACTOR = 4.0;
 const FOG_MIN_BRIGHTNESS_DAY = 0.25;
-/** Cap extruded OSM blocks so weak GPUs don't melt (focus on poblacion/town center). */
-const MAX_OSM_BUILDING_BLOCKS = 1200;
-const OSM_BUILDING_BATCH = 300;
-/** Lift blocks slightly above DEM / ellipsoid (meters). */
-const OSM_BLOCK_BASE_M = 0.35;
-/** Light gray-white blocks (reference style) — basemap is OSM street. */
-const OSM_BLOCK_COLOR = "#E8E6E1";
-const OSM_BLDG_ID_PREFIX = "osm-bldg-";
-const REMOVED_BLOCKS_STORAGE_KEY = "infatrack-luisiana-removed-blocks-v1";
-
 /**
  * Procedural SkyAtmosphere driven by TIME / sun altitude.
  * Scene DirectionalLight shades terrain & models only (SUNLIGHT atmosphere mode).
@@ -167,53 +151,6 @@ function applyCesiumAtmosphere(
   });
 }
 
-function osmBuildingInstanceId(id: string | number | undefined, fallback: number): string {
-  return `${OSM_BLDG_ID_PREFIX}${id ?? `i${fallback}`}`;
-}
-
-function loadRemovedBlockIds(): Set<string> {
-  try {
-    const raw = localStorage.getItem(REMOVED_BLOCKS_STORAGE_KEY);
-    if (!raw) return new Set();
-    const arr = JSON.parse(raw);
-    return new Set(Array.isArray(arr) ? arr.map(String) : []);
-  } catch {
-    return new Set();
-  }
-}
-
-function saveRemovedBlockIds(ids: Set<string>) {
-  try {
-    localStorage.setItem(REMOVED_BLOCKS_STORAGE_KEY, JSON.stringify([...ids]));
-  } catch {
-    /* quota / private mode */
-  }
-}
-
-function pickOsmBuildingId(viewer: Cesium.Viewer, screenPos: Cesium.Cartesian2): string | null {
-  const picked = viewer.scene.pick(screenPos);
-  if (!Cesium.defined(picked)) return null;
-  if (typeof picked === "string" && picked.startsWith(OSM_BLDG_ID_PREFIX)) return picked;
-  const id = (picked as { id?: unknown }).id;
-  if (typeof id === "string" && id.startsWith(OSM_BLDG_ID_PREFIX)) return id;
-  return null;
-}
-
-function ringSpanOk(ring: number[][]): boolean {
-  let west = Infinity;
-  let south = Infinity;
-  let east = -Infinity;
-  let north = -Infinity;
-  for (const p of ring) {
-    if (p[0] < west) west = p[0];
-    if (p[0] > east) east = p[0];
-    if (p[1] < south) south = p[1];
-    if (p[1] > north) north = p[1];
-  }
-  // Skip broken/huge rings that paint over the whole town.
-  return east - west < 0.012 && north - south < 0.012 && east > west && north > south;
-}
-
 /** Don't flash the stream chip for cached attaches that finish instantly. */
 const MODEL_LOAD_UI_DELAY_MS = 280;
 /** Throttle map entity hover picks (ms). */
@@ -226,12 +163,12 @@ const MUNICIPAL_OFFICE = { lat: 14.185435, lon: 121.509513 };
 const HOME_TARGET = MUNICIPAL_OFFICE;
 const HOME_HEADING = 0;
 /**
- * Street-level 3D (screenshot): horizon near the top, blocks filling the frame.
- * Cesium 0° = horizon, -90° = nadir.
+ * Pure 2D Top-Down View (nadir).
+ * Cesium 0° = horizon, -90° = nadir top-down.
  */
-const HOME_PITCH = Cesium.Math.toRadians(-20);
-/** Distance from municipal hall — close enough that buildings read large. */
-const HOME_RANGE_M = 560;
+const HOME_PITCH = Cesium.Math.toRadians(-89.9);
+/** Distance from municipal hall — covers poblacion cleanly in 2D. */
+const HOME_RANGE_M = 3200;
 const HOME_TARGET_HEIGHT_M = 18;
 
 function homeLookAtTarget(): Cesium.Cartesian3 {
@@ -259,6 +196,17 @@ function flyCameraHome(viewer: Cesium.Viewer, duration = 1.2) {
 
 /** Never let the camera go under the ground (dark “underside / hell” view). */
 const MIN_CAMERA_HEIGHT_M = 35;
+
+/** Maximum zoom-out ceiling so the full municipal border is framed without zooming into outer space. */
+const MAX_MUNICIPAL_ZOOM_OUT_HEIGHT_M = 22_000;
+
+/** Strict horizontal boundaries around Luisiana to lock the camera inside the municipality. */
+const LUISIANA_CAMERA_BOUNDS = {
+  minLon: 121.450,
+  maxLon: 121.590,
+  minLat: 14.120,
+  maxLat: 14.240,
+};
 
 /** Height above ellipsoid, or above DEM when satellite/terrain is on. */
 function cameraHeightAboveSurface(viewer: Cesium.Viewer): number {
@@ -341,7 +289,7 @@ function moveCameraWasd(viewer: Cesium.Viewer, held: Set<string>, dt: number) {
   );
 }
 /** Extra clearance above sampled DEM when collision tiles aren’t ready yet. */
-const MIN_TERRAIN_CLEARANCE_M = 40;
+const MIN_TERRAIN_CLEARANCE_M = 12;
 /**
  * Only run globe/terrain collision when the camera is this close to the ground.
  * A high value (Cesium default ~15 km) keeps collision on while tilting at
@@ -363,8 +311,6 @@ export type CesiumMapHandle = {
   toggleTilt: () => void;
   /** Freeze / unfreeze globe mouse look while overlay UI is dragged. */
   setCameraInputsEnabled: (enabled: boolean) => void;
-  /** Restore all user-removed OSM blocks. */
-  restoreRemovedBlocks: () => void;
   /** Fly camera to lon/lat (used by Events list). */
   flyToLonLat: (lon: number, lat: number, heightM?: number) => void;
   /** Select a project model and fly the camera to it. False if the globe is not ready yet. */
@@ -468,7 +414,7 @@ function writeXformFromSnap(xf: LocalXform, snap: EditPoseSnap) {
 }
 
 type Props = {
-  solarHour: number;
+  solarHour?: number;
   /**
    * Compass bearing of the sun (0° = N, 90° = E). Overrides SunCalc azimuth;
    * altitude still comes from solarHour.
@@ -492,6 +438,8 @@ type Props = {
   onPlaceSketch?: (sketch: MapSketch) => void;
   /** Parent list / portal — a project pin or model was clicked. */
   onProjectSelect?: (projectId: string) => void;
+  /** Callback when a site pin is clicked (shows clean 2D popup without 3D tilt). */
+  onSelectSitePin?: (project: Project) => void;
   readOnly?: boolean;
   /** Engineer only — unlock / move / rotate / scale / remove map models. */
   canManipulateModels?: boolean;
@@ -503,23 +451,12 @@ type Props = {
   /** Sync photo list into App projects after place-panel upload/delete. */
   onPhotosChange?: (projectId: string, photos: ProjectPhoto[]) => void;
   onDeleteBuilding?: (projectId: string) => void;
-  /** NASA GIBS WMTS overlay (precip / climate layers). */
-  gibs?: {
-    enabled: boolean;
-    layer: GibsLayerId;
-    date: string;
-    opacity: number;
-  };
-  /** Layers toggle — hide/show Luisiana 3D blocks. */
-  buildingBlocksVisible?: boolean;
   /** Layers toggle — hide/show Luisiana textured asphalt roads. */
   asphaltRoadsVisible?: boolean;
   /** Left-rail toggle — color-coded barangay areas. */
   barangaysVisible?: boolean;
   /** Legend selection — highlight that barangay fill. */
   focusedBarangay?: string | null;
-  /** Click a block to remove it (engineer tool). */
-  blockRemoverActive?: boolean;
   /** Layers → 3D Terrain: elevation mesh on the globe. */
   terrainEnabled?: boolean;
   /** Layers → Satellite: Esri imagery over basemap. */
@@ -530,20 +467,12 @@ type Props = {
     eq2014?: boolean;
     gsh2014?: boolean;
   };
-  /** Events tab — West Pacific Invest / TC / LPA-watch. */
-  tropicalEnabled?: boolean;
-  tropicalSystems?: TropicalSystem[];
   /** Risk tab — trained PHIVOLCS siting grid. */
   earthquakeEnabled?: boolean;
   earthquakeGrid?: EarthquakeGridCell[];
   /** Layers → Map Settings (draw distance, quality, shadows, fog). */
   mapSettings?: MapSettings;
 };
-
-function gibsMaximumLevel(layer: GibsLayerId): number {
-  const m = GIBS_LAYERS[layer]?.tileMatrixSet.match(/Level(\d+)/);
-  return m ? Number(m[1]) : 6;
-}
 
 function projectModelUrl(p: Project): string {
   if (isTreeShape(p.mapShape?.kind)) return "/models/tree.glb";
@@ -908,11 +837,14 @@ function flyCameraToProjectTarget(
 }
 
 function projectIdFromEntity(id: string | undefined): string | null {
-  if (!id || !id.startsWith("project-")) return null;
-  let rest = id.slice("project-".length);
-  if (rest.endsWith("-sketch-line")) rest = rest.slice(0, -"-sketch-line".length);
-  else if (rest.endsWith("-sketch-poly")) rest = rest.slice(0, -"-sketch-poly".length);
-  return rest || null;
+  if (!id) return null;
+  if (id.startsWith("project-")) {
+    let rest = id.slice("project-".length);
+    if (rest.endsWith("-sketch-line")) rest = rest.slice(0, -"-sketch-line".length);
+    else if (rest.endsWith("-sketch-poly")) rest = rest.slice(0, -"-sketch-poly".length);
+    return rest || null;
+  }
+  return id;
 }
 
 const CLUSTER_ID_PREFIX = "infra-cluster-";
@@ -976,13 +908,21 @@ function applyProjectHoverVisual(
   const eid = entityIdFor(project.id);
   const ent = viewer.entities.getById(eid);
   if (!ent) return;
-  const isSitePin = Boolean(project.siteMarkerOnly);
+  const isSitePin = isSitePinProject(project);
+  if (ent.billboard && isSitePin) {
+    ent.billboard.width = new Cesium.ConstantProperty(hovered ? 42 : 36);
+    ent.billboard.height = new Cesium.ConstantProperty(hovered ? 54 : 46);
+  }
   if (ent.point) {
-    const base = isSitePin ? 16 : 10;
-    ent.point.pixelSize = new Cesium.ConstantProperty(hovered ? base + 8 : base);
-    ent.point.outlineWidth = new Cesium.ConstantProperty(
-      hovered ? (isSitePin ? 5 : 3) : isSitePin ? 3 : 2,
-    );
+    if (isSitePin) {
+      ent.point.show = new Cesium.ConstantProperty(false);
+    } else {
+      const base = 10;
+      ent.point.pixelSize = new Cesium.ConstantProperty(hovered ? base + 6 : base);
+      ent.point.outlineWidth = new Cesium.ConstantProperty(
+        hovered ? 3 : 2,
+      );
+    }
   }
   if (ent.model) {
     if (hovered) {
@@ -1022,20 +962,6 @@ function quakePointSize(
   return hovered ? sized + 4 : sized;
 }
 
-function tropicalEntityId(systemId: string) {
-  return `tropical-${systemId}`;
-}
-
-function tropicalTrackEntityId(systemId: string) {
-  return `tropical-track-${systemId}`;
-}
-
-function tropicalIdFromEntity(id: string | undefined): string | null {
-  if (!id || !id.startsWith("tropical-")) return null;
-  if (id.startsWith("tropical-track-")) return null;
-  return id.slice("tropical-".length);
-}
-
 function parseHexColor(hex: string): Cesium.Color {
   try {
     return Cesium.Color.fromCssColorString(hex);
@@ -1044,42 +970,123 @@ function parseHexColor(hex: string): Cesium.Color {
   }
 }
 
-function pickProjectId(viewer: Cesium.Viewer, screenPos: Cesium.Cartesian2): string | null {
+function extractEntityId(picked: any): string | null {
+  if (!picked) return null;
+  if (typeof picked === "string") return picked;
+  if (typeof picked.id === "string") return picked.id;
+  if (picked.id && typeof picked.id.id === "string") return picked.id.id;
+  if (picked.primitive) {
+    if (typeof picked.primitive === "string") return picked.primitive;
+    if (typeof picked.primitive.id === "string") return picked.primitive.id;
+    if (picked.primitive.id && typeof picked.primitive.id.id === "string") return picked.primitive.id.id;
+    if (typeof picked.primitive._id === "string") return picked.primitive._id;
+    if (picked.primitive._id && typeof picked.primitive._id.id === "string") return picked.primitive._id.id;
+    if (picked.primitive._entity && typeof picked.primitive._entity.id === "string") return picked.primitive._entity.id;
+  }
+  if (picked._entity && typeof picked._entity.id === "string") return picked._entity.id;
+  if (picked.id && typeof picked.id === "object" && "id" in picked.id) return String(picked.id.id);
+  return null;
+}
+
+function findProjectNearScreenPoint(
+  viewer: Cesium.Viewer,
+  screenPos: Cesium.Cartesian2,
+  projects: Project[] | undefined,
+  maxDistancePx = 36,
+): Project | null {
+  if (!viewer || viewer.isDestroyed() || !projects || projects.length === 0) return null;
+
+  let closestProject: Project | null = null;
+  let closestDist = maxDistancePx;
+
+  const camPos = viewer.camera.position;
+  const camDir = viewer.camera.direction;
+
+  for (const p of projects) {
+    const lon = p.location?.lon;
+    const lat = p.location?.lat;
+    if (lon == null || lat == null || !Number.isFinite(lon) || !Number.isFinite(lat)) continue;
+
+    const cartPos = Cesium.Cartesian3.fromDegrees(lon, lat);
+
+    // Skip if behind camera
+    const toPoint = Cesium.Cartesian3.subtract(cartPos, camPos, new Cesium.Cartesian3());
+    if (Cesium.Cartesian3.dot(camDir, toPoint) <= 0) continue;
+
+    const winPos = Cesium.SceneTransforms.wgs84ToWindowCoordinates(viewer.scene, cartPos);
+    if (!winPos) continue;
+
+    const isSitePin = isSitePinProject(p);
+    const pinCenterX = winPos.x;
+    const pinCenterY = isSitePin ? winPos.y - 30 : winPos.y;
+
+    const dist = Math.hypot(screenPos.x - pinCenterX, screenPos.y - pinCenterY);
+    if (dist < closestDist) {
+      closestDist = dist;
+      closestProject = p;
+    }
+  }
+
+  return closestProject;
+}
+
+function pickProjectId(
+  viewer: Cesium.Viewer,
+  screenPos: Cesium.Cartesian2,
+  projects?: Project[],
+): string | null {
   const picked = viewer.scene.pick(screenPos);
-  if (!Cesium.defined(picked)) return null;
-  const id = (picked as { id?: Cesium.Entity }).id;
-  if (id instanceof Cesium.Entity) {
-    return projectIdFromEntity(id.id);
+  if (Cesium.defined(picked)) {
+    const eid = extractEntityId(picked);
+    if (eid) {
+      const pid = projectIdFromEntity(eid);
+      if (pid) return pid;
+    }
+  }
+  try {
+    const picks = viewer.scene.drillPick(screenPos, 10);
+    if (Array.isArray(picks)) {
+      for (const p of picks) {
+        const eid = extractEntityId(p);
+        if (eid) {
+          const pid = projectIdFromEntity(eid);
+          if (pid) return pid;
+        }
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  if (projects && projects.length > 0) {
+    const nearProj = findProjectNearScreenPoint(viewer, screenPos, projects, 36);
+    if (nearProj) return nearProj.id;
   }
   return null;
 }
 
 type HoverHit =
   | { kind: "project"; id: string }
-  | { kind: "tropical"; id: string }
   | { kind: "quake"; id: string };
 
-/** Single scene.pick for project / tropical / quake hover (avoids extra picks on move). */
-function pickHoverHit(viewer: Cesium.Viewer, screenPos: Cesium.Cartesian2): HoverHit | null {
+/** Single scene.pick for project / quake hover (avoids extra picks on move). */
+function pickHoverHit(
+  viewer: Cesium.Viewer,
+  screenPos: Cesium.Cartesian2,
+  projects?: Project[],
+): HoverHit | null {
   const picked = viewer.scene.pick(screenPos);
-  if (!Cesium.defined(picked)) return null;
-  const ent = (picked as { id?: Cesium.Entity }).id;
-  if (!(ent instanceof Cesium.Entity)) return null;
-  const projectId = projectIdFromEntity(ent.id);
-  if (projectId) return { kind: "project", id: projectId };
-  const tropicalId = tropicalIdFromEntity(ent.id);
-  if (tropicalId) return { kind: "tropical", id: tropicalId };
-  const quakeIdx = quakeIndexFromEntity(typeof ent.id === "string" ? ent.id : undefined);
-  if (quakeIdx != null) return { kind: "quake", id: String(quakeIdx) };
-  return null;
-}
-
-function pickTropicalId(viewer: Cesium.Viewer, screenPos: Cesium.Cartesian2): string | null {
-  const picked = viewer.scene.pick(screenPos);
-  if (!Cesium.defined(picked)) return null;
-  const id = (picked as { id?: Cesium.Entity }).id;
-  if (id instanceof Cesium.Entity) {
-    return tropicalIdFromEntity(id.id);
+  if (Cesium.defined(picked)) {
+    const eid = extractEntityId(picked);
+    if (eid) {
+      const projectId = projectIdFromEntity(eid);
+      if (projectId) return { kind: "project", id: projectId };
+      const quakeIdx = quakeIndexFromEntity(eid);
+      if (quakeIdx != null) return { kind: "quake", id: String(quakeIdx) };
+    }
+  }
+  if (projects && projects.length > 0) {
+    const nearProj = findProjectNearScreenPoint(viewer, screenPos, projects, 28);
+    if (nearProj) return { kind: "project", id: nearProj.id };
   }
   return null;
 }
@@ -1244,7 +1251,7 @@ function applyXformToEntity(ent: Cesium.Entity, p: Project, xf: LocalXform) {
     applyMapShapeGraphics(ent, p, xf);
   }
   if (ent.label) {
-    const isSitePin = Boolean(p.siteMarkerOnly);
+    const isSitePin = isSitePinProject(p);
     const displayName = p.name?.trim() || "Untitled site";
     (ent.label as Cesium.LabelGraphics).text = new Cesium.CallbackProperty(
       () => {
@@ -1267,7 +1274,7 @@ function applyResolvedPlaceName(
   if (!ent) return;
   ent.name = name;
   if (ent.label) {
-    const isSitePin = Boolean(p.siteMarkerOnly);
+    const isSitePin = isSitePinProject(p);
     const lat = lonLat?.lat ?? p.location.lat;
     const lon = lonLat?.lon ?? p.location.lon;
     (ent.label as Cesium.LabelGraphics).text = new Cesium.CallbackProperty(
@@ -1278,6 +1285,211 @@ function applyResolvedPlaceName(
       false,
     ) as any;
   }
+}
+
+export function isSitePinProject(p: Project | any): boolean {
+  if (!p) return false;
+  return Boolean(
+    p.siteMarkerOnly ||
+    p.isPrivateApplication ||
+    p.isPickerPin ||
+    p.id === "pinpoint_site_pin" ||
+    (typeof p.id === "string" && (
+      p.id.includes("pinpoint") ||
+      p.id.includes("picker") ||
+      p.id.startsWith("app-") ||
+      p.id.startsWith("infra-app-")
+    )) ||
+    p.trackingNumber ||
+    p.lotDetails ||
+    p.inspectionStage ||
+    p.latestInspection
+  );
+}
+
+const pinImageCache = new Map<string, string>();
+
+/**
+ * Creates a classic, high-visibility teardrop map pin icon (pointed bottom tip,
+ * round head with a white target circle, crisp outline and ground shadow).
+ * Rendered at 2x resolution via Canvas for razor-sharp rendering in Cesium.
+ */
+export type PinCenterIcon = "house" | "none";
+
+/**
+ * Creates a classic, high-visibility teardrop map pin icon with an optional
+ * Private Infrastructure icon (🏠 House / Private Property) inside the center circle.
+ * Rendered at 2x resolution via Canvas for razor-sharp rendering in Cesium.
+ */
+export function makeClassicMapPinIcon(
+  fillColor: string,
+  strokeColor = "#ffffff",
+  centerIcon: PinCenterIcon = "house"
+): string {
+  const cacheKey = `${fillColor}_${strokeColor}_${centerIcon}`;
+  const cached = pinImageCache.get(cacheKey);
+  if (cached) return cached;
+
+  if (typeof document !== "undefined") {
+    try {
+      const w = 72; // 2x retina canvas (displayed at 36x46)
+      const h = 92;
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.imageSmoothingEnabled = true;
+
+        // 1. Soft contact shadow on the ground below the pin tip
+        ctx.save();
+        ctx.beginPath();
+        ctx.ellipse(36, 86, 15, 4.5, 0, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(0, 0, 0, 0.32)";
+        ctx.fill();
+        ctx.restore();
+
+        // 2. Main teardrop pin body
+        // Pin tip is at (36, 82)
+        // Pin head center is at (36, 32), radius = 25
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(36, 82);
+        // Left side curve up to the circular head
+        ctx.bezierCurveTo(27, 62, 11, 48, 11, 32);
+        // Circular arc across top from angle PI to 0
+        ctx.arc(36, 32, 25, Math.PI, 0, false);
+        // Right side curve down to the tip
+        ctx.bezierCurveTo(61, 48, 45, 62, 36, 82);
+        ctx.closePath();
+
+        // Fill pin body with vibrant color
+        ctx.fillStyle = fillColor;
+        ctx.fill();
+
+        // Crisp white border around the entire pin
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = strokeColor;
+        ctx.lineJoin = "round";
+        ctx.stroke();
+
+        // Inner circular target badge (enlarged to 11.5px radius to cleanly frame the private house icon)
+        const innerRadius = centerIcon === "house" ? 11.5 : 9;
+        ctx.beginPath();
+        ctx.arc(36, 32, innerRadius, 0, Math.PI * 2);
+        ctx.fillStyle = "#ffffff";
+        ctx.fill();
+
+        // Subtle dark inner rim on the white dot for depth
+        ctx.lineWidth = 1.2;
+        ctx.strokeStyle = "rgba(0, 0, 0, 0.16)";
+        ctx.stroke();
+
+        // 🏠 Private Infrastructure House Icon inside the center circle
+        if (centerIcon === "house") {
+          const isYellowish =
+            fillColor.toLowerCase().includes("fbb") ||
+            fillColor.toLowerCase().includes("ffc") ||
+            fillColor.toLowerCase().includes("eab308");
+          const iconColor = isYellowish ? "#b45309" : fillColor;
+
+          // A. Chimney
+          ctx.beginPath();
+          ctx.rect(39.8, 24.2, 2.2, 4.2);
+          ctx.fillStyle = iconColor;
+          ctx.fill();
+
+          // B. House body (Pitched roof + walls)
+          ctx.beginPath();
+          ctx.moveTo(36, 23.5);     // Roof peak
+          ctx.lineTo(27.5, 30.5);   // Left roof eave
+          ctx.lineTo(29.5, 30.5);   // Under left eave
+          ctx.lineTo(29.5, 39);     // Down left wall
+          ctx.lineTo(42.5, 39);     // Across floor
+          ctx.lineTo(42.5, 30.5);   // Up right wall
+          ctx.lineTo(44.5, 30.5);   // Right roof eave
+          ctx.closePath();
+          ctx.fillStyle = iconColor;
+          ctx.fill();
+
+          // C. Crisp white door cutout in center of house
+          ctx.beginPath();
+          ctx.rect(34, 34, 4, 5);
+          ctx.fillStyle = "#ffffff";
+          ctx.fill();
+        }
+
+        ctx.restore();
+
+        const dataUrl = canvas.toDataURL("image/png");
+        pinImageCache.set(cacheKey, dataUrl);
+        return dataUrl;
+      }
+    } catch {
+      // Fallback to pure SVG below
+    }
+  }
+
+  // Pure SVG fallback (standard MIME, clean vector paths)
+  const isYellowish =
+    fillColor.toLowerCase().includes("fbb") ||
+    fillColor.toLowerCase().includes("ffc") ||
+    fillColor.toLowerCase().includes("eab308");
+  const iconColor = isYellowish ? "#b45309" : fillColor;
+  const innerRadius = centerIcon === "house" ? 5.8 : 4.5;
+  const houseSvg =
+    centerIcon === "house"
+      ? `<rect x="19.9" y="12.2" width="1.1" height="2" fill="${iconColor}"/>
+  <path d="M18 11.8 L13.8 15.3 H14.8 V19.5 H21.2 V15.3 H22.2 L18 11.8 Z M17 19.5 V17 H19 V19.5 Z" fill="${iconColor}"/>`
+      : "";
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 46" width="36" height="46">
+  <ellipse cx="18" cy="43" rx="8" ry="2.5" fill="rgba(0,0,0,0.3)"/>
+  <path d="M18 41 C13.5 31 5.5 24 5.5 16 A12.5 12.5 0 1 1 30.5 16 C30.5 24 22.5 31 18 41 Z" fill="${fillColor}" stroke="${strokeColor}" stroke-width="2" stroke-linejoin="round"/>
+  <circle cx="18" cy="16" r="${innerRadius}" fill="#ffffff" stroke="rgba(0,0,0,0.15)" stroke-width="0.5"/>
+  ${houseSvg}
+</svg>`;
+  const dataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  pinImageCache.set(cacheKey, dataUrl);
+  return dataUrl;
+}
+
+export function makeClassicMapPinSvg(fillColor: string, strokeColor = "#ffffff", centerIcon: PinCenterIcon = "house"): string {
+  return makeClassicMapPinIcon(fillColor, strokeColor, centerIcon);
+}
+
+export const RED_PIN_SVG_DATA_URL = makeClassicMapPinIcon("#ea4335"); // 🔴 0% Before
+export const YELLOW_PIN_SVG_DATA_URL = makeClassicMapPinIcon("#fbbc04"); // 🟡 50% During
+export const GREEN_PIN_SVG_DATA_URL = makeClassicMapPinIcon("#34a853"); // 🟢 100% Completed
+
+export function getPinSvgForProject(p: Project): string {
+  if (isSitePinProject(p)) {
+    return makeClassicMapPinIcon(p.markerColor || "#ea4335");
+  }
+  const prog = (p as any).numericProgress ?? p.progress ?? 0;
+  const stage = (p as any).stage || (p as any).inspectionStage || (p as any).latestInspection?.stage;
+  if (prog >= 100 || stage === "completed" || stage === "after" || stage === "after_construction") {
+    return GREEN_PIN_SVG_DATA_URL;
+  }
+  if (prog >= 50 || stage === "during" || stage === "during_construction") {
+    return YELLOW_PIN_SVG_DATA_URL;
+  }
+  return RED_PIN_SVG_DATA_URL;
+}
+
+export function getPinColorForProject(p: Project): string {
+  if (isSitePinProject(p)) {
+    return p.markerColor || "#ea4335";
+  }
+  const prog = (p as any).numericProgress ?? p.progress ?? 0;
+  const stage = (p as any).stage || (p as any).inspectionStage || (p as any).latestInspection?.stage;
+  if (prog >= 100 || stage === "completed" || stage === "after" || stage === "after_construction") {
+    return "#34a853";
+  }
+  if (prog >= 50 || stage === "during" || stage === "during_construction") {
+    return "#fbbc04";
+  }
+  return "#ea4335";
 }
 
 /** Refresh pin vs label chrome after a site pin is promoted to a 3D model. */
@@ -1294,21 +1506,55 @@ function applySitePinChrome(
     lat?: number;
   },
 ) {
-  const isSitePin = Boolean(p.siteMarkerOnly);
+  const isSitePin = isSitePinProject(p);
   const displayName = p.name?.trim() || "Untitled site";
   const lon = opts.lon ?? p.location.lon;
   const lat = opts.lat ?? p.location.lat;
-  if (ent.point) {
-    const point = ent.point as Cesium.PointGraphics;
-    point.pixelSize = new Cesium.ConstantProperty(isSitePin ? 16 : 10);
-    point.outlineWidth = new Cesium.ConstantProperty(isSitePin ? 3 : 2);
-    point.show = new Cesium.CallbackProperty(
-      () =>
-        isSitePin ||
-        !opts.isAttached(p.id) ||
-        (opts.isVisible ? !opts.isVisible(p.id) : false),
-      false,
-    );
+
+  const pinSvg = getPinSvgForProject(p);
+  if (!ent.billboard) {
+    ent.billboard = new Cesium.BillboardGraphics({
+      image: new Cesium.ConstantProperty(pinSvg),
+      verticalOrigin: new Cesium.ConstantProperty(Cesium.VerticalOrigin.BOTTOM),
+      width: new Cesium.ConstantProperty(38),
+      height: new Cesium.ConstantProperty(48),
+      disableDepthTestDistance: new Cesium.ConstantProperty(Number.POSITIVE_INFINITY),
+      scaleByDistance: new Cesium.ConstantProperty(new Cesium.NearFarScalar(500, 1.0, 100000, 0.85)),
+      eyeOffset: new Cesium.ConstantProperty(new Cesium.Cartesian3(0, 0, -10)),
+      show: new Cesium.CallbackProperty(() => {
+        if (isSitePinProject(p)) return true;
+        const h = opts.cameraHeightM?.() ?? 0;
+        return h > 800 || !opts.isVisible?.(p.id) || !opts.isAttached(p.id);
+      }, false),
+    });
+  } else {
+    ent.billboard.image = new Cesium.ConstantProperty(pinSvg);
+    ent.billboard.verticalOrigin = new Cesium.ConstantProperty(Cesium.VerticalOrigin.BOTTOM);
+    ent.billboard.width = new Cesium.ConstantProperty(38);
+    ent.billboard.height = new Cesium.ConstantProperty(48);
+    ent.billboard.disableDepthTestDistance = new Cesium.ConstantProperty(Number.POSITIVE_INFINITY);
+    ent.billboard.scaleByDistance = new Cesium.ConstantProperty(new Cesium.NearFarScalar(500, 1.0, 100000, 0.85));
+    ent.billboard.eyeOffset = new Cesium.ConstantProperty(new Cesium.Cartesian3(0, 0, -10));
+    ent.billboard.show = new Cesium.CallbackProperty(() => {
+      if (isSitePinProject(p)) return true;
+      const h = opts.cameraHeightM?.() ?? 0;
+      return h > 800 || !opts.isVisible?.(p.id) || !opts.isAttached(p.id);
+    }, false);
+  }
+  if (isSitePin && ent.point) {
+    ent.point.show = new Cesium.ConstantProperty(false);
+  } else if (!isSitePin) {
+    if (ent.point) {
+      const point = ent.point as Cesium.PointGraphics;
+      point.pixelSize = new Cesium.ConstantProperty(10);
+      point.outlineWidth = new Cesium.ConstantProperty(2);
+      point.show = new Cesium.CallbackProperty(
+        () =>
+          !opts.isAttached(p.id) ||
+          (opts.isVisible ? !opts.isVisible(p.id) : false),
+        false,
+      );
+    }
   }
   if (ent.label) {
     const label = ent.label as Cesium.LabelGraphics;
@@ -1326,7 +1572,7 @@ function applySitePinChrome(
     );
     label.backgroundPadding = new Cesium.ConstantProperty(new Cesium.Cartesian2(7, 5));
     label.pixelOffset = new Cesium.ConstantProperty(
-      new Cesium.Cartesian2(0, isSitePin ? -28 : -36),
+      new Cesium.Cartesian2(0, isSitePin ? -50 : -36),
     );
     label.show = new Cesium.CallbackProperty(
       () => {
@@ -1394,7 +1640,7 @@ function DualQuakeSummary({
 
 export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
   {
-    solarHour,
+    solarHour = 12,
     sunAzimuthDeg,
     projects,
     clusteringEnabled = true,
@@ -1407,6 +1653,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     placementColor = "#c47a1a",
     onPlaceSketch,
     onProjectSelect,
+    onSelectSitePin,
     readOnly = false,
     canManipulateModels = false,
     canPromoteSitePin = false,
@@ -1414,16 +1661,11 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     canAddPhotos = false,
     onPhotosChange,
     onDeleteBuilding,
-    gibs,
-    buildingBlocksVisible = true,
     barangaysVisible = false,
     focusedBarangay = null,
-    blockRemoverActive = false,
     terrainEnabled = false,
     satellite = false,
     hazardOverlays = {},
-    tropicalEnabled = false,
-    tropicalSystems = [],
     earthquakeEnabled = false,
     earthquakeGrid = [],
     mapSettings = DEFAULT_MAP_SETTINGS,
@@ -1432,7 +1674,6 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<Cesium.Viewer | null>(null);
-  const gibsImageryRef = useRef<Cesium.ImageryLayer | null>(null);
   const satelliteImageryRef = useRef<Cesium.ImageryLayer | null>(null);
   const osmBasemapRef = useRef<Cesium.ImageryLayer | null>(null);
   const satelliteEnabledRef = useRef(satellite);
@@ -1442,23 +1683,6 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
   const cachedEsriLayerRef = useRef<Cesium.ImageryLayer | null>(null);
   const restoreOnlineImageryRef = useRef<() => void>(() => { });
   const hazardOverlayLayersRef = useRef<Map<string, Cesium.ImageryLayer[]>>(new Map());
-  const gibsRef = useRef(gibs);
-  gibsRef.current = gibs;
-  const [gibsHover, setGibsHover] = useState<{
-    x: number;
-    y: number;
-    title: string;
-    valueText: string;
-  } | null>(null);
-  const tropicalIdsRef = useRef<Set<string>>(new Set());
-  const tropicalSystemsRef = useRef(tropicalSystems);
-  tropicalSystemsRef.current = tropicalSystems;
-  const [selectedTropicalId, setSelectedTropicalId] = useState<string | null>(null);
-  const [hoveredTropical, setHoveredTropical] = useState<{
-    system: TropicalSystem;
-    x: number;
-    y: number;
-  } | null>(null);
   const [hoveredProject, setHoveredProject] = useState<{
     project: Project;
     x: number;
@@ -1482,15 +1706,6 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
   const hoveredProjectIdRef = useRef<string | null>(null);
   const resolvedPlaceNameRef = useRef(new Map<string, string>());
   const [, setPlaceNameTick] = useState(0);
-  const buildingPrimitivesRef = useRef<Cesium.Primitive[]>([]);
-  const buildingMaterialRef = useRef<Cesium.Material | null>(null);
-  const buildingBlocksVisibleRef = useRef(buildingBlocksVisible);
-  buildingBlocksVisibleRef.current = buildingBlocksVisible;
-  const buildingFootprintsRef = useRef<BuildingFootprint[] | null>(null);
-  const removedBlockIdsRef = useRef<Set<string>>(loadRemovedBlockIds());
-  const rebuildBuildingsRef = useRef<(() => Promise<void>) | null>(null);
-  const blockRemoverActiveRef = useRef(blockRemoverActive);
-  blockRemoverActiveRef.current = blockRemoverActive;
   const terrainEnabledRef = useRef(terrainEnabled);
   terrainEnabledRef.current = terrainEnabled;
   const mapSettingsRef = useRef(mapSettings);
@@ -1500,7 +1715,6 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
   const sunIsDayRef = useRef(true);
   const luisianaRingRef = useRef<LonLat[] | null>(null);
   const applyScopeRef = useRef<(() => void) | null>(null);
-  const [removedBlockCount, setRemovedBlockCount] = useState(() => loadRemovedBlockIds().size);
   const [viewerReady, setViewerReady] = useState(0);
   /** True once the globe has rendered its first batch of base tiles (kills the black-screen). */
   const [mapReady, setMapReady] = useState(false);
@@ -1555,6 +1769,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
   const onPlaceClickRef = useRef(onPlaceClick);
   const onPlaceSketchRef = useRef(onPlaceSketch);
   const onProjectSelectRef = useRef(onProjectSelect);
+  const onSelectSitePinRef = useRef(onSelectSitePin);
   const placementToolRef = useRef(placementTool);
   const placementColorRef = useRef(placementColor);
   const sketchDraftRef = useRef<{ lon: number; lat: number }[]>([]);
@@ -1638,14 +1853,15 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       dragActiveRef.current = false;
     }
   }, [editMode]);
-  modelsFrozenRef.current = placementMode || blockRemoverActive;
+  modelsFrozenRef.current = placementMode;
   useEffect(() => {
     onPlaceClickRef.current = onPlaceClick;
   }, [onPlaceClick]);
   useEffect(() => {
     onPlaceSketchRef.current = onPlaceSketch;
     onProjectSelectRef.current = onProjectSelect;
-  }, [onPlaceSketch, onProjectSelect]);
+    onSelectSitePinRef.current = onSelectSitePin;
+  }, [onPlaceSketch, onProjectSelect, onSelectSitePin]);
   useEffect(() => {
     placementToolRef.current = placementTool;
   }, [placementTool]);
@@ -1681,7 +1897,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     ? projects.find((p) => p.id === selectedId) ?? null
     : null;
   const selectedXform = selectedId ? xformsRef.current.get(selectedId) : undefined;
-  const modelsFrozen = placementMode || blockRemoverActive;
+  const modelsFrozen = placementMode;
 
   function emitCompletedSketch(coords: { lon: number; lat: number }[], kind: MapSketchKind) {
     const sketch: MapSketch = {
@@ -1797,7 +2013,10 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       const viewer = viewerRef.current;
       if (!viewer || viewer.isDestroyed()) return;
       const h = cameraHeightAboveSurface(viewer);
-      viewer.camera.zoomOut(Math.max(50, h * 0.48));
+      if (h < MAX_MUNICIPAL_ZOOM_OUT_HEIGHT_M) {
+        const step = Math.min(Math.max(50, h * 0.48), MAX_MUNICIPAL_ZOOM_OUT_HEIGHT_M - h);
+        if (step > 5) viewer.camera.zoomOut(step);
+      }
       resizeEditGizmo(viewer);
       viewer.scene.requestRender();
     },
@@ -1827,18 +2046,13 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       if (!viewer || viewer.isDestroyed()) return;
       viewer.scene.screenSpaceCameraController.enableInputs = enabled;
     },
-    restoreRemovedBlocks() {
-      removedBlockIdsRef.current = new Set();
-      saveRemovedBlockIds(removedBlockIdsRef.current);
-      setRemovedBlockCount(0);
-      void rebuildBuildingsRef.current?.();
-    },
-    flyToLonLat(lon: number, lat: number, heightM = 80_000) {
+    flyToLonLat(lon: number, lat: number, heightM = MAX_MUNICIPAL_ZOOM_OUT_HEIGHT_M) {
       const viewer = viewerRef.current;
       if (!viewer || viewer.isDestroyed()) return;
       if (!Number.isFinite(lon) || !Number.isFinite(lat)) return;
+      const safeH = Math.min(heightM, MAX_MUNICIPAL_ZOOM_OUT_HEIGHT_M);
       viewer.camera.flyTo({
-        destination: Cesium.Cartesian3.fromDegrees(lon, lat, heightM),
+        destination: Cesium.Cartesian3.fromDegrees(lon, lat, safeH),
         orientation: { heading: 0, pitch: Cesium.Math.toRadians(-55), roll: 0 },
         duration: 2,
       });
@@ -1997,9 +2211,6 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
   useEffect(() => {
     if (!containerRef.current || viewerRef.current) return;
 
-    const ionToken = (import.meta.env.VITE_CESIUM_ION_TOKEN as string | undefined)?.trim();
-    if (ionToken) Cesium.Ion.defaultAccessToken = ionToken;
-
     const viewer = new Cesium.Viewer(containerRef.current, {
       animation: false,
       timeline: false,
@@ -2015,8 +2226,9 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       terrainShadows: Cesium.ShadowMode.RECEIVE_ONLY,
       shouldAnimate: false,
       scene3DOnly: true,
-      msaaSamples: 1,
-      // OSM street basemap (Ion token stays for terrain only).
+      msaaSamples: 2,
+      useBrowserRecommendedResolution: false,
+      // Stadia street basemap
       baseLayer: false,
     });
 
@@ -2032,16 +2244,30 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       return origSceneRender(time);
     };
 
-    // Limit globe tile cache to ~50 tiles to prevent huge RAM/VRAM accumulation
-    viewer.scene.globe.tileCacheSize = 50;
-    viewer.scene.globe.loadingDescendantLimit = 2;
-    viewer.scene.globe.preloadAncestors = false;
-    viewer.scene.globe.preloadSiblings = false;
-    viewer.scene.globe.maximumScreenSpaceError = 3.5;
+    // Adaptive high-resolution scaler: caps scale at 1.0 - 1.2 max to prevent laggy GPU fillrate saturation
+    const updateResolution = () => {
+      if (viewer.isDestroyed()) return;
+      const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+      const targetScale = Math.min(dpr, 1.2);
+      viewer.resolutionScale = targetScale;
+      viewer.scene.requestRender();
+    };
+    updateResolution();
+    window.addEventListener("resize", updateResolution);
 
-    // Keep imagery / GLB fetches from starving each other on weak GPUs.
-    Cesium.RequestScheduler.maximumRequests = 8;
-    Cesium.RequestScheduler.maximumRequestsPerServer = 4;
+    // High tile cache (1000 tiles) + fast ancestry preloading for instantaneous zoom in/out
+    viewer.scene.globe.tileCacheSize = 1000;
+    viewer.scene.globe.loadingDescendantLimit = 4;
+    viewer.scene.globe.preloadAncestors = true;
+    viewer.scene.globe.preloadSiblings = true;
+    viewer.scene.globe.maximumScreenSpaceError = 1.25;
+    if (viewer.scene.fog) {
+      viewer.scene.fog.enabled = false;
+    }
+
+    // High HTTP/2 request concurrency so multiple tiles load in parallel instantly
+    Cesium.RequestScheduler.maximumRequests = 32;
+    Cesium.RequestScheduler.maximumRequestsPerServer = 18;
 
     // Ours is the only click handler — default pick/fly-to fights placement.
     viewer.screenSpaceEventHandler.removeInputAction(
@@ -2051,29 +2277,27 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK,
     );
 
+    const initialStyle = mapSettingsRef.current?.basemapStyle || STADIA_DEFAULT_STYLE;
+    const streetTileUrl = stadiaRasterTileUrl(initialStyle, { retina: true });
     const osmLayer = viewer.imageryLayers.addImageryProvider(
       new Cesium.UrlTemplateImageryProvider({
-        url: OSM_RASTER_TILE_URL,
-        credit: OSM_RASTER_ATTRIBUTION,
-        maximumLevel: 19,
+        url: streetTileUrl,
+        credit: STADIA_ATTRIBUTION,
+        maximumLevel: 20,
+        minimumLevel: 0,
+        tileWidth: 512,
+        tileHeight: 512,
+        hasAlphaChannel: false,
         tilingScheme: new Cesium.WebMercatorTilingScheme(),
       }),
     );
     osmBasemapRef.current = osmLayer;
 
-    // Satellite: Cesium ion Bing Aerial (HD demo look) when token set, else ESRI World Imagery.
+    // Satellite: Stadia Maps Alidade Satellite (or ESRI fallback).
     const ESRI_WORLD_IMAGERY =
       "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer";
     const styleSatelliteLayer = (layer: Cesium.ImageryLayer) => {
       layer.maximumAnisotropy = 4;
-    };
-
-    const syncOsmBlocksForSatellite = () => {
-      const showBlocks =
-        buildingBlocksVisibleRef.current && !satelliteEnabledRef.current;
-      for (const p of buildingPrimitivesRef.current) {
-        p.show = showBlocks;
-      }
     };
 
     const applySatelliteHdScene = (on: boolean) => {
@@ -2083,10 +2307,10 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
           satelliteOn: on,
         });
       }
-      // Never upscale the framebuffer for satellite — 2× DPR * DEM * imagery melts GPUs.
-      viewer.resolutionScale = 1;
+      updateResolution();
       applyScopeRef.current?.();
     };
+
 
     const applySatVisibility = () => {
       if (viewer.isDestroyed()) return;
@@ -2117,7 +2341,6 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
           /* ignore */
         }
       }
-      syncOsmBlocksForSatellite();
       applySatelliteHdScene(on);
       for (const layers of hazardOverlayLayersRef.current.values()) {
         for (const layer of layers) {
@@ -2126,13 +2349,6 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
           } catch {
             /* ignore */
           }
-        }
-      }
-      if (gibsImageryRef.current) {
-        try {
-          viewer.imageryLayers.raiseToTop(gibsImageryRef.current);
-        } catch {
-          /* ignore */
         }
       }
       viewer.scene.requestRender();
@@ -2219,24 +2435,20 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       applySatVisibility();
     };
 
-    if (ionToken) {
-      const ionLayer = Cesium.ImageryLayer.fromProviderAsync(
-        Cesium.createWorldImageryAsync({
-          style: Cesium.IonWorldImageryStyle.AERIAL,
-        }),
-      );
-      attachSatelliteLayer(ionLayer);
-    } else {
-      console.info(
-        "[CesiumMap] No VITE_CESIUM_ION_TOKEN — ESRI fallback. Set ion token for Bing HD Aerial.",
-      );
-      const esriLayer = Cesium.ImageryLayer.fromProviderAsync(
-        Cesium.ArcGisMapServerImageryProvider.fromUrl(ESRI_WORLD_IMAGERY, {
-          enablePickFeatures: false,
-        }),
-      );
-      attachSatelliteLayer(esriLayer);
-    }
+    const satUrl = stadiaRasterTileUrl(STADIA_SATELLITE_STYLE, { retina: true });
+    const satLayer = new Cesium.ImageryLayer(
+      new Cesium.UrlTemplateImageryProvider({
+        url: satUrl,
+        credit: STADIA_ATTRIBUTION,
+        maximumLevel: 20,
+        minimumLevel: 0,
+        tileWidth: 512,
+        tileHeight: 512,
+        hasAlphaChannel: false,
+        tilingScheme: new Cesium.WebMercatorTilingScheme(),
+      }),
+    );
+    attachSatelliteLayer(satLayer);
 
     viewer.clock.shouldAnimate = false;
     initProceduralSky(viewer);
@@ -2303,21 +2515,11 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       const nearTown = agl < MUNICIPAL_3D_MAX_HEIGHT_M;
       // Per-frame cap: at 60fps a 0.016 ratio ≈ a full-window fling per second.
       // Left-drag rotate at street height then coasts to the horizon — keep it tight.
-      if (inLocal3d || (satOn && nearTown)) {
-        // Keep 3D orbit/tilt usable. Do not slow down as pitch goes toward the horizon —
-        // that made “getting a 3D view” crawl. Inertia stays low so a short pull stops.
-        camCtrl.maximumMovementRatio = 0.011;
-        camCtrl.inertiaTranslate = 0.06;
-        camCtrl.inertiaSpin = 0.06;
-        camCtrl.inertiaZoom = 0.28;
-        camCtrl.zoomFactor = satOn ? 5 : 7;
-      } else {
-        camCtrl.maximumMovementRatio = 0.016;
-        camCtrl.inertiaTranslate = 0.1;
-        camCtrl.inertiaSpin = 0.1;
-        camCtrl.inertiaZoom = 0.35;
-        camCtrl.zoomFactor = satOn ? 5 : 7;
-      }
+      // Strict hard-lock: zero inertia so dragging stops immediately without sliding/bouncing
+      camCtrl.inertiaTranslate = 0;
+      camCtrl.inertiaSpin = 0;
+      camCtrl.inertiaZoom = 0;
+      camCtrl.zoomFactor = satOn ? 5 : 7;
     };
     applyScopeRef.current = applyLuisianaScopeForCamera;
     applyLuisianaScopeForCamera();
@@ -2342,39 +2544,38 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
 
     // Right-drag = change camera angle (tilt). Zoom only via scroll wheel / pinch.
     const camCtrl = viewer.scene.screenSpaceCameraController;
-    // Wheel zoom is handled in onWheel so pan can stay slow without clamping scroll.
+    // Strict 2D mouse controls: left-drag rotates/pans globe surface in 2D, wheel zooms. Disable 3D tilt/orbit/look.
+    camCtrl.enableRotate = true;
+    camCtrl.enableTranslate = true;
+    camCtrl.enableZoom = true;
+    camCtrl.enableTilt = false;
+    camCtrl.enableLook = false;
+    camCtrl.rotateEventTypes = [Cesium.CameraEventType.LEFT_DRAG];
+    camCtrl.translateEventTypes = [Cesium.CameraEventType.LEFT_DRAG];
+    camCtrl.tiltEventTypes = [];
+    camCtrl.lookEventTypes = [];
     camCtrl.zoomEventTypes = [Cesium.CameraEventType.PINCH];
-    camCtrl.tiltEventTypes = [
-      Cesium.CameraEventType.RIGHT_DRAG,
-      Cesium.CameraEventType.MIDDLE_DRAG,
-      Cesium.CameraEventType.PINCH,
-      { eventType: Cesium.CameraEventType.LEFT_DRAG, modifier: Cesium.KeyboardEventModifier.CTRL },
-    ];
-    // Keep orbit around world-up so tilt cannot roll/flip the globe.
+
     camCtrl.constrainedAxis = Cesium.Cartesian3.UNIT_Z;
-    // Baseline; applyLuisianaScopeForCamera retunes for 3D / bottom view.
-    camCtrl.maximumMovementRatio = 0.011;
-    camCtrl.inertiaTranslate = 0.06;
-    camCtrl.inertiaSpin = 0.06;
-    camCtrl.inertiaZoom = 0.28;
-    camCtrl.zoomFactor = 7;
+    camCtrl.maximumMovementRatio = 0.08;
+    camCtrl.inertiaTranslate = 0.45;
+    camCtrl.inertiaSpin = 0.45;
+    camCtrl.inertiaZoom = 0.45;
+    camCtrl.zoomFactor = 5;
     camCtrl.enableCollisionDetection = true;
     camCtrl.minimumZoomDistance = MIN_CAMERA_HEIGHT_M;
-    camCtrl.maximumZoomDistance = 8_000_000;
-    // Collision only when actually near the ground — not while tilting at 1–8 km.
+    camCtrl.maximumZoomDistance = MAX_MUNICIPAL_ZOOM_OUT_HEIGHT_M;
     camCtrl.minimumCollisionTerrainHeight = COLLISION_TERRAIN_HEIGHT_M;
     if ("minimumPickingTerrainHeight" in camCtrl) {
       camCtrl.minimumPickingTerrainHeight = COLLISION_TERRAIN_HEIGHT_M;
     }
 
-    const clampCameraPitch = () => {
+    const clampCamera2d = () => {
       if (viewer.isDestroyed()) return;
       const cam = viewer.camera;
-      const pitch = cam.pitch;
-      if (pitch > MAX_CAMERA_PITCH) {
-        cam.lookDown(pitch - MAX_CAMERA_PITCH);
-      } else if (pitch < MIN_CAMERA_PITCH) {
-        cam.lookUp(MIN_CAMERA_PITCH - pitch);
+      const nadir = Cesium.Math.toRadians(-89.9);
+      if (cam.pitch > nadir + 0.02) {
+        cam.lookDown(cam.pitch - nadir);
       }
       if (Math.abs(cam.roll) > 0.008) {
         cam.twistLeft(cam.roll);
@@ -2386,10 +2587,25 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       if (viewer.isDestroyed() || checkingGround) return;
       checkingGround = true;
       try {
-        clampCameraPitch();
+        clampCamera2d();
         const cam = viewer.camera;
         const carto = cam.positionCartographic;
         if (!carto) return;
+        const curLon = Cesium.Math.toDegrees(carto.longitude);
+        const curLat = Cesium.Math.toDegrees(carto.latitude);
+        const curHeight = carto.height;
+
+        const clampedLon = Cesium.Math.clamp(
+          curLon,
+          LUISIANA_CAMERA_BOUNDS.minLon,
+          LUISIANA_CAMERA_BOUNDS.maxLon,
+        );
+        const clampedLat = Cesium.Math.clamp(
+          curLat,
+          LUISIANA_CAMERA_BOUNDS.minLat,
+          LUISIANA_CAMERA_BOUNDS.maxLat,
+        );
+
         const sampled = viewer.scene.globe.getHeight(carto);
         const ground =
           typeof sampled === "number" && Number.isFinite(sampled) ? sampled : 0;
@@ -2398,25 +2614,32 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
           ground + MIN_TERRAIN_CLEARANCE_M,
         );
 
-        if (carto.height >= minHeight) return;
+        let clampedHeight = curHeight;
+        if (curHeight < minHeight) {
+          clampedHeight = minHeight;
+        } else if (curHeight > MAX_MUNICIPAL_ZOOM_OUT_HEIGHT_M) {
+          clampedHeight = MAX_MUNICIPAL_ZOOM_OUT_HEIGHT_M;
+        }
 
-        // Lift only — keep the already-clamped pitch (do not setView, that flips).
-        const up = Cesium.Cartesian3.normalize(
-          Cesium.Cartesian3.fromRadians(carto.longitude, carto.latitude),
-          new Cesium.Cartesian3(),
-        );
-        const lift = minHeight - carto.height;
-        cam.position = Cesium.Cartesian3.add(
-          cam.position,
-          Cesium.Cartesian3.multiplyByScalar(up, lift, new Cesium.Cartesian3()),
-          new Cesium.Cartesian3(),
-        );
+        if (
+          clampedLon !== curLon ||
+          clampedLat !== curLat ||
+          clampedHeight !== curHeight
+        ) {
+          cam.position = Cesium.Cartesian3.fromDegrees(
+            clampedLon,
+            clampedLat,
+            clampedHeight,
+          );
+        }
       } finally {
         checkingGround = false;
       }
     };
     const removeKeepAbove = viewer.camera.changed.addEventListener(keepCameraAboveGround);
     const removeKeepAboveMoveEnd = viewer.camera.moveEnd.addEventListener(keepCameraAboveGround);
+    const removePreUpdate = () => {};
+    const removePreRender = () => {};
 
     const terrainSseWhileIdle = () =>
       terrainQualityToSse(mapSettingsRef.current.terrainQuality);
@@ -2438,222 +2661,6 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       viewer.scene.globe.depthTestAgainstTerrain = false;
       viewer.scene.globe.terrainExaggeration = 1;
     })();
-
-    // Luisiana-only extruded OSM blocks (pickable ids for block remover).
-    let buildingsCancelled = false;
-
-    const clearBuildingPrimitives = () => {
-      for (const p of buildingPrimitivesRef.current) {
-        try {
-          if (!viewer.isDestroyed()) viewer.scene.primitives.remove(p);
-        } catch {
-          /* ignore */
-        }
-      }
-      buildingPrimitivesRef.current = [];
-    };
-
-    const mountBuildingFootprints = async (footprints: BuildingFootprint[]) => {
-      if (buildingsCancelled || viewer.isDestroyed()) return;
-      clearBuildingPrimitives();
-      const removed = removedBlockIdsRef.current;
-
-      // Sort by proximity to town center (Municipal Office) so the most important 1200 buildings load
-      const sorted = [...footprints].sort((a, b) => {
-        const ca = a.ring[0] ? Math.hypot(a.ring[0][0] - MUNICIPAL_OFFICE.lon, a.ring[0][1] - MUNICIPAL_OFFICE.lat) : 999;
-        const cb = b.ring[0] ? Math.hypot(b.ring[0][0] - MUNICIPAL_OFFICE.lon, b.ring[0][1] - MUNICIPAL_OFFICE.lat) : 999;
-        return ca - cb;
-      });
-
-      const capped = sorted.slice(0, MAX_OSM_BUILDING_BLOCKS);
-      const roof = Cesium.Color.fromCssColorString(OSM_BLOCK_COLOR).withAlpha(1);
-      const kept: { b: BuildingFootprint; id: string }[] = [];
-      for (let i = 0; i < capped.length; i++) {
-        const b = capped[i];
-        const id = osmBuildingInstanceId(b.id, i);
-        if (removed.has(id)) continue;
-        if (b.ring.length < 4 || !ringSpanOk(b.ring)) continue;
-        const poly = luisianaRingRef.current;
-        if (poly && poly.length >= 4) {
-          let lon = 0;
-          let lat = 0;
-          let n = 0;
-          const closed =
-            b.ring[0][0] === b.ring[b.ring.length - 1][0] &&
-            b.ring[0][1] === b.ring[b.ring.length - 1][1];
-          const count = closed ? b.ring.length - 1 : b.ring.length;
-          for (let k = 0; k < count; k++) {
-            lon += b.ring[k][0];
-            lat += b.ring[k][1];
-            n++;
-          }
-          if (n < 3 || !isInsideLuisiana(lon / n, lat / n, poly)) continue;
-        }
-        kept.push({ b, id });
-      }
-
-      const terrain = viewer.terrainProvider;
-      const useDem = !(terrain instanceof Cesium.EllipsoidTerrainProvider);
-      const exag = viewer.scene.globe.terrainExaggeration || 1;
-      const relH = viewer.scene.globe.terrainExaggerationRelativeHeight || 0;
-
-      // Sample every ring vertex so the base follows the slope (centroid-only floated).
-      type Vert = { lon: number; lat: number };
-      const verts: Vert[] = [];
-      const ringLens: number[] = [];
-      for (let bi = 0; bi < kept.length; bi++) {
-        const ring = kept[bi].b.ring;
-        const n =
-          ring.length >= 2 &&
-            ring[0][0] === ring[ring.length - 1][0] &&
-            ring[0][1] === ring[ring.length - 1][1]
-            ? ring.length - 1
-            : ring.length;
-        ringLens.push(n);
-        for (let vi = 0; vi < n; vi++) {
-          verts.push({ lon: ring[vi][0], lat: ring[vi][1] });
-        }
-      }
-
-      const heightAt = new Float64Array(verts.length);
-      if (useDem && verts.length > 0) {
-        for (let j = 0; j < verts.length; j++) {
-          const carto = Cesium.Cartographic.fromDegrees(verts[j].lon, verts[j].lat);
-          const raw = viewer.scene.globe.getHeight(carto);
-          heightAt[j] =
-            typeof raw === "number" && Number.isFinite(raw)
-              ? exaggerateTerrainHeight(raw, exag, relH)
-              : 0;
-        }
-      }
-
-      const vertOffset: number[] = new Array(kept.length);
-      let cursor = 0;
-      for (let bi = 0; bi < kept.length; bi++) {
-        vertOffset[bi] = cursor;
-        cursor += ringLens[bi];
-      }
-
-      for (let i = 0; i < kept.length; i += OSM_BUILDING_BATCH) {
-        if (buildingsCancelled || viewer.isDestroyed()) return;
-        const sliceStart = i;
-        const slice = kept.slice(i, i + OSM_BUILDING_BATCH);
-        const instances: Cesium.GeometryInstance[] = [];
-        for (let s = 0; s < slice.length; s++) {
-          const bi = sliceStart + s;
-          const { b, id } = slice[s];
-          const n = ringLens[bi];
-          const off = vertOffset[bi];
-          const h = Math.max(3.5, Math.min(45, b.heightM));
-
-          if (useDem) {
-            let maxG = -Infinity;
-            const cartPositions: Cesium.Cartesian3[] = [];
-            for (let vi = 0; vi < n; vi++) {
-              const g = heightAt[off + vi];
-              if (g > maxG) maxG = g;
-              cartPositions.push(
-                Cesium.Cartesian3.fromDegrees(
-                  verts[off + vi].lon,
-                  verts[off + vi].lat,
-                  g + OSM_BLOCK_BASE_M,
-                ),
-              );
-            }
-            if (!Number.isFinite(maxG)) maxG = 0;
-            cartPositions.push(cartPositions[0].clone());
-            try {
-              instances.push(
-                new Cesium.GeometryInstance({
-                  id,
-                  geometry: new Cesium.PolygonGeometry({
-                    polygonHierarchy: new Cesium.PolygonHierarchy(cartPositions),
-                    perPositionHeight: true,
-                    extrudedHeight: maxG + OSM_BLOCK_BASE_M + h,
-                    vertexFormat: Cesium.PerInstanceColorAppearance.VERTEX_FORMAT,
-                    arcType: Cesium.ArcType.NONE,
-                  }),
-                  attributes: {
-                    color: Cesium.ColorGeometryInstanceAttribute.fromColor(roof),
-                  },
-                }),
-              );
-            } catch {
-              /* skip bad rings */
-            }
-          } else {
-            const positions: number[] = [];
-            for (const p of b.ring) positions.push(p[0], p[1]);
-            try {
-              instances.push(
-                new Cesium.GeometryInstance({
-                  id,
-                  geometry: new Cesium.PolygonGeometry({
-                    polygonHierarchy: new Cesium.PolygonHierarchy(
-                      Cesium.Cartesian3.fromDegreesArray(positions),
-                    ),
-                    height: OSM_BLOCK_BASE_M,
-                    extrudedHeight: OSM_BLOCK_BASE_M + h,
-                    vertexFormat: Cesium.PerInstanceColorAppearance.VERTEX_FORMAT,
-                    arcType: Cesium.ArcType.GEODESIC,
-                  }),
-                  attributes: {
-                    color: Cesium.ColorGeometryInstanceAttribute.fromColor(roof),
-                  },
-                }),
-              );
-            } catch {
-              /* skip */
-            }
-          }
-        }
-        if (instances.length === 0) continue;
-        const primitive = new Cesium.Primitive({
-          geometryInstances: instances,
-          appearance: new Cesium.PerInstanceColorAppearance({
-            closed: true,
-            translucent: false,
-            flat: false,
-          }),
-          asynchronous: true,
-          // Generic background blocks skip shadow pass so map stays 60fps (user models cast shadows)
-          shadows: Cesium.ShadowMode.DISABLED,
-          compressVertices: true,
-          cull: true,
-          allowPicking:
-            !placementModeRef.current || placementToolRef.current === "erase",
-        });
-        viewer.scene.primitives.add(primitive);
-        primitive.show =
-          buildingBlocksVisibleRef.current && !satelliteEnabledRef.current;
-        buildingPrimitivesRef.current.push(primitive);
-        viewer.scene.requestRender();
-        await new Promise((r) => setTimeout(r, 0));
-      }
-      console.info(
-        `[CesiumMap] Luisiana 3D blocks: ${kept.length} (removed ${removed.size}, terrain=${useDem})`,
-      );
-    };
-
-    rebuildBuildingsRef.current = async () => {
-      const fps = buildingFootprintsRef.current;
-      if (!fps || viewer.isDestroyed()) return;
-      await mountBuildingFootprints(fps);
-    };
-
-    // Delay OSM buildings fetch so GLB cold-cache downloads get bandwidth priority.
-    // 50ms caused buildings to compete with the initial GLB batch on first load.
-    window.setTimeout(async () => {
-      try {
-        if (buildingsCancelled || viewer.isDestroyed()) return;
-        const footprints = await fetchLuisianaBuildings();
-        if (buildingsCancelled || viewer.isDestroyed()) return;
-        buildingFootprintsRef.current = footprints;
-        await mountBuildingFootprints(footprints);
-      } catch (err) {
-        console.warn("[CesiumMap] Luisiana buildings failed:", err);
-      }
-    }, 2500);
 
     viewer.entities.add({
       id: "municipal-office",
@@ -2718,16 +2725,14 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     const cleanupMapReady = () => {
       tileLoadWatching = false;
       window.clearTimeout(mapReadyTimer);
+      window.removeEventListener("resize", updateResolution);
       try { removeTileProgress(); } catch { /* ignore */ }
     };
 
     return () => {
       cleanupMapReady();
       try {
-        rebuildBuildingsRef.current = null;
         applyScopeRef.current = null;
-        buildingFootprintsRef.current = null;
-        buildingsCancelled = true;
         try {
           removeCamChanged();
         } catch {
@@ -2745,6 +2750,16 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         }
         try {
           removeKeepAboveMoveEnd();
+        } catch {
+          /* ignore */
+        }
+        try {
+          removePreUpdate();
+        } catch {
+          /* ignore */
+        }
+        try {
+          removePreRender();
         } catch {
           /* ignore */
         }
@@ -2793,7 +2808,6 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
           /* ignore */
         }
         motionBlurRef.current = null;
-        gibsImageryRef.current = null;
         satelliteImageryRef.current = null;
         osmBasemapRef.current = null;
         cachedEsriLayerRef.current = null;
@@ -2823,27 +2837,31 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     const viewer = viewerRef.current;
     if (!viewer || viewer.isDestroyed()) return;
     const shouldRun = visible && !paused;
-    viewer.useDefaultRenderLoop = true;
-    if (shouldRun) {
-      viewer.resize();
-      viewer.scene.requestRender();
-      const t1 = window.setTimeout(() => {
-        if (!viewer.isDestroyed()) {
-          viewer.resize();
-          viewer.scene.requestRender();
-        }
-      }, 50);
-      const t2 = window.setTimeout(() => {
-        if (!viewer.isDestroyed()) {
-          viewer.resize();
-          viewer.scene.requestRender();
-        }
-      }, 200);
-      return () => {
-        window.clearTimeout(t1);
-        window.clearTimeout(t2);
-      };
+    if (!shouldRun) {
+      // FULLY PAUSE: Halt Cesium's render loop and requestAnimationFrame completely (0% GPU)
+      viewer.useDefaultRenderLoop = false;
+      return;
     }
+    // Resume render loop when visible and unpaused
+    viewer.useDefaultRenderLoop = true;
+    viewer.resize();
+    viewer.scene.requestRender();
+    const t1 = window.setTimeout(() => {
+      if (!viewer.isDestroyed()) {
+        viewer.resize();
+        viewer.scene.requestRender();
+      }
+    }, 50);
+    const t2 = window.setTimeout(() => {
+      if (!viewer.isDestroyed()) {
+        viewer.resize();
+        viewer.scene.requestRender();
+      }
+    }, 200);
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+    };
   }, [visible, paused]);
 
   // ── Satellite overlay ────────────────────────────────────────────────────
@@ -2851,7 +2869,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     const viewer = viewerRef.current;
     if (!viewer || viewer.isDestroyed() || !viewerReady) return;
     applySatelliteVisibilityRef.current();
-  }, [satellite, viewerReady, gibs?.enabled]);
+  }, [satellite, viewerReady]);
 
   // ── Official geohazard KMZ ground overlays (high-res leaf tiles) ─────────
   useEffect(() => {
@@ -2949,9 +2967,6 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       }
 
       if (!cancelled && !viewer.isDestroyed()) {
-        if (gibsImageryRef.current) {
-          viewer.imageryLayers.raiseToTop(gibsImageryRef.current);
-        }
         viewer.scene.requestRender();
       }
     };
@@ -2962,18 +2977,6 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       cancelled = true;
     };
   }, [viewerReady, hazardOverlays.eil2010, hazardOverlays.eq2014, hazardOverlays.gsh2014]);
-
-  // ── 3D block visibility (Luisiana OSM extrusions) ────────────────────────
-  useEffect(() => {
-    // Hide gray OSM blocks while satellite is on (photoreal roofs from imagery).
-    const show = buildingBlocksVisible && !satellite;
-    for (const p of buildingPrimitivesRef.current) {
-      p.show = show;
-    }
-    const viewer = viewerRef.current;
-    if (viewer && !viewer.isDestroyed()) viewer.scene.requestRender();
-  }, [buildingBlocksVisible, satellite, viewerReady]);
-
 
 
   useEffect(() => {
@@ -3023,7 +3026,6 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         // Ellipsoid collision is cheap — keep camera from going under the map.
         viewer.scene.screenSpaceCameraController.enableCollisionDetection = true;
         viewer.scene.requestRender();
-        if (!cancelled) await rebuildBuildingsRef.current?.();
         return;
       }
 
@@ -3056,14 +3058,6 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
           viewer.scene.requestRender();
           frames++;
           await new Promise((r) => setTimeout(r, 300));
-        }
-        if (!cancelled && !viewer.isDestroyed() && !satelliteEnabledRef.current) {
-          await rebuildBuildingsRef.current?.();
-        }
-        // One delayed rebuild once more tiles arrive — no continuous poll.
-        await new Promise((r) => setTimeout(r, 1200));
-        if (!cancelled && !viewer.isDestroyed() && !satelliteEnabledRef.current) {
-          await rebuildBuildingsRef.current?.();
         }
         console.info("[CesiumMap] 3D terrain enabled (perf SSE)");
         applySatelliteVisibilityRef.current();
@@ -3138,6 +3132,70 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
 
     viewer.scene.requestRender();
   }, [mapSettings, terrainEnabled, viewerReady]);
+
+  // ── Stadia Basemap Style (Outdoors, Watercolor, Smooth, Dark, Stamen Terrain, Toner, etc.) ──
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer || viewer.isDestroyed() || !viewerReady) return;
+    const style = mapSettings.basemapStyle || STADIA_DEFAULT_STYLE;
+    const streetTileUrl = stadiaRasterTileUrl(style, { retina: true });
+
+    const prevLayer = osmBasemapRef.current;
+
+    // Add the new imagery layer cleanly above previous layer
+    const newProvider = new Cesium.UrlTemplateImageryProvider({
+      url: streetTileUrl,
+      credit: STADIA_ATTRIBUTION,
+      maximumLevel: 20,
+      minimumLevel: 0,
+      tileWidth: 512,
+      tileHeight: 512,
+      hasAlphaChannel: false,
+      tilingScheme: new Cesium.WebMercatorTilingScheme(),
+    });
+
+    const newLayer = viewer.imageryLayers.addImageryProvider(newProvider);
+    osmBasemapRef.current = newLayer;
+    applySatelliteVisibilityRef.current?.();
+
+    // Clean up previous layer only once new layer tiles are loaded so there is zero blank flickering
+    let cleanedUp = false;
+    const cleanupPrev = () => {
+      if (cleanedUp) return;
+      cleanedUp = true;
+      if (prevLayer && !prevLayer.isDestroyed()) {
+        try {
+          viewer.imageryLayers.remove(prevLayer, true);
+        } catch {
+          /* ignore */
+        }
+      }
+      viewer.scene.requestRender();
+    };
+
+    const removeListener = viewer.scene.globe.tileLoadProgressEvent.addEventListener((queueLength) => {
+      if (queueLength === 0) {
+        cleanupPrev();
+        try {
+          removeListener();
+        } catch {}
+      }
+    });
+
+    const fallbackTimer = setTimeout(() => {
+      cleanupPrev();
+      try {
+        removeListener();
+      } catch {}
+    }, 1500);
+
+    return () => {
+      clearTimeout(fallbackTimer);
+      try {
+        removeListener();
+      } catch {}
+    };
+  }, [mapSettings.basemapStyle, viewerReady]);
 
   // ── Sync solar clock + light from hour + azimuth dial ────────────────────
   useEffect(() => {
@@ -3248,124 +3306,11 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     return () => registerTerrainSatSampler(null);
   }, [viewerReady, terrainEnabled, satellite]);
 
-  // ── NASA GIBS precip / climate WMTS overlay ──────────────────────────────
-  useEffect(() => {
-    const viewer = viewerRef.current;
-    if (!viewer || viewer.isDestroyed() || !viewerReady) return;
-
-    const removeGibs = () => {
-      if (gibsImageryRef.current) {
-        try {
-          viewer.imageryLayers.remove(gibsImageryRef.current, false);
-        } catch {
-          /* layer may already be gone */
-        }
-        gibsImageryRef.current = null;
-      }
-    };
-
-    if (!gibs?.enabled) {
-      removeGibs();
-      return;
-    }
-
-    removeGibs();
-
-    const provider = new Cesium.UrlTemplateImageryProvider({
-      url: gibsWmtsTileUrl({ layer: gibs.layer, date: gibs.date }),
-      tilingScheme: new Cesium.WebMercatorTilingScheme(),
-      maximumLevel: gibsMaximumLevel(gibs.layer),
-      tileWidth: 256,
-      tileHeight: 256,
-      credit: "NASA GIBS / Earthdata",
-    });
-
-    const layer = viewer.imageryLayers.addImageryProvider(provider);
-    layer.alpha = Math.max(0, Math.min(1, gibs.opacity));
-    layer.show = true;
-    // Keep GIBS above basemap but below labels if any — raise to top of stack
-    viewer.imageryLayers.raiseToTop(layer);
-    gibsImageryRef.current = layer;
-
-    return () => {
-      if (!viewer.isDestroyed()) removeGibs();
-    };
-  }, [viewerReady, gibs?.enabled, gibs?.layer, gibs?.date, gibs?.opacity]);
-
-  // ── GIBS hover readout (pixel → colormap value) ──────────────────────────
-  useEffect(() => {
-    const viewer = viewerRef.current;
-    if (!viewer || viewer.isDestroyed() || !viewerReady) return;
-
-    if (!gibs?.enabled) {
-      setGibsHover(null);
-      return;
-    }
-
-    const sampler = createGibsHoverSampler(200);
-    const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
-    const canvas = viewer.scene.canvas;
-
-    const clear = () => {
-      sampler.cancel();
-      setGibsHover(null);
-    };
-
-    handler.setInputAction((move: { endPosition: Cesium.Cartesian2 }) => {
-      const g = gibsRef.current;
-      if (!g?.enabled) {
-        clear();
-        return;
-      }
-      // Skip while model drag locks camera rotate/translate.
-      const cam = viewer.scene.screenSpaceCameraController;
-      if (!cam.enableRotate || !cam.enableTranslate) return;
-      if (blockRemoverActiveRef.current) {
-        clear();
-        return;
-      }
-
-      const ll = pickGlobeLngLat(viewer, move.endPosition);
-      if (!ll) {
-        clear();
-        return;
-      }
-
-      const screenX = move.endPosition.x;
-      const screenY = move.endPosition.y;
-      sampler.schedule(
-        { layer: g.layer, date: g.date, lon: ll.lng, lat: ll.lat },
-        (result: GibsSampleResult | null) => {
-          if (!result) {
-            setGibsHover(null);
-            return;
-          }
-          setGibsHover({
-            x: screenX,
-            y: screenY,
-            title: result.layerName,
-            valueText: result.valueText,
-          });
-        },
-      );
-    }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
-
-    const onLeave = () => clear();
-    canvas.addEventListener("mouseleave", onLeave);
-
-    return () => {
-      clear();
-      canvas.removeEventListener("mouseleave", onLeave);
-      handler.destroy();
-    };
-  }, [viewerReady, gibs?.enabled, gibs?.layer, gibs?.date]);
-
   // ── Unified entity hover (one scene.pick, throttled) ─────────────────────
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer || viewer.isDestroyed() || !viewerReady) return;
 
-    if (!tropicalEnabled) setHoveredTropical(null);
     if (!earthquakeEnabled) setHoveredQuake(null);
 
     const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
@@ -3378,18 +3323,6 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     let lastPickAt = 0;
     let pendingPos: Cesium.Cartesian2 | null = null;
     let rafId = 0;
-
-    const tropicalBasePx = (id: string) => {
-      const system = tropicalSystemsRef.current.find((s) => s.id === id);
-      return system?.stage === "invest" || system?.lpaWatch ? 14 : 18;
-    };
-
-    const clearTropicalVisual = (id: string) => {
-      if (!viewerAlive(viewer)) return;
-      const ent = viewer.entities.getById(tropicalEntityId(id));
-      if (ent?.point) ent.point.pixelSize = new Cesium.ConstantProperty(tropicalBasePx(id));
-      if (ent?.label) ent.label.show = new Cesium.ConstantProperty(false);
-    };
 
     const clearQuakeVisual = (id: string) => {
       if (!viewerAlive(viewer)) return;
@@ -3417,13 +3350,11 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       }
       const had = lastId != null || hoveredProjectIdRef.current != null;
       if (!had) return;
-      if (lastKind === "tropical" && lastId) clearTropicalVisual(lastId);
       if (lastKind === "quake" && lastId) clearQuakeVisual(lastId);
       if (lastKind === "project" && lastId) clearProjectVisual(lastId);
       lastKind = null;
       lastId = null;
       hoveredProjectIdRef.current = null;
-      setHoveredTropical(null);
       setHoveredQuake(null);
       setHoveredProject(null);
       if (
@@ -3442,20 +3373,10 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         Math.abs(y - lastTooltipY) >= HOVER_POS_DELTA_PX;
 
       if (idChanged) {
-        if (lastKind === "tropical" && lastId) clearTropicalVisual(lastId);
         if (lastKind === "quake" && lastId) clearQuakeVisual(lastId);
         if (lastKind === "project" && lastId) clearProjectVisual(lastId);
 
-        if (hit.kind === "tropical") {
-          const ent = viewer.entities.getById(tropicalEntityId(hit.id));
-          if (ent?.point) {
-            ent.point.pixelSize = new Cesium.ConstantProperty(tropicalBasePx(hit.id) + 6);
-          }
-          if (ent?.label) ent.label.show = new Cesium.ConstantProperty(true);
-          hoveredProjectIdRef.current = null;
-          setHoveredProject(null);
-          setHoveredQuake(null);
-        } else if (hit.kind === "quake") {
+        if (hit.kind === "quake") {
           const idx = Number(hit.id);
           const cell = earthquakeGridRef.current[idx];
           const ent = viewer.entities.getById(quakeEntityId(idx));
@@ -3466,12 +3387,10 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
           }
           hoveredProjectIdRef.current = null;
           setHoveredProject(null);
-          setHoveredTropical(null);
         } else {
           const project = projectsRef.current.find((proj) => proj.id === hit.id);
           if (project) applyProjectHoverVisual(viewer, project, true);
           hoveredProjectIdRef.current = hit.id;
-          setHoveredTropical(null);
           setHoveredQuake(null);
         }
 
@@ -3485,10 +3404,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       lastTooltipX = x;
       lastTooltipY = y;
       canvas.style.cursor = "pointer";
-      if (hit.kind === "tropical") {
-        const system = tropicalSystemsRef.current.find((s) => s.id === hit.id);
-        if (system) setHoveredTropical({ system, x, y });
-      } else if (hit.kind === "quake") {
+      if (hit.kind === "quake") {
         const cell = earthquakeGridRef.current[Number(hit.id)];
         if (cell) setHoveredQuake({ cell, x, y });
       } else {
@@ -3535,7 +3451,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       const cam = viewer.scene.screenSpaceCameraController;
       if (!cam.enableRotate || !cam.enableTranslate) return;
 
-      const hit = pickHoverHit(viewer, screenPos);
+      const hit = pickHoverHit(viewer, screenPos, projectsRef.current);
       if (
         editModeRef.current &&
         selectedIdRef.current &&
@@ -3548,12 +3464,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         clearAllHover();
         return;
       }
-      if (hit.kind === "tropical") {
-        if (!tropicalEnabled) {
-          clearAllHover();
-          return;
-        }
-      } else if (hit.kind === "quake") {
+      if (hit.kind === "quake") {
         if (!earthquakeEnabledRef.current) {
           clearAllHover();
           return;
@@ -3565,6 +3476,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
           return;
         }
       }
+
       applyHit(hit, screenPos.x, screenPos.y);
     };
 
@@ -3609,121 +3521,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         /* viewer gone */
       }
     };
-  }, [viewerReady, tropicalEnabled, earthquakeEnabled]);
-
-  // ── Tropical systems (Invest / TC) markers + track ───────────────────────
-  useEffect(() => {
-    const viewer = viewerRef.current;
-    if (!viewer || viewer.isDestroyed() || !viewerReady) return;
-
-    const nextIds = new Set<string>();
-    if (tropicalEnabled) {
-      for (const system of tropicalSystems) {
-        if (!Number.isFinite(system.lon) || !Number.isFinite(system.lat)) continue;
-        nextIds.add(system.id);
-        const color = parseHexColor(getTropicalColor(system));
-        const icon = getTropicalIcon(system);
-        const stageTitle = getTropicalStageMeta(system.stage).title;
-        const labelText = `${icon} ${system.label}`;
-        const position = Cesium.Cartesian3.fromDegrees(system.lon, system.lat);
-
-        const eid = tropicalEntityId(system.id);
-        let ent = viewer.entities.getById(eid);
-        if (!ent) {
-          ent = viewer.entities.add({
-            id: eid,
-            name: `${stageTitle} · ${system.intensityKt} kt`,
-            position,
-            point: {
-              pixelSize: system.stage === "invest" || system.lpaWatch ? 14 : 18,
-              color,
-              outlineColor: Cesium.Color.WHITE,
-              outlineWidth: 2,
-              heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-              disableDepthTestDistance: Number.POSITIVE_INFINITY,
-            },
-            label: {
-              text: labelText,
-              font: "12px sans-serif",
-              fillColor: Cesium.Color.WHITE,
-              outlineColor: Cesium.Color.BLACK,
-              outlineWidth: 3,
-              style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-              verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-              pixelOffset: new Cesium.Cartesian2(0, -18),
-              heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-              disableDepthTestDistance: Number.POSITIVE_INFINITY,
-              showBackground: true,
-              backgroundColor: Cesium.Color.fromCssColorString("#0c121ce6"),
-              backgroundPadding: new Cesium.Cartesian2(6, 4),
-              scaleByDistance: new Cesium.NearFarScalar(5e3, 1.0, 8e5, 0.3),
-              show: false,
-            },
-            description: formatTropicalInfo(system),
-          });
-        } else {
-          ent.position = new Cesium.ConstantPositionProperty(position);
-          if (ent.point) {
-            ent.point.color = new Cesium.ConstantProperty(color);
-            ent.point.pixelSize = new Cesium.ConstantProperty(
-              system.stage === "invest" || system.lpaWatch ? 14 : 18,
-            );
-          }
-          if (ent.label) {
-            ent.label.text = new Cesium.ConstantProperty(labelText);
-          }
-          ent.description = new Cesium.ConstantProperty(formatTropicalInfo(system));
-        }
-
-        const trackId = tropicalTrackEntityId(system.id);
-        const trackPts = system.track?.filter(
-          (p) => Number.isFinite(p.lon) && Number.isFinite(p.lat),
-        );
-        if (trackPts && trackPts.length >= 2) {
-          const positions = trackPts.flatMap((p) => [p.lon, p.lat]);
-          const polylinePositions = Cesium.Cartesian3.fromDegreesArray(positions);
-          let trackEnt = viewer.entities.getById(trackId);
-          if (!trackEnt) {
-            viewer.entities.add({
-              id: trackId,
-              name: `${system.label} track`,
-              polyline: {
-                positions: polylinePositions,
-                width: 2,
-                material: color.withAlpha(0.75),
-                clampToGround: false,
-                arcType: Cesium.ArcType.GEODESIC,
-              },
-            });
-          } else if (trackEnt.polyline) {
-            trackEnt.polyline.positions = new Cesium.ConstantProperty(polylinePositions);
-            trackEnt.polyline.material = new Cesium.ColorMaterialProperty(color.withAlpha(0.75));
-          }
-        } else {
-          const trackEnt = viewer.entities.getById(trackId);
-          if (trackEnt) viewer.entities.remove(trackEnt);
-        }
-      }
-    }
-
-    for (const id of [...tropicalIdsRef.current]) {
-      if (!nextIds.has(id)) {
-        const ent = viewer.entities.getById(tropicalEntityId(id));
-        if (ent) viewer.entities.remove(ent);
-        const trackEnt = viewer.entities.getById(tropicalTrackEntityId(id));
-        if (trackEnt) viewer.entities.remove(trackEnt);
-      }
-    }
-    tropicalIdsRef.current = nextIds;
-
-    if (!tropicalEnabled) {
-      setSelectedTropicalId(null);
-    } else {
-      setSelectedTropicalId((prev) => (prev && !nextIds.has(prev) ? null : prev));
-    }
-
-    viewer.scene.requestRender();
-  }, [viewerReady, tropicalEnabled, tropicalSystems]);
+  }, [viewerReady, earthquakeEnabled]);
 
   // ── Earthquake-prone siting grid ─────────────────────────────────────────
   useEffect(() => {
@@ -3790,6 +3588,34 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       return;
     }
     let cancelled = false;
+    const isAllowedProject = (proj: any) => {
+      if (!proj?.location?.lon || !proj?.location?.lat) return false;
+      if (proj.modelType === "custom" || proj.customModelUrl) return false;
+      if (proj.siteMarkerOnly) {
+        if (
+          proj.id === "pinpoint_site_pin" ||
+          proj.isPickerPin ||
+          (typeof proj.id === "string" && (
+            proj.id.includes("pinpoint") ||
+            proj.id.includes("picker") ||
+            proj.id.includes("draft") ||
+            proj.id.includes("temp")
+          ))
+        ) {
+          return true;
+        }
+        return Boolean(
+          proj.isPrivateApplication ||
+          proj.trackingNumber ||
+          (typeof proj.id === "string" && (proj.id.startsWith("app-") || proj.id.startsWith("infra-app-"))) ||
+          proj.type === "Private Building" ||
+          proj.fundingSource?.includes("Private") ||
+          proj.contractor?.includes("Private")
+        );
+      }
+      return true;
+    };
+
     void earthquakeProneModel
       .predictAt(selectedQuakeCell.lon, selectedQuakeCell.lat)
       .then((score) => {
@@ -3808,8 +3634,38 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     const viewer = viewerRef.current;
     if (!viewer || viewer.isDestroyed() || !viewerReady) return;
 
+    const isAllowedProject = (proj: any) => {
+      if (!proj?.location?.lon || !proj?.location?.lat) return false;
+      if (proj.modelType === "custom" || proj.customModelUrl) return false;
+      if (proj.siteMarkerOnly) {
+        if (
+          proj.id === "pinpoint_site_pin" ||
+          proj.isPickerPin ||
+          (typeof proj.id === "string" && (
+            proj.id.includes("pinpoint") ||
+            proj.id.includes("picker") ||
+            proj.id.includes("draft") ||
+            proj.id.includes("temp")
+          ))
+        ) {
+          return true;
+        }
+        return Boolean(
+          proj.isPrivateApplication ||
+          proj.trackingNumber ||
+          (typeof proj.id === "string" && (proj.id.startsWith("app-") || proj.id.startsWith("infra-app-"))) ||
+          proj.type === "Private Building" ||
+          proj.fundingSource?.includes("Private") ||
+          proj.contractor?.includes("Private")
+        );
+      }
+      return true;
+    };
+
     const nextIds = new Set(
-      projects.filter((p) => p?.location?.lon && p?.location?.lat).map((p) => p.id),
+      projects
+        .filter(isAllowedProject)
+        .map((p) => p.id),
     );
 
     for (const id of [...loadedIdsRef.current]) {
@@ -3836,26 +3692,24 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     }
 
     for (const p of projects) {
-      if (!p?.location?.lon || !p?.location?.lat) continue;
-      const xf = ensureXform(p);
+      if (!isAllowedProject(p)) continue;
+
       const eid = entityIdFor(p.id);
-      const scale = modelScaleValue(p, xf.scaleMultiplier);
       let ent = viewer.entities.getById(eid);
+      const xf = ensureXform(p);
+      const onGround = Math.abs(xf.heightM) < 1e-4;
+      const position = onGround
+        ? Cesium.Cartesian3.fromDegrees(xf.lon, xf.lat)
+        : Cesium.Cartesian3.fromDegrees(xf.lon, xf.lat, xf.heightM);
+      const isSitePin = isSitePinProject(p);
 
       if (!ent) {
-        const onGround = Math.abs(xf.heightM) < 1e-4;
-        const position = onGround
-          ? Cesium.Cartesian3.fromDegrees(xf.lon, xf.lat)
-          : Cesium.Cartesian3.fromDegrees(xf.lon, xf.lat, xf.heightM);
         projectSpheresRef.current.set(p.id, new Cesium.BoundingSphere(position, 40));
         const heightRef = onGround
           ? Cesium.HeightReference.CLAMP_TO_GROUND
           : Cesium.HeightReference.RELATIVE_TO_GROUND;
         const heading = Cesium.Math.toRadians(-xf.rotationDeg);
-        // Pin only — full GLB is attached later when the camera is nearby (cached),
-        // unless this is an MPDC site marker (pin forever until Engineering places a model).
-        const isSitePin = Boolean(p.siteMarkerOnly);
-        const pinColor = p.markerColor || p.mapSketch?.color || (isSitePin ? "#c47a1a" : "#151c28");
+        const pinColor = isSitePin ? getPinColorForProject(p) : (p.markerColor || p.mapSketch?.color || "#151c28");
         const displayName = p.name?.trim() || "Untitled site";
         const cameraHeightM = () => viewer.camera.positionCartographic.height;
         ent = viewer.entities.add({
@@ -3866,20 +3720,34 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
             position,
             new Cesium.HeadingPitchRoll(heading, 0, 0),
           ),
-          // Pins/labels: no shadow caster overhead. GLB uses ModelGraphics.ENABLED.
           shadows: Cesium.ShadowMode.DISABLED,
+          billboard: {
+            image: getPinSvgForProject(p),
+            verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+            heightReference: heightRef,
+            width: 38,
+            height: 48,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            scaleByDistance: new Cesium.NearFarScalar(500, 1.0, 100000, 0.85),
+            eyeOffset: new Cesium.Cartesian3(0, 0, -10),
+            show: new Cesium.CallbackProperty(() => {
+              if (isSitePinProject(p)) return true;
+              const h = cameraHeightM();
+              return h > 800 || !modelVisibleRef.current.has(p.id) || !modelAttachedRef.current.has(p.id);
+            }, false),
+          },
           point: {
-            pixelSize: isSitePin ? 16 : 10,
+            pixelSize: 10,
             color: Cesium.Color.fromCssColorString(pinColor),
             outlineColor: Cesium.Color.WHITE,
-            outlineWidth: isSitePin ? 3 : 2,
+            outlineWidth: 2,
             heightReference: heightRef,
             disableDepthTestDistance: Number.POSITIVE_INFINITY,
             show: new Cesium.CallbackProperty(
               () =>
-                isSitePin ||
-                !modelAttachedRef.current.has(p.id) ||
-                !modelVisibleRef.current.has(p.id),
+                !isSitePin &&
+                (!modelAttachedRef.current.has(p.id) ||
+                  !modelVisibleRef.current.has(p.id)),
               false,
             ),
           },
@@ -3900,7 +3768,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
             backgroundColor: Cesium.Color.fromCssColorString("#0c121ce6"),
             backgroundPadding: new Cesium.Cartesian2(7, 5),
             verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-            pixelOffset: new Cesium.Cartesian2(0, isSitePin ? -28 : -36),
+            pixelOffset: new Cesium.Cartesian2(0, isSitePin ? -50 : -36),
             heightReference: heightRef,
             disableDepthTestDistance: Number.POSITIVE_INFINITY,
             scaleByDistance: new Cesium.NearFarScalar(400, 1.0, 9000, 0.35),
@@ -3946,9 +3814,12 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
           lon: xf.lon,
           lat: xf.lat,
         });
-        if (ent.point && (p.markerColor || p.mapSketch?.color)) {
+        if (ent.point && !isSitePin && (p.markerColor || p.mapSketch?.color)) {
           const c = p.markerColor || p.mapSketch?.color || "#151c28";
           ent.point.color = new Cesium.ConstantProperty(Cesium.Color.fromCssColorString(c));
+        }
+        if (isSitePin && ent.point) {
+          ent.point.show = new Cesium.ConstantProperty(false);
         }
       }
       syncProjectSketchEntities(viewer, p);
@@ -4004,6 +3875,8 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       const groups = new Map<string, Project[]>();
       if (cell) {
         for (const p of list) {
+          // Never cluster site pins so they remain individually visible even from high altitude ("malayo na sa taas")
+          if (isSitePinProject(p)) continue;
           const gx = Math.floor(p.location.lon / cell);
           const gy = Math.floor(p.location.lat / cell);
           const key = `${gx}:${gy}`;
@@ -4064,7 +3937,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       for (const p of list) {
         const eid = entityIdFor(p.id);
         const ent = viewer.entities.getById(eid);
-        const show = !clusteredIds.has(p.id);
+        const show = isSitePinProject(p) || !clusteredIds.has(p.id);
         if (ent) ent.show = show;
         const line = viewer.entities.getById(`${eid}-sketch-line`);
         if (line) line.show = show;
@@ -5184,25 +5057,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       }
       if (moving || rotating || scaling) return;
 
-      // Block remover: click an OSM extrusion to delete it (persisted locally).
-      if (
-        blockRemoverActiveRef.current &&
-        (canEditModelsRef.current || placementToolRef.current === "erase")
-      ) {
-        const bldgId = pickOsmBuildingId(viewer, click.position);
-        if (bldgId) {
-          removedBlockIdsRef.current.add(bldgId);
-          saveRemovedBlockIds(removedBlockIdsRef.current);
-          setRemovedBlockCount(removedBlockIdsRef.current.size);
-          void rebuildBuildingsRef.current?.();
-          return;
-        }
-        // Erase tool: ignore globe clicks (don't drop a pin).
-        if (placementToolRef.current === "erase") return;
-      }
-
       if (placementModeRef.current) {
-        if (placementToolRef.current === "erase") return;
         if (placementToolRef.current === "line") return;
         const ll = pickGlobeLngLat(viewer, click.position);
         if (!ll) return;
@@ -5246,7 +5101,11 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         return;
       }
 
-      const hitId = pickProjectId(viewer, click.position);
+      let hitId = pickProjectId(viewer, click.position, projectsRef.current);
+      if (!hitId) {
+        const nearProj = findProjectNearScreenPoint(viewer, click.position, projectsRef.current, 36);
+        if (nearProj) hitId = nearProj.id;
+      }
       if (editModeRef.current && selectedIdRef.current) {
         if (pickGizmoHandle(viewer, click.position)) {
           viewer.selectedEntity = undefined;
@@ -5259,7 +5118,6 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         }
         if (!hitId) {
           setSelectedId(null);
-          setSelectedTropicalId(null);
           setSelectedQuakeCell(null);
           setConfirmDelete(false);
           setEditOpen(false);
@@ -5267,7 +5125,6 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         viewer.selectedEntity = undefined;
         return;
       }
-      const tropicalHit = pickTropicalId(viewer, click.position);
       const pickedEnt = viewer.scene.pick(click.position);
       const pickedEid =
         Cesium.defined(pickedEnt) && (pickedEnt as { id?: Cesium.Entity }).id instanceof Cesium.Entity
@@ -5290,28 +5147,45 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       }
 
       if (hitId) {
+        const p = projectsRef.current.find(
+          (x) =>
+            x.id === hitId ||
+            x.id === `app-${hitId}` ||
+            x.id === `infra-app-${hitId}` ||
+            hitId === `app-${x.id}` ||
+            hitId === `infra-app-${x.id}` ||
+            (x as any).trackingNumber === hitId ||
+            (x as any).applicationId === hitId,
+        );
+        if (
+          p &&
+          (p.siteMarkerOnly ||
+            (p as any).isPrivateApplication ||
+            (p as any).trackingNumber ||
+            p.id.startsWith("app-") ||
+            p.id.startsWith("infra-app-"))
+        ) {
+          onSelectSitePinRef.current?.(p);
+          setSelectedId(null);
+          setSelectedQuakeCell(null);
+          setConfirmDelete(false);
+          setEditOpen(false);
+          viewer.selectedEntity = undefined;
+          return;
+        }
         setSelectedId(hitId);
-        setSelectedTropicalId(null);
         setSelectedQuakeCell(null);
         setConfirmDelete(false);
         setEditOpen(false);
         setTransformDirty(Boolean(xformsRef.current.get(hitId)?.dirty));
         onProjectSelectRef.current?.(hitId);
-      } else if (tropicalHit) {
-        setSelectedId(null);
-        setSelectedTropicalId(tropicalHit);
-        setSelectedQuakeCell(null);
-        setConfirmDelete(false);
-        setEditOpen(false);
       } else if (quakeHit != null && earthquakeEnabledRef.current) {
         setSelectedId(null);
-        setSelectedTropicalId(null);
         setSelectedQuakeCell(earthquakeGridRef.current[quakeHit] ?? null);
         setConfirmDelete(false);
         setEditOpen(false);
       } else {
         setSelectedId(null);
-        setSelectedTropicalId(null);
         setSelectedQuakeCell(null);
         setConfirmDelete(false);
         setEditOpen(false);
@@ -5373,9 +5247,16 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       if (e.deltaMode === 2) dy *= 800;
       const mag = Math.min(1.6, Math.max(0.45, Math.abs(dy) / 90));
       const h = cameraHeightAboveSurface(viewer);
-      const amount = Math.max(40, h * 0.32 * mag);
-      if (dy < 0) viewer.camera.zoomIn(amount);
-      else viewer.camera.zoomOut(amount);
+      if (dy < 0) {
+        const amount = Math.max(40, h * 0.32 * mag);
+        viewer.camera.zoomIn(amount);
+      } else {
+        if (h < MAX_MUNICIPAL_ZOOM_OUT_HEIGHT_M) {
+          const rawAmount = Math.max(40, h * 0.32 * mag);
+          const amount = Math.min(rawAmount, MAX_MUNICIPAL_ZOOM_OUT_HEIGHT_M - h);
+          if (amount > 2) viewer.camera.zoomOut(amount);
+        }
+      }
       resizeEditGizmo(viewer);
       viewer.scene.requestRender();
     };
@@ -5399,7 +5280,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
           target.isContentEditable);
       if (e.key === "Escape") {
         setSelectedId(null);
-        setSelectedTropicalId(null);
+        setSelectedQuakeCell(null);
         setConfirmDelete(false);
         setEditOpen(false);
         setEditTool("select");
@@ -5508,22 +5389,16 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer || viewer.isDestroyed() || !viewerReady) return;
-    viewer.canvas.style.cursor = placementMode
-      ? "crosshair"
-      : blockRemoverActive
-        ? "cell"
-        : "";
-    if (placementMode || blockRemoverActive) {
+    viewer.canvas.style.cursor = placementMode ? "crosshair" : "";
+    if (placementMode) {
       if (hoveredProjectIdRef.current) {
         const prev = projectsRef.current.find((p) => p.id === hoveredProjectIdRef.current);
         if (prev) applyProjectHoverVisual(viewer, prev, false);
         hoveredProjectIdRef.current = null;
       }
       setHoveredProject(null);
-      setHoveredTropical(null);
       setHoveredQuake(null);
       setSelectedId(null);
-      setSelectedTropicalId(null);
       setSelectedQuakeCell(null);
       setConfirmDelete(false);
       setEditOpen(false);
@@ -5532,7 +5407,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     return () => {
       if (viewerAlive(viewer)) viewer.canvas.style.cursor = "";
     };
-  }, [placementMode, blockRemoverActive, placementTool, viewerReady]);
+  }, [placementMode, placementTool, viewerReady]);
 
   // Camera zoom stays on. Wheel scales a model only when the cursor is on it (see onWheel).
 
@@ -5862,11 +5737,6 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       }
       : selectedProject;
 
-  const selectedTropicalSystem =
-    selectedTropicalId && tropicalEnabled
-      ? tropicalSystems.find((s) => s.id === selectedTropicalId) ?? null
-      : null;
-
   const quakeHeatSites = useMemo(
     () =>
       earthquakeGrid.map((c) => ({
@@ -5892,7 +5762,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
           style={{
             position: "absolute",
             inset: 0,
-            cursor: placementMode ? "crosshair" : blockRemoverActive ? "cell" : undefined,
+            cursor: placementMode ? "crosshair" : undefined,
             opacity: mapReady ? 1 : 0,
             transition: "opacity 0.55s ease",
           }}
@@ -5997,31 +5867,6 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
             highLabel="HIGH · iwasan"
           />
         )}
-        {gibsHover && gibs?.enabled && (
-          <div
-            role="status"
-            aria-live="polite"
-            style={{
-              position: "absolute",
-              left: Math.min(gibsHover.x + 14, (containerRef.current?.clientWidth ?? 320) - 160),
-              top: Math.max(8, gibsHover.y - 44),
-              pointerEvents: "none",
-              zIndex: 5,
-              maxWidth: 220,
-              padding: "6px 10px",
-              borderRadius: 2,
-              background: "rgba(12, 18, 28, 0.92)",
-              color: "#f4f6f8",
-              border: "1px solid rgba(255,255,255,0.18)",
-              boxShadow: "2px 2px 0 rgba(0,0,0,0.35)",
-              fontSize: 12,
-              lineHeight: 1.35,
-            }}
-          >
-            <div style={{ fontWeight: 700, opacity: 0.85, marginBottom: 2 }}>{gibsHover.title}</div>
-            <div style={{ fontWeight: 600 }}>{gibsHover.valueText}</div>
-          </div>
-        )}
         {hoveredQuake && earthquakeEnabled && !modelsFrozen && (
           <div
             role="status"
@@ -6070,62 +5915,6 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
             </div>
           </div>
         )}
-        {hoveredTropical && tropicalEnabled && !modelsFrozen && (
-          <div
-            role="status"
-            aria-live="polite"
-            style={{
-              position: "absolute",
-              left: Math.min(
-                hoveredTropical.x + 14,
-                (containerRef.current?.clientWidth ?? 360) - 280,
-              ),
-              top: Math.min(
-                hoveredTropical.y + 14,
-                (containerRef.current?.clientHeight ?? 400) - 140,
-              ),
-              pointerEvents: "none",
-              zIndex: 14,
-              width: 280,
-              maxWidth: "min(280px, calc(100% - 24px))",
-              padding: "10px 12px",
-              background: "rgba(12, 18, 28, 0.95)",
-              border: `2px solid ${getTropicalColor(hoveredTropical.system)}`,
-              boxShadow: "3px 3px 0 rgba(0,0,0,0.4)",
-              color: "#f4f6f8",
-              fontSize: 12,
-              lineHeight: 1.35,
-            }}
-          >
-            <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 6 }}>
-              <span style={{ fontSize: 18, color: getTropicalColor(hoveredTropical.system) }}>
-                {getTropicalIcon(hoveredTropical.system)}
-              </span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, marginBottom: 2 }}>{hoveredTropical.system.label}</div>
-                <div style={{ opacity: 0.8, fontSize: 11 }}>
-                  {getTropicalStageMeta(hoveredTropical.system.stage).title}
-                </div>
-              </div>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11 }}>
-              <span style={{ opacity: 0.7 }}>Intensity</span>
-              <span style={{ fontWeight: 700 }}>{hoveredTropical.system.intensityKt} kt</span>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11, marginTop: 2 }}>
-              <span style={{ opacity: 0.7 }}>Position</span>
-              <span style={{ fontWeight: 600 }}>
-                {hoveredTropical.system.lat.toFixed(1)}°, {hoveredTropical.system.lon.toFixed(1)}°
-              </span>
-            </div>
-            {hoveredTropical.system.lpaWatch && (
-              <div style={{ marginTop: 6, fontSize: 11, color: "#f0a030", fontWeight: 600 }}>
-                LPA-watch (PH AOI Invest)
-              </div>
-            )}
-            <div style={{ marginTop: 6, fontSize: 10, opacity: 0.55 }}>Click for details</div>
-          </div>
-        )}
         {hoveredProject && !modelsFrozen && (
           <div
             role="status"
@@ -6147,10 +5936,10 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
               padding: "10px 12px",
               background: "rgba(12, 18, 28, 0.95)",
               border: `2px solid ${hoveredProject.project.siteMarkerOnly
-                  ? hoveredProject.project.markerColor ||
-                  hoveredProject.project.mapSketch?.color ||
-                  "#c47a1a"
-                  : statusColor(hoveredProject.project.status)
+                ? hoveredProject.project.markerColor ||
+                hoveredProject.project.mapSketch?.color ||
+                "#c47a1a"
+                : statusColor(hoveredProject.project.status)
                 }`,
               boxShadow: "3px 3px 0 rgba(0,0,0,0.4)",
               color: "#f4f6f8",
@@ -6200,103 +5989,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         )}
       </div>
 
-      {modelLoadUi.active && (
-        <div
-          className="cesium-model-loading"
-          role="status"
-          aria-live="polite"
-          aria-busy="true"
-        >
-          <div className="cesium-model-loading-card">
-            <div className="cesium-model-loading-spinner" aria-hidden />
-            <div className="cesium-model-loading-copy">
-              <div className="cesium-model-loading-title">{modelLoadUi.label}</div>
-              <div className="cesium-model-loading-sub">
-                {modelLoadUi.remaining > 1
-                  ? `${modelLoadUi.remaining} loading · ${modelLoadUi.attached} active in GPU`
-                  : `${modelLoadUi.attached} models in view`}
-                {modelLoadUi.cacheLabel ? ` · ${modelLoadUi.cacheLabel}` : ""}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {selectedTropicalSystem && !modelsFrozen && (
-        <div
-          style={{
-            position: "absolute",
-            top: "calc(var(--map-hud-top, 48px) + 8px)",
-            left: 68,
-            zIndex: 12,
-            width: 300,
-            maxWidth: "min(300px, calc(100% - 32px))",
-            padding: 12,
-            background: "rgba(12, 18, 28, 0.94)",
-            border: `1px solid ${getTropicalColor(selectedTropicalSystem)}66`,
-            boxShadow: "3px 3px 0 rgba(0,0,0,0.35)",
-            color: "#f4f6f8",
-            fontSize: 12,
-            lineHeight: 1.4,
-          }}
-        >
-          <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-            <span style={{ fontSize: 18, color: getTropicalColor(selectedTropicalSystem) }}>
-              {getTropicalIcon(selectedTropicalSystem)}
-            </span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 700, marginBottom: 4 }}>{selectedTropicalSystem.label}</div>
-              <div
-                style={{
-                  color: getTropicalColor(selectedTropicalSystem),
-                  fontWeight: 600,
-                  marginBottom: 6,
-                }}
-              >
-                {getTropicalStageMeta(selectedTropicalSystem.stage).title}
-                {selectedTropicalSystem.lpaWatch ? " · LPA-watch" : ""}
-              </div>
-              <div style={{ opacity: 0.8, fontSize: 11, marginBottom: 8 }}>
-                <div>Intensity: {selectedTropicalSystem.intensityKt} kt</div>
-                <div>
-                  Position: {selectedTropicalSystem.lat.toFixed(1)}°,{" "}
-                  {selectedTropicalSystem.lon.toFixed(1)}°
-                </div>
-                <div>Observed: {new Date(selectedTropicalSystem.observedAt).toLocaleString()}</div>
-                <div>Track points: {selectedTropicalSystem.track?.length ?? 0}</div>
-              </div>
-              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                {selectedTropicalSystem.sourceUrl && (
-                  <a
-                    href={selectedTropicalSystem.sourceUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{ color: "#9ad0ff", fontWeight: 600 }}
-                  >
-                    RAMMB source
-                  </a>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setSelectedTropicalId(null)}
-                  style={{
-                    marginLeft: "auto",
-                    cursor: "pointer",
-                    background: "rgba(255,255,255,0.1)",
-                    border: "1px solid rgba(255,255,255,0.25)",
-                    color: "#fff",
-                    padding: "2px 10px",
-                    fontSize: 11,
-                    fontWeight: 600,
-                  }}
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {selectedQuakeCell && earthquakeEnabled && !modelsFrozen && (
         <div
@@ -6379,14 +6072,14 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
             onToggleBadge={
               canManipulateModels && panelProject
                 ? async () => {
-                    const nextVal = !panelProject.hideBadge;
-                    onProjectPatch?.(panelProject.id, { hideBadge: nextVal });
-                    try {
-                      await patchProject(panelProject.id, { hideBadge: nextVal });
-                    } catch (err) {
-                      console.warn("Failed to persist hideBadge:", err);
-                    }
+                  const nextVal = !panelProject.hideBadge;
+                  onProjectPatch?.(panelProject.id, { hideBadge: nextVal });
+                  try {
+                    await patchProject(panelProject.id, { hideBadge: nextVal });
+                  } catch (err) {
+                    console.warn("Failed to persist hideBadge:", err);
                   }
+                }
                 : undefined
             }
             canPromoteSitePin={canPromoteSitePin}

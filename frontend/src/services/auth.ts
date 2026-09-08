@@ -26,7 +26,8 @@ const ROLE_DEPARTMENT: Record<UserRole, string> = {
   MPDC: "Municipal Planning & Development Coordinator",
   Engineer: "Infrastructure & Engineering Office",
   Agriculture: "Municipal Agriculture Office",
-  "Negosyo Center": "Business Permit & Licensing Office",
+  "Treasury Office": "Municipal Treasury Office",
+  "Negosyo Center": "Municipal Treasury Office",
   "Barangay Official": "Barangay Hall — Luisiana",
   "Private Engineer": "Private Professional / Design Engineer",
   Viewer: "Public",
@@ -36,7 +37,8 @@ const PUBLIC_STAFF: PublicAccount[] = [
   { username: "mpdc", role: "MPDC", label: "MPDC", department: ROLE_DEPARTMENT.MPDC },
   { username: "engineer", role: "Engineer", label: "Engineer", department: ROLE_DEPARTMENT.Engineer },
   { username: "agriculture", role: "Agriculture", label: "Agriculture", department: ROLE_DEPARTMENT.Agriculture },
-  { username: "negosyo", role: "Negosyo Center", label: "Negosyo Center", department: ROLE_DEPARTMENT["Negosyo Center"] },
+  { username: "treasury", role: "Treasury Office", label: "Treasury Office", department: ROLE_DEPARTMENT["Treasury Office"] },
+  { username: "negosyo", role: "Treasury Office", label: "Treasury Office", department: ROLE_DEPARTMENT["Treasury Office"] },
   { username: "barangay", role: "Barangay Official", label: "Barangay Official", department: ROLE_DEPARTMENT["Barangay Official"] },
   { username: "pengineer", role: "Private Engineer", label: "Private Engineer", department: ROLE_DEPARTMENT["Private Engineer"] },
 ];
@@ -54,8 +56,8 @@ export function sessionForRole(role: UserRole, username?: string): SessionUser {
     username ||
     (role === "Viewer"
       ? "viewer"
-      : role === "Negosyo Center"
-        ? "negosyo"
+      : role === "Treasury Office" || role === "Negosyo Center"
+        ? "treasury"
         : role === "Barangay Official"
           ? "barangay"
           : role.toLowerCase());
