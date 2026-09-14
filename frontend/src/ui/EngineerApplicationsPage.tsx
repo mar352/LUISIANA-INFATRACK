@@ -13,6 +13,14 @@ const BARANGAYS = [
   "Santo Angel", "Santo Domingo", "Santo Tomas"
 ];
 
+const PRESET_HOLD_REASONS = [
+  "Kailangang mag-submit ng revised Structural Plans & Computations na may pirma at selyo ng licensed Civil/Structural Engineer.",
+  "Hindi sumunod sa Building Setbacks (kinakailangan ang minimum 3.0m sa harap at 2.0m sa mga gilid at likuran bago magbuhos).",
+  "Kailangang kumpirmahin ang aktwal na Boundary Monuments (Mohon) at Road Right-of-Way (ROW) upang maiwasan ang encroachment.",
+  "Kulang o malabo ang isinumiteng Barangay Construction Clearance / TCT Title / Tax Declaration.",
+  "Nangangailangan ng karagdagang Geohazard Mitigation Plan batay sa on-site ocular evaluation ng Engineering Office."
+];
+
 interface EngineerApplicationsPageProps {
   onBack: () => void;
   session?: any;
@@ -68,13 +76,18 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
   const [error, setError] = useState<string | null>(null);
 
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "approved">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "hold" | "approved">("all");
   const [barangayFilter, setBarangayFilter] = useState("");
 
   // Approval Modal State
   const [approvingApp, setApprovingApp] = useState<any | null>(null);
   const [approvalNotes, setApprovalNotes] = useState("");
   const [isSubmittingApproval, setIsSubmittingApproval] = useState(false);
+
+  // Hold Modal State
+  const [holdingApp, setHoldingApp] = useState<any | null>(null);
+  const [holdReason, setHoldReason] = useState("");
+  const [isSubmittingHold, setIsSubmittingHold] = useState(false);
 
   // Document Lightbox
   const [viewingDoc, setViewingDoc] = useState<{ url: string; name: string } | null>(null);
@@ -108,6 +121,7 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
         Boolean(app.or_number) ||
         app.status === "for_engineering_inspection" ||
         app.status === "approved_for_construction" ||
+        app.status === "returned" ||
         app.engineerApproved === true;
 
       return isPaid;
@@ -117,7 +131,13 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
   // Counts for KPIs
   const pendingCount = useMemo(() => {
     return paidApplications.filter(
-      (a) => !a.engineerApproved && a.status !== "approved_for_construction"
+      (a) => !a.engineerApproved && a.status !== "approved_for_construction" && a.status !== "returned"
+    ).length;
+  }, [paidApplications]);
+
+  const holdCount = useMemo(() => {
+    return paidApplications.filter(
+      (a) => a.status === "returned" || (!a.engineerApproved && a.status === "flagged")
     ).length;
   }, [paidApplications]);
 
@@ -132,8 +152,11 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
     return paidApplications.filter((app) => {
       const isApproved =
         app.engineerApproved === true || app.status === "approved_for_construction";
+      const isHold = app.status === "returned";
+      const isPending = !isApproved && !isHold;
 
-      if (statusFilter === "pending" && isApproved) return false;
+      if (statusFilter === "pending" && !isPending) return false;
+      if (statusFilter === "hold" && !isHold) return false;
       if (statusFilter === "approved" && !isApproved) return false;
 
       const appBarangay = app.applicant?.barangay || app.barangay || "";
@@ -179,6 +202,8 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
         engineerApprovedBy: engineerName,
         isPinned: true,
         status: "approved_for_construction",
+        fromOffice: "Engineering",
+        author: engineerName,
         notes:
           approvalNotes.trim() ||
           `Inaprubahan ni ${engineerName} ang aplikasyon para sa konstruksyon. Opisyal nang nai-pin ang site sa 3D GIS Mapa.`,
@@ -211,6 +236,57 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
     }
   };
 
+  // Handle Engineer Hold Submission
+  const handleConfirmHold = async () => {
+    if (!holdingApp) return;
+    if (!holdReason.trim()) {
+      alert("Mangyaring maglagay ng dahilan o mga kailangang ayusin bago i-hold ang aplikasyon.");
+      return;
+    }
+    setIsSubmittingHold(true);
+    try {
+      const appId = holdingApp.id || holdingApp.trackingNumber;
+      const engineerName = session?.fullName || session?.username || "Engr. Mario S. Baldovino (Municipal Engineer)";
+
+      await patchCitizenApplication(appId, {
+        status: "returned",
+        engineerApproved: false,
+        isPinned: false,
+        fromOffice: "Engineering",
+        author: engineerName,
+        notes: holdReason.trim(),
+        requiresAction: true,
+        heldAt: new Date().toISOString(),
+        heldBy: engineerName,
+      });
+
+      // Update local state
+      setApplications((prev) =>
+        prev.map((item) =>
+          item.id === appId || item.trackingNumber === appId
+            ? {
+                ...item,
+                status: "returned",
+                engineerApproved: false,
+                isPinned: false,
+                notes: holdReason.trim(),
+                heldAt: new Date().toISOString(),
+                heldBy: engineerName,
+              }
+            : item
+        )
+      );
+
+      setHoldingApp(null);
+      setHoldReason("");
+    } catch (err: any) {
+      console.error("Failed to hold application:", err);
+      alert("Nabigong i-hold ang aplikasyon: " + (err.message || "Error"));
+    } finally {
+      setIsSubmittingHold(false);
+    }
+  };
+
   return (
     <div className="eap-container">
       {/* Top Header */}
@@ -227,7 +303,7 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
             <div className="eap-header-badge">MUNICIPAL ENGINEERING OFFICE</div>
             <h1 className="eap-title">Engineering Clearance &amp; Site Pinning Portal</h1>
             <p className="eap-subtitle">
-              Pagsusuri at pag-apruba sa mga aplikasyong nabayaran na sa Treasury Office upang mai-pin sa 3D Cesium GIS.
+              Pagsusuri, pag-hold, o pag-apruba sa mga bayad na aplikasyon upang mai-pin sa 3D Cesium GIS para sa on-site inspection.
             </p>
           </div>
         </div>
@@ -256,7 +332,22 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
           <div className="eap-kpi-info">
             <div className="eap-kpi-val" style={{ color: "#f59e0b" }}>{pendingCount}</div>
             <div className="eap-kpi-lbl">Naghihintay ng Clearance</div>
-            <div className="eap-kpi-sub">Bayad na sa Treasury · Hindi pa naka-pin</div>
+            <div className="eap-kpi-sub">Bayad na sa Treasury · Handa sa Pagsusuri</div>
+          </div>
+        </div>
+
+        <div className="eap-kpi-card is-hold">
+          <div className="eap-kpi-icon-wrap">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="15" y1="9" x2="9" y2="15" />
+              <line x1="9" y1="9" x2="15" y2="15" />
+            </svg>
+          </div>
+          <div className="eap-kpi-info">
+            <div className="eap-kpi-val" style={{ color: "#ef4444" }}>{holdCount}</div>
+            <div className="eap-kpi-lbl">Naka-Hold / May Kulang</div>
+            <div className="eap-kpi-sub">Ibinalik sa Kliyente para Ayusin</div>
           </div>
         </div>
 
@@ -327,6 +418,13 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
             </button>
             <button
               type="button"
+              className={`eap-status-tab is-hold ${statusFilter === "hold" ? "is-active" : ""}`}
+              onClick={() => setStatusFilter("hold")}
+            >
+              Naka-Hold ({holdCount})
+            </button>
+            <button
+              type="button"
               className={`eap-status-tab is-approved ${statusFilter === "approved" ? "is-active" : ""}`}
               onClick={() => setStatusFilter("approved")}
             >
@@ -374,6 +472,7 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
           {displayedApps.map((app) => {
             const isApproved =
               app.engineerApproved === true || app.status === "approved_for_construction";
+            const isHold = app.status === "returned";
             const tracking = app.trackingNumber || app.id;
             const applicant = app.applicant?.fullName || app.applicantName || "Private Applicant";
             const bgy = app.applicant?.barangay || app.barangay || "Luisiana";
@@ -410,10 +509,16 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
               });
             }
 
+            const cardClass = isApproved
+              ? "is-approved-card"
+              : isHold
+              ? "is-hold-card"
+              : "is-pending-card";
+
             return (
               <div
                 key={app.id || tracking}
-                className={`eap-app-card ${isApproved ? "is-approved-card" : "is-pending-card"}`}
+                className={`eap-app-card ${cardClass}`}
               >
                 {/* Card Header */}
                 <div className="eap-card-header">
@@ -428,6 +533,15 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
                           <polyline points="20 6 9 17 4 12" />
                         </svg>
                         <span>Naka-pin sa 3D Mapa</span>
+                      </span>
+                    ) : isHold ? (
+                      <span className="eap-status-pill hold">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="12" cy="12" r="10" />
+                          <line x1="12" y1="8" x2="12" y2="12" />
+                          <line x1="12" y1="16" x2="12.01" y2="16" />
+                        </svg>
+                        <span>⚠️ Naka-Hold / Ibinalik sa Kliyente</span>
                       </span>
                     ) : (
                       <span className="eap-status-pill pending">
@@ -462,6 +576,28 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
                     </div>
                   </div>
                 </div>
+
+                {/* Hold Notice Banner if app is on hold */}
+                {isHold && (
+                  <div className="eap-card-hold-alert">
+                    <div className="eap-card-hold-header">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                        <line x1="12" y1="9" x2="12" y2="13" />
+                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                      </svg>
+                      <strong>Dahilan ng Pag-Hold mula sa Engineering Office:</strong>
+                    </div>
+                    <p className="eap-card-hold-text">
+                      &ldquo;{app.notes || "Kailangang i-review at ayusin ng aplikante ang isinumiteng dokumento bago mai-pin sa mapa."}&rdquo;
+                    </p>
+                    {app.heldAt && (
+                      <div className="eap-card-hold-meta">
+                        Inilagay sa hold noong {formatDate(app.heldAt)} ni {app.heldBy || "Municipal Engineer"}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Treasury Payment Receipt Box */}
                 <div className="eap-treasury-box">
@@ -557,21 +693,44 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
                   ) : (
                     <div className="eap-pending-actions">
                       <span className="eap-ready-hint">
-                        💡 Handa na para sa Engineering Clearance. Ang pag-apruba ay maglalagay ng active pin sa 3D Mapa.
+                        {isHold
+                          ? "⚠️ Naka-hold ang record. Maaari itong i-update o aprubahan kapag naayos na ng kliyente."
+                          : "💡 Suriin ang plano at site. Pwedeng i-hold para ipaayos o aprubahan para mai-pin sa mapa."}
                       </span>
-                      <button
-                        type="button"
-                        className="eap-btn-approve"
-                        onClick={() => {
-                          setApprovingApp(app);
-                          setApprovalNotes(`Inaprubahan para sa konstruksyon. Pinal nang nai-pin ang site sa 3D GIS Mapa para sa on-site inspection.`);
-                        }}
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="20 6 9 17 4 12" />
-                        </svg>
-                        <span>Aprubahan at I-pin sa Mapa</span>
-                      </button>
+                      <div className="eap-action-buttons-group">
+                        {/* ✖ HOLD BUTTON (RED/ORANGE) */}
+                        <button
+                          type="button"
+                          className="eap-btn-hold"
+                          onClick={() => {
+                            setHoldingApp(app);
+                            setHoldReason(app.notes || "");
+                          }}
+                          title="I-hold ang aplikasyon at ibalik sa kliyente para ayusin"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="10" />
+                            <line x1="15" y1="9" x2="9" y2="15" />
+                            <line x1="9" y1="9" x2="15" y2="15" />
+                          </svg>
+                          <span>{isHold ? "✏️ Baguhin ang Hold" : "✖ I-hold ang Aplikasyon"}</span>
+                        </button>
+
+                        {/* ✔ APPROVE BUTTON (GREEN) */}
+                        <button
+                          type="button"
+                          className="eap-btn-approve"
+                          onClick={() => {
+                            setApprovingApp(app);
+                            setApprovalNotes(`Inaprubahan para sa konstruksyon. Pinal nang nai-pin ang site sa 3D GIS Mapa para sa on-site inspection.`);
+                          }}
+                        >
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                          <span>✔ Aprubahan at I-pin sa Mapa</span>
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -657,6 +816,116 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
                       <polyline points="20 6 9 17 4 12" />
                     </svg>
                     <span>Oo, Aprubahan at I-pin sa Mapa</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🛑 HOLD APPLICATION MODAL */}
+      {holdingApp && (
+        <div className="eap-modal-backdrop" onClick={() => { if (!isSubmittingHold) setHoldingApp(null); }}>
+          <div className="eap-modal-content is-hold-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="eap-modal-header is-hold-header">
+              <div className="eap-modal-seal is-hold-seal">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="15" y1="9" x2="9" y2="15" />
+                  <line x1="9" y1="9" x2="15" y2="15" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="eap-modal-title" style={{ color: "#f87171" }}>I-hold at Ibalik ang Aplikasyon sa Kliyente</h3>
+                <span className="eap-modal-tracking">{holdingApp.trackingNumber || holdingApp.id}</span>
+              </div>
+            </div>
+
+            <div className="eap-modal-body">
+              <div className="eap-modal-app-summary">
+                <div><strong>Aplikante:</strong> {holdingApp.applicant?.fullName || holdingApp.applicantName}</div>
+                <div><strong>Gusali:</strong> {holdingApp.lotDetails?.proposedBuildingType || holdingApp.buildingType || "Residential"}</div>
+                <div><strong>Barangay:</strong> Brgy. {holdingApp.applicant?.barangay || holdingApp.barangay}, Luisiana</div>
+                <div><strong>O.R. No:</strong> {holdingApp.payment?.orNumber || holdingApp.or_number || "Paid at Treasury"}</div>
+              </div>
+
+              <div className="eap-modal-alert is-hold-alert">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                  <line x1="12" y1="9" x2="12" y2="13" />
+                  <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+                <p>
+                  <strong>Paalala:</strong> Ang pag-hold ay magbabalik ng record sa kliyente kasama ang mga tala/deficiencies ng Engineering Office para sa kanilang pagwawasto. <strong>HINDI ito mai-pin sa mapa</strong> hangga&apos;t hindi naaayos.
+                </p>
+              </div>
+
+              {/* Preset Quick Deficiency Reasons */}
+              <div className="eap-preset-reasons-wrap">
+                <label className="eap-form-label">
+                  <span>Pumili ng Karaniwang Dahilan (I-click para mailagay sa tala):</span>
+                </label>
+                <div className="eap-preset-buttons-grid">
+                  {PRESET_HOLD_REASONS.map((preset, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      className="eap-preset-btn"
+                      onClick={() => {
+                        if (!holdReason) setHoldReason(preset);
+                        else setHoldReason(holdReason + "\n• " + preset);
+                      }}
+                    >
+                      <span>• {preset}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="eap-form-group">
+                <label className="eap-form-label">
+                  <span>Opisyal na Dahilan ng Pag-Hold / Mga Dapat Ayusin ng Aplikante: <strong style={{ color: "#ef4444" }}>*</strong></span>
+                </label>
+                <textarea
+                  className="eap-textarea is-hold-textarea"
+                  rows={4}
+                  value={holdReason}
+                  onChange={(e) => setHoldReason(e.target.value)}
+                  placeholder="Isulat ang eksaktong detalye o mga kailangang i-revise ng aplikante bago maaprubahan ang clearance..."
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="eap-modal-footer">
+              <button
+                type="button"
+                className="eap-btn-cancel"
+                onClick={() => setHoldingApp(null)}
+                disabled={isSubmittingHold}
+              >
+                Kanselahin
+              </button>
+              <button
+                type="button"
+                className="eap-btn-confirm-hold"
+                onClick={handleConfirmHold}
+                disabled={isSubmittingHold}
+              >
+                {isSubmittingHold ? (
+                  <>
+                    <div className="eap-spinner-sm" />
+                    <span>Sine-save ang Hold...</span>
+                  </>
+                ) : (
+                  <>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="15" y1="9" x2="9" y2="15" />
+                      <line x1="9" y1="9" x2="15" y2="15" />
+                    </svg>
+                    <span>Kumpirmahin ang Pag-Hold at Ibalik</span>
                   </>
                 )}
               </button>

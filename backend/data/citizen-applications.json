@@ -1,5 +1,645 @@
 [
   {
+    "id": "app-1789266276897-806487",
+    "trackingNumber": "LUIS-ZC-2026-5701",
+    "serviceType": "zoning_certificate",
+    "projectTitle": "fdfssfsdf",
+    "category": "private_infrastructure",
+    "estimatedCost": 0,
+    "applicant": {
+      "fullName": "Mar Aldrei Avila",
+      "contactPhone": "09877665365",
+      "contactEmail": "maraldrei@gmail.com",
+      "address": "73 Ubaldo Suello St. Brgy Zone IV",
+      "barangay": "San Antonio"
+    },
+    "latitude": 14.1899,
+    "longitude": 121.505833,
+    "geoRisk": {
+      "inside": true,
+      "flood": {
+        "value": "Safe",
+        "code": null
+      },
+      "landslide": {
+        "value": "Safe",
+        "code": null
+      },
+      "source": "MGB via GeoRiskPH"
+    },
+    "agriculturalDetails": {
+      "farmType": "poultry_broiler",
+      "headCapacity": 5000,
+      "wasteManagement": "Biogas Digester + Wastewater Lagoon",
+      "bufferComplianceConfirmed": true
+    },
+    "municipalDetails": {
+      "implementingDepartment": "Municipal Engineering Office",
+      "fundingSource": "20_dev_fund",
+      "cipCode": "",
+      "targetBeneficiaries": "All residents of Luisiana"
+    },
+    "zoningClassification": "Rural Zone",
+    "lotDetails": {
+      "tctNo": "TCT 432043204320493204",
+      "taxDecNo": "TD 43243243243432",
+      "lotOwner": "",
+      "isApplicantOwner": true,
+      "proposedBuildingType": "Residential",
+      "lotAreaSqM": 250,
+      "lotLocationDescription": "73 Ubaldo Suello St. Brgy Zone IV",
+      "zoningClassification": "Rural Zone",
+      "lat": 14.1899,
+      "lon": 121.505833
+    },
+    "uploads": {
+      "tctTaxDec": [
+        {
+          "url": "/uploads/czreq-1789266207192-999904700.pdf",
+          "originalName": "endorsement-liliw.pdf",
+          "size": 114694
+        }
+      ],
+      "taxDeclaration": [
+        {
+          "url": "/uploads/czreq-1789266209153-202900482.pdf",
+          "originalName": "endorsement-liliw.pdf",
+          "size": 114694
+        }
+      ],
+      "deedOrConsent": [],
+      "rptReceipt": [
+        {
+          "url": "/uploads/czreq-1789266211980-130295030.pdf",
+          "originalName": "endorsement-liliw.pdf",
+          "size": 114694
+        }
+      ],
+      "brgyClearance": [
+        {
+          "url": "/uploads/czreq-1789266215264-766005378.pdf",
+          "originalName": "endorsement-liliw.pdf",
+          "size": 114694
+        }
+      ],
+      "ploCert": [
+        {
+          "url": "/uploads/czreq-1789266217519-254859643.pdf",
+          "originalName": "endorsement-liliw.pdf",
+          "size": 114694
+        }
+      ],
+      "photoDocs": [
+        {
+          "url": "/uploads/czreq-1789266219956-47276203.pdf",
+          "originalName": "endorsement-liliw.pdf",
+          "size": 114694
+        }
+      ],
+      "denrLetter": [],
+      "studentIdLetter": []
+    },
+    "notes": "❌ [HINDI WASTONG DOKUMENTO: Photocopy ng TCT (Land Title)] Dahilan: Malabo o hindi mabasa ang kopya ng dokumento",
+    "status": "ocular_inspection",
+    "remarks": [
+      {
+        "id": "rem-init-1789266276897",
+        "fromOffice": "System Notice",
+        "author": "MPDC Automated Intake",
+        "message": "Application submitted online. Initial document integrity check verified.",
+        "createdAt": "2026-09-13T02:24:36.897Z",
+        "requiresAction": false
+      },
+      {
+        "id": "rem-1789279654028",
+        "fromOffice": "MPDC",
+        "author": "Edward B. Romulo, EnP. (Zoning Officer)",
+        "message": "❌ [HINDI WASTONG DOKUMENTO: Photocopy ng TCT (Land Title)] Dahilan: Malabo o hindi mabasa ang kopya ng dokumento",
+        "createdAt": "2026-09-13T06:07:34.028Z",
+        "requiresAction": false
+      }
+    ],
+    "stepProgress": {
+      "currentStep": 2,
+      "totalSteps": 3,
+      "step1Completed": true,
+      "step1At": "2026-09-13T02:24:36.897Z",
+      "step1By": "Online Resident Submission",
+      "step2Completed": false,
+      "step2At": null,
+      "step2By": null,
+      "step3Completed": false,
+      "step3At": null,
+      "step3By": null
+    },
+    "responsibleOfficers": [
+      {
+        "name": "Bon Ryan P. Pedron",
+        "role": "Admin Aide (Verification & Issuance)"
+      },
+      {
+        "name": "Edward B. Romulo, EnP.",
+        "role": "Zoning Officer (Review & Permit Preparation)"
+      },
+      {
+        "name": "Engr. Mario S. Baldovino",
+        "role": "MPDC (Final Approval & Signing)"
+      },
+      {
+        "name": "Randy A. Balasabas",
+        "role": "Admin Aide (Inspection & Verification)"
+      }
+    ],
+    "slaDays": 1,
+    "slaMinutes": 12,
+    "fee": "None (Free)",
+    "termsAccepted": true,
+    "termsAcceptedAt": "2026-09-13T02:24:36.584Z",
+    "termsVersion": "2026.1",
+    "clientIp": "136.158.66.115",
+    "termsConsentDetails": {
+      "agreedToTerms": true,
+      "agreedToPrivacyAct": true,
+      "agreedToClup": true,
+      "agreedToCookies": true,
+      "acceptedAt": "2026-09-13T02:24:36.584Z",
+      "termsVersion": "2026.1",
+      "ipAddress": "136.158.66.115"
+    },
+    "createdAt": "2026-09-13T02:24:36.897Z",
+    "updatedAt": "2026-09-13T06:07:43.248Z",
+    "dataHash": "58acc9915158c08eeffc59e7ccfa0cb8518b8dae0f22739a1e27640568264f45",
+    "rejectedDocs": {},
+    "approvedDocs": {
+      "tct": {
+        "approvedAt": "2026-09-13T06:07:40.627Z",
+        "approvedBy": "MPDC",
+        "title": "Photocopy ng TCT (Land Title)"
+      },
+      "tax_dec": {
+        "approvedAt": "2026-09-13T06:07:40.627Z",
+        "approvedBy": "MPDC",
+        "title": "Tax Declaration"
+      },
+      "rpt_receipt": {
+        "approvedAt": "2026-09-13T06:07:40.627Z",
+        "approvedBy": "MPDC",
+        "title": "Current Real Property Tax Receipt (Amilyar)"
+      },
+      "brgy_clearance": {
+        "approvedAt": "2026-09-13T06:07:40.627Z",
+        "approvedBy": "MPDC",
+        "title": "Barangay Clearance"
+      },
+      "plo_cert": {
+        "approvedAt": "2026-09-13T06:07:40.627Z",
+        "approvedBy": "MPDC",
+        "title": "PLO Certification (Clearance mula sa MERALCO)"
+      },
+      "photo_docs": {
+        "approvedAt": "2026-09-13T06:07:40.627Z",
+        "approvedBy": "MPDC",
+        "title": "Photo Documentation (Loob at Labas ng Site)"
+      }
+    }
+  },
+  {
+    "id": "app-1789264754831-389570",
+    "trackingNumber": "LUIS-ZC-2026-2683",
+    "serviceType": "zoning_certificate",
+    "projectTitle": "Rest House",
+    "category": "private_infrastructure",
+    "estimatedCost": 0,
+    "applicant": {
+      "fullName": "Mar Aldrei Avila",
+      "contactPhone": "09654845234",
+      "contactEmail": "maraldrei@gmail.com",
+      "address": "73 Ubaldo Suello St. Brgy Zone IV",
+      "barangay": "Barangay Zone V (Poblacion)"
+    },
+    "latitude": 14.1854,
+    "longitude": 121.514932,
+    "geoRisk": {
+      "inside": true,
+      "flood": {
+        "value": "Safe",
+        "code": null
+      },
+      "landslide": {
+        "value": "Safe",
+        "code": null
+      },
+      "source": "MGB via GeoRiskPH"
+    },
+    "agriculturalDetails": {
+      "farmType": "poultry_broiler",
+      "headCapacity": 5000,
+      "wasteManagement": "Biogas Digester + Wastewater Lagoon",
+      "bufferComplianceConfirmed": true
+    },
+    "municipalDetails": {
+      "implementingDepartment": "Municipal Engineering Office",
+      "fundingSource": "20_dev_fund",
+      "cipCode": "",
+      "targetBeneficiaries": "All residents of Luisiana"
+    },
+    "zoningClassification": "Urban / Commercial Zone",
+    "lotDetails": {
+      "tctNo": "tct 3432433243243243242",
+      "taxDecNo": "td432423432432423432",
+      "lotOwner": "",
+      "isApplicantOwner": true,
+      "proposedBuildingType": "Residential",
+      "lotAreaSqM": 232,
+      "lotLocationDescription": "73 Ubaldo Suello St. Brgy Zone IV",
+      "zoningClassification": "Urban / Commercial Zone",
+      "lat": 14.1854,
+      "lon": 121.514932
+    },
+    "uploads": {
+      "tctTaxDec": [
+        {
+          "url": "/uploads/czreq-1789264371012-571209660.pdf",
+          "originalName": "luisiana_laguna_business_coordinates.pdf",
+          "size": 4574
+        }
+      ],
+      "taxDeclaration": [
+        {
+          "url": "/uploads/czreq-1789264373056-870233343.pdf",
+          "originalName": "luisiana_laguna_business_coordinates.pdf",
+          "size": 4574
+        }
+      ],
+      "deedOrConsent": [],
+      "rptReceipt": [
+        {
+          "url": "/uploads/czreq-1789264377836-602386575.pdf",
+          "originalName": "luisiana_laguna_business_coordinates.pdf",
+          "size": 4574
+        }
+      ],
+      "brgyClearance": [
+        {
+          "url": "/uploads/czreq-1789264381982-824637961.pdf",
+          "originalName": "luisiana_laguna_business_coordinates.pdf",
+          "size": 4574
+        }
+      ],
+      "ploCert": [
+        {
+          "url": "/uploads/czreq-1789264384473-748616095.pdf",
+          "originalName": "luisiana_laguna_business_coordinates.pdf",
+          "size": 4574
+        }
+      ],
+      "photoDocs": [
+        {
+          "url": "/uploads/czreq-1789264388232-268921871.pdf",
+          "originalName": "luisiana_laguna_business_coordinates.pdf",
+          "size": 4574
+        }
+      ],
+      "denrLetter": [],
+      "studentIdLetter": []
+    },
+    "notes": "",
+    "status": "submitted",
+    "remarks": [
+      {
+        "id": "rem-init-1789264754831",
+        "fromOffice": "System Notice",
+        "author": "MPDC Automated Intake",
+        "message": "Application submitted online. Initial document integrity check verified.",
+        "createdAt": "2026-09-13T01:59:14.831Z",
+        "requiresAction": false
+      }
+    ],
+    "stepProgress": {
+      "currentStep": 1,
+      "totalSteps": 3,
+      "step1Completed": true,
+      "step1At": "2026-09-13T01:59:14.831Z",
+      "step1By": "Online Resident Submission",
+      "step2Completed": false,
+      "step2At": null,
+      "step2By": null,
+      "step3Completed": false,
+      "step3At": null,
+      "step3By": null
+    },
+    "responsibleOfficers": [
+      {
+        "name": "Bon Ryan P. Pedron",
+        "role": "Admin Aide (Verification & Issuance)"
+      },
+      {
+        "name": "Edward B. Romulo, EnP.",
+        "role": "Zoning Officer (Review & Permit Preparation)"
+      },
+      {
+        "name": "Engr. Mario S. Baldovino",
+        "role": "MPDC (Final Approval & Signing)"
+      },
+      {
+        "name": "Randy A. Balasabas",
+        "role": "Admin Aide (Inspection & Verification)"
+      }
+    ],
+    "slaDays": 1,
+    "slaMinutes": 12,
+    "fee": "None (Free)",
+    "termsAccepted": true,
+    "termsAcceptedAt": "2026-09-13T01:59:14.214Z",
+    "termsVersion": "2026.1",
+    "clientIp": "136.158.66.115",
+    "termsConsentDetails": {
+      "agreedToTerms": true,
+      "agreedToPrivacyAct": true,
+      "agreedToClup": true,
+      "agreedToCookies": true,
+      "acceptedAt": "2026-09-13T01:59:14.214Z",
+      "termsVersion": "2026.1",
+      "ipAddress": "136.158.66.115"
+    },
+    "createdAt": "2026-09-13T01:59:14.831Z",
+    "updatedAt": "2026-09-13T01:59:14.831Z",
+    "dataHash": "5862ab113ca4abc13d60c5820318985453664974a59b66a5613494d05b62b213"
+  },
+  {
+    "id": "app-1788932792968-342429",
+    "trackingNumber": "LUIS-ZC-2026-9169",
+    "serviceType": "zoning_certificate",
+    "projectTitle": "dadsa",
+    "category": "private_infrastructure",
+    "estimatedCost": 0,
+    "applicant": {
+      "fullName": "Mar Aldrei",
+      "contactPhone": "09161225511",
+      "contactEmail": "maraldrei@gmail.com",
+      "address": "Mabini St.",
+      "barangay": "Barangay Zone VIII (Poblacion)"
+    },
+    "latitude": 14.186126,
+    "longitude": 121.509952,
+    "geoRisk": {
+      "inside": true,
+      "flood": {
+        "value": "Safe",
+        "code": null
+      },
+      "landslide": {
+        "value": "Safe",
+        "code": null
+      },
+      "source": "MGB via GeoRiskPH"
+    },
+    "agriculturalDetails": {
+      "farmType": "poultry_broiler",
+      "headCapacity": 5000,
+      "wasteManagement": "Biogas Digester + Wastewater Lagoon",
+      "bufferComplianceConfirmed": true
+    },
+    "municipalDetails": {
+      "implementingDepartment": "Municipal Engineering Office",
+      "fundingSource": "20_dev_fund",
+      "cipCode": "",
+      "targetBeneficiaries": "All residents of Luisiana"
+    },
+    "zoningClassification": "Urban / Commercial Zone",
+    "lotDetails": {
+      "tctNo": "TCT 432432423432423423",
+      "taxDecNo": "TD 4234234324234244",
+      "lotOwner": "",
+      "isApplicantOwner": true,
+      "proposedBuildingType": "Institutional",
+      "lotAreaSqM": 250,
+      "lotLocationDescription": "Mabini St.",
+      "zoningClassification": "Urban / Commercial Zone",
+      "lat": 14.186126,
+      "lon": 121.509952
+    },
+    "uploads": {
+      "tctTaxDec": [
+        {
+          "url": "/uploads/czreq-1788932690078-391457806.png",
+          "originalName": "3520990.png",
+          "size": 150097
+        }
+      ],
+      "taxDeclaration": [
+        {
+          "url": "/uploads/czreq-1788932695613-31905322.pdf",
+          "originalName": "Responsive_Design_Lab_Activity.pdf",
+          "size": 121359
+        }
+      ],
+      "deedOrConsent": [],
+      "rptReceipt": [
+        {
+          "url": "/uploads/czreq-1788932702643-349047447.pdf",
+          "originalName": "Responsive_Design_Lab_Activity.pdf",
+          "size": 121359
+        }
+      ],
+      "brgyClearance": [
+        {
+          "url": "blob:http://localhost:5173/f25c8949-13be-4889-a809-59502dd0cbac",
+          "originalName": "Gemini_Generated_Image_hjq7z7hjq7z7hjq7.jfif",
+          "size": 2218348
+        }
+      ],
+      "ploCert": [
+        {
+          "url": "/uploads/czreq-1788932748617-215881872.pdf",
+          "originalName": "Responsive_Design_Lab_Activity.pdf",
+          "size": 121359
+        }
+      ],
+      "photoDocs": [
+        {
+          "url": "/uploads/czreq-1788932758250-523917783.jpg",
+          "originalName": "Gemini_Generated_Image_kmynoakmynoakmyn.jpg",
+          "size": 154011
+        }
+      ],
+      "denrLetter": [],
+      "studentIdLetter": []
+    },
+    "notes": "Inaprubahan para sa konstruksyon. Pinal nang nai-pin ang site sa 3D GIS Mapa para sa on-site inspection.",
+    "status": "approved_for_construction",
+    "remarks": [
+      {
+        "id": "rem-insp-1788933684954",
+        "fromOffice": "Engineering",
+        "author": "engineer",
+        "message": "[Site Inspection - Before Construction (0% - Vacant Lot Pre-Excavation)] Naisagawa ang aktuwal na inspeksyon sa site.",
+        "createdAt": "2026-09-09T06:01:24.952Z",
+        "requiresAction": false,
+        "photoUrl": "/uploads/insp-1788933684845-952300410.png"
+      },
+      {
+        "id": "rem-init-1788932792968",
+        "fromOffice": "System Notice",
+        "author": "MPDC Automated Intake",
+        "message": "Application submitted online. Initial document integrity check verified.",
+        "createdAt": "2026-09-09T05:46:32.968Z",
+        "requiresAction": false
+      },
+      {
+        "id": "rem-treasury-1788933630512",
+        "fromOffice": "Treasury",
+        "author": "Municipal Treasury Office (treasury)",
+        "message": "Opisyal na natanggap ang bayad (Official Receipt #OR-LUIS-2026-36781, Halaga: ₱280.00). Ang aplikasyon ay awtomatikong inendorso sa Municipal Engineering Office para sa \"Before\" Inspection.",
+        "createdAt": "2026-09-09T06:00:30.512Z",
+        "requiresAction": false
+      },
+      {
+        "fromOffice": "Engineering",
+        "author": "engineer",
+        "message": "Inaprubahan para sa konstruksyon. Pinal nang nai-pin ang site sa 3D GIS Mapa para sa on-site inspection.",
+        "timestamp": "2026-09-09T06:00:52.861Z",
+        "actionType": "ENGINEER_APPROVED_PINNED"
+      }
+    ],
+    "stepProgress": {
+      "currentStep": 4,
+      "totalSteps": 4,
+      "step1Completed": true,
+      "step1At": "2026-09-09T05:46:32.968Z",
+      "step1By": "Online Resident Submission",
+      "step2Completed": true,
+      "step2At": "2026-09-09T05:51:47.663Z",
+      "step2By": "Edward B. Romulo, EnP. (Zoning Officer)",
+      "step3Completed": true,
+      "step3At": "2026-09-09T06:00:29.885Z",
+      "step3By": "Municipal Treasury (Payment Verified)",
+      "step4Completed": true,
+      "step4At": "2026-09-09T06:00:52.861Z",
+      "step4By": "engineer"
+    },
+    "responsibleOfficers": [
+      {
+        "name": "Bon Ryan P. Pedron",
+        "role": "Admin Aide (Verification & Issuance)"
+      },
+      {
+        "name": "Edward B. Romulo, EnP.",
+        "role": "Zoning Officer (Review & Permit Preparation)"
+      },
+      {
+        "name": "Engr. Mario S. Baldovino",
+        "role": "MPDC (Final Approval & Signing)"
+      },
+      {
+        "name": "Randy A. Balasabas",
+        "role": "Admin Aide (Inspection & Verification)"
+      }
+    ],
+    "slaDays": 1,
+    "slaMinutes": 12,
+    "fee": "None (Free)",
+    "createdAt": "2026-09-09T05:46:32.968Z",
+    "updatedAt": "2026-09-09T06:01:24.952Z",
+    "dataHash": "62470a5c201492281c7d6e053e83c501138278ec83e8793bde39150b395872d5",
+    "approvedDocs": {
+      "tct": {
+        "approvedAt": "2026-09-09T05:51:10.448Z",
+        "approvedBy": "MPDC",
+        "title": "Photocopy ng TCT (Land Title)"
+      },
+      "tax_dec": {
+        "approvedAt": "2026-09-09T05:51:10.448Z",
+        "approvedBy": "MPDC",
+        "title": "Tax Declaration"
+      },
+      "rpt_receipt": {
+        "approvedAt": "2026-09-09T05:51:10.448Z",
+        "approvedBy": "MPDC",
+        "title": "Current Real Property Tax Receipt (Amilyar)"
+      },
+      "brgy_clearance": {
+        "approvedAt": "2026-09-09T05:51:10.448Z",
+        "approvedBy": "MPDC",
+        "title": "Barangay Clearance"
+      },
+      "plo_cert": {
+        "approvedAt": "2026-09-09T05:51:10.448Z",
+        "approvedBy": "MPDC",
+        "title": "PLO Certification (Clearance mula sa MERALCO)"
+      },
+      "photo_docs": {
+        "approvedAt": "2026-09-09T05:51:10.448Z",
+        "approvedBy": "MPDC",
+        "title": "Photo Documentation (Loob at Labas ng Site)"
+      }
+    },
+    "rejectedDocs": {},
+    "payment": {
+      "status": "paid",
+      "orderOfPaymentNo": "OP-2026-9169",
+      "feeAmount": 280,
+      "breakdown": [
+        {
+          "label": "Zoning Clearance Assessment Fee",
+          "amount": 250
+        },
+        {
+          "label": "Legal & Filing Assessment Fee",
+          "amount": 30
+        }
+      ],
+      "issuedAt": "2026-09-09T05:51:47.663Z",
+      "issuedBy": "Municipal Treasury Office (treasury)",
+      "instruction": "Zoning Approved. Ipakita ang pahinang ito sa Municipal Treasury Office upang magbayad ng kaukulang fee.",
+      "or_number": "OR-LUIS-2026-36781",
+      "orNumber": "OR-LUIS-2026-36781",
+      "amount_paid": 280,
+      "amount": 280,
+      "payment_date": "2026-09-09T06:00:29.885Z",
+      "paidAt": "2026-09-09T06:00:29.885Z",
+      "user_id": "treasury",
+      "cashier": "treasury"
+    },
+    "status_alias": "PENDING_ENGINEERING_INSPECTION",
+    "or_number": "OR-LUIS-2026-36781",
+    "amount_paid": 280,
+    "payment_date": "2026-09-09T06:00:29.885Z",
+    "user_id": "treasury",
+    "engineerApproved": true,
+    "engineerApprovedAt": "2026-09-09T06:00:52.235Z",
+    "engineerApprovedBy": "engineer",
+    "isPinned": true,
+    "fromOffice": "Engineering",
+    "author": "engineer",
+    "inspectionPhotos": [
+      {
+        "id": "insp-1788933684952",
+        "stage": "before",
+        "stageLabel": "Before Construction (0% - Vacant Lot Pre-Excavation)",
+        "progress": 0,
+        "photoUrl": "/uploads/insp-1788933684845-952300410.png",
+        "timestamp": "2026-09-09T06:01:24.952Z",
+        "inspectedAt": "2026-09-09T06:01:24.952Z",
+        "remarks": "",
+        "inspector": "engineer"
+      }
+    ],
+    "latestInspection": {
+      "id": "insp-1788933684952",
+      "stage": "before",
+      "stageLabel": "Before Construction (0% - Vacant Lot Pre-Excavation)",
+      "progress": 0,
+      "photoUrl": "/uploads/insp-1788933684845-952300410.png",
+      "timestamp": "2026-09-09T06:01:24.952Z",
+      "inspectedAt": "2026-09-09T06:01:24.952Z",
+      "remarks": "",
+      "inspector": "engineer"
+    },
+    "inspectionStage": "before",
+    "progress": 0
+  },
+  {
     "id": "app-test-overdue-8801",
     "trackingNumber": "LUIS-ZC-2026-8801",
     "serviceType": "zoning_certificate",
@@ -562,8 +1202,8 @@
       "denrLetter": [],
       "studentIdLetter": []
     },
-    "notes": "",
-    "status": "for_engineering_inspection",
+    "notes": "Inaprubahan ng Municipal Engineer. Kompleto ang 6 na requirements at na-verify sa site. Opisyal nang nai-pin sa 3D Mapa.",
+    "status": "approved_for_construction",
     "remarks": [
       {
         "id": "rem-init-1788689012900",
@@ -580,6 +1220,13 @@
         "message": "Opisyal na natanggap ang bayad (Official Receipt #OR-LUIS-2026-45296, Halaga: ₱280.00). Ang aplikasyon ay awtomatikong inendorso sa Municipal Engineering Office para sa \"Before\" Inspection.",
         "createdAt": "2026-09-06T12:10:40.912Z",
         "requiresAction": false
+      },
+      {
+        "fromOffice": "Engineering",
+        "author": "Engr. Mario S. Baldovino (Municipal Engineer)",
+        "message": "Inaprubahan ng Municipal Engineer. Kompleto ang 6 na requirements at na-verify sa site. Opisyal nang nai-pin sa 3D Mapa.",
+        "timestamp": "2026-09-08T15:52:42.934Z",
+        "actionType": "ENGINEER_APPROVED_PINNED"
       }
     ],
     "stepProgress": {
@@ -589,11 +1236,14 @@
       "step1At": "2026-09-06T10:03:32.900Z",
       "step1By": "Online Resident Submission",
       "step2Completed": true,
-      "step2At": null,
-      "step2By": null,
+      "step2At": "2026-09-08T15:52:42.934Z",
+      "step2By": "Edward B. Romulo, EnP. (Zoning Officer)",
       "step3Completed": true,
       "step3At": "2026-09-06T12:10:40.907Z",
-      "step3By": "Municipal Treasury (treasury)"
+      "step3By": "Municipal Treasury (Payment Verified)",
+      "step4Completed": true,
+      "step4At": "2026-09-08T15:52:42.934Z",
+      "step4By": "Engr. Mario S. Baldovino (Municipal Engineer)"
     },
     "responsibleOfficers": [
       {
@@ -617,7 +1267,7 @@
     "slaMinutes": 12,
     "fee": "None (Free)",
     "createdAt": "2026-09-06T10:03:32.900Z",
-    "updatedAt": "2026-09-06T12:10:40.911Z",
+    "updatedAt": "2026-09-08T15:52:42.934Z",
     "dataHash": "7b932535c4df8f7dc35b1d36f43434f01d39b615ca6b82d64e1218d4ae91de60",
     "status_alias": "PENDING_ENGINEERING_INSPECTION",
     "or_number": "OR-LUIS-2026-45296",
@@ -636,7 +1286,13 @@
       "user_id": "treasury",
       "cashier": "treasury",
       "issuedBy": "Municipal Treasury Office (treasury)"
-    }
+    },
+    "engineerApproved": true,
+    "engineerApprovedAt": "2026-09-08T15:52:42.933Z",
+    "engineerApprovedBy": "Engr. Mario S. Baldovino (Municipal Engineer)",
+    "isPinned": true,
+    "fromOffice": "Engineering",
+    "author": "Engr. Mario S. Baldovino (Municipal Engineer)"
   },
   {
     "id": "app-1788486323245-708224",
@@ -736,8 +1392,8 @@
       "denrLetter": [],
       "studentIdLetter": []
     },
-    "notes": "[Zoning Officer GIS Pre-check]: Na-verify ang eksaktong pin ng lote sa San Jose (14.191508°N, 121.509918°E). Sona: Rural Zone. Hazard Assessment: Baha=Safe, Landslide=Low Susceptibility, Mt. Banahaw Distance=13.9km. Inindorso para sa 1-Araw na Ocular Inspection.",
-    "status": "in_review",
+    "notes": "Inaprubahan ng Municipal Engineer.",
+    "status": "approved_for_construction",
     "payment": {
       "status": "paid",
       "orderOfPaymentNo": "OP-2026-9078",
@@ -789,6 +1445,13 @@
         "message": "Zoning Approved and Locational Clearance pre-cleared. Order of Payment issued for ₱280.00 permit assessment.",
         "createdAt": "2026-09-05T02:29:37.801Z",
         "requiresAction": false
+      },
+      {
+        "fromOffice": "Engineering",
+        "author": "Engr. Mario S. Baldovino (Municipal Engineer)",
+        "message": "Inaprubahan ng Municipal Engineer.",
+        "timestamp": "2026-09-08T15:52:54.598Z",
+        "actionType": "ENGINEER_APPROVED_PINNED"
       }
     ],
     "stepProgress": {
@@ -802,10 +1465,10 @@
       "step2By": "Edward B. Romulo, EnP. (Zoning Officer)",
       "step3Completed": true,
       "step3At": "2026-09-05T15:56:54.141Z",
-      "step3By": "Municipal Treasury (treasury)",
-      "step4Completed": false,
-      "step4At": null,
-      "step4By": null
+      "step3By": "Municipal Treasury (Payment Verified)",
+      "step4Completed": true,
+      "step4At": "2026-09-08T15:52:54.597Z",
+      "step4By": "Engr. Mario S. Baldovino (Municipal Engineer)"
     },
     "responsibleOfficers": [
       {
@@ -829,7 +1492,7 @@
     "slaMinutes": 12,
     "fee": "None (Free)",
     "createdAt": "2026-09-04T01:45:23.245Z",
-    "updatedAt": "2026-09-08T10:22:41.457Z",
+    "updatedAt": "2026-09-08T15:52:54.596Z",
     "status_alias": "PENDING_ENGINEERING_INSPECTION",
     "or_number": "OR-LUIS-2026-52855",
     "amount_paid": 280,
@@ -861,7 +1524,12 @@
       "inspector": "engineer"
     },
     "inspectionStage": "before",
-    "progress": 0
+    "progress": 0,
+    "engineerApproved": true,
+    "engineerApprovedBy": "Engr. Mario S. Baldovino (Municipal Engineer)",
+    "isPinned": true,
+    "fromOffice": "Engineering",
+    "engineerApprovedAt": "2026-09-08T15:52:54.597Z"
   },
   {
     "id": "app-1788485863467-282911",
@@ -1429,7 +2097,7 @@
       "denrLetter": [],
       "studentIdLetter": []
     },
-    "notes": "",
+    "notes": "Kulang sa kinakailangang setback (road right-of-way) at hindi malinaw ang lagda sa structural blueprint.",
     "status": "returned",
     "remarks": [
       {
@@ -1439,6 +2107,14 @@
         "message": "Application submitted online. Initial document integrity check verified.",
         "createdAt": "2026-09-02T21:32:58.576Z",
         "requiresAction": false
+      },
+      {
+        "id": "rem-1788882743019",
+        "fromOffice": "Engineering",
+        "author": "Engr. Mario S. Baldovino (Municipal Engineer)",
+        "message": "Kulang sa kinakailangang setback (road right-of-way) at hindi malinaw ang lagda sa structural blueprint.",
+        "createdAt": "2026-09-08T15:52:23.019Z",
+        "requiresAction": true
       }
     ],
     "stepProgress": {
@@ -1476,8 +2152,15 @@
     "slaMinutes": 12,
     "fee": "None (Free)",
     "createdAt": "2026-09-02T21:32:58.576Z",
-    "updatedAt": "2026-09-05T16:18:37.652Z",
-    "dataHash": "dae6ca7b6ee441d4799ebf97b91df9cc3bb16536d3de6b054a394d2e40059f35"
+    "updatedAt": "2026-09-08T15:52:33.042Z",
+    "dataHash": "dae6ca7b6ee441d4799ebf97b91df9cc3bb16536d3de6b054a394d2e40059f35",
+    "engineerApproved": false,
+    "isPinned": false,
+    "fromOffice": "Engineering",
+    "author": "Engr. Mario S. Baldovino (Municipal Engineer)",
+    "requiresAction": true,
+    "heldAt": "2026-09-08T15:52:33.041Z",
+    "heldBy": "Engr. Mario S. Baldovino (Municipal Engineer)"
   },
   {
     "id": "app-1788297076513-269464",

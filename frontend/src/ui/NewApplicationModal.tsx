@@ -7,6 +7,8 @@ import type {
   NewApplicationPayload,
 } from "../types";
 import { LUISIANA_CENTER } from "../lib/solar";
+import ApplicationTermsModal from "./ApplicationTermsModal";
+import { isAppTermsAccepted, setAppTermsAccepted, fetchClientPublicIp } from "../lib/terms-consent";
 import "./NewApplicationModal.css";
 
 /* ── SVG Icons ── */
@@ -110,6 +112,7 @@ export function NewApplicationModal({
 }: Props) {
   const [step, setStep] = useState<Step>(1);
   const [category, setCategory] = useState<ApplicationCategory>("private_infrastructure");
+  const [termsModalOpen, setTermsModalOpen] = useState<boolean>(() => !isAppTermsAccepted());
 
   // Common fields
   const [title, setTitle] = useState("");
@@ -879,6 +882,23 @@ export function NewApplicationModal({
           </div>
         )}
       </div>
+
+      <ApplicationTermsModal
+        isOpen={termsModalOpen}
+        onAccept={async () => {
+          const publicIp = await fetchClientPublicIp();
+          setAppTermsAccepted(true, {
+            source: "modal_application",
+            ipAddress: publicIp || undefined,
+          });
+          setTermsModalOpen(false);
+        }}
+        onDecline={() => {
+          setTermsModalOpen(false);
+          onClose();
+        }}
+        isAlreadyAccepted={isAppTermsAccepted()}
+      />
     </div>
   );
 }

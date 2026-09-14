@@ -463,6 +463,7 @@ export default function PinpointMapPicker({
         siteMarkerOnly: true,
         isPrivateApplication: true,
         isPickerPin: true,
+        hideBadge: true,
         markerColor: "#ea4335", // Classic red pin matching user photo
         location: {
           lon,
@@ -514,6 +515,7 @@ export default function PinpointMapPicker({
     return {
       ...DEFAULT_MAP_SETTINGS,
       basemapStyle: basemapStyleId,
+      showFloatingLabels: false,
       shadowsEnabled: false,
       shadowQuality: "low",
       terrainQuality: "low",
@@ -527,7 +529,7 @@ export default function PinpointMapPicker({
       {/* Map Header with Toggles */}
       <div className="pinpoint-map-header">
         <div className="pinpoint-map-title">
-          <IconPin size={16} color="#38bdf8" />
+          <IconPin size={16} color="var(--apple-accent, #0071e3)" />
           <span>Interactive Cesium Map (May Border ng Luisiana)</span>
         </div>
 
@@ -551,9 +553,9 @@ export default function PinpointMapPicker({
             className={`pinpoint-zone-pill ${zoningInfo.isCommercial ? "is-commercial" : "is-outlying"}`}
             title={zoningInfo.desc}
           >
-            <IconBuilding size={13} color={zoningInfo.badgeColor} />
+            <IconBuilding size={13} color="currentColor" />
             <span>
-              Sona: <strong style={{ color: zoningInfo.badgeColor }}>{zoningInfo.name}</strong>
+              Sona: <strong>{zoningInfo.name}</strong>
             </span>
           </div>
 
@@ -663,7 +665,7 @@ export default function PinpointMapPicker({
           <div className="pinpoint-dropdown-wrap" ref={menuRef}>
             <button
               type="button"
-              className="pinpoint-toggle-btn active"
+              className={`pinpoint-toggle-btn ${menuOpen ? "active" : ""}`}
               onClick={() => setMenuOpen((o) => !o)}
               title="Pumili ng map style layer"
             >

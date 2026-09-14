@@ -211,21 +211,7 @@ export function ZoningReviewMapView({
 
         <div className="zrm-header-actions">
           {isApproved ? (
-            <div
-              className="zrm-status-badge is-approved"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "8px 16px",
-                borderRadius: 6,
-                background: "rgba(16, 185, 129, 0.18)",
-                border: "1px solid rgba(16, 185, 129, 0.45)",
-                color: "#34d399",
-                fontWeight: 700,
-                fontSize: 13,
-              }}
-            >
+            <div className="zrm-status-badge is-approved">
               <IconCheckCircle size={16} />
               <span>
                 {isForEngineering
@@ -236,21 +222,7 @@ export function ZoningReviewMapView({
               </span>
             </div>
           ) : isDenied ? (
-            <div
-              className="zrm-status-badge is-denied"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "8px 16px",
-                borderRadius: 6,
-                background: "rgba(239, 68, 68, 0.18)",
-                border: "1px solid rgba(239, 68, 68, 0.45)",
-                color: "#f87171",
-                fontWeight: 700,
-                fontSize: 13,
-              }}
-            >
+            <div className="zrm-status-badge is-denied">
               <IconAlertTriangle size={16} />
               <span>✕ Na-deny ang Aplikasyon</span>
             </div>
@@ -307,22 +279,22 @@ export function ZoningReviewMapView({
           <dl className="app-assess-list">
             <div className="app-assess-row">
               <dt>Ground shaking</dt>
-              <dd style={{ color: "#38bdf8" }}>PEIS VIII</dd>
+              <dd style={{ color: "var(--apple-accent, #0071e3)" }}>PEIS VIII</dd>
             </div>
 
             <div className="app-assess-row">
               <dt>EIL 2014</dt>
-              <dd style={{ color: "#38bdf8" }}>Low</dd>
+              <dd style={{ color: "var(--apple-accent, #0071e3)" }}>Low</dd>
             </div>
 
             <div className="app-assess-row">
               <dt>Siting class</dt>
-              <dd style={{ color: "#38bdf8" }}>LOW — standard seismic design</dd>
+              <dd style={{ color: "var(--apple-accent, #0071e3)" }}>LOW — standard seismic design</dd>
             </div>
 
             <div className="app-assess-row">
               <dt>Terrain model</dt>
-              <dd style={{ color: "#ffffff" }}>Not ready</dd>
+              <dd>Not ready</dd>
             </div>
 
             <div className="app-assess-row">
@@ -341,7 +313,7 @@ export function ZoningReviewMapView({
 
             <div className="app-assess-row">
               <dt>Mt. Banahaw</dt>
-              <dd style={{ color: "#ffffff" }}>
+              <dd>
                 {ban.km.toFixed(1)} km {ban.bearing} of summit
               </dd>
             </div>
@@ -448,101 +420,45 @@ export function ZoningReviewMapView({
       </div>
 
       {/* ── HAKBANG 2: ZONING OFFICER DECISION & RECOMMENDATION CARD ── */}
-      <div
-        className="zrm-officer-decision-card"
-        style={{
-          marginTop: 20,
-          background: "rgba(15, 23, 42, 0.75)",
-          border: "1px solid rgba(56, 189, 248, 0.35)",
-          borderRadius: 10,
-          padding: "18px 20px",
-        }}
-      >
+      <div className="zrm-officer-decision-card">
         {/* Quick note templates */}
-        <div style={{ marginBottom: 14 }}>
-          <span
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              fontSize: 12,
-              fontWeight: 800,
-              color: "#f59e0b",
-              letterSpacing: "0.04em",
-              textTransform: "uppercase",
-              marginBottom: 8,
+        <span className="zrm-decision-header-lbl">
+          <IconBolt size={14} />
+          Bilis-Aksyon ng Zoning Officer (Template Notes para sa Hakbang 2):
+        </span>
+        <div className="zrm-note-template-btns">
+          <button
+            type="button"
+            className="zrm-note-template-btn is-pass"
+            onClick={() => {
+              const note = `[Hakbang 2 Ocular Inspection]: Naisagawa ang 1-araw na ocular inspection sa lote sa ${currBarangay}. Ligtas sa hazard, walang paglabag sa CLUP zoning ordinance (${zoningInfo.name}), at sumusunod sa itinakdang building setback. Inirerekomenda para sa pag-apruba.`;
+              onChangeReviewerNotes?.(note);
             }}
           >
-            <IconBolt size={14} />
-            Bilis-Aksyon ng Zoning Officer (Template Notes para sa Hakbang 2):
-          </span>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button
-              type="button"
-              onClick={() => {
-                const note = `[Hakbang 2 Ocular Inspection]: Naisagawa ang 1-araw na ocular inspection sa lote sa ${currBarangay}. Ligtas sa hazard, walang paglabag sa CLUP zoning ordinance (${zoningInfo.name}), at sumusunod sa itinakdang building setback. Inirerekomenda para sa pag-apruba.`;
-                onChangeReviewerNotes?.(note);
-              }}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                background: "rgba(16, 185, 129, 0.15)",
-                border: "1px solid rgba(16, 185, 129, 0.4)",
-                color: "#34d399",
-                borderRadius: 6,
-                padding: "6px 12px",
-                fontSize: 12,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              <IconCheck size={13} />
-              Punan: &quot;Passed Ocular Inspection / Ligtas&quot;
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const note = `[Hakbang 2 Ocular Inspection]: May nakitang paglabag sa zoning o mataas na hazard risk sa site sa ${currBarangay} matapos ang ocular inspection. Hindi sumusunod sa CLUP zoning guidelines o may encroachment sa Right-of-Way.`;
-                onChangeReviewerNotes?.(note);
-              }}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                background: "rgba(245, 158, 11, 0.12)",
-                border: "1px solid rgba(245, 158, 11, 0.4)",
-                color: "#fbbf24",
-                borderRadius: 6,
-                padding: "6px 12px",
-                fontSize: 12,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              <IconAlertTriangle size={13} />
-              Punan: &quot;May Violation / Hindi Ligtas&quot;
-            </button>
-          </div>
+            <IconCheck size={13} />
+            <span>Punan: &quot;Passed Ocular Inspection / Ligtas&quot;</span>
+          </button>
+          <button
+            type="button"
+            className="zrm-note-template-btn is-fail"
+            onClick={() => {
+              const note = `[Hakbang 2 Ocular Inspection]: May nakitang paglabag sa zoning o mataas na hazard risk sa site sa ${currBarangay} matapos ang ocular inspection. Hindi sumusunod sa CLUP zoning guidelines o may encroachment sa Right-of-Way.`;
+              onChangeReviewerNotes?.(note);
+            }}
+          >
+            <IconAlertTriangle size={13} />
+            <span>Punan: &quot;May Violation / Hindi Ligtas&quot;</span>
+          </button>
         </div>
 
         {/* Textarea */}
-        <div style={{ marginBottom: 16 }}>
-          <label
-            style={{
-              display: "block",
-              fontSize: 12,
-              fontWeight: 800,
-              color: "#38bdf8",
-              letterSpacing: "0.04em",
-              textTransform: "uppercase",
-              marginBottom: 6,
-            }}
-          >
+        <div>
+          <label className="zrm-textarea-lbl">
             Opisyal na Rekomendasyon at Notes ng Zoning Officer:
           </label>
           <textarea
             rows={3}
+            className="zrm-officer-textarea"
             value={reviewerNotes || ""}
             onChange={(e) => onChangeReviewerNotes?.(e.target.value)}
             onKeyDown={(e) => {
@@ -556,49 +472,20 @@ export function ZoningReviewMapView({
               }
             }}
             placeholder="Hal. Naisagawa ang 1-araw na ocular inspection. Ligtas sa hazard at sumusunod sa CLUP zoning… (Ctrl+Enter para i-send agad)"
-            style={{
-              width: "100%",
-              background: "rgba(2, 6, 23, 0.75)",
-              border: "1px solid rgba(56, 189, 248, 0.25)",
-              borderRadius: 6,
-              color: "#e2e8f0",
-              fontSize: 13,
-              lineHeight: "1.5",
-              padding: "10px 12px",
-              boxSizing: "border-box",
-              outline: "none",
-              fontFamily: "inherit",
-              resize: "vertical",
-            }}
           />
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
-            <span style={{ fontSize: 11.5, color: "#94a3b8", display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <div className="zrm-textarea-foot">
+            <span className="zrm-textarea-hint">
               <span>Pindutin ang <strong>Ctrl + Enter</strong> para i-send</span>
             </span>
             <button
               type="button"
+              className={`zrm-send-notes-btn${justSent ? " is-sent" : ""}`}
               disabled={updating || !reviewerNotes?.trim()}
               onClick={() => {
                 if (!reviewerNotes?.trim()) return;
                 setJustSent(true);
                 onSendNotes?.(reviewerNotes.trim());
                 setTimeout(() => setJustSent(false), 2400);
-              }}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                background: justSent ? "#059669" : "#0284c7",
-                color: "#ffffff",
-                border: justSent ? "1px solid #10b981" : "1px solid #38bdf8",
-                borderRadius: 6,
-                padding: "8px 16px",
-                fontSize: 12.5,
-                fontWeight: 700,
-                cursor: updating || !reviewerNotes?.trim() ? "not-allowed" : "pointer",
-                opacity: updating || !reviewerNotes?.trim() ? 0.6 : 1,
-                boxShadow: justSent ? "0 0 14px rgba(16, 185, 129, 0.4)" : undefined,
-                transition: "all 0.2s ease",
               }}
               title="I-send ang opisyal na notes ng Zoning Officer (Ctrl+Enter)"
             >
@@ -609,33 +496,12 @@ export function ZoningReviewMapView({
         </div>
 
         {/* Action Buttons */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <label
-            style={{
-              fontSize: 12,
-              fontWeight: 800,
-              color: "#f59e0b",
-              letterSpacing: "0.04em",
-              textTransform: "uppercase",
-            }}
-          >
+        <div className="zrm-actions-wrap">
+          <label className="zrm-actions-lbl">
             Aksyon ng Zoning Officer (Hakbang 2: 1-Araw na Ocular Inspection):
           </label>
           {isApproved ? (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "10px 16px",
-                borderRadius: 6,
-                background: "rgba(16, 185, 129, 0.16)",
-                border: "1px solid rgba(16, 185, 129, 0.4)",
-                color: "#34d399",
-                fontWeight: 700,
-                fontSize: 13,
-              }}
-            >
+            <div className="zrm-status-banner-box is-approved">
               <IconCheckCircle size={18} />
               <span>
                 {isForEngineering
@@ -646,63 +512,26 @@ export function ZoningReviewMapView({
               </span>
             </div>
           ) : isDenied ? (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "10px 16px",
-                borderRadius: 6,
-                background: "rgba(239, 68, 68, 0.16)",
-                border: "1px solid rgba(239, 68, 68, 0.4)",
-                color: "#f87171",
-                fontWeight: 700,
-                fontSize: 13,
-              }}
-            >
+            <div className="zrm-status-banner-box is-denied">
               <IconAlertTriangle size={18} />
               <span>Na-deny ang aplikasyon dahil sa paglabag sa zoning o site hazards.</span>
             </div>
           ) : (
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <div className="zrm-action-btns-group">
               <button
                 type="button"
+                className="zrm-btn-approve-permit"
                 disabled={updating}
                 onClick={() => onApprove?.(application.id)}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                  padding: "10px 20px",
-                  background: "#059669",
-                  color: "#fff",
-                  border: "1px solid #10b981",
-                  borderRadius: 6,
-                  fontWeight: 700,
-                  fontSize: 13,
-                  cursor: updating ? "not-allowed" : "pointer",
-                }}
               >
                 <IconCheckCircle size={16} />
                 <span>Aprubahan at I-isyu ang Zoning Clearance</span>
               </button>
               <button
                 type="button"
+                className="zrm-btn-deny-permit"
                 disabled={updating}
                 onClick={() => onDeny?.(application.id)}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                  padding: "10px 20px",
-                  background: "rgba(239, 68, 68, 0.18)",
-                  color: "#f87171",
-                  border: "1px solid rgba(239, 68, 68, 0.45)",
-                  borderRadius: 6,
-                  fontWeight: 700,
-                  fontSize: 13,
-                  cursor: updating ? "not-allowed" : "pointer",
-                }}
               >
                 <IconAlertTriangle size={16} />
                 <span>I-Deny (May Violation sa Zoning)</span>

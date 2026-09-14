@@ -1,0 +1,660 @@
+/* ── ApplicationTermsModal.css · INFA-TRACK Terms & Conditions Apple/Inter Theme ── */
+
+.app-terms-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: appTermsFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes appTermsFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.app-terms-dialog {
+  width: 100%;
+  max-width: 660px;
+  max-height: 88vh;
+  background: var(--apple-surface, #ffffff);
+  color: var(--apple-text, #1d1d1f);
+  font-family: var(--apple-font, -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", sans-serif);
+  border: 1px solid var(--apple-border, rgba(0, 0, 0, 0.1));
+  border-radius: var(--apple-radius-lg, 18px);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.22);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: appTermsSlideUp 0.26s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes appTermsSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+[data-theme="dark"] .app-terms-dialog,
+.dark .app-terms-dialog {
+  background: var(--apple-surface, #1c1e22);
+  border-color: var(--apple-border, rgba(255, 255, 255, 0.12));
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65);
+}
+
+/* Header */
+.app-terms-header {
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--apple-border, rgba(0, 0, 0, 0.08));
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  background: var(--apple-surface, #ffffff);
+}
+
+[data-theme="dark"] .app-terms-header,
+.dark .app-terms-header {
+  background: var(--apple-surface, #1c1e22);
+}
+
+.app-terms-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.app-terms-logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  object-fit: contain;
+  background: #ffffff;
+  padding: 2px;
+  border: 1px solid var(--apple-border, rgba(0, 0, 0, 0.08));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.app-terms-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--apple-text, #1d1d1f);
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+
+.app-terms-subtitle {
+  margin: 3px 0 0;
+  font-size: 0.8rem;
+  color: var(--apple-text-secondary, #6e6e73);
+}
+
+.app-terms-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 24px;
+  background: var(--apple-surface-secondary, #f5f5f7);
+  border-bottom: 1px solid var(--apple-border, rgba(0, 0, 0, 0.06));
+}
+
+[data-theme="dark"] .app-terms-badges,
+.dark .app-terms-badges {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.app-terms-badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--apple-text-secondary, #6e6e73);
+  background: var(--apple-surface, #ffffff);
+  border: 1px solid var(--apple-border, rgba(0, 0, 0, 0.08));
+  padding: 3px 8px;
+  border-radius: var(--apple-radius-full, 980px);
+}
+
+[data-theme="dark"] .app-terms-badge-pill,
+.dark .app-terms-badge-pill {
+  background: rgba(255, 255, 255, 0.06);
+  color: #a1a1a6;
+}
+
+/* Scrollable Body */
+.app-terms-body {
+  padding: 20px 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: var(--apple-text, #1d1d1f);
+  -webkit-overflow-scrolling: touch;
+}
+
+.app-terms-section {
+  background: var(--apple-surface-secondary, #f5f5f7);
+  border: 1px solid var(--apple-border, rgba(0, 0, 0, 0.06));
+  border-radius: var(--apple-radius-md, 12px);
+  padding: 14px 16px;
+  transition: border-color 0.15s ease;
+}
+
+[data-theme="dark"] .app-terms-section,
+.dark .app-terms-section {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.app-terms-section-header {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 6px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--apple-text, #1d1d1f);
+}
+
+.app-terms-section-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: rgba(0, 113, 227, 0.1);
+  color: var(--apple-accent, #0071e3);
+  flex-shrink: 0;
+}
+
+[data-theme="dark"] .app-terms-section-icon,
+.dark .app-terms-section-icon {
+  background: rgba(41, 151, 255, 0.16);
+  color: var(--apple-accent, #2997ff);
+}
+
+.app-terms-section p {
+  margin: 0;
+  color: var(--apple-text-secondary, #515154);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+[data-theme="dark"] .app-terms-section p,
+.dark .app-terms-section p {
+  color: #a1a1a6;
+}
+
+.app-terms-section ul {
+  margin: 6px 0 0 16px;
+  padding: 0;
+  color: var(--apple-text-secondary, #515154);
+  font-size: 0.81rem;
+  line-height: 1.5;
+}
+
+[data-theme="dark"] .app-terms-section ul,
+.dark .app-terms-section ul {
+  color: #a1a1a6;
+}
+
+.app-terms-section li {
+  margin-bottom: 4px;
+}
+
+/* Segmented Tabs Bar */
+.app-terms-tabs-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 24px;
+  background: var(--apple-surface, #ffffff);
+  border-bottom: 1px solid var(--apple-border, rgba(0, 0, 0, 0.08));
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.app-terms-tabs-bar::-webkit-scrollbar {
+  display: none;
+}
+
+[data-theme="dark"] .app-terms-tabs-bar,
+.dark .app-terms-tabs-bar {
+  background: var(--apple-surface, #1c1e22);
+}
+
+.app-terms-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--apple-radius-full, 980px);
+  background: transparent;
+  border: 1px solid transparent;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--apple-text-secondary, #6e6e73);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.app-terms-tab-btn:hover {
+  color: var(--apple-text, #1d1d1f);
+  background: var(--apple-surface-secondary, #f5f5f7);
+}
+
+[data-theme="dark"] .app-terms-tab-btn:hover,
+.dark .app-terms-tab-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.app-terms-tab-btn.active {
+  background: var(--apple-accent, #0071e3);
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(0, 113, 227, 0.28);
+}
+
+[data-theme="dark"] .app-terms-tab-btn.active,
+.dark .app-terms-tab-btn.active {
+  background: var(--apple-accent, #2997ff);
+  color: #ffffff;
+}
+
+.app-terms-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  background: rgba(0, 0, 0, 0.08);
+  color: inherit;
+}
+
+.app-terms-tab-btn.active .app-terms-tab-badge {
+  background: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+}
+
+/* Category Group Title */
+.app-terms-group-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--apple-accent, #0071e3);
+  padding: 6px 0 2px;
+  border-bottom: 1.5px solid rgba(0, 113, 227, 0.15);
+  margin-top: 6px;
+  margin-bottom: 2px;
+}
+
+[data-theme="dark"] .app-terms-group-title,
+.dark .app-terms-group-title {
+  color: var(--apple-accent, #2997ff);
+  border-color: rgba(41, 151, 255, 0.25);
+}
+
+/* DPO Official Card */
+.app-terms-dpo-card {
+  background: rgba(21, 128, 61, 0.06);
+  border: 1.5px solid rgba(21, 128, 61, 0.2);
+  border-radius: var(--apple-radius-md, 12px);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+[data-theme="dark"] .app-terms-dpo-card,
+.dark .app-terms-dpo-card {
+  background: rgba(34, 197, 94, 0.08);
+  border-color: rgba(34, 197, 94, 0.25);
+}
+
+.app-terms-dpo-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 0.86rem;
+  color: var(--apple-safe, #15803d);
+}
+
+[data-theme="dark"] .app-terms-dpo-head,
+.dark .app-terms-dpo-head {
+  color: #4ade80;
+}
+
+.app-terms-dpo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+  font-size: 0.78rem;
+  color: var(--apple-text-secondary, #6e6e73);
+  margin-top: 4px;
+}
+
+/* Agreement & Cookie Preference Card */
+.app-terms-consent-box {
+  background: rgba(0, 113, 227, 0.05);
+  border: 1.5px solid rgba(0, 113, 227, 0.25);
+  border-radius: var(--apple-radius-md, 12px);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+[data-theme="dark"] .app-terms-consent-box,
+.dark .app-terms-consent-box {
+  background: rgba(41, 151, 255, 0.08);
+  border-color: rgba(41, 151, 255, 0.35);
+}
+
+.app-terms-select-all-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 2px;
+}
+
+.app-terms-select-all-btn {
+  background: transparent;
+  border: none;
+  color: var(--apple-accent, #0071e3);
+  font-size: 0.77rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.app-terms-select-all-btn:hover {
+  background: rgba(0, 113, 227, 0.08);
+  text-decoration: none;
+}
+
+[data-theme="dark"] .app-terms-select-all-btn,
+.dark .app-terms-select-all-btn {
+  color: #2997ff;
+}
+
+.app-terms-consent-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.app-terms-check-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--apple-surface, #ffffff);
+  border: 1px solid var(--apple-border, rgba(0, 0, 0, 0.08));
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.app-terms-check-item:hover {
+  border-color: var(--apple-accent, #0071e3);
+  background: rgba(0, 113, 227, 0.02);
+}
+
+[data-theme="dark"] .app-terms-check-item,
+.dark .app-terms-check-item {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark"] .app-terms-check-item:hover,
+.dark .app-terms-check-item:hover {
+  background: rgba(41, 151, 255, 0.06);
+  border-color: #2997ff;
+}
+
+.app-terms-checkbox-input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  accent-color: var(--apple-accent, #0071e3);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.app-terms-check-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.app-terms-check-title {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--apple-text, #1d1d1f);
+}
+
+[data-theme="dark"] .app-terms-check-title,
+.dark .app-terms-check-title {
+  color: #f5f5f7;
+}
+
+.app-terms-check-desc {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--apple-text-secondary, #6e6e73);
+}
+
+[data-theme="dark"] .app-terms-check-desc,
+.dark .app-terms-check-desc {
+  color: #a1a1a6;
+}
+
+.app-terms-cookie-note {
+  font-size: 0.74rem;
+  color: var(--apple-accent, #0071e3);
+  margin-top: 2px;
+  line-height: 1.4;
+  font-weight: 500;
+}
+
+[data-theme="dark"] .app-terms-cookie-note,
+.dark .app-terms-cookie-note {
+  color: var(--apple-accent, #2997ff);
+}
+
+.app-terms-already-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(21, 128, 61, 0.08);
+  border: 1px solid rgba(21, 128, 61, 0.25);
+  border-radius: 8px;
+  font-size: 0.78rem;
+  color: var(--apple-safe, #15803d);
+  font-weight: 500;
+}
+
+[data-theme="dark"] .app-terms-already-banner,
+.dark .app-terms-already-banner {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(34, 197, 94, 0.3);
+  color: #4ade80;
+}
+
+/* Footer Actions */
+.app-terms-footer {
+  padding: 14px 24px;
+  border-top: 1px solid var(--apple-border, rgba(0, 0, 0, 0.08));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--apple-surface, #ffffff);
+}
+
+[data-theme="dark"] .app-terms-footer,
+.dark .app-terms-footer {
+  background: var(--apple-surface, #1c1e22);
+}
+
+.app-terms-btn {
+  padding: 10px 20px;
+  border-radius: var(--apple-radius-full, 980px);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid transparent;
+  font-family: inherit;
+}
+
+.app-terms-btn-decline {
+  background: var(--apple-surface-secondary, #f5f5f7);
+  color: var(--apple-text-secondary, #6e6e73);
+  border-color: var(--apple-border, rgba(0, 0, 0, 0.08));
+}
+
+.app-terms-btn-decline:hover {
+  background: #ebebed;
+  color: var(--apple-text, #1d1d1f);
+}
+
+[data-theme="dark"] .app-terms-btn-decline,
+.dark .app-terms-btn-decline {
+  background: rgba(255, 255, 255, 0.08);
+  color: #a1a1a6;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+[data-theme="dark"] .app-terms-btn-decline:hover,
+.dark .app-terms-btn-decline:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+
+.app-terms-btn-accept {
+  background: var(--apple-accent, #0071e3);
+  color: #ffffff;
+  border-color: var(--apple-accent, #0071e3);
+  box-shadow: 0 4px 14px rgba(0, 113, 227, 0.3);
+}
+
+.app-terms-btn-accept:hover:not(:disabled) {
+  background: #0077ed;
+  box-shadow: 0 6px 18px rgba(0, 113, 227, 0.4);
+  transform: translateY(-1px);
+}
+
+.app-terms-btn-accept:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Discrete Link to open Terms from Nav/Footer */
+.new-app-terms-trigger-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  font-size: 0.74rem;
+  color: var(--apple-text-secondary, #6e6e73);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--apple-radius-sm, 6px);
+  transition: all 0.14s ease;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.new-app-terms-trigger-btn:hover {
+  color: var(--apple-accent, #0071e3);
+  background: var(--apple-surface-secondary, rgba(0, 0, 0, 0.04));
+}
+
+[data-theme="dark"] .new-app-terms-trigger-btn:hover,
+.dark .new-app-terms-trigger-btn:hover {
+  color: var(--apple-accent, #2997ff);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* Mobile Responsiveness */
+@media (max-width: 600px) {
+  .app-terms-overlay {
+    padding: 10px;
+    align-items: flex-end;
+  }
+
+  .app-terms-dialog {
+    max-height: 92vh;
+    border-radius: 16px 16px 0 0;
+  }
+
+  .app-terms-header {
+    padding: 16px 18px 12px;
+  }
+
+  .app-terms-title {
+    font-size: 1.02rem;
+  }
+
+  .app-terms-badges {
+    padding: 8px 18px;
+    gap: 4px;
+  }
+
+  .app-terms-badge-pill {
+    font-size: 0.68rem;
+  }
+
+  .app-terms-body {
+    padding: 16px 18px;
+    gap: 12px;
+  }
+
+  .app-terms-footer {
+    padding: 12px 18px;
+    flex-direction: column-reverse;
+    gap: 8px;
+  }
+
+  .app-terms-btn {
+    width: 100%;
+    justify-content: center;
+    padding: 11px 16px;
+    font-size: 0.88rem;
+  }
+}

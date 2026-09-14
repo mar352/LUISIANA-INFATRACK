@@ -94,7 +94,9 @@ export function addBarangayOverlay(viewer: Cesium.Viewer, areas: BarangayArea[])
         material: fill,
         outline: true,
         outlineColor: line,
+        height: 0,
         heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+        classificationType: Cesium.ClassificationType.TERRAIN,
         zIndex: 8,
       },
     });

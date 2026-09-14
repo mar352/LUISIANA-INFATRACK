@@ -7,6 +7,9 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
+    headers: {
+      "Content-Disposition": "inline",
+    },
     watch: {
       // Needed for file changes on Docker Desktop (Windows/Mac bind mounts)
       usePolling: process.env.VITE_USE_POLLING === "true",

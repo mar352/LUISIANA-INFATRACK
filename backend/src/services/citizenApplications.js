@@ -3,6 +3,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { query, isDbConnected, insertSiteInspectionPhoto, getSiteInspectionPhotosFromDb } from "./db.js";
 import { computeApplicationHash, hashField } from "./dataHash.js";
+import { recordTermsConsent } from "./termsConsent.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -206,6 +207,19 @@ export function createCitizenApplication(data) {
     slaDays: 1,
     slaMinutes: 12,
     fee: "None (Free)",
+    termsAccepted: data.termsAccepted !== undefined ? Boolean(data.termsAccepted) : true,
+    termsAcceptedAt: data.termsAcceptedAt || now,
+    termsVersion: data.termsVersion || "2026.1",
+    clientIp: data.clientIp || data.termsConsentDetails?.ipAddress || "",
+    termsConsentDetails: {
+      agreedToTerms: data.termsConsentDetails?.agreedToTerms !== false,
+      agreedToPrivacyAct: data.termsConsentDetails?.agreedToPrivacyAct !== false,
+      agreedToClup: data.termsConsentDetails?.agreedToClup !== false,
+      agreedToCookies: data.termsConsentDetails?.agreedToCookies !== false,
+      acceptedAt: data.termsAcceptedAt || data.termsConsentDetails?.acceptedAt || now,
+      termsVersion: data.termsVersion || data.termsConsentDetails?.termsVersion || "2026.1",
+      ipAddress: data.clientIp || data.termsConsentDetails?.ipAddress || "",
+    },
     createdAt: now,
     updatedAt: now,
   };
@@ -215,6 +229,20 @@ export function createCitizenApplication(data) {
 
   applications.unshift(newApp);
   saveApplications(applications);
+
+  // Also dual-write consent tracking with resolved public IP
+  if (newApp.termsAccepted !== false) {
+    recordTermsConsent({
+      ipAddress: newApp.clientIp || newApp.termsConsentDetails?.ipAddress || "",
+      userAgent: data.userAgent || "",
+      termsVersion: newApp.termsVersion || "2026.1",
+      agreedTerms: true,
+      agreedPrivacy: true,
+      agreedCookies: true,
+      consentSource: "citizen_application_submission",
+      applicantName: newApp.applicant?.fullName || "",
+    }).catch(() => {});
+  }
 
   // Sync to PostgreSQL with hashed personal fields for privacy
   if (isDbConnected()) {
@@ -232,8 +260,9 @@ export function createCitizenApplication(data) {
         geo_risk, agricultural_details, municipal_details,
         lot_details, uploads, status, step_progress,
         responsible_officers, sla_days, sla_minutes, fee,
-        notes, zoning_classification, data_hash, created_at, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)
+        notes, zoning_classification, data_hash, created_at, updated_at,
+        terms_accepted, terms_accepted_at, terms_version, terms_consent_details
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33)
       ON CONFLICT (tracking_number) DO UPDATE SET
         applicant_name = EXCLUDED.applicant_name,
         contact_phone = EXCLUDED.contact_phone,
@@ -251,6 +280,10 @@ export function createCitizenApplication(data) {
         uploads = EXCLUDED.uploads,
         zoning_classification = EXCLUDED.zoning_classification,
         data_hash = EXCLUDED.data_hash,
+        terms_accepted = EXCLUDED.terms_accepted,
+        terms_accepted_at = EXCLUDED.terms_accepted_at,
+        terms_version = EXCLUDED.terms_version,
+        terms_consent_details = EXCLUDED.terms_consent_details,
         updated_at = NOW()`,
       [
         newApp.id,
@@ -282,6 +315,10 @@ export function createCitizenApplication(data) {
         newApp.dataHash,
         newApp.createdAt,
         newApp.updatedAt,
+        newApp.termsAccepted,
+        newApp.termsAcceptedAt,
+        newApp.termsVersion,
+        JSON.stringify(newApp.termsConsentDetails),
       ]
     ).catch((err) => console.warn("[PostgreSQL] Insert application failed:", err.message));
 
@@ -490,13 +527,15 @@ export function updateCitizenApplication(id, patch) {
     const noteText = String(patch.notes).trim();
     const isDup = updated.remarks.some((r) => r.message === noteText);
     if (!isDup) {
+      const office = patch.fromOffice || (patch.status === "ocular_inspection" || patch.status === "engineering" || patch.status === "returned" ? "Engineering" : "MPDC");
+      const defaultAuthor = office === "Engineering" ? "Engr. Mario S. Baldovino (Municipal Engineer)" : "Edward B. Romulo, EnP. (Zoning Officer)";
       const staffRemark = {
         id: `rem-${Date.now()}`,
-        fromOffice: patch.status === "ocular_inspection" || patch.status === "engineering" ? "Engineering" : "MPDC",
-        author: patch.status === "ocular_inspection" ? "Engr. Mario S. Baldovino (Municipal Engineer)" : "Edward B. Romulo, EnP. (Zoning Officer)",
+        fromOffice: office,
+        author: patch.author || patch.engineerApprovedBy || defaultAuthor,
         message: noteText,
         createdAt: new Date().toISOString(),
-        requiresAction: patch.status === "returned",
+        requiresAction: patch.status === "returned" || Boolean(patch.requiresAction),
       };
       updated.remarks.push(staffRemark);
 
@@ -532,6 +571,17 @@ export function updateCitizenApplication(id, patch) {
         longitude = COALESCE($6, longitude),
         geo_risk = COALESCE($7, geo_risk),
         lot_details = COALESCE($8, lot_details),
+        engineer_approved = $9,
+        is_pinned = $10,
+        engineer_approved_at = $11,
+        engineer_approved_by = $12,
+        held_at = $13,
+        held_by = $14,
+        hold_reason = $15,
+        payment_status = $16,
+        or_number = $17,
+        amount_paid = $18,
+        payment_date = $19,
         updated_at = NOW()
        WHERE id = $4 OR tracking_number = $4`,
       [
@@ -543,6 +593,17 @@ export function updateCitizenApplication(id, patch) {
         updated.longitude ?? updated.coordinates?.lon ?? null,
         updated.geoRisk ? JSON.stringify(updated.geoRisk) : null,
         updated.lotDetails ? JSON.stringify(updated.lotDetails) : null,
+        Boolean(updated.engineerApproved),
+        Boolean(updated.isPinned),
+        updated.engineerApprovedAt || null,
+        updated.engineerApprovedBy || null,
+        updated.heldAt || null,
+        updated.heldBy || null,
+        updated.status === "returned" ? (updated.notes || null) : null,
+        updated.payment?.status || (updated.or_number ? "paid" : null),
+        updated.or_number || updated.payment?.or_number || updated.payment?.orNumber || null,
+        updated.amount_paid != null ? Number(updated.amount_paid) : (updated.payment?.amount_paid != null ? Number(updated.payment.amount_paid) : null),
+        updated.payment_date || updated.payment?.paidAt || null,
       ]
     ).catch((err) => console.warn("[PostgreSQL] Update application failed:", err.message));
   }
