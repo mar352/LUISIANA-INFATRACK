@@ -268,6 +268,15 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
           loadedApp.remarks = Array.isArray(loadedApp.remarks) ? loadedApp.remarks : [];
           setApp(loadedApp);
           setSearchInput(loadedApp.trackingNumber);
+          if (typeof window !== "undefined") {
+            const currentUrl = new URL(window.location.href);
+            currentUrl.searchParams.set("track", loadedApp.trackingNumber);
+            window.history.replaceState(
+              { ...window.history.state, screen: "applicant_tracking", trackingReference: loadedApp.trackingNumber },
+              "",
+              currentUrl.pathname + currentUrl.search
+            );
+          }
           return;
         }
       }
@@ -283,8 +292,14 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
   };
 
   useEffect(() => {
-    if (initialTrackingNo && initialTrackingNo.trim()) {
-      void fetchApplication(initialTrackingNo.trim());
+    const trackToLoad =
+      initialTrackingNo && initialTrackingNo.trim()
+        ? initialTrackingNo.trim()
+        : typeof window !== "undefined"
+        ? (new URLSearchParams(window.location.search).get("track") || new URLSearchParams(window.location.search).get("tracking") || "").trim()
+        : "";
+    if (trackToLoad) {
+      void fetchApplication(trackToLoad);
     }
   }, [initialTrackingNo]);
 
@@ -370,6 +385,17 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
       if (socket) socket.disconnect();
     };
   }, [app?.trackingNumber, app?.id]);
+
+  useEffect(() => {
+    const scrollVal = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("scroll") : null;
+    if (scrollVal) {
+      const top = parseInt(scrollVal, 10) || 400;
+      setTimeout(() => {
+        const el = document.querySelector(".at-page");
+        if (el) el.scrollTop = top;
+      }, 400);
+    }
+  }, [app]);
 
   const isAllApproved =
     (app?.status || "").toLowerCase() === "approved" ||
@@ -540,7 +566,7 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
             <span>Bumalik</span>
           </button>
           <div className="at-nav-brand">
-            <img src="/logo-trans.png" alt="Luisiana Seal" />
+            <img src="/logo.png" alt="Luisiana Seal" />
             <div>
               <div className="at-nav-title">Republika ng Pilipinas · Bayan ng Luisiana</div>
               <div className="at-nav-sub">MPDC Online Citizen Permit Tracking Portal</div>
@@ -1075,7 +1101,7 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
                 <div className="at-op-slip">
                   <div className="at-op-slip-header">
                     <div className="at-op-slip-seal">
-                      <img src="/logo-trans.png" alt="Luisiana Seal" />
+                      <img src="/logo.png" alt="Luisiana Seal" />
                       <div>
                         <strong>BAYAN NG LUISIANA</strong>
                         <small>Lalawigan ng Laguna · Tanggapan ng Ingat-Yaman</small>

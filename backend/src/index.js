@@ -47,6 +47,7 @@ import {
   getApplicationPhotos,
 } from "./services/citizenApplications.js";
 import { initDb } from "./services/db.js";
+import { recordTermsConsent, listTermsConsents, resolveRealPublicIp } from "./services/termsConsent.js";
 import { createAlertFromRisk } from "./services/alerts.js";
 import { buildSlopeCache } from "./services/dem.js";
 import { chatWithOllama, getChatConfig } from "./services/chat.js";
@@ -225,9 +226,14 @@ app.use(
     res.removeHeader("X-Frame-Options");
     res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
     res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Content-Disposition", "inline");
     next();
   },
-  express.static(uploadsDir)
+  express.static(uploadsDir, {
+    setHeaders: (res) => {
+      res.setHeader("Content-Disposition", "inline");
+    },
+  })
 );
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
@@ -711,12 +717,27 @@ app.post("/api/citizen/applications/upload", (req, res, next) => {
   });
 });
 
-app.post("/api/citizen/applications", (req, res) => {
+app.post("/api/citizen/applications", async (req, res) => {
   try {
     const appData = req.body || {};
     if (!appData.applicant?.fullName || !appData.applicant?.contactPhone) {
       return res.status(400).json({ error: "Applicant name and contact number are required." });
     }
+    const candidateIp =
+      appData.clientIp ||
+      req.headers["cf-connecting-ip"] ||
+      req.headers["x-real-ip"] ||
+      req.headers["x-forwarded-for"]?.toString().split(",")[0]?.trim() ||
+      req.ip ||
+      req.socket?.remoteAddress ||
+      "";
+    const realIp = await resolveRealPublicIp(candidateIp);
+    appData.clientIp = realIp;
+    if (!appData.termsConsentDetails || typeof appData.termsConsentDetails !== "object") {
+      appData.termsConsentDetails = {};
+    }
+    appData.termsConsentDetails.ipAddress = realIp;
+
     const created = createCitizenApplication(appData);
     io.emit("planning:new_application", {
       trackingNumber: created.trackingNumber,
@@ -728,6 +749,38 @@ app.post("/api/citizen/applications", (req, res) => {
     res.json({ ok: true, application: created });
   } catch (err) {
     res.status(500).json({ error: err?.message || "Failed to submit application" });
+  }
+});
+
+// ── Terms & Conditions and Cookie Consent Persistence ─────────────────────────
+app.post("/api/terms-consent", async (req, res) => {
+  try {
+    const candidateIp =
+      req.body?.ipAddress ||
+      req.headers["cf-connecting-ip"] ||
+      req.headers["x-real-ip"] ||
+      req.headers["x-forwarded-for"]?.toString().split(",")[0]?.trim() ||
+      req.ip ||
+      req.socket?.remoteAddress ||
+      "";
+    const userAgent = req.headers["user-agent"] || req.body?.userAgent || "";
+    const record = await recordTermsConsent({
+      ...req.body,
+      ipAddress: candidateIp,
+      userAgent,
+    });
+    res.json({ ok: true, consent: record });
+  } catch (err) {
+    res.status(500).json({ error: err?.message || "Failed to record terms consent" });
+  }
+});
+
+app.get("/api/terms-consent", (req, res) => {
+  try {
+    const list = listTermsConsents();
+    res.json({ ok: true, consents: list });
+  } catch (err) {
+    res.status(500).json({ error: err?.message || "Failed to list terms consents" });
   }
 });
 

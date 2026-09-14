@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent, type SyntheticEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent, type SyntheticEvent } from "react";
 import maplibregl, { Map as MapLibreMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { CesiumMap, type CesiumMapHandle } from "./CesiumMap";
@@ -515,6 +515,204 @@ function loadOpsDismissedIds(): string[] {
   }
 }
 
+export type AppScreen =
+  | "landing"
+  | "login"
+  | "app"
+  | "inventory"
+  | "planning"
+  | "documents"
+  | "analytics"
+  | "engagement"
+  | "citizen"
+  | "services"
+  | "audit"
+  | "negosyo"
+  | "treasury"
+  | "permits"
+  | "new_application"
+  | "applicant_tracking"
+  | "pengineer"
+  | "engineer_applications";
+
+export function parseScreenFromLocation(): { screen: AppScreen; trackingRef?: string } {
+  if (typeof window === "undefined") {
+    return { screen: "landing" };
+  }
+
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const track = params.get("track") || params.get("tracking");
+    if (track) {
+      return { screen: "applicant_tracking", trackingRef: track };
+    }
+    const screenParam = params.get("screen");
+    if (screenParam && [
+      "landing", "login", "app", "inventory", "planning", "documents", "analytics",
+      "engagement", "citizen", "services", "audit", "negosyo", "treasury", "permits",
+      "new_application", "applicant_tracking", "pengineer", "engineer_applications"
+    ].includes(screenParam)) {
+      return { screen: screenParam as AppScreen };
+    }
+  } catch {
+    /* ignore */
+  }
+
+  const pathname = (window.location.pathname || "/").toLowerCase().replace(/\/+$/, "") || "/";
+
+  switch (pathname) {
+    case "/":
+    case "/landing":
+    case "/home":
+      return { screen: "landing" };
+    case "/login":
+    case "/signin":
+    case "/auth":
+      return { screen: "login" };
+    case "/new-application":
+    case "/new_application":
+    case "/apply":
+      return { screen: "new_application" };
+    case "/track":
+    case "/tracking":
+    case "/applicant-tracking":
+    case "/applicant_tracking":
+      return { screen: "applicant_tracking" };
+    case "/citizen":
+    case "/public":
+    case "/bantay-bayan":
+      return { screen: "citizen" };
+    case "/services":
+    case "/online-services":
+      return { screen: "new_application" };
+    case "/app":
+    case "/gis":
+    case "/map":
+      return { screen: "app" };
+    case "/inventory":
+      return { screen: "inventory" };
+    case "/planning":
+      return { screen: "planning" };
+    case "/permits":
+    case "/zoning":
+      return { screen: "permits" };
+    case "/engineer-applications":
+    case "/engineer_applications":
+      return { screen: "engineer_applications" };
+    case "/documents":
+    case "/dms":
+      return { screen: "documents" };
+    case "/analytics":
+      return { screen: "analytics" };
+    case "/engagement":
+      return { screen: "engagement" };
+    case "/audit":
+      return { screen: "audit" };
+    case "/pengineer":
+      return { screen: "pengineer" };
+    case "/treasury":
+    case "/revenue":
+      return { screen: "treasury" };
+    case "/negosyo":
+      return { screen: "negosyo" };
+    default: {
+      const hash = (window.location.hash || "").toLowerCase().replace(/^#\/?/, "");
+      if (hash === "login") return { screen: "login" };
+      if (hash === "new-application" || hash === "apply") return { screen: "new_application" };
+      if (hash === "track") return { screen: "applicant_tracking" };
+      if (hash === "citizen") return { screen: "citizen" };
+      if (hash === "app" || hash === "map") return { screen: "app" };
+      if (hash === "permits") return { screen: "permits" };
+      if (hash === "inventory") return { screen: "inventory" };
+      if (hash === "planning") return { screen: "planning" };
+      return { screen: "landing" };
+    }
+  }
+}
+
+export function getUrlForScreen(targetScreen: AppScreen, trackingRef?: string): string {
+  switch (targetScreen) {
+    case "landing":
+      return "/";
+    case "login":
+      return "/login";
+    case "new_application":
+      return "/new-application";
+    case "applicant_tracking":
+      return trackingRef ? `/track?track=${encodeURIComponent(trackingRef)}` : "/track";
+    case "citizen":
+      return "/citizen";
+    case "services":
+      return "/new-application";
+    case "app":
+      return "/app";
+    case "inventory":
+      return "/inventory";
+    case "planning":
+      return "/planning";
+    case "permits":
+      return "/permits";
+    case "engineer_applications":
+      return "/engineer-applications";
+    case "documents":
+      return "/documents";
+    case "analytics":
+      return "/analytics";
+    case "engagement":
+      return "/engagement";
+    case "audit":
+      return "/audit";
+    case "pengineer":
+      return "/pengineer";
+    case "treasury":
+      return "/treasury";
+    case "negosyo":
+      return "/negosyo";
+    default:
+      return "/";
+  }
+}
+
+export function getPageTitleForScreen(targetScreen: AppScreen): string {
+  switch (targetScreen) {
+    case "landing":
+      return "INFA-TRACK | LGU Luisiana Infrastructure GIS";
+    case "login":
+      return "Sign In | INFA-TRACK Luisiana";
+    case "new_application":
+      return "Project Application Intake | INFA-TRACK Luisiana";
+    case "applicant_tracking":
+      return "Permit Tracking | INFA-TRACK Luisiana";
+    case "citizen":
+      return "Bantay-Bayan Citizen Portal | INFA-TRACK Luisiana";
+    case "app":
+      return "3D GIS Map | INFA-TRACK Luisiana";
+    case "inventory":
+      return "Infrastructure Inventory | INFA-TRACK Luisiana";
+    case "planning":
+      return "Comprehensive Planning | INFA-TRACK Luisiana";
+    case "permits":
+      return "Zoning & Land Use Permits | INFA-TRACK Luisiana";
+    case "engineer_applications":
+      return "Engineer Applications | INFA-TRACK Luisiana";
+    case "documents":
+      return "Documents & Regulations | INFA-TRACK Luisiana";
+    case "analytics":
+      return "Executive Analytics | INFA-TRACK Luisiana";
+    case "engagement":
+      return "Citizen Engagement | INFA-TRACK Luisiana";
+    case "audit":
+      return "System Audit Logs | INFA-TRACK Luisiana";
+    case "pengineer":
+      return "Private Engineer Portal | INFA-TRACK Luisiana";
+    case "treasury":
+    case "negosyo":
+      return "Treasury & Revenue Office | INFA-TRACK Luisiana";
+    default:
+      return "INFA-TRACK Luisiana";
+  }
+}
+
 export default function App() {
   const mapRef = useRef<MapLibreMap | null>(null);
   const mapDivRef = useRef<HTMLDivElement | null>(null);
@@ -522,10 +720,13 @@ export default function App() {
   const [mapInstance, setMapInstance] = useState<MapLibreMap | null>(null);
   const cesiumMapRef = useRef<CesiumMapHandle | null>(null);
 
+  const initialRoute = useMemo(() => parseScreenFromLocation(), []);
   const [currentSession, setCurrentSession] = useState<SessionUser | null>(null);
   const currentRole = currentSession?.role ?? null;
-  const [screen, setScreen] = useState<"landing" | "login" | "app" | "inventory" | "planning" | "documents" | "analytics" | "engagement" | "citizen" | "services" | "audit" | "negosyo" | "treasury" | "permits" | "new_application" | "applicant_tracking" | "pengineer" | "engineer_applications">("landing");
-  const [trackingReference, setTrackingReference] = useState<string>("");
+  const [screen, setScreen] = useState<AppScreen>(initialRoute.screen);
+  const [trackingReference, setTrackingReference] = useState<string>(initialRoute.trackingRef || "");
+  const isPopStateRef = useRef(false);
+
   const roleConfig = currentRole ? ROLE_CONFIGS[currentRole] : null;
   /** Keep Cesium alive briefly after leaving the map so logout/home doesn't white-screen on WebGL teardown. */
   const [mapHold, setMapHold] = useState(false);
@@ -536,6 +737,72 @@ export default function App() {
     const stored = localStorage.getItem("infatrack_cookie_consent");
     return stored === "accepted" ? "accepted" : stored === "declined" ? "declined" : "pending";
   });
+
+  const navigateBack = useCallback((fallbackScreen: AppScreen = "landing") => {
+    setScreen(fallbackScreen);
+  }, []);
+
+  // Listen to browser Back/Forward (popstate) navigation
+  useEffect(() => {
+    const onPopState = (event: PopStateEvent) => {
+      isPopStateRef.current = true;
+      if (event.state && event.state.screen) {
+        setScreen(event.state.screen as AppScreen);
+        if (event.state.trackingReference !== undefined) {
+          setTrackingReference(event.state.trackingReference);
+        }
+      } else {
+        const parsed = parseScreenFromLocation();
+        setScreen(parsed.screen);
+        if (parsed.trackingRef) {
+          setTrackingReference(parsed.trackingRef);
+        }
+      }
+    };
+
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  // Initialize browser history state on mount
+  useEffect(() => {
+    const targetUrl = getUrlForScreen(initialRoute.screen, initialRoute.trackingRef);
+    const existingDepth = window.history.state?.appDepth ?? 0;
+    window.history.replaceState(
+      { screen: initialRoute.screen, trackingReference: initialRoute.trackingRef || "", appDepth: existingDepth },
+      "",
+      window.location.pathname === "/" && targetUrl === "/" ? window.location.href : targetUrl
+    );
+    document.title = getPageTitleForScreen(initialRoute.screen);
+  }, []);
+
+  // Two-way synchronization between screen state and browser URL/history
+  useEffect(() => {
+    document.title = getPageTitleForScreen(screen);
+
+    if (isPopStateRef.current) {
+      isPopStateRef.current = false;
+      return;
+    }
+
+    const targetUrl = getUrlForScreen(screen, trackingReference);
+    const currentPath = window.location.pathname + window.location.search;
+
+    if (currentPath !== targetUrl) {
+      const prevDepth = window.history.state?.appDepth ?? 0;
+      window.history.pushState(
+        { screen, trackingReference, appDepth: prevDepth + 1 },
+        "",
+        targetUrl
+      );
+    } else {
+      window.history.replaceState(
+        { screen, trackingReference, appDepth: window.history.state?.appDepth ?? 0 },
+        "",
+        targetUrl
+      );
+    }
+  }, [screen, trackingReference]);
 
   useEffect(() => {
     return startPhotoQueueFlusher();
@@ -550,31 +817,23 @@ export default function App() {
           if (!saved) return;
           setAuditActor(saved);
           setCurrentSession(saved);
-          setScreen(
-            saved.role === "Barangay Official"
-              ? "planning"
-              : saved.role === "Treasury Office" || saved.role === "Negosyo Center"
-                ? "treasury"
-                : saved.role === "Private Engineer"
-                  ? "pengineer"
-                  : saved.role === "MPDC"
-                    ? "permits"
-                    : "app"
-          );
+          setScreen((current) => {
+            // Only auto-redirect to default role screen if user is on landing or login
+            if (current === "landing" || current === "login") {
+              return saved.role === "Barangay Official"
+                ? "planning"
+                : saved.role === "Treasury Office" || saved.role === "Negosyo Center"
+                  ? "treasury"
+                  : saved.role === "Private Engineer"
+                    ? "pengineer"
+                    : saved.role === "MPDC"
+                      ? "permits"
+                      : "app";
+            }
+            return current;
+          });
         })
         .catch((err) => console.warn("[Auth] restore session failed:", err));
-    }
-
-    // Direct permanent tracking URL support: ?track=LUIS-ZC-2026-XXXX
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const trackParam = params.get("track") || params.get("tracking");
-      if (trackParam) {
-        setTrackingReference(trackParam);
-        setScreen("applicant_tracking");
-      }
-    } catch {
-      /* ignore */
     }
   }, []);
 
@@ -2464,7 +2723,7 @@ export default function App() {
     setCurrentSession(null);
     setMapHold(false);
     setCitizenHold(false);
-    setScreen("landing");
+    navigateBack("landing");
     void logoutUser(leaving);
   }
 
@@ -2508,7 +2767,7 @@ export default function App() {
                       : "app"
             );
           }}
-          onBack={() => setScreen("landing")}
+          onBack={() => navigateBack("landing")}
         />
       )}
 
@@ -2540,9 +2799,9 @@ export default function App() {
 
       {/* Dedicated Project Categorization & New Application Page */}
       {screen === "new_application" && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 10000, overflowY: "auto", background: "var(--bg-root, #0b1120)" }}>
+        <div style={{ position: "fixed", inset: 0, zIndex: 10000, overflowY: "auto", background: "var(--apple-bg, #ffffff)" }}>
           <NewApplicationPage
-            onBack={() => setScreen(currentRole === "MPDC" ? "permits" : currentSession ? "app" : "landing")}
+            onBack={() => navigateBack(currentRole === "MPDC" ? "permits" : currentSession ? "app" : "landing")}
             onCreated={(payload, trackingNo) => {
               const newProj: Project = {
                 id: `proj_${Date.now()}`,
@@ -2589,10 +2848,10 @@ export default function App() {
 
       {/* Permanent Applicant Permit Tracking Page */}
       {screen === "applicant_tracking" && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 10000, overflowY: "auto", background: "var(--bg-root, #0b1120)" }}>
+        <div style={{ position: "fixed", inset: 0, zIndex: 10000, overflow: "hidden", background: "var(--apple-bg, #ffffff)" }}>
           <ApplicantTrackingPage
             initialTrackingNo={trackingReference}
-            onBack={() => setScreen(currentSession ? "app" : "landing")}
+            onBack={() => navigateBack(currentSession ? "app" : "landing")}
           />
         </div>
       )}
@@ -2610,7 +2869,7 @@ export default function App() {
               setSidebarCollapsed(false);
               setScreen("app");
             }}
-            onOpenOnlineServices={() => setScreen("services")}
+            onOpenOnlineServices={() => setScreen("new_application")}
           />
         </div>
       )}
@@ -2618,7 +2877,7 @@ export default function App() {
       {/* Inventory / Planning / Documents / Analytics / Zoning Permits — overlays */}
       {screen === "inventory" && (
         <InventoryPage
-          onBack={() => setScreen(currentRole === "MPDC" ? "permits" : "app")}
+          onBack={() => navigateBack(currentRole === "MPDC" ? "permits" : "app")}
           backendProjects={Array.isArray(projects) ? projects : []}
           currentRole={currentRole}
         />
@@ -2626,16 +2885,16 @@ export default function App() {
 
       {screen === "planning" && currentRole !== "Viewer" && (
         <PlanningPage
-          onBack={() => setScreen(currentRole === "MPDC" ? "permits" : "app")}
+          onBack={() => navigateBack(currentRole === "MPDC" ? "permits" : "app")}
           session={currentSession}
           projects={Array.isArray(projects) ? projects : []}
         />
       )}
 
-      {screen === "permits" && isMunicipalStaff(currentRole) && (
+      {screen === "permits" && (
         <ZoningPermitsPage
-          onBack={currentRole === "Engineer" || currentRole === "MPDC" ? () => setScreen("app") : undefined}
-          session={currentSession}
+          onBack={currentRole === "Engineer" || currentRole === "MPDC" ? () => navigateBack("app") : () => navigateBack("landing")}
+          session={currentSession || sessionForRole("MPDC")}
           onLogout={goHome}
           onNavigate={(target) => setScreen(target as any)}
         />
@@ -2643,7 +2902,7 @@ export default function App() {
 
       {screen === "engineer_applications" && (
         <EngineerApplicationsPage
-          onBack={() => setScreen("app")}
+          onBack={() => navigateBack("app")}
           session={currentSession}
           onNavigateToProject={(projId) => {
             setScreen("app");
@@ -2658,16 +2917,16 @@ export default function App() {
       )}
 
       {screen === "documents" && isMunicipalStaff(currentRole) && (
-        <DocumentsPage onBack={() => setScreen(currentRole === "MPDC" ? "permits" : "app")} session={currentSession} />
+        <DocumentsPage onBack={() => navigateBack(currentRole === "MPDC" ? "permits" : "app")} session={currentSession} />
       )}
 
       {screen === "audit" && isMunicipalStaff(currentRole) && (
-        <AuditPage onBack={() => setScreen(currentRole === "MPDC" ? "permits" : "app")} />
+        <AuditPage onBack={() => navigateBack(currentRole === "MPDC" ? "permits" : "app")} />
       )}
 
       {screen === "analytics" && isMunicipalStaff(currentRole) && (
         <AnalyticsPage
-          onBack={() => setScreen(currentRole === "MPDC" ? "permits" : "app")}
+          onBack={() => navigateBack(currentRole === "MPDC" ? "permits" : "app")}
           projects={Array.isArray(projects) ? projects : []}
           captureMapPng={() => cesiumMapRef.current?.captureMapPng() ?? Promise.resolve(null)}
         />
@@ -2675,7 +2934,7 @@ export default function App() {
 
       {screen === "engagement" && roleConfig?.canSeeEngagement && (
         <EngagementPage
-          onBack={() => setScreen(currentRole === "MPDC" ? "permits" : "app")}
+          onBack={() => navigateBack(currentRole === "MPDC" ? "permits" : "app")}
           onFlyTo={(lon, lat) => {
             window.setTimeout(() => {
               cesiumMapRef.current?.flyToLonLat(lon, lat, 2500);
@@ -2996,28 +3255,43 @@ export default function App() {
               ) : null}
 
               <div className={`topBar${moreMenuOpen ? " is-nav-open" : ""}`}>
-                <div className="topBar-brand">
+                <div
+                  className="topBar-brand"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => (currentRole === "Viewer" ? setScreen("landing") : setScreen("app"))}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      currentRole === "Viewer" ? setScreen("landing") : setScreen("app");
+                    }
+                  }}
+                  title="INFA-TRACK Luisiana GIS"
+                >
+                  <img src="/logo.png" alt="Bayan ng Luisiana seal" className="topBar-brand-logo" />
                   <div className="topBar-brand-text">
                     <div className="brand">
                       INFA-TRACK <span className="brand-place">Luisiana</span>
                     </div>
-                    <div className="sub">Municipal GIS for safer infrastructure siting</div>
+                    <div className="sub">Municipal GIS for infrastructure siting</div>
                   </div>
                   <span
                     className="topBar-live-dot"
                     title={connected ? "Live" : "Offline"}
                     aria-label={connected ? "Live connection" : "Offline"}
-                    style={{ background: connected ? "var(--accent)" : "rgba(255,77,79,0.9)" }}
                   />
                 </div>
                 <div className="topBar-toolbar">
                   {roleConfig && (
-                    <div className="chip chip-role" style={{ borderColor: `${roleConfig.color}50`, color: roleConfig.color, fontWeight: 600 }}>
+                    <div
+                      className={`chip chip-role role-${currentRole?.toLowerCase().replace(/\s+/g, "-")}`}
+                      title={roleConfig.description}
+                    >
+                      <span className="role-chip-dot" />
                       {roleConfig.label}
                     </div>
                   )}
-                  <div className="chip chip-live">
-                    <span className="dot" style={{ background: connected ? "var(--accent)" : "rgba(255,77,79,0.9)" }} />
+                  <div className={`chip chip-live ${connected ? "is-connected" : "is-offline"}`}>
+                    <span className="dot" />
                     {connected ? "Live" : "Offline"}
                   </div>
                   <div className="chip chip-risk topBar-hide-sm">
@@ -3033,7 +3307,7 @@ export default function App() {
                     {roleConfig?.canSeePlanning && currentRole !== "Viewer" && (
                       <button
                         type="button"
-                        className="topBar-nav-link"
+                        className={`topBar-nav-link${screen === "planning" ? " active" : ""}`}
                         onClick={() => {
                           setMoreMenuOpen(false);
                           setScreen("planning");
@@ -3055,12 +3329,11 @@ export default function App() {
                     {currentRole === "Engineer" && (
                       <button
                         type="button"
-                        className="topBar-nav-link"
+                        className={`topBar-nav-link topBar-nav-clearance${screen === "engineer_applications" ? " active" : ""}`}
                         onClick={() => {
                           setMoreMenuOpen(false);
                           setScreen("engineer_applications");
                         }}
-                        style={{ borderColor: "rgba(56, 189, 248, 0.45)", color: "#38bdf8" }}
                         title="Talaan ng mga Bayad na Aplikasyon mula Treasury para sa Engineering Clearance & Pinning"
                       >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
@@ -3073,12 +3346,11 @@ export default function App() {
                     {currentRole === "MPDC" && (
                       <button
                         type="button"
-                        className="topBar-nav-link"
+                        className={`topBar-nav-link topBar-nav-permits${screen === "permits" ? " active" : ""}`}
                         onClick={() => {
                           setMoreMenuOpen(false);
                           setScreen("permits");
                         }}
-                        style={currentRole === "MPDC" ? { borderColor: "rgba(255, 193, 7, 0.45)", color: "#ffc107" } : undefined}
                         title="Talaan ng mga Natanggap na Aplikasyon (Zoning Permits)"
                       >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
@@ -3091,7 +3363,7 @@ export default function App() {
                     {isMunicipalStaff(currentRole) && (
                       <button
                         type="button"
-                        className="topBar-nav-link"
+                        className={`topBar-nav-link${screen === "documents" ? " active" : ""}`}
                         onClick={() => {
                           setMoreMenuOpen(false);
                           setScreen("documents");
@@ -3111,7 +3383,7 @@ export default function App() {
                     {isMunicipalStaff(currentRole) && (
                       <button
                         type="button"
-                        className="topBar-nav-link"
+                        className={`topBar-nav-link${screen === "analytics" ? " active" : ""}`}
                         onClick={() => {
                           setMoreMenuOpen(false);
                           setScreen("analytics");
@@ -3129,7 +3401,7 @@ export default function App() {
                     {roleConfig?.canSeeEngagement && (
                       <button
                         type="button"
-                        className="topBar-nav-link"
+                        className={`topBar-nav-link${screen === "engagement" ? " active" : ""}`}
                         onClick={() => {
                           setMoreMenuOpen(false);
                           setScreen("engagement");
@@ -3145,7 +3417,7 @@ export default function App() {
                     {isMunicipalStaff(currentRole) && currentRole !== "Negosyo Center" && (
                       <button
                         type="button"
-                        className="topBar-nav-link"
+                        className={`topBar-nav-link${screen === "inventory" ? " active" : ""}`}
                         onClick={() => {
                           setMoreMenuOpen(false);
                           setScreen("inventory");
@@ -3159,7 +3431,7 @@ export default function App() {
                     {currentRole === "Viewer" && (
                       <button
                         type="button"
-                        className="topBar-nav-link"
+                        className={`topBar-nav-link${screen === "citizen" ? " active" : ""}`}
                         onClick={() => {
                           setMoreMenuOpen(false);
                           setScreen("citizen");
@@ -3186,7 +3458,7 @@ export default function App() {
                   {isMunicipalStaff(currentRole) && (
                     <button
                       type="button"
-                      className="topBar-nav-link topBar-audit-btn"
+                      className={`topBar-nav-link topBar-audit-btn${screen === "audit" ? " active" : ""}`}
                       title="Activity log and audit trail"
                       onClick={() => {
                         setMoreMenuOpen(false);

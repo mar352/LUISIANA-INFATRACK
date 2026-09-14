@@ -8,6 +8,8 @@ export function getStoredTheme(): Theme | null {
 }
 
 export function resolveTheme(): Theme {
+  const urlTheme = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("theme") : null;
+  if (urlTheme === "light" || urlTheme === "dark") return urlTheme;
   const stored = getStoredTheme();
   if (stored) return stored;
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";

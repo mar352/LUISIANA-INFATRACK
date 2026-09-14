@@ -35,7 +35,7 @@ export function ThemeToggle({ className = "", iconOnly = false }: { className?: 
   return (
     <button
       type="button"
-      className={`theme-toggle${iconOnly ? " theme-toggle-icon-only" : " btn-amber"}${className ? ` ${className}` : ""}`}
+      className={`theme-toggle${iconOnly ? " theme-toggle-icon-only" : " theme-toggle-pill"}${className ? ` ${className}` : ""}`}
       onClick={() => setTheme(toggleTheme())}
       aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
       title={isDark ? "Light mode" : "Dark mode"}

@@ -101,8 +101,10 @@ export async function addLuisianaBoundary(
     polygon: {
       hierarchy,
       material: FILL_COLOR,
-      // Ground-clamped + no height so it drapes over DEM without z-fighting.
+      // Ground-clamped + height defined so it drapes over DEM without warnings or z-fighting.
+      height: 0,
       heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+      classificationType: Cesium.ClassificationType.TERRAIN,
       outline: false,
       // Render below the polyline.
       zIndex: 9,

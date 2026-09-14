@@ -805,7 +805,9 @@ function syncProjectSketchEntities(viewer: Cesium.Viewer, p: Project) {
         material: stroke.withAlpha(0.28),
         outline: true,
         outlineColor: stroke,
+        height: 0,
         heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+        classificationType: Cesium.ClassificationType.TERRAIN,
       },
     });
   }
@@ -1577,10 +1579,10 @@ function applySitePinChrome(
     label.show = new Cesium.CallbackProperty(
       () => {
         const proj = activeProjects.find((x) => x.id === p.id) ?? p;
+        if (proj.hideBadge || (proj as any).isPickerPin || p.id === "pinpoint_site_pin") return false;
         const isSel = opts.isSelected(p.id);
         const isHov = opts.isHovered(p.id);
         if (isSel || isHov) return true;
-        if (proj.hideBadge) return false;
         const showLabels = activeMapSettings?.showFloatingLabels ?? true;
         if (!showLabels) return false;
         return (
@@ -2778,15 +2780,13 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         } catch {
           /* ignore */
         }
-        for (const p of buildingPrimitivesRef.current) {
-          try {
-            if (!viewer.isDestroyed()) viewer.scene.primitives.remove(p);
-          } catch {
-            /* ignore */
+        try {
+          if (!viewer.isDestroyed()) {
+            viewer.useDefaultRenderLoop = false;
           }
+        } catch {
+          /* ignore */
         }
-        buildingPrimitivesRef.current = [];
-        buildingMaterialRef.current = null;
         loadedIdsRef.current.clear();
         modelAttachedRef.current.clear();
         modelAttachedLodRef.current.clear();
@@ -3775,10 +3775,10 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
             show: new Cesium.CallbackProperty(
               () => {
                 const proj = projectsRef.current?.find((x) => x.id === p.id) ?? p;
+                if (proj.hideBadge || (proj as any).isPickerPin || p.id === "pinpoint_site_pin") return false;
                 const isSel = selectedIdRef.current === p.id;
                 const isHov = hoveredProjectIdRef.current === p.id;
                 if (isSel || isHov) return true;
-                if (proj.hideBadge) return false;
                 const showLabels = activeMapSettings?.showFloatingLabels ?? true;
                 if (!showLabels) return false;
                 return (
@@ -4036,7 +4036,9 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
           polygon: {
             hierarchy: new Cesium.PolygonHierarchy(positions),
             material: color.withAlpha(0.22),
+            height: 0,
             heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+            classificationType: Cesium.ClassificationType.TERRAIN,
           },
         });
       }

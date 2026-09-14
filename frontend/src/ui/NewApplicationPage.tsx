@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { BARANGAY_LIST } from "../types";
 import type {
   ApplicationCategory,
@@ -17,6 +17,16 @@ import {
 } from "../lib/luisiana-site-assess";
 import { printSiteHazardReport } from "../lib/hazard-report";
 import { uploadCitizenDocument, submitCitizenApplication } from "../lib/api";
+import ApplicationTermsModal from "./ApplicationTermsModal";
+import ApplicationConfirmModal, { type ApplicationConfirmData } from "./ApplicationConfirmModal";
+import { isAppTermsAccepted, setAppTermsAccepted, fetchClientPublicIp } from "../lib/terms-consent";
+import {
+  loadApplicationDraft,
+  saveApplicationDraft,
+  clearApplicationDraft,
+  type ApplicationDraft,
+  type AttachedDocDraft,
+} from "../lib/application-draft";
 import "./NewApplicationPage.css";
 import "./NewApplicationModal.css";
 
@@ -74,7 +84,7 @@ const IconShieldCheck = ({ size = 18, color = "currentColor" }: { size?: number;
   </svg>
 );
 
-const IconPin = ({ size = 18, color = "currentColor" }: { size?: number; color?: string }) => (
+const IconPin = ({ size = 16, color = "currentColor" }: { size?: number; color?: string }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
     <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
     <circle cx="12" cy="10" r="3" />
@@ -141,6 +151,8 @@ const IconTrashBin = ({ size = 14, color = "currentColor" }: { size?: number; co
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
     <polyline points="3 6 5 6 21 6" />
     <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    <line x1="10" y1="11" x2="10" y2="17" />
+    <line x1="14" y1="11" x2="14" y2="17" />
   </svg>
 );
 
@@ -184,51 +196,190 @@ type Props = {
 
 type Step = 1 | 2 | 3 | 4;
 
+function docFromDraft(d?: AttachedDocDraft | null): AttachedDocument | null {
+  if (!d || !d.name) return null;
+  return {
+    name: d.name,
+    url: d.url,
+    size: d.size || 0,
+    uploading: false,
+  };
+}
+
+function docToDraft(d: AttachedDocument | null): AttachedDocDraft | null {
+  if (!d) return null;
+  return {
+    name: d.name,
+    url: d.url,
+    size: d.size || 0,
+  };
+}
+
 export default function NewApplicationPage({
   onBack,
   onCreated,
   onViewOnMap,
   onTrackApplication,
 }: Props) {
-  const [step, setStep] = useState<Step>(1);
-  const [category, setCategory] = useState<ApplicationCategory>("private_infrastructure");
+  // Load draft from localStorage once on initial mount
+  const initialDraft = useMemo(() => loadApplicationDraft(), []);
+  const [draftRestored, setDraftRestored] = useState<boolean>(() => initialDraft !== null);
+
+  const [step, setStep] = useState<Step>(() => {
+    if (typeof window === "undefined") return 1;
+    const p = new URLSearchParams(window.location.search).get("step");
+    if (p) {
+      const num = parseInt(p, 10);
+      if (num >= 1 && num <= 4) return num as Step;
+    }
+    if (initialDraft && initialDraft.step) {
+      return (initialDraft.step >= 1 && initialDraft.step <= 3 ? initialDraft.step : 1) as Step;
+    }
+    return 1;
+  });
+  const isStepPopRef = useRef(false);
+
+  const [category, setCategory] = useState<ApplicationCategory>(
+    () => initialDraft?.category || "private_infrastructure"
+  );
 
   // Common form state
-  const [title, setTitle] = useState("");
-  const [applicantName, setApplicantName] = useState("");
-  const [contactPhone, setContactPhone] = useState("");
-  const [contactEmail, setContactEmail] = useState("");
-  const [barangay, setBarangay] = useState("Barangay Zone I (Poblacion)");
-  const [locationDescription, setLocationDescription] = useState("");
-  const [lotAreaSqM, setLotAreaSqM] = useState<number | "">("");
-  const [estimatedCostPhp, setEstimatedCostPhp] = useState<number | "">("");
+  const [title, setTitle] = useState(() => initialDraft?.title || "");
+  const [applicantName, setApplicantName] = useState(() => initialDraft?.applicantName || "");
+  const [contactPhone, setContactPhone] = useState(() => initialDraft?.contactPhone || "");
+  const [contactEmail, setContactEmail] = useState(() => initialDraft?.contactEmail || "");
+  const [barangay, setBarangay] = useState(() => initialDraft?.barangay || "Barangay Zone I (Poblacion)");
+  const [locationDescription, setLocationDescription] = useState(() => initialDraft?.locationDescription || "");
+  const [lotAreaSqM, setLotAreaSqM] = useState<number | "">(() => initialDraft?.lotAreaSqM ?? "");
+  const [estimatedCostPhp, setEstimatedCostPhp] = useState<number | "">(() => initialDraft?.estimatedCostPhp ?? "");
+
+  // Terms and Conditions & Cookie Consent: only opens if not previously accepted in cookies/localStorage
+  const [termsModalOpen, setTermsModalOpen] = useState<boolean>(() => !isAppTermsAccepted());
+
+  // Pre-submission Review & Confirmation Modal
+  const [confirmModalOpen, setConfirmModalOpen] = useState<boolean>(false);
+
+  // Prefetch client public IP for consent tracking
+  useEffect(() => {
+    void fetchClientPublicIp();
+  }, []);
+
+  const handleAcceptTerms = useCallback(async () => {
+    const publicIp = await fetchClientPublicIp();
+    setAppTermsAccepted(true, {
+      applicantName: applicantName.trim() || undefined,
+      source: "new_application_page",
+      ipAddress: publicIp || undefined,
+    });
+    setTermsModalOpen(false);
+  }, [applicantName]);
+
+  const handleDeclineTerms = useCallback(() => {
+    setTermsModalOpen(false);
+    onBack();
+  }, [onBack]);
+
+  const handleBack = useCallback(() => {
+    if (step > 1) {
+      setStep((s) => Math.max(1, s - 1) as Step);
+    } else {
+      onBack();
+    }
+  }, [step, onBack]);
+
+  // Listen to browser Back/Forward (popstate)
+  useEffect(() => {
+    const onPopState = (e: PopStateEvent) => {
+      isStepPopRef.current = true;
+      if (e.state && typeof e.state.step === "number") {
+        const targetStep = (e.state.step >= 1 && e.state.step <= 4 ? e.state.step : 1) as Step;
+        setStep(targetStep);
+      } else {
+        const p = new URLSearchParams(window.location.search).get("step");
+        const num = p ? parseInt(p, 10) : 1;
+        setStep((num >= 1 && num <= 4 ? num : 1) as Step);
+      }
+    };
+
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  // Sync step state to URL search param using replaceState
+  useEffect(() => {
+    if (isStepPopRef.current) {
+      isStepPopRef.current = false;
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      const currentUrl = new URL(window.location.href);
+      if (step > 1) {
+        currentUrl.searchParams.set("step", String(step));
+      } else {
+        currentUrl.searchParams.delete("step");
+      }
+      const targetPath = currentUrl.pathname + currentUrl.search;
+      window.history.replaceState(
+        { ...window.history.state, screen: "new_application", step },
+        "",
+        targetPath
+      );
+    }
+  }, [step]);
 
   // Private Infrastructure fields
-  const [tctNo, setTctNo] = useState("");
-  const [taxDecNo, setTaxDecNo] = useState("");
-  const [buildingType, setBuildingType] = useState("Residential");
-  const [isOwner, setIsOwner] = useState(true);
+  const [tctNo, setTctNo] = useState(() => initialDraft?.tctNo || "");
+  const [taxDecNo, setTaxDecNo] = useState(() => initialDraft?.taxDecNo || "");
+  const [buildingType, setBuildingType] = useState(() => initialDraft?.buildingType || "Residential");
+  const [isOwner, setIsOwner] = useState<boolean>(() => initialDraft?.isOwner ?? true);
 
   // Agricultural fields
-  const [farmType, setFarmType] = useState<AgriculturalFarmType>("poultry_broiler");
-  const [headCapacity, setHeadCapacity] = useState<number | "">(5000);
-  const [wasteManagement, setWasteManagement] = useState("Biogas Digester + Wastewater Lagoon");
-  const [bufferComplianceConfirmed, setBufferComplianceConfirmed] = useState(true);
+  const [farmType, setFarmType] = useState<AgriculturalFarmType>(
+    () => initialDraft?.farmType || "poultry_broiler"
+  );
+  const [headCapacity, setHeadCapacity] = useState<number | "">(
+    () => initialDraft?.headCapacity ?? 5000
+  );
+  const [wasteManagement, setWasteManagement] = useState(
+    () => initialDraft?.wasteManagement || "Biogas Digester + Wastewater Lagoon"
+  );
+  const [bufferComplianceConfirmed, setBufferComplianceConfirmed] = useState<boolean>(
+    () => initialDraft?.bufferComplianceConfirmed ?? true
+  );
 
   // Municipal Project fields
-  const [implementingDepartment, setImplementingDepartment] = useState("Municipal Engineering Office");
-  const [fundingSource, setFundingSource] = useState<MunicipalFundingSource>("20_dev_fund");
-  const [cipCode, setCipCode] = useState("");
-  const [targetBeneficiaries, setTargetBeneficiaries] = useState("All residents of Luisiana");
-  const [notes, setNotes] = useState("");
+  const [implementingDepartment, setImplementingDepartment] = useState(
+    () => initialDraft?.implementingDepartment || "Municipal Engineering Office"
+  );
+  const [fundingSource, setFundingSource] = useState<MunicipalFundingSource>(
+    () => initialDraft?.fundingSource || "20_dev_fund"
+  );
+  const [cipCode, setCipCode] = useState(() => initialDraft?.cipCode || "");
+  const [targetBeneficiaries, setTargetBeneficiaries] = useState(
+    () => initialDraft?.targetBeneficiaries || "All residents of Luisiana"
+  );
+  const [notes, setNotes] = useState(() => initialDraft?.notes || "");
 
   // ── Document Attachments (6 Mandatory/Standard Citizen Requirements) ──
-  const [landTitleDoc, setLandTitleDoc] = useState<AttachedDocument | null>(null);
-  const [taxDecDoc, setTaxDecDoc] = useState<AttachedDocument | null>(null);
-  const [rptReceiptDoc, setRptReceiptDoc] = useState<AttachedDocument | null>(null);
-  const [brgyClearanceDoc, setBrgyClearanceDoc] = useState<AttachedDocument | null>(null);
-  const [ploCertDoc, setPloCertDoc] = useState<AttachedDocument | null>(null);
-  const [photoDocsDoc, setPhotoDocsDoc] = useState<AttachedDocument | null>(null);
+  const [landTitleDoc, setLandTitleDoc] = useState<AttachedDocument | null>(
+    () => docFromDraft(initialDraft?.attachedDocs?.landTitle)
+  );
+  const [taxDecDoc, setTaxDecDoc] = useState<AttachedDocument | null>(
+    () => docFromDraft(initialDraft?.attachedDocs?.taxDec)
+  );
+  const [rptReceiptDoc, setRptReceiptDoc] = useState<AttachedDocument | null>(
+    () => docFromDraft(initialDraft?.attachedDocs?.rptReceipt)
+  );
+  const [brgyClearanceDoc, setBrgyClearanceDoc] = useState<AttachedDocument | null>(
+    () => docFromDraft(initialDraft?.attachedDocs?.brgyClearance)
+  );
+  const [ploCertDoc, setPloCertDoc] = useState<AttachedDocument | null>(
+    () => docFromDraft(initialDraft?.attachedDocs?.ploCert)
+  );
+  const [photoDocsDoc, setPhotoDocsDoc] = useState<AttachedDocument | null>(
+    () => docFromDraft(initialDraft?.attachedDocs?.photoDocs)
+  );
 
   const handleAttachFile = async (
     file: File,
@@ -286,9 +437,14 @@ export default function NewApplicationPage({
   };
 
   // Pinned Coordinates on Interactive Map
-  const [pinnedCoords, setPinnedCoords] = useState<{ lon: number; lat: number }>({
-    lon: LUISIANA_CENTER.lon,
-    lat: LUISIANA_CENTER.lat,
+  const [pinnedCoords, setPinnedCoords] = useState<{ lon: number; lat: number }>(() => {
+    if (initialDraft?.pinnedCoords?.lat && initialDraft?.pinnedCoords?.lon) {
+      return initialDraft.pinnedCoords;
+    }
+    return {
+      lon: LUISIANA_CENTER.lon,
+      lat: LUISIANA_CENTER.lat,
+    };
   });
 
   const [geoRisk, setGeoRisk] = useState<GeoRiskAssess | null>(null);
@@ -310,19 +466,191 @@ export default function NewApplicationPage({
     [pinnedCoords.lat, pinnedCoords.lon],
   );
 
+  // Debounced auto-save to localStorage across Steps 1–3
+  useEffect(() => {
+    if (step >= 4) return;
+
+    // Only save if there is some meaningful progress or input
+    const hasAnyInput =
+      step > 1 ||
+      title.trim().length > 0 ||
+      applicantName.trim().length > 0 ||
+      contactPhone.trim().length > 0 ||
+      contactEmail.trim().length > 0 ||
+      locationDescription.trim().length > 0 ||
+      tctNo.trim().length > 0 ||
+      taxDecNo.trim().length > 0 ||
+      lotAreaSqM !== "" ||
+      estimatedCostPhp !== "" ||
+      cipCode.trim().length > 0 ||
+      landTitleDoc !== null ||
+      taxDecDoc !== null ||
+      rptReceiptDoc !== null ||
+      brgyClearanceDoc !== null ||
+      ploCertDoc !== null ||
+      photoDocsDoc !== null;
+
+    if (!hasAnyInput) return;
+
+    const timer = setTimeout(() => {
+      const draft: ApplicationDraft = {
+        step: (step >= 1 && step <= 3 ? step : 1) as 1 | 2 | 3,
+        category,
+        title,
+        applicantName,
+        contactPhone,
+        contactEmail,
+        barangay,
+        locationDescription,
+        lotAreaSqM,
+        estimatedCostPhp,
+        tctNo,
+        taxDecNo,
+        buildingType,
+        isOwner,
+        farmType,
+        headCapacity,
+        wasteManagement,
+        bufferComplianceConfirmed,
+        implementingDepartment,
+        fundingSource,
+        cipCode,
+        targetBeneficiaries,
+        notes,
+        pinnedCoords,
+        attachedDocs: {
+          landTitle: docToDraft(landTitleDoc),
+          taxDec: docToDraft(taxDecDoc),
+          rptReceipt: docToDraft(rptReceiptDoc),
+          brgyClearance: docToDraft(brgyClearanceDoc),
+          ploCert: docToDraft(ploCertDoc),
+          photoDocs: docToDraft(photoDocsDoc),
+        },
+        savedAt: new Date().toISOString(),
+      };
+      saveApplicationDraft(draft);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [
+    step,
+    category,
+    title,
+    applicantName,
+    contactPhone,
+    contactEmail,
+    barangay,
+    locationDescription,
+    lotAreaSqM,
+    estimatedCostPhp,
+    tctNo,
+    taxDecNo,
+    buildingType,
+    isOwner,
+    farmType,
+    headCapacity,
+    wasteManagement,
+    bufferComplianceConfirmed,
+    implementingDepartment,
+    fundingSource,
+    cipCode,
+    targetBeneficiaries,
+    notes,
+    pinnedCoords,
+    landTitleDoc,
+    taxDecDoc,
+    rptReceiptDoc,
+    brgyClearanceDoc,
+    ploCertDoc,
+    photoDocsDoc,
+  ]);
+
+  // Warn on accidental tab close or page reload if unsubmitted changes exist in steps 1-3
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (step < 4) {
+        const hasInput =
+          step > 1 ||
+          title.trim().length > 0 ||
+          applicantName.trim().length > 0 ||
+          contactPhone.trim().length > 0 ||
+          landTitleDoc !== null ||
+          tctNo.trim().length > 0;
+
+        if (hasInput) {
+          e.preventDefault();
+          e.returnValue = "";
+        }
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [step, title, applicantName, contactPhone, landTitleDoc, tctNo]);
+
+  // Start fresh / Reset draft
+  const handleResetDraft = () => {
+    if (window.confirm("Nais mo bang burahin ang na-save na draft at magsimula muli mula sa simula?")) {
+      clearApplicationDraft();
+      setDraftRestored(false);
+      setStep(1);
+      setCategory("private_infrastructure");
+      setTitle("");
+      setApplicantName("");
+      setContactPhone("");
+      setContactEmail("");
+      setBarangay("Barangay Zone I (Poblacion)");
+      setLocationDescription("");
+      setLotAreaSqM("");
+      setEstimatedCostPhp("");
+      setTctNo("");
+      setTaxDecNo("");
+      setBuildingType("Residential");
+      setIsOwner(true);
+      setFarmType("poultry_broiler");
+      setHeadCapacity(5000);
+      setWasteManagement("Biogas Digester + Wastewater Lagoon");
+      setBufferComplianceConfirmed(true);
+      setImplementingDepartment("Municipal Engineering Office");
+      setFundingSource("20_dev_fund");
+      setCipCode("");
+      setTargetBeneficiaries("All residents of Luisiana");
+      setNotes("");
+      setLandTitleDoc(null);
+      setTaxDecDoc(null);
+      setRptReceiptDoc(null);
+      setBrgyClearanceDoc(null);
+      setPloCertDoc(null);
+      setPhotoDocsDoc(null);
+      setPinnedCoords({ lon: LUISIANA_CENTER.lon, lat: LUISIANA_CENTER.lat });
+    }
+  };
+
   const getHazardColor = (val?: string) => {
-    if (!val) return "#22c55e"; // default safe green
+    if (!val) return "var(--apple-safe, #15803d)";
     const v = val.toLowerCase();
     if (v.includes("high") || v.includes("very high") || v.includes("debris") || v.includes("critical")) {
-      return "#ef4444"; // Red for high susceptibility
+      return "var(--apple-danger, #b91c1c)";
     }
     if (v.includes("moderate") || v.includes("medium") || v.includes("warning")) {
-      return "#f59e0b"; // Amber/orange for moderate
+      return "var(--apple-warn, #b45309)";
     }
     if (v.includes("low")) {
-      return "#38bdf8"; // Cyan for low
+      return "var(--apple-accent, #0071e3)";
     }
-    return "#22c55e"; // Green for safe
+    return "var(--apple-safe, #15803d)";
+  };
+
+  const getHazardBadgeClass = (val?: string) => {
+    if (!val) return "is-safe";
+    const v = val.toLowerCase();
+    if (v.includes("high") || v.includes("very high") || v.includes("debris") || v.includes("critical")) {
+      return "is-danger";
+    }
+    if (v.includes("moderate") || v.includes("medium") || v.includes("warning") || v.includes("low")) {
+      return "is-warn";
+    }
+    return "is-safe";
   };
 
   const handleBarangayChange = (newBrgy: string) => {
@@ -444,6 +772,7 @@ export default function NewApplicationPage({
     let officialTrackingNo = "";
 
     try {
+      const clientPublicIp = await fetchClientPublicIp();
       // Save directly to PostgreSQL & Citizen Applications DB
       const res = await submitCitizenApplication({
         serviceType: "zoning_certificate",
@@ -493,6 +822,19 @@ export default function NewApplicationPage({
         },
         uploads: uploadsPayload,
         notes: notes.trim(),
+        clientIp: clientPublicIp || undefined,
+        termsAccepted: true,
+        termsAcceptedAt: new Date().toISOString(),
+        termsVersion: "2026.1",
+        termsConsentDetails: {
+          agreedToTerms: true,
+          agreedToPrivacyAct: true,
+          agreedToClup: true,
+          agreedToCookies: true,
+          acceptedAt: new Date().toISOString(),
+          termsVersion: "2026.1",
+          ipAddress: clientPublicIp || undefined,
+        },
       });
 
       if (res?.ok && res.application?.trackingNumber) {
@@ -511,8 +853,75 @@ export default function NewApplicationPage({
 
     setGeneratedTrackingNo(officialTrackingNo);
     setSubmitting(false);
+    setConfirmModalOpen(false);
+    clearApplicationDraft();
+    setDraftRestored(false);
     setStep(4);
     onCreated(payload, officialTrackingNo);
+  };
+
+  const handleInitiateSubmit = () => {
+    if (!isStep2Valid()) {
+      setStep(2);
+      setAttemptedStep2Proceed(true);
+      return;
+    }
+    setConfirmModalOpen(true);
+  };
+
+  const getCategoryLabel = (cat: string) => {
+    switch (cat) {
+      case "private_infrastructure":
+        return "Pribadong Imprastraktura";
+      case "commercial_business":
+        return "Komersyal at Negosyo";
+      case "agricultural":
+        return "Agrikultural at Paghahayupan";
+      case "municipal_project":
+        return "Proyektong Pambayan (LGU)";
+      case "special_use":
+        return "Espesyal na Paggamit";
+      default:
+        return "Locational Clearance / Zoning";
+    }
+  };
+
+  const confirmModalData: ApplicationConfirmData = {
+    category,
+    categoryLabel: getCategoryLabel(category),
+    title: title.trim() || `${category.replace("_", " ")} Application`,
+    applicantName: applicantName.trim() || "Aplikante",
+    contactPhone: contactPhone.trim(),
+    contactEmail: contactEmail.trim(),
+    locationDescription: locationDescription.trim(),
+    barangay,
+    estimatedCostPhp,
+    tctNo: tctNo.trim(),
+    taxDecNo: taxDecNo.trim(),
+    isOwner,
+    buildingType,
+    lotAreaSqM,
+    zoningClassification: getClupZone(barangay).name,
+    farmType,
+    headCapacity,
+    wasteManagement,
+    bufferComplianceConfirmed,
+    implementingDepartment,
+    fundingSource,
+    cipCode,
+    targetBeneficiaries,
+    pinnedCoords,
+    floodHazard: geoRisk?.flood?.value || "Safe",
+    landslideHazard: geoRisk?.landslide?.value || "Safe",
+    banahawKm: ban.km,
+    attachedDocs: [
+      { label: "Titulo ng Lupa / TCT / Deed of Sale", filename: landTitleDoc?.name },
+      { label: "Tax Declaration", filename: taxDecDoc?.name },
+      { label: "RPT / Real Property Tax Receipt", filename: rptReceiptDoc?.name },
+      { label: "Barangay Clearance", filename: brgyClearanceDoc?.name },
+      { label: "Location Plan / PLO Certification", filename: ploCertDoc?.name },
+      { label: "Mga Larawan ng Site", filename: photoDocsDoc?.name },
+    ],
   };
 
   return (
@@ -520,9 +929,14 @@ export default function NewApplicationPage({
       {/* Navigation Top Bar */}
       <header className="new-app-nav">
         <div className="new-app-nav-left">
-          <button type="button" className="new-app-back-btn" onClick={onBack}>
+          <button
+            type="button"
+            className="new-app-back-btn"
+            onClick={handleBack}
+            aria-label={step > 1 ? "Bumalik sa nakaraang hakbang" : "Bumalik sa dashboard"}
+            title={step > 1 ? "Bumalik" : "Bumalik sa dashboard"}
+          >
             <IconBackArrow />
-            <span>Bumalik</span>
           </button>
           <div className="new-app-nav-brand">
             <img src="/logo.png" alt="Bayan ng Luisiana" />
@@ -533,38 +947,134 @@ export default function NewApplicationPage({
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <ThemeToggle />
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <button
+            type="button"
+            className="new-app-terms-trigger-btn"
+            onClick={() => setTermsModalOpen(true)}
+            title="Tingnan ang Mga Tuntunin at Kundisyon (Terms & Conditions)"
+          >
+            <IconShieldCheck size={14} color="currentColor" />
+            <span className="new-app-terms-trigger-label">Tuntunin at Kundisyon</span>
+          </button>
+          <ThemeToggle iconOnly />
         </div>
       </header>
 
       {/* Progress Stepper Bar */}
       <div className="new-app-page-stepper">
         <div className="new-app-stepper-inner">
-          <div className={`new-app-page-step ${step === 1 ? "active" : step > 1 ? "completed" : ""}`}>
-            <span className="new-app-page-step-badge">{step > 1 ? "✓" : "1"}</span>
-            <span>1. Kategorya (Ano ang ia-apply?)</span>
+          {/* Mobile Compact Progress Indicator */}
+          <div className="new-app-stepper-mobile-meta">
+            <div className="new-app-stepper-mobile-indicator">
+              <span className="new-app-stepper-mobile-badge">Hakbang {step} ng 4</span>
+              <span className="new-app-stepper-mobile-label">
+                {step === 1 && "1. Kategorya (Ano ang ia-apply?)"}
+                {step === 2 && "2. Impormasyon ng Proyekto"}
+                {step === 3 && "3. GIS Location & Hazard"}
+                {step === 4 && "4. Pagkumpirma"}
+              </span>
+            </div>
+            <div className="new-app-stepper-mobile-bar">
+              <div
+                className={`new-app-mobile-step-item ${step === 1 ? "active" : step > 1 ? "completed" : ""}`}
+                onClick={() => { if (step > 1) setStep(1); }}
+                role={step > 1 ? "button" : undefined}
+                tabIndex={step > 1 ? 0 : undefined}
+                title="1. Kategorya"
+              >
+                <div className={`new-app-mobile-segment ${step >= 1 ? "filled" : ""}`} />
+                <span className="new-app-mobile-step-text">1. Kategorya</span>
+              </div>
+              <div
+                className={`new-app-mobile-step-item ${step === 2 ? "active" : step > 2 ? "completed" : ""}`}
+                onClick={() => { if (step > 2) setStep(2); }}
+                role={step > 2 ? "button" : undefined}
+                tabIndex={step > 2 ? 0 : undefined}
+                title="2. Impormasyon"
+              >
+                <div className={`new-app-mobile-segment ${step >= 2 ? "filled" : ""}`} />
+                <span className="new-app-mobile-step-text">2. Impormasyon</span>
+              </div>
+              <div
+                className={`new-app-mobile-step-item ${step === 3 ? "active" : step > 3 ? "completed" : ""}`}
+                onClick={() => { if (step > 3) setStep(3); }}
+                role={step > 3 ? "button" : undefined}
+                tabIndex={step > 3 ? 0 : undefined}
+                title="3. GIS & Hazard"
+              >
+                <div className={`new-app-mobile-segment ${step >= 3 ? "filled" : ""}`} />
+                <span className="new-app-mobile-step-text">3. GIS &amp; Hazard</span>
+              </div>
+              <div
+                className={`new-app-mobile-step-item ${step === 4 ? "active" : ""}`}
+                title="4. Pagkumpirma"
+              >
+                <div className={`new-app-mobile-segment ${step >= 4 ? "filled" : ""}`} />
+                <span className="new-app-mobile-step-text">4. Kumpirma</span>
+              </div>
+            </div>
           </div>
-          <div className="new-app-page-step-divider" />
-          <div className={`new-app-page-step ${step === 2 ? "active" : step > 2 ? "completed" : ""}`}>
-            <span className="new-app-page-step-badge">{step > 2 ? "✓" : "2"}</span>
-            <span>2. Impormasyon ng Proyekto</span>
-          </div>
-          <div className="new-app-page-step-divider" />
-          <div className={`new-app-page-step ${step === 3 ? "active" : step > 3 ? "completed" : ""}`}>
-            <span className="new-app-page-step-badge">{step > 3 ? "✓" : "3"}</span>
-            <span>3. GIS Location &amp; Hazard</span>
-          </div>
-          <div className="new-app-page-step-divider" />
-          <div className={`new-app-page-step ${step === 4 ? "completed active" : ""}`}>
-            <span className="new-app-page-step-badge">4</span>
-            <span>4. Pagkumpirma</span>
+
+          {/* Desktop & Tablet Track */}
+          <div className="new-app-stepper-desktop-track">
+            <div className={`new-app-page-step ${step === 1 ? "active" : step > 1 ? "completed" : ""}`}>
+              <span className="new-app-page-step-badge">{step > 1 ? "✓" : "1"}</span>
+              <span className="new-app-page-step-text">
+                <span className="new-app-step-full">1. Kategorya (Ano ang ia-apply?)</span>
+                <span className="new-app-step-short">1. Kategorya</span>
+              </span>
+            </div>
+            <div className={`new-app-page-step-divider ${step > 1 ? "completed" : ""}`} />
+            <div className={`new-app-page-step ${step === 2 ? "active" : step > 2 ? "completed" : ""}`}>
+              <span className="new-app-page-step-badge">{step > 2 ? "✓" : "2"}</span>
+              <span className="new-app-page-step-text">
+                <span className="new-app-step-full">2. Impormasyon ng Proyekto</span>
+                <span className="new-app-step-short">2. Impormasyon</span>
+              </span>
+            </div>
+            <div className={`new-app-page-step-divider ${step > 2 ? "completed" : ""}`} />
+            <div className={`new-app-page-step ${step === 3 ? "active" : step > 3 ? "completed" : ""}`}>
+              <span className="new-app-page-step-badge">{step > 3 ? "✓" : "3"}</span>
+              <span className="new-app-page-step-text">
+                <span className="new-app-step-full">3. GIS Location &amp; Hazard</span>
+                <span className="new-app-step-short">3. GIS &amp; Hazard</span>
+              </span>
+            </div>
+            <div className={`new-app-page-step-divider ${step > 3 ? "completed" : ""}`} />
+            <div className={`new-app-page-step ${step === 4 ? "completed active" : ""}`}>
+              <span className="new-app-page-step-badge">{step === 4 ? "✓" : "4"}</span>
+              <span className="new-app-page-step-text">
+                <span className="new-app-step-full">4. Pagkumpirma</span>
+                <span className="new-app-step-short">4. Kumpirma</span>
+              </span>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Main Content Area */}
       <main className="new-app-page-main">
+        {/* Draft Auto-Restored Notice */}
+        {draftRestored && step < 4 && (
+          <div className="new-app-draft-banner" role="status" aria-live="polite">
+            <div className="new-app-draft-banner-left">
+              <IconCheck size={16} color="var(--apple-safe, #15803d)" />
+              <span>
+                <strong>Awtomatikong naibalik ang iyong draft:</strong> Na-restore ang iyong mga naunang inilagay na impormasyon at napiling kategorya.
+              </span>
+            </div>
+            <button
+              type="button"
+              className="new-app-draft-reset-btn"
+              onClick={handleResetDraft}
+              title="Burahin ang draft at magsimula muli"
+            >
+              Mag-umpisa Muli (Clear Draft)
+            </button>
+          </div>
+        )}
+
         {/* STEP 1: CATEGORY SELECTION ("Ano ang ia-apply?") */}
         {step === 1 && (
           <div>
@@ -575,26 +1085,40 @@ export default function NewApplicationPage({
               </p>
             </div>
 
-            <div className="new-app-page-cards-grid">
+            <div className="new-app-page-cards-grid" role="radiogroup" aria-label="Kategorya ng Aplikasyon">
               {/* Card 1: Private Infrastructure */}
               <div
                 className={`new-app-page-card ${category === "private_infrastructure" ? "selected" : ""}`}
                 onClick={() => setCategory("private_infrastructure")}
-                role="button"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setCategory("private_infrastructure");
+                  }
+                }}
+                role="radio"
+                aria-checked={category === "private_infrastructure"}
                 tabIndex={0}
               >
-                <div className="new-app-card-icon-wrap" style={{ color: "#38bdf8" }}>
-                  <IconBuilding size={36} color="#38bdf8" />
+                <div className="new-app-card-radio-indicator" aria-hidden="true">
+                  <IconCheck size={12} color="#ffffff" />
                 </div>
-                <div className="new-app-card-title">Private Infrastructure</div>
-                <span className="new-app-card-badge tag-private">Residential / Commercial</span>
+                <div className="new-app-card-top-row">
+                  <div className="new-app-card-icon-wrap" style={{ color: "var(--apple-accent, #0071e3)" }}>
+                    <IconBuilding size={30} color="var(--apple-accent, #0071e3)" />
+                  </div>
+                  <div className="new-app-card-header-text">
+                    <div className="new-app-card-title">Private Infrastructure</div>
+                    <span className="new-app-card-badge tag-private">Residential / Commercial</span>
+                  </div>
+                </div>
                 <div className="new-app-card-desc">
                   Para sa mga pribadong gusali, bahay, commercial spaces, subdibisyon, bodega, o private telecom structures.
                 </div>
                 <ul className="new-app-card-features">
-                  <li><IconCheck /> Land title (TCT / Tax Dec) verification</li>
-                  <li><IconCheck /> Building setback &amp; zoning clearance</li>
-                  <li><IconCheck /> Slope &amp; flood hazard assessment</li>
+                  <li><IconCheck size={13} /> Land title (TCT / Tax Dec) verification</li>
+                  <li><IconCheck size={13} /> Building setback &amp; zoning clearance</li>
+                  <li><IconCheck size={13} /> Slope &amp; flood hazard assessment</li>
                 </ul>
               </div>
 
@@ -602,21 +1126,35 @@ export default function NewApplicationPage({
               <div
                 className={`new-app-page-card ${category === "agricultural" ? "selected" : ""}`}
                 onClick={() => setCategory("agricultural")}
-                role="button"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setCategory("agricultural");
+                  }
+                }}
+                role="radio"
+                aria-checked={category === "agricultural"}
                 tabIndex={0}
               >
-                <div className="new-app-card-icon-wrap" style={{ color: "#34d399" }}>
-                  <IconAgriculture size={36} color="#34d399" />
+                <div className="new-app-card-radio-indicator" aria-hidden="true">
+                  <IconCheck size={12} color="#ffffff" />
                 </div>
-                <div className="new-app-card-title">Agricultural</div>
-                <span className="new-app-card-badge tag-agri">Poultry / Piggery / Farm</span>
+                <div className="new-app-card-top-row">
+                  <div className="new-app-card-icon-wrap" style={{ color: "var(--apple-safe, #15803d)" }}>
+                    <IconAgriculture size={30} color="var(--apple-safe, #15803d)" />
+                  </div>
+                  <div className="new-app-card-header-text">
+                    <div className="new-app-card-title">Agricultural</div>
+                    <span className="new-app-card-badge tag-agri">Poultry / Piggery / Farm</span>
+                  </div>
+                </div>
                 <div className="new-app-card-desc">
                   Para sa mga pasilidad pang-agrikultura tulad ng broiler/layer poultry farms, babuyan (piggery), at livestock.
                 </div>
                 <ul className="new-app-card-features">
-                  <li><IconCheck /> 500m mandatory buffer mula sa kabahayan</li>
-                  <li><IconCheck /> 200m buffer mula sa mga ilog at tubig</li>
-                  <li><IconCheck /> Biogas at waste management plan</li>
+                  <li><IconCheck size={13} /> 500m mandatory buffer mula sa kabahayan</li>
+                  <li><IconCheck size={13} /> 200m buffer mula sa mga ilog at tubig</li>
+                  <li><IconCheck size={13} /> Biogas at waste management plan</li>
                 </ul>
               </div>
 
@@ -624,31 +1162,47 @@ export default function NewApplicationPage({
               <div
                 className={`new-app-page-card ${category === "municipal_project" ? "selected" : ""}`}
                 onClick={() => setCategory("municipal_project")}
-                role="button"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setCategory("municipal_project");
+                  }
+                }}
+                role="radio"
+                aria-checked={category === "municipal_project"}
                 tabIndex={0}
               >
-                <div className="new-app-card-icon-wrap" style={{ color: "#fbbf24" }}>
-                  <IconMunicipal size={36} color="#fbbf24" />
+                <div className="new-app-card-radio-indicator" aria-hidden="true">
+                  <IconCheck size={12} color="#ffffff" />
                 </div>
-                <div className="new-app-card-title">Municipal Projects</div>
-                <span className="new-app-card-badge tag-municipal">LGU Public Works / CIP</span>
+                <div className="new-app-card-top-row">
+                  <div className="new-app-card-icon-wrap" style={{ color: "var(--apple-warn, #b45309)" }}>
+                    <IconMunicipal size={30} color="var(--apple-warn, #b45309)" />
+                  </div>
+                  <div className="new-app-card-header-text">
+                    <div className="new-app-card-title">Municipal Projects</div>
+                    <span className="new-app-card-badge tag-municipal">LGU Public Works / CIP</span>
+                  </div>
+                </div>
                 <div className="new-app-card-desc">
                   Para sa mga pampublikong imprastraktura ng Pamahalaang Bayan: mga kalsada, evacuation centers, barangay halls, at RHU.
                 </div>
                 <ul className="new-app-card-features">
-                  <li><IconCheck /> Implementing department routing</li>
-                  <li><IconCheck /> 20% LDF / LGU budget source tracking</li>
-                  <li><IconCheck /> Multi-hazard disaster mitigation siting</li>
+                  <li><IconCheck size={13} /> Implementing department routing</li>
+                  <li><IconCheck size={13} /> 20% LDF / LGU budget source tracking</li>
+                  <li><IconCheck size={13} /> Multi-hazard disaster mitigation siting</li>
                 </ul>
               </div>
             </div>
 
-            <div className="new-app-page-footer">
-              <button type="button" className="new-app-page-btn new-app-page-btn-secondary" onClick={onBack}>
-                Kanselahin
+            <div className="new-app-page-footer new-app-step1-footer">
+              <button type="button" className="new-app-page-btn new-app-page-btn-secondary" onClick={onBack} title="Bumalik sa Dashboard">
+                <span className="new-app-btn-text-full">← Bumalik sa Dashboard</span>
+                <span className="new-app-btn-text-short">← Bumalik</span>
               </button>
               <button type="button" className="new-app-page-btn new-app-page-btn-primary" onClick={() => setStep(2)}>
-                <span>Magpatuloy sa Impormasyon</span>
+                <span className="new-app-btn-text-full">Magpatuloy sa Impormasyon</span>
+                <span className="new-app-btn-text-short">Magpatuloy</span>
                 <span>→</span>
               </button>
             </div>
@@ -662,19 +1216,19 @@ export default function NewApplicationPage({
               <h2 className="new-app-form-title">
                 {category === "private_infrastructure" && (
                   <>
-                    <IconBuilding size={20} color="#38bdf8" />
+                    <IconBuilding size={20} color="var(--apple-accent, #0071e3)" />
                     <span>Private Infrastructure Application Details</span>
                   </>
                 )}
                 {category === "agricultural" && (
                   <>
-                    <IconAgriculture size={20} color="#34d399" />
+                    <IconAgriculture size={20} color="var(--apple-safe, #15803d)" />
                     <span>Agricultural (Poultry / Piggery) Farm Application Details</span>
                   </>
                 )}
                 {category === "municipal_project" && (
                   <>
-                    <IconMunicipal size={20} color="#fbbf24" />
+                    <IconMunicipal size={20} color="var(--apple-warn, #b45309)" />
                     <span>Municipal Infrastructure Project Details</span>
                   </>
                 )}
@@ -779,9 +1333,9 @@ export default function NewApplicationPage({
 
               {/* Interactive Location Pinpoint Map */}
               <div className="new-app-field full-width" style={{ marginTop: 4 }}>
-                <label className="new-app-label" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <label className="new-app-label new-app-map-label">
                   <span>Eksaktong Lokasyon ng Proyekto (Interactive Map Pinpoint) *</span>
-                  <span style={{ fontSize: 12, color: "#38bdf8", fontWeight: 700, fontFamily: "monospace" }}>
+                  <span className="new-app-map-coords-text">
                     {pinnedCoords.lat.toFixed(6)}° N, {pinnedCoords.lon.toFixed(6)}° E
                   </span>
                 </label>
@@ -906,7 +1460,7 @@ export default function NewApplicationPage({
                   <div className="new-app-field full-width">
                     <div className={`new-app-buffer-box ${attemptedStep2Proceed && !bufferComplianceConfirmed ? "is-missing-box" : ""}`}>
                       <div className="new-app-buffer-title">
-                        <IconShieldCheck size={18} color="#34d399" />
+                        <IconShieldCheck size={18} color="var(--apple-safe, #15803d)" />
                         <span>Mandatory Environmental Buffer Zone Compliance *</span>
                       </div>
                       <div className="new-app-buffer-text">
@@ -1010,7 +1564,7 @@ export default function NewApplicationPage({
                 <div className="new-app-docs-header">
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, width: "100%" }}>
                     <div className="new-app-docs-title">
-                      <IconUploadCloud size={22} color="#38bdf8" />
+                      <IconUploadCloud size={22} color="var(--apple-text, #1d1d1f)" />
                       <span>Anim (6) na Mandatory Documents (Citizen&apos;s Charter) *</span>
                     </div>
                     <span className={`new-app-docs-counter ${uploadedDocsCount === 6 ? "complete" : "incomplete"}`}>
@@ -1329,7 +1883,7 @@ export default function NewApplicationPage({
             <div className="new-app-page-footer" style={{ display: "flex", flexDirection: "column", gap: 14, alignItems: "stretch" }}>
               {!isStep2Valid() && (
                 <div className="new-app-missing-alert">
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, color: "#fca5a5" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600, color: "var(--apple-danger, #b91c1c)" }}>
                     <IconAlert size={18} color="#ef4444" />
                     <span>Dapat kumpleto ang lahat ng patlang at 6 na mandatory requirements bago magpatuloy ({getStep2MissingFields().length} kulang):</span>
                   </div>
@@ -1343,9 +1897,10 @@ export default function NewApplicationPage({
                 </div>
               )}
 
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <button type="button" className="new-app-page-btn new-app-page-btn-secondary" onClick={() => setStep(1)}>
-                  ← Bumalik sa Kategorya
+              <div className="new-app-footer-actions">
+                <button type="button" className="new-app-page-btn new-app-page-btn-secondary" onClick={handleBack}>
+                  <span className="new-app-btn-text-full">← Bumalik sa Kategorya</span>
+                  <span className="new-app-btn-text-short">← Bumalik</span>
                 </button>
                 <button
                   type="button"
@@ -1361,7 +1916,8 @@ export default function NewApplicationPage({
                   }}
                   title={!isStep2Valid() ? "Pakikumpleto muna ang lahat ng patlang at 6 na kalakip bago magpatuloy" : undefined}
                 >
-                  <span>Magpatuloy sa GIS Siting</span>
+                  <span className="new-app-btn-text-full">Magpatuloy sa GIS Siting</span>
+                  <span className="new-app-btn-text-short">Magpatuloy</span>
                   <span>→</span>
                 </button>
               </div>
@@ -1373,8 +1929,8 @@ export default function NewApplicationPage({
         {step === 3 && (
           <div className="new-app-form-panel">
             <div className="new-app-form-header">
-              <h2 className="new-app-form-title" style={{ color: "#10b981" }}>
-                <IconPin size={22} color="#10b981" />
+              <h2 className="new-app-form-title">
+                <IconPin size={22} color="var(--apple-safe, #15803d)" />
                 <span>GIS Location Siting &amp; Hazard Clearance</span>
               </h2>
               <div className="new-app-form-sub">
@@ -1382,57 +1938,69 @@ export default function NewApplicationPage({
               </div>
             </div>
 
-            {/* LUISIANA SITING ASSESSMENT (Exact match with Pic 2) */}
+            {/* LUISIANA SITING ASSESSMENT (Matched with Apple Theme) */}
             <div className="app-assess-card">
               <div className="app-assess-card-title">
-                LUISIANA SITING ASSESSMENT
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                </svg>
+                <span>Luisiana Siting Assessment</span>
               </div>
 
               <dl className="app-assess-list">
                 <div className="app-assess-row">
                   <dt>Ground shaking</dt>
-                  <dd style={{ color: "#38bdf8" }}>PEIS VIII</dd>
+                  <dd className="app-assess-val-accent">PEIS VIII</dd>
                 </div>
 
                 <div className="app-assess-row">
                   <dt>EIL 2014</dt>
-                  <dd style={{ color: "#38bdf8" }}>Low</dd>
+                  <dd className="app-assess-val-accent">Low</dd>
                 </div>
 
                 <div className="app-assess-row">
                   <dt>Siting class</dt>
-                  <dd style={{ color: "#38bdf8" }}>LOW — standard seismic design</dd>
+                  <dd className="app-assess-val-accent">LOW — standard seismic design</dd>
                 </div>
 
                 <div className="app-assess-row">
                   <dt>Terrain model</dt>
-                  <dd style={{ color: "#ffffff" }}>Not ready</dd>
+                  <dd className="app-assess-val-muted">Not ready</dd>
                 </div>
 
                 <div className="app-assess-row">
                   <dt>Flood</dt>
-                  <dd style={{ color: getHazardColor(geoRisk?.flood?.value) }}>
-                    {geoRisk?.flood?.value || "Safe"}
+                  <dd>
+                    <span className={`app-hazard-badge ${getHazardBadgeClass(geoRisk?.flood?.value)}`}>
+                      {geoRisk?.flood?.value || "Safe"}
+                    </span>
                   </dd>
                 </div>
 
                 <div className="app-assess-row">
                   <dt>Rain-induced landslide</dt>
-                  <dd style={{ color: getHazardColor(geoRisk?.landslide?.value) }}>
-                    {geoRisk?.landslide?.value || "Safe"}
+                  <dd>
+                    <span className={`app-hazard-badge ${getHazardBadgeClass(geoRisk?.landslide?.value)}`}>
+                      {geoRisk?.landslide?.value || "Safe"}
+                    </span>
                   </dd>
                 </div>
 
                 <div className="app-assess-row">
                   <dt>Mt. Banahaw</dt>
-                  <dd style={{ color: "#ffffff" }}>
+                  <dd className="app-assess-val-normal">
                     {ban.km.toFixed(1)} km north of summit
                   </dd>
                 </div>
               </dl>
 
               <p className="app-assess-note">
-                Luisiana only · MGB flood &amp; landslide (GeoRiskPH) + PHIVOLCS 2014 sheets + local terrain model.
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0, marginTop: 1 }}>
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="16" x2="12" y2="12" />
+                  <line x1="12" y1="8" x2="12.01" y2="8" />
+                </svg>
+                <span>Luisiana only · MGB flood &amp; landslide (GeoRiskPH) + PHIVOLCS 2014 sheets + local terrain model.</span>
               </p>
 
               <button
@@ -1449,10 +2017,18 @@ export default function NewApplicationPage({
                       flood: geoRisk?.flood || { value: "Safe", code: null },
                       landslide: geoRisk?.landslide || { value: "Safe", code: null },
                     },
+                    distanceKm: ban.km,
                   });
                 }}
               >
-                View report
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                  <line x1="16" y1="13" x2="8" y2="13" />
+                  <line x1="16" y1="17" x2="8" y2="17" />
+                  <polyline points="10 9 9 9 8 9" />
+                </svg>
+                <span>View report</span>
               </button>
             </div>
 
@@ -1460,33 +2036,45 @@ export default function NewApplicationPage({
               style={{
                 marginTop: 18,
                 padding: "12px 16px",
-                background: "rgba(56, 189, 248, 0.08)",
-                borderRadius: 10,
+                background: "var(--apple-surface-secondary, #f5f5f7)",
+                borderRadius: "var(--apple-radius-md, 10px)",
                 fontSize: 13,
-                color: "#7dd3fc",
-                border: "1px solid rgba(56, 189, 248, 0.2)",
+                color: "var(--apple-text-secondary, #6e6e73)",
+                border: "1px solid var(--apple-border, rgba(0, 0, 0, 0.08))",
                 display: "flex",
                 alignItems: "center",
                 gap: 10,
               }}
             >
-              <IconInfo size={18} color="#38bdf8" />
+              <IconInfo size={18} color="var(--apple-accent, #0071e3)" />
               <span>Pagkatapos i-submit, maaari mong buksan agad ang interactive 2D map upang mai-plot ang eksaktong perimeter gamit ang cursor.</span>
             </div>
 
             <div className="new-app-page-footer">
-              <button type="button" className="new-app-page-btn new-app-page-btn-secondary" onClick={() => setStep(2)}>
-                ← Bumalik sa Form
-              </button>
-              <button
-                type="button"
-                className="new-app-page-btn new-app-page-btn-primary"
-                disabled={submitting}
-                onClick={handleSubmit}
-              >
-                <span>{submitting ? "Isinusumite..." : "Kumpirmahin at I-submit"}</span>
-                <span>✓</span>
-              </button>
+              <div className="new-app-footer-actions">
+                <button type="button" className="new-app-page-btn new-app-page-btn-secondary" onClick={handleBack}>
+                  <span className="new-app-btn-text-full">← Bumalik sa Form</span>
+                  <span className="new-app-btn-text-short">← Bumalik</span>
+                </button>
+                <button
+                  type="button"
+                  className="new-app-page-btn new-app-page-btn-primary"
+                  disabled={submitting}
+                  onClick={handleInitiateSubmit}
+                >
+                  <span>
+                    {submitting ? (
+                      "Isinusumite..."
+                    ) : (
+                      <>
+                        <span className="new-app-btn-text-full">Kumpirmahin at I-submit</span>
+                        <span className="new-app-btn-text-short">I-submit</span>
+                      </>
+                    )}
+                  </span>
+                  <span>✓</span>
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -1495,71 +2083,71 @@ export default function NewApplicationPage({
         {step === 4 && (
           <div className="new-app-form-panel" style={{ textAlign: "center", padding: "48px 32px" }}>
             <div style={{ marginBottom: 18 }}>
-              <IconCheckCircle size={64} color="#10b981" />
+              <IconCheckCircle size={56} color="var(--apple-safe, #15803d)" />
             </div>
-            <h1 style={{ margin: "0 0 8px", fontSize: 24, fontWeight: 800, color: "#34d399" }}>
+            <h1 style={{ margin: "0 0 8px", fontSize: "1.5rem", fontWeight: 700, color: "var(--apple-safe, #15803d)", letterSpacing: "-0.02em" }}>
               Matagumpay na Nalikha ang Aplikasyon!
             </h1>
-            <p style={{ margin: "0 auto 24px", fontSize: 14.5, color: "rgba(255, 255, 255, 0.7)", maxWidth: 520, lineHeight: 1.5 }}>
+            <p style={{ margin: "0 auto 24px", fontSize: "0.94rem", color: "var(--apple-text-secondary, #6e6e73)", maxWidth: 520, lineHeight: 1.55 }}>
               Nailagay na sa database ng Bayan ng Luisiana ang inyong aplikasyon para sa opisyal na pagsusuri ng MPDC at Engineering Office.
             </p>
 
             <div
               style={{
-                background: "rgba(0,0,0,0.35)",
-                border: "2px dashed rgba(56, 189, 248, 0.45)",
-                borderRadius: 14,
+                background: "var(--apple-surface-secondary, #f5f5f7)",
+                border: "1.5px dashed var(--apple-border-strong, rgba(0, 0, 0, 0.16))",
+                borderRadius: "var(--apple-radius-md, 10px)",
                 padding: "20px 28px",
                 display: "inline-block",
                 marginBottom: 28,
               }}
             >
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>
+              <div style={{ fontSize: 12, color: "var(--apple-text-secondary, #6e6e73)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>
                 Tracking Reference Number
               </div>
-              <div style={{ fontSize: 28, fontWeight: 900, color: "#38bdf8", marginTop: 6, letterSpacing: "0.07em" }}>
+              <div style={{ fontSize: "1.75rem", fontWeight: 800, color: "var(--apple-text, #1d1d1f)", marginTop: 6, letterSpacing: "0.05em", fontFamily: "monospace" }}>
                 {generatedTrackingNo}
               </div>
             </div>
 
             {/* Attached Documents Verification Summary */}
-            <div style={{ maxWidth: 580, margin: "0 auto 28px", textAlign: "left", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, padding: "16px 20px" }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.6)", textTransform: "uppercase", marginBottom: 12, display: "flex", alignItems: "center", gap: 6 }}>
-                <IconUploadCloud size={16} color="#38bdf8" />
+            <div style={{ maxWidth: 580, margin: "0 auto 28px", textAlign: "left", background: "var(--apple-surface-secondary, #f5f5f7)", border: "1px solid var(--apple-border, rgba(0, 0, 0, 0.08))", borderRadius: "var(--apple-radius-md, 10px)", padding: "18px 20px" }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--apple-text-secondary, #6e6e73)", textTransform: "uppercase", marginBottom: 12, display: "flex", alignItems: "center", gap: 6 }}>
+                <IconUploadCloud size={16} color="var(--apple-text, #1d1d1f)" />
                 <span>Nai-attach na mga Dokumento ({[landTitleDoc, taxDecDoc, rptReceiptDoc, brgyClearanceDoc, ploCertDoc, photoDocsDoc].filter(Boolean).length} of 6)</span>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 9, fontSize: 12.5 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: landTitleDoc ? "#34d399" : "rgba(255,255,255,0.4)" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 9, fontSize: "0.82rem" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: landTitleDoc ? "var(--apple-safe, #15803d)" : "var(--apple-text-tertiary, #86868b)" }}>
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                     <IconFileTextDoc size={14} color="currentColor" /> Photocopy ng TCT (Land Title):
                   </span>
                   <strong>{landTitleDoc ? `✓ ${landTitleDoc.name}` : "Walang kalakip"}</strong>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: taxDecDoc ? "#34d399" : "rgba(255,255,255,0.4)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: taxDecDoc ? "var(--apple-safe, #15803d)" : "var(--apple-text-tertiary, #86868b)" }}>
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                     <IconFileTextDoc size={14} color="currentColor" /> Tax Declaration:
                   </span>
                   <strong>{taxDecDoc ? `✓ ${taxDecDoc.name}` : "Walang kalakip"}</strong>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: rptReceiptDoc ? "#34d399" : "rgba(255,255,255,0.4)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: rptReceiptDoc ? "var(--apple-safe, #15803d)" : "var(--apple-text-tertiary, #86868b)" }}>
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                     <IconReceipt size={14} color="currentColor" /> Current Real Property Tax Receipt (Amilyar):
                   </span>
                   <strong>{rptReceiptDoc ? `✓ ${rptReceiptDoc.name}` : "Walang kalakip"}</strong>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: brgyClearanceDoc ? "#34d399" : "rgba(255,255,255,0.4)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: brgyClearanceDoc ? "var(--apple-safe, #15803d)" : "var(--apple-text-tertiary, #86868b)" }}>
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                     <IconShieldCheck size={14} color="currentColor" /> Barangay Clearance:
                   </span>
                   <strong>{brgyClearanceDoc ? `✓ ${brgyClearanceDoc.name}` : "Walang kalakip"}</strong>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: ploCertDoc ? "#34d399" : "rgba(255,255,255,0.4)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: ploCertDoc ? "var(--apple-safe, #15803d)" : "var(--apple-text-tertiary, #86868b)" }}>
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                     <IconBolt size={14} color="currentColor" /> PLO Certification (MERALCO Clearance):
                   </span>
                   <strong>{ploCertDoc ? `✓ ${ploCertDoc.name}` : "Walang kalakip"}</strong>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: photoDocsDoc ? "#34d399" : "rgba(255,255,255,0.4)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: photoDocsDoc ? "var(--apple-safe, #15803d)" : "var(--apple-text-tertiary, #86868b)" }}>
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                     <IconCamera size={14} color="currentColor" /> Photo Documentation (Loob at Labas ng Site):
                   </span>
@@ -1572,14 +2160,13 @@ export default function NewApplicationPage({
               <button
                 type="button"
                 className="new-app-page-btn new-app-page-btn-primary"
-                style={{ background: "#0284c7", borderColor: "#38bdf8" }}
                 onClick={() => {
                   if (onTrackApplication) {
                     onTrackApplication(generatedTrackingNo);
                   }
                 }}
               >
-                <IconPin size={17} color="#fff" />
+                <IconPin size={16} color="currentColor" />
                 <span>Subaybayan ang Aplikasyon (Live Tracker)</span>
               </button>
 
@@ -1589,7 +2176,7 @@ export default function NewApplicationPage({
                   className="new-app-page-btn new-app-page-btn-primary"
                   onClick={() => onViewOnMap(pinnedCoords.lon, pinnedCoords.lat)}
                 >
-                  <IconMap size={17} color="#fff" />
+                  <IconMap size={16} color="currentColor" />
                   <span>Tingnan sa 2D Mapa</span>
                 </button>
               )}
@@ -1604,6 +2191,23 @@ export default function NewApplicationPage({
           </div>
         )}
       </main>
+
+      {/* Terms & Conditions / Cookie Consent Gate Modal */}
+      <ApplicationTermsModal
+        isOpen={termsModalOpen}
+        onAccept={handleAcceptTerms}
+        onDecline={handleDeclineTerms}
+        isAlreadyAccepted={isAppTermsAccepted()}
+      />
+
+      {/* Pre-Submission Review & Confirmation Modal */}
+      <ApplicationConfirmModal
+        isOpen={confirmModalOpen}
+        onClose={() => setConfirmModalOpen(false)}
+        onConfirmSubmit={handleSubmit}
+        submitting={submitting}
+        data={confirmModalData}
+      />
     </div>
   );
 }

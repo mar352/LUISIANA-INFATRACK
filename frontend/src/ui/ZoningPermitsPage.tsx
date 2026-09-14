@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import { io } from "socket.io-client";
 import type { SessionUser } from "../services/auth";
 import type { PlanningProposal } from "../types";
@@ -210,6 +210,51 @@ function IconDownload({ size = 14, className, style }: { size?: number; classNam
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
       <polyline points="7 10 12 15 17 10" />
       <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  );
+}
+
+function IconZoomIn({ size = 13, className, style }: { size?: number; className?: string; style?: React.CSSProperties }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} style={style} aria-hidden>
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+      <line x1="11" y1="8" x2="11" y2="14" />
+      <line x1="8" y1="11" x2="14" y2="11" />
+    </svg>
+  );
+}
+
+function IconZoomOut({ size = 13, className, style }: { size?: number; className?: string; style?: React.CSSProperties }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} style={style} aria-hidden>
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+      <line x1="8" y1="11" x2="14" y2="11" />
+    </svg>
+  );
+}
+
+function IconRotate({ size = 13, className, style }: { size?: number; className?: string; style?: React.CSSProperties }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} style={style} aria-hidden>
+      <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
+    </svg>
+  );
+}
+
+function IconChevronLeft({ size = 13, className, style }: { size?: number; className?: string; style?: React.CSSProperties }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} style={style} aria-hidden>
+      <polyline points="15 18 9 12 15 6" />
+    </svg>
+  );
+}
+
+function IconChevronRight({ size = 13, className, style }: { size?: number; className?: string; style?: React.CSSProperties }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} style={style} aria-hidden>
+      <polyline points="9 18 15 12 9 6" />
     </svg>
   );
 }
@@ -481,82 +526,326 @@ function formatFileSize(size: any): string {
   return typeof size === "string" ? size : "";
 }
 
-function DocViewerContent({
+let pdfjsPromise: Promise<any> | null = null;
+function getPdfJs(): Promise<any> {
+  if ((window as any).pdfjsLib) {
+    return Promise.resolve((window as any).pdfjsLib);
+  }
+  if (!pdfjsPromise) {
+    pdfjsPromise = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "/vendor/pdfjs/pdf.min.js";
+      script.onload = () => {
+        const lib = (window as any).pdfjsLib;
+        if (lib) {
+          lib.GlobalWorkerOptions.workerSrc = "/vendor/pdfjs/pdf.worker.min.js";
+        }
+        resolve(lib);
+      };
+      script.onerror = (err) => {
+        pdfjsPromise = null;
+        reject(err);
+      };
+      document.head.appendChild(script);
+    });
+  }
+  return pdfjsPromise;
+}
+
+function PdfCanvasViewer({
   url,
   title,
   fileName,
-  isPdf,
-  isImg,
 }: {
   url: string;
   title: string;
   fileName?: string;
-  isPdf?: boolean;
-  isImg?: boolean;
 }) {
-  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [numPages, setNumPages] = useState<number>(1);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [scale, setScale] = useState<number>(1.2);
+  const [rotation, setRotation] = useState<number>(0);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const pdfDocRef = useRef<any>(null);
+  const renderTaskRef = useRef<any>(null);
 
   useEffect(() => {
-    let active = true;
-    let createdUrl: string | null = null;
+    let cancelled = false;
     setLoading(true);
-    setLoadError(null);
+    setError(null);
+    setCurrentPage(1);
 
-    if (isPdf) {
-      // Fetch as blob to guarantee same-origin in-system viewing and zero iframe blocking
-      fetch(url)
-        .then((res) => {
-          if (!res.ok) throw new Error(`HTTP ${res.status}: Hindi ma-load ang dokumento`);
-          return res.blob();
-        })
-        .then((blob) => {
-          if (!active) return;
-          const pdfBlob = new Blob([blob], { type: "application/pdf" });
-          createdUrl = URL.createObjectURL(pdfBlob);
-          setBlobUrl(createdUrl);
-          setLoading(false);
-        })
-        .catch((err) => {
-          console.warn("[DocViewer] Blob fetch failed, falling back to direct URL:", err);
-          if (!active) return;
-          setBlobUrl(url);
-          setLoading(false);
-        });
-    } else {
-      setLoading(false);
+    async function loadPdf() {
+      try {
+        const pdfjs = await getPdfJs();
+        const res = await fetch(url);
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: Hindi makarga ang PDF mula sa server.`);
+        }
+        const buf = await res.arrayBuffer();
+        if (cancelled) return;
+        const pdf = await pdfjs.getDocument({
+          data: new Uint8Array(buf),
+          disableRange: true,
+          disableStream: true,
+        }).promise;
+        if (cancelled) return;
+        pdfDocRef.current = pdf;
+        setNumPages(pdf.numPages);
+        setLoading(false);
+      } catch (err: any) {
+        if (cancelled) return;
+        console.error("[PdfCanvasViewer] Error loading PDF:", err);
+        setError(err?.message || "Hindi mabuksan ang PDF file.");
+        setLoading(false);
+      }
     }
 
+    loadPdf();
+
     return () => {
-      active = false;
-      if (createdUrl) {
-        URL.revokeObjectURL(createdUrl);
+      cancelled = true;
+      if (renderTaskRef.current) {
+        try {
+          renderTaskRef.current.cancel();
+        } catch (_) {}
       }
     };
-  }, [url, isPdf]);
+  }, [url]);
 
-  if (loadError) {
+  useEffect(() => {
+    if (!pdfDocRef.current || loading || error) return;
+    let cancelled = false;
+
+    async function renderPage() {
+      try {
+        const page = await pdfDocRef.current.getPage(currentPage);
+        if (cancelled) return;
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        if (renderTaskRef.current) {
+          try {
+            renderTaskRef.current.cancel();
+          } catch (_) {}
+        }
+
+        const viewport = page.getViewport({ scale, rotation });
+        const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+        canvas.width = Math.floor(viewport.width * dpr);
+        canvas.height = Math.floor(viewport.height * dpr);
+        canvas.style.width = `${Math.floor(viewport.width)}px`;
+        canvas.style.height = `${Math.floor(viewport.height)}px`;
+
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        const task = page.render({
+          canvasContext: ctx,
+          viewport,
+        });
+        renderTaskRef.current = task;
+        await task.promise;
+      } catch (err: any) {
+        if (err?.name === "RenderingCancelledException") return;
+        console.warn("[PdfCanvasViewer] Render warning:", err);
+      }
+    }
+
+    renderPage();
+
+    return () => {
+      cancelled = true;
+      if (renderTaskRef.current) {
+        try {
+          renderTaskRef.current.cancel();
+        } catch (_) {}
+      }
+    };
+  }, [currentPage, scale, rotation, loading, error]);
+
+  const handleZoomIn = () => setScale((s) => Math.min(Number((s + 0.2).toFixed(1)), 3.0));
+  const handleZoomOut = () => setScale((s) => Math.max(Number((s - 0.2).toFixed(1)), 0.6));
+  const handleRotate = () => setRotation((r) => (r + 90) % 360);
+  const handleFitWidth = () => setScale(1.1);
+
+  if (error) {
     return (
       <div className="zp-doc-error-box">
         <IconAlertTriangle size={32} style={{ color: "#f59e0b", marginBottom: 12 }} />
-        <h4 style={{ color: "#ffffff", margin: "0 0 8px 0" }}>Hindi maipakita ang dokumento</h4>
-        <p style={{ color: "#94a3b8", fontSize: 13, margin: "0 0 16px 0", maxWidth: 400, textAlign: "center" }}>
-          {loadError}
+        <h4 style={{ margin: "0 0 8px 0" }}>Hindi maipakita ang PDF preview</h4>
+        <p style={{ fontSize: 13, margin: "0 0 16px 0", maxWidth: 420, textAlign: "center", opacity: 0.85 }}>
+          {error}
         </p>
-        <a href={url} download={fileName || "dokumento"} className="zp-lightbox-download-btn">
+        <a href={url} download={fileName || "dokumento.pdf"} className="zp-lightbox-download-btn">
           <IconDownload size={14} />
-          I-download ang File nang Diretso
+          I-download ang PDF nang Diretso
         </a>
       </div>
     );
   }
 
-  const activeSrc = isPdf ? (blobUrl || url) : url;
+  return (
+    <div className="zp-pdf-viewer-wrap">
+      {/* Floating Modern Toolbar */}
+      <div className="zp-pdf-toolbar">
+        {/* Pagination */}
+        <div className="zp-pdf-tb-group">
+          <button
+            type="button"
+            className="zp-pdf-tb-btn"
+            disabled={currentPage <= 1 || loading}
+            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            title="Nakaraang Pahina"
+            aria-label="Nakaraang Pahina"
+          >
+            <IconChevronLeft size={13} />
+          </button>
+          <span className="zp-pdf-tb-pages">
+            Pahina <strong>{currentPage}</strong> / {numPages}
+          </span>
+          <button
+            type="button"
+            className="zp-pdf-tb-btn"
+            disabled={currentPage >= numPages || loading}
+            onClick={() => setCurrentPage((p) => Math.min(numPages, p + 1))}
+            title="Susunod na Pahina"
+            aria-label="Susunod na Pahina"
+          >
+            <IconChevronRight size={13} />
+          </button>
+        </div>
 
-  if (isImg) {
+        {/* Zoom & Rotation */}
+        <div className="zp-pdf-tb-group">
+          <button
+            type="button"
+            className="zp-pdf-tb-btn"
+            disabled={scale <= 0.6 || loading}
+            onClick={handleZoomOut}
+            title="Liitan (Zoom Out)"
+            aria-label="Liitan"
+          >
+            <IconZoomOut size={13} />
+          </button>
+          <span className="zp-pdf-tb-zoom-val">{Math.round(scale * 100)}%</span>
+          <button
+            type="button"
+            className="zp-pdf-tb-btn"
+            disabled={scale >= 3.0 || loading}
+            onClick={handleZoomIn}
+            title="Palakihin (Zoom In)"
+            aria-label="Palakihin"
+          >
+            <IconZoomIn size={13} />
+          </button>
+          <button
+            type="button"
+            className="zp-pdf-tb-btn"
+            onClick={handleFitWidth}
+            title="I-angkop sa Screen (Fit Width)"
+          >
+            Fit
+          </button>
+          <button
+            type="button"
+            className="zp-pdf-tb-btn"
+            onClick={handleRotate}
+            title="Pihitin nang 90° (Rotate)"
+            aria-label="Pihitin nang 90°"
+          >
+            <IconRotate size={13} />
+          </button>
+        </div>
+      </div>
+
+      {/* Canvas Viewport Container */}
+      <div className="zp-pdf-canvas-viewport">
+        {loading && (
+          <div className="zp-doc-loading-overlay">
+            <div className="zp-spinner" />
+            <span>Ikinakarga ang PDF dokumento sa in-system canvas...</span>
+          </div>
+        )}
+        <div className="zp-pdf-canvas-canvas-wrap">
+          <canvas ref={canvasRef} className="zp-pdf-rendered-canvas" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ImagePreviewViewer({
+  url,
+  title,
+  fileName,
+}: {
+  url: string;
+  title: string;
+  fileName?: string;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [scale, setScale] = useState<number>(1.0);
+
+  const handleZoomIn = () => setScale((s) => Math.min(Number((s + 0.25).toFixed(2)), 3.0));
+  const handleZoomOut = () => setScale((s) => Math.max(Number((s - 0.25).toFixed(2)), 0.5));
+  const handleReset = () => setScale(1.0);
+
+  if (loadError) {
     return (
-      <div className="zp-lightbox-img-wrap">
+      <div className="zp-doc-error-box">
+        <IconAlertTriangle size={32} style={{ color: "#f59e0b", marginBottom: 12 }} />
+        <h4 style={{ margin: "0 0 8px 0" }}>Hindi maipakita ang larawan</h4>
+        <p style={{ fontSize: 13, margin: "0 0 16px 0", maxWidth: 400, textAlign: "center", opacity: 0.85 }}>
+          {loadError}
+        </p>
+        <a href={url} download={fileName || "larawan"} className="zp-lightbox-download-btn">
+          <IconDownload size={14} />
+          I-download ang Larawan
+        </a>
+      </div>
+    );
+  }
+
+  return (
+    <div className="zp-img-viewer-wrap">
+      <div className="zp-pdf-toolbar">
+        <div className="zp-pdf-tb-group">
+          <button
+            type="button"
+            className="zp-pdf-tb-btn"
+            disabled={scale <= 0.5}
+            onClick={handleZoomOut}
+            title="Liitan (Zoom Out)"
+          >
+            <IconZoomOut size={13} />
+          </button>
+          <span className="zp-pdf-tb-zoom-val">{Math.round(scale * 100)}%</span>
+          <button
+            type="button"
+            className="zp-pdf-tb-btn"
+            disabled={scale >= 3.0}
+            onClick={handleZoomIn}
+            title="Palakihin (Zoom In)"
+          >
+            <IconZoomIn size={13} />
+          </button>
+          <button
+            type="button"
+            className="zp-pdf-tb-btn"
+            onClick={handleReset}
+            title="Ibalik sa orihinal na sukat"
+          >
+            Reset
+          </button>
+        </div>
+      </div>
+
+      <div className="zp-lightbox-img-viewport">
         {loading && (
           <div className="zp-doc-loading-overlay">
             <div className="zp-spinner" />
@@ -564,9 +853,14 @@ function DocViewerContent({
           </div>
         )}
         <img
-          src={activeSrc}
+          src={url}
           alt={title}
           className="zp-lightbox-img"
+          style={{
+            transform: `scale(${scale})`,
+            transformOrigin: "center center",
+            transition: "transform 0.15s ease",
+          }}
           onLoad={() => setLoading(false)}
           onError={() => {
             setLoading(false);
@@ -574,52 +868,67 @@ function DocViewerContent({
           }}
         />
       </div>
-    );
-  }
-
-  if (isPdf) {
-    return (
-      <div style={{ width: "100%", height: "100%", position: "relative" }}>
-        {loading && (
-          <div className="zp-doc-loading-overlay">
-            <div className="zp-spinner" />
-            <span>Ikinakarga ang PDF dokumento...</span>
-          </div>
-        )}
-        {activeSrc && (
-          <object
-            data={activeSrc}
-            type="application/pdf"
-            className="zp-lightbox-iframe"
-          >
-            <iframe
-              src={activeSrc}
-              title={title}
-              className="zp-lightbox-iframe"
-            >
-              <div className="zp-doc-error-box">
-                <p style={{ color: "#ffffff", marginBottom: 12 }}>Hindi ma-display ang PDF sa built-in reader.</p>
-                <a href={url} download={fileName || "dokumento"} className="zp-lightbox-download-btn">
-                  <IconDownload size={14} /> I-download ang PDF
-                </a>
-              </div>
-            </iframe>
-          </object>
-        )}
-      </div>
-    );
-  }
-
-  // Other types
-  return (
-    <div style={{ width: "100%", height: "100%", position: "relative" }}>
-      <iframe
-        src={activeSrc}
-        title={title}
-        className="zp-lightbox-iframe"
-      />
     </div>
   );
+}
+
+function GenericDocCard({
+  url,
+  fileName,
+  size,
+  title,
+}: {
+  url: string;
+  fileName?: string;
+  size?: number;
+  title: string;
+}) {
+  const rawExt = (fileName || url).split(".").pop()?.toUpperCase() || "FILE";
+  const ext = rawExt.length > 6 ? "FILE" : rawExt;
+
+  return (
+    <div className="zp-generic-doc-box">
+      <div className="zp-generic-doc-icon-wrap">
+        <IconFile size={46} style={{ color: "var(--apple-accent, #0071e3)" }} />
+        <span className="zp-generic-doc-badge">{ext}</span>
+      </div>
+      <h3 className="zp-generic-doc-title">{fileName || title}</h3>
+      {size ? <span className="zp-generic-doc-size">{formatFileSize(size)}</span> : null}
+      <p className="zp-generic-doc-desc">
+        Ang uri ng dokumentong ito (<strong>.{ext.toLowerCase()}</strong>) ay hindi direktang
+        maipakita sa web browser reader. Maaari itong i-download kung nais mong suriin o buksan gamit ang
+        nakalaang desktop application sa iyong computer.
+      </p>
+      <a href={url} download={fileName || `dokumento.${ext.toLowerCase()}`} className="zp-lightbox-download-btn">
+        <IconDownload size={14} />
+        I-download ang File ({ext})
+      </a>
+    </div>
+  );
+}
+
+function DocViewerContent({
+  url,
+  title,
+  fileName,
+  isPdf,
+  isImg,
+  size,
+}: {
+  url: string;
+  title: string;
+  fileName?: string;
+  isPdf?: boolean;
+  isImg?: boolean;
+  size?: number;
+}) {
+  if (isImg) {
+    return <ImagePreviewViewer url={url} title={title} fileName={fileName} />;
+  }
+  if (isPdf) {
+    return <PdfCanvasViewer url={url} title={title} fileName={fileName} />;
+  }
+  return <GenericDocCard url={url} fileName={fileName} size={size} title={title} />;
 }
 
 let cachedCitizenApps: any[] = [];
@@ -1591,6 +1900,8 @@ export function ZoningPermitsPage({
               </button>
             )}
 
+            <img src="/logo.png" alt="Luisiana Seal" className="zp-brand-logo" />
+
             <div className="zp-brand-wrap">
               <div className="zp-brand-title-row">
                 <span className="zp-brand-pill">MPDC</span>
@@ -1605,59 +1916,63 @@ export function ZoningPermitsPage({
           </div>
 
           <div className="zp-header-right">
-            <div className="zp-service-pill">
-              <span className="zp-service-tag">Citizen&apos;s Charter Service #2</span>
-              <span className="zp-service-sla">Hakbang 1: Paunang Pagsusuri (10 Mins SLA) · ₱0.00 Libre</span>
-            </div>
-            <div
-              className={`zp-live-indicator${lastSyncedAt ? " active" : ""}`}
-              title="Real-time multi-user PostgreSQL sync"
-            >
-              <span className="zp-live-dot" />
-              <span>
-                {lastSyncedAt ? `Live · ${new Date(lastSyncedAt).toLocaleTimeString()}` : "Syncing…"}
-              </span>
-            </div>
-
-            {/* MPDC Notification Bell */}
-            <button
-              type="button"
-              className={`zp-notif-btn${unreadCount > 0 ? " has-badge" : ""}`}
-              onClick={() => setNotifDrawerOpen((prev) => !prev)}
-              title={`Mga Notipikasyon para sa MPDC (${unreadCount} bago)`}
-              aria-label="Mga Notipikasyon"
-            >
-              <IconBell size={17} />
-              {unreadCount > 0 && (
-                <span className="zp-notif-badge">
-                  {unreadCount > 9 ? "9+" : unreadCount}
-                </span>
-              )}
-            </button>
-
-            {session && (
-              <div className="zp-user-badge" title={`Naka-login: ${session.label || session.role}`}>
-                <span className="zp-user-avatar">
-                  <IconUser size={15} />
-                </span>
-                <div className="zp-user-meta">
-                  <span className="zp-user-role">{session.label || session.role}</span>
-                  <span className="zp-user-dept">IT Officer / Admin Aide</span>
-                </div>
+            <div className="zp-header-meta">
+              <div className="zp-service-pill">
+                <span className="zp-service-tag">Citizen&apos;s Charter Service #2</span>
+                <span className="zp-service-sla">Hakbang 1: Paunang Pagsusuri (10 Mins SLA) · ₱0.00 Libre</span>
               </div>
-            )}
+              <div
+                className={`zp-live-indicator${lastSyncedAt ? " active" : ""}`}
+                title="Real-time multi-user PostgreSQL sync"
+              >
+                <span className="zp-live-dot" />
+                <span>
+                  {lastSyncedAt ? `Live · ${new Date(lastSyncedAt).toLocaleTimeString()}` : "Syncing…"}
+                </span>
+              </div>
+            </div>
 
-            {onLogout && (
+            <div className="zp-header-controls">
+              {/* MPDC Notification Bell */}
               <button
                 type="button"
-                className="zp-logout-btn"
-                onClick={onLogout}
-                title="Mag-sign out sa sistema"
+                className={`zp-notif-btn${unreadCount > 0 ? " has-badge" : ""}`}
+                onClick={() => setNotifDrawerOpen((prev) => !prev)}
+                title={`Mga Notipikasyon para sa MPDC (${unreadCount} bago)`}
+                aria-label="Mga Notipikasyon"
               >
-                Sign Out
+                <IconBell size={17} />
+                {unreadCount > 0 && (
+                  <span className="zp-notif-badge">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                )}
               </button>
-            )}
-            <ThemeToggle iconOnly />
+
+              {session && (
+                <div className="zp-user-badge" title={`Naka-login: ${session.label || session.role}`}>
+                  <span className="zp-user-avatar">
+                    <IconUser size={15} />
+                  </span>
+                  <div className="zp-user-meta">
+                    <span className="zp-user-role">{session.label || session.role}</span>
+                    <span className="zp-user-dept">IT Officer / Admin Aide</span>
+                  </div>
+                </div>
+              )}
+
+              {onLogout && (
+                <button
+                  type="button"
+                  className="zp-logout-btn"
+                  onClick={onLogout}
+                  title="Mag-sign out sa sistema"
+                >
+                  Sign Out
+                </button>
+              )}
+              <ThemeToggle iconOnly />
+            </div>
           </div>
         </div>
 
@@ -1951,29 +2266,29 @@ export function ZoningPermitsPage({
                       onClick={() => openAppModal(app)}
                       title="I-click upang suriin ang aplikasyon at mga kalakip na dokumento"
                     >
-                      <td>
+                      <td className="zp-col-track">
                         <strong className="zp-track-num">
                           {app.trackingNumber}
                         </strong>
                       </td>
-                      <td>
+                      <td className="zp-col-applicant">
                         <div className="zp-applicant-name">{app.applicant?.fullName || "—"}</div>
                         <div className="zp-applicant-sub">
                           {app.applicant?.contactPhone || app.applicant?.email || "—"}
                         </div>
                       </td>
-                      <td>
+                      <td className="zp-col-location">
                         <div className="zp-barangay-tag">{app.applicant?.barangay}</div>
                         <div className="zp-location-sub">
                           {app.property?.locationDescription || app.applicant?.address || "—"}
                         </div>
                       </td>
-                      <td>
+                      <td className="zp-col-type">
                         <span className="zp-building-type">
                           {app.property?.proposedBuildingType || "Residential"}
                         </span>
                       </td>
-                      <td>
+                      <td className="zp-col-docs">
                         <div
                           className={`zp-doc-badge ${
                             completeness.isComplete ? "is-complete" : "is-incomplete"
@@ -1997,12 +2312,12 @@ export function ZoningPermitsPage({
                           </span>
                         </div>
                       </td>
-                      <td>
+                      <td className="zp-col-date">
                         <span className="zp-date">
                           {app.createdAt ? new Date(app.createdAt).toLocaleDateString() : "—"}
                         </span>
                       </td>
-                      <td>
+                      <td className="zp-col-status">
                         <span className={`zp-status-pill ${app.status || "submitted"}`}>
                           {app.status === "approved"
                             ? "Approved"
@@ -2023,7 +2338,7 @@ export function ZoningPermitsPage({
                             : "Submitted"}
                         </span>
                       </td>
-                      <td>
+                      <td className="zp-col-actions">
                         <div className="zp-actions-cell">
                           <button
                             type="button"
@@ -2067,7 +2382,7 @@ export function ZoningPermitsPage({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="zp-modal-head">
-              <div>
+              <div className="zp-modal-head-info">
                 <span className="zp-modal-tag">
                   {isStep2
                     ? "Hakbang 2: Pagsusuri ng Zoning Officer (1-Araw na Ocular Inspection & GIS Layers)"
@@ -2078,7 +2393,10 @@ export function ZoningPermitsPage({
                     : "Hakbang 2: Detail / Map View & Hazard Crosscheck (Zoning Officer)"}
                 </span>
                 <h2 className="zp-modal-title">
-                  Tracking No: <span className="zp-gold-ref">{selectedApp.trackingNumber}</span>
+                  <span className="zp-modal-title-track">
+                    <span className="zp-modal-track-label">Tracking No:</span>{" "}
+                    <span className="zp-gold-ref">{selectedApp.trackingNumber}</span>
+                  </span>
                   <span className="zp-modal-brgy-pill">
                     Brgy. {selectedApp.applicant?.barangay || "—"}
                   </span>
@@ -2336,47 +2654,22 @@ export function ZoningPermitsPage({
                 )}
 
                 {isStep2 && (
-                  <div
-                    style={{
-                      marginTop: 14,
-                      padding: "12px 16px",
-                      background: "rgba(2, 132, 199, 0.14)",
-                      border: "1px solid rgba(56, 189, 248, 0.45)",
-                      borderRadius: 8,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 12,
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <IconMapPin size={22} style={{ color: "#38bdf8", flexShrink: 0 }} />
+                  <div className="zp-step2-callout">
+                    <div className="zp-step2-callout-left">
+                      <IconMapPin size={22} className="zp-step2-callout-icon" />
                       <div>
-                        <strong style={{ color: "#38bdf8", display: "block", fontSize: 13 }}>
+                        <strong className="zp-step2-callout-title">
                           AKTIBONG YUGTO: Hakbang 2 (1-Araw na Ocular Inspection &amp; GIS Hazard Review)
                         </strong>
-                        <span style={{ fontSize: 12, color: "#cbd5e1" }}>
+                        <span className="zp-step2-callout-sub">
                           Suriin ang lokasyon sa GIS Mapa, lot pinning, at hazard layers sa Tab 2.
                         </span>
                       </div>
                     </div>
                     <button
                       type="button"
+                      className="zp-step2-callout-btn"
                       onClick={() => setModalTab("map")}
-                      style={{
-                        padding: "8px 16px",
-                        background: "#0284c7",
-                        color: "#ffffff",
-                        border: "1px solid #38bdf8",
-                        borderRadius: 6,
-                        fontWeight: 700,
-                        fontSize: 12,
-                        cursor: "pointer",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 6,
-                        whiteSpace: "nowrap",
-                      }}
                     >
                       <IconMapPin size={13} />
                       Buksan ang Hakbang 2 (Map View) →
@@ -2696,87 +2989,53 @@ export function ZoningPermitsPage({
                   <div className="zp-actions-card">
 
                   {isStep2 && (
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                        padding: "14px 18px",
-                        background: "rgba(2, 132, 199, 0.1)",
-                        border: "1px solid rgba(56, 189, 248, 0.35)",
-                        borderRadius: 8,
-                        width: "100%",
-                        boxSizing: "border-box",
-                      }}
-                    >
-                      <IconCheckCircle size={20} style={{ color: "#38bdf8", flexShrink: 0 }} />
-                      <div>
-                        <strong style={{ color: "#38bdf8", display: "block", fontSize: 13 }}>
-                          Tapos na ang Hakbang 1: Documentary Completeness Check
-                        </strong>
-                        <span style={{ fontSize: 12, color: "#cbd5e1" }}>
-                          Ang pagsusuri sa lote, ocular notes, at pag-apruba o pag-deny ng Zoning Officer ay isinasagawa sa Hakbang 2 (Map View gamit ang button sa itaas o ang Tab 2).
-                        </span>
+                    <div className="zp-action-final-status is-step2">
+                      <div className="zp-action-status-left">
+                        <IconCheckCircle size={20} className="zp-action-status-icon" />
+                        <div>
+                          <strong className="zp-action-status-title">
+                            Tapos na ang Hakbang 1: Documentary Completeness Check
+                          </strong>
+                          <span className="zp-action-status-sub">
+                            Ang pagsusuri sa lote, ocular notes, at pag-apruba o pag-deny ng Zoning Officer ay isinasagawa sa Hakbang 2 (Map View gamit ang button sa itaas o ang Tab 2).
+                          </span>
+                        </div>
                       </div>
                     </div>
                   )}
 
                 {isForPayment && (
-                  <div
-                    className="zp-action-final-status is-for-payment"
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 10,
-                      padding: "16px 18px",
-                      borderRadius: 10,
-                      background: "rgba(245, 158, 11, 0.12)",
-                      border: "1px solid rgba(245, 158, 11, 0.4)",
-                      color: "#fbbf24",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <IconCheckCircle size={20} style={{ color: "#fbbf24" }} />
-                        <strong style={{ fontSize: 14, color: "#fef3c7" }}>
+                  <div className="zp-action-final-status is-for-payment">
+                    <div className="zp-action-status-head">
+                      <div className="zp-action-status-left">
+                        <IconCheckCircle size={20} className="zp-action-status-icon" />
+                        <strong className="zp-action-status-title">
                           Zoning Approved · Nai-isyu na ang Order of Payment ({selectedApp.payment?.orderOfPaymentNo || "OP-2026"})
                         </strong>
                       </div>
-                      <span style={{ fontSize: 12, padding: "3px 10px", borderRadius: 9999, background: "rgba(245, 158, 11, 0.25)", color: "#fef3c7", fontWeight: 700 }}>
+                      <span className="zp-action-status-tag">
                         Kabuuang Halaga: ₱{Number(selectedApp.payment?.amount || 280).toFixed(2)}
                       </span>
                     </div>
-                    <p style={{ margin: 0, fontSize: 12.5, color: "#fef3c7", lineHeight: 1.5 }}>
+                    <p className="zp-action-status-desc">
                       Nasa estado na ito ng pagbabayad sa Municipal Treasury Office. Kapag nakapagbayad na ang aplikante sa Physical Cashier, iu-upload niya ang kanyang Official Receipt (O.R.) sa Client Tracker at awtomatikong papasok sa Engineering dashboard para sa &quot;Before&quot; Inspection.
                     </p>
                   </div>
                 )}
 
                 {isForEngineering && (
-                  <div
-                    className="zp-action-final-status is-for-engineering"
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 12,
-                      padding: "18px 20px",
-                      borderRadius: 12,
-                      background: "linear-gradient(135deg, rgba(16, 185, 129, 0.14) 0%, rgba(6, 95, 70, 0.18) 100%)",
-                      border: "1.5px solid #10b981",
-                      boxShadow: "0 4px 16px rgba(16, 185, 129, 0.15)",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <div style={{ width: 34, height: 34, borderRadius: "50%", background: "rgba(16, 185, 129, 0.25)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                          <IconCheckCircle size={20} style={{ color: "#34d399" }} />
+                  <div className="zp-action-final-status is-for-engineering">
+                    <div className="zp-action-status-head">
+                      <div className="zp-action-status-left">
+                        <div className="zp-action-status-icon-badge">
+                          <IconCheckCircle size={20} />
                         </div>
                         <div>
-                          <strong style={{ fontSize: 14.5, color: "#6ee7b7", display: "block" }}>
+                          <strong className="zp-action-status-title">
                             Bayad Na sa Treasury · Para sa Engineering &quot;Before&quot; Inspection
                           </strong>
-                          <span style={{ fontSize: 12, color: "#d1fae5" }}>
-                            Official Receipt No: <strong style={{ color: "#fff", fontFamily: "monospace" }}>{selectedApp.payment?.orNumber || "OR-VERIFIED"}</strong> · Halaga: <strong>₱{Number(selectedApp.payment?.amount || 280).toFixed(2)}</strong> · Petsa: <strong>{selectedApp.payment?.paymentDate || "—"}</strong>
+                          <span className="zp-action-status-sub">
+                            Official Receipt No: <strong className="zp-action-mono-tag">{selectedApp.payment?.orNumber || "OR-VERIFIED"}</strong> · Halaga: <strong>₱{Number(selectedApp.payment?.amount || 280).toFixed(2)}</strong> · Petsa: <strong>{selectedApp.payment?.paymentDate || "—"}</strong>
                           </span>
                         </div>
                       </div>
@@ -2784,51 +3043,24 @@ export function ZoningPermitsPage({
                       {selectedApp.payment?.receiptUrl && (
                         <button
                           type="button"
-                          className="zp-act-btn"
+                          className="zp-act-btn zp-btn-view-receipt"
                           onClick={() => openDocViewer(selectedApp.payment.receiptUrl, `Official-Receipt-${selectedApp.payment.orNumber}`, "Opisyal na Resibo (Treasury O.R.)")}
-                          style={{
-                            background: "rgba(255, 255, 255, 0.12)",
-                            color: "#38bdf8",
-                            border: "1px solid rgba(56, 189, 248, 0.4)",
-                            padding: "6px 14px",
-                            fontSize: 12.5,
-                            fontWeight: 700,
-                            borderRadius: 6,
-                            cursor: "pointer",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 6,
-                          }}
                         >
                           <span>Suriin ang In-upload na Resibo (In-System) ↗</span>
                         </button>
                       )}
                     </div>
 
-                    <div style={{ borderTop: "1px solid rgba(255, 255, 255, 0.1)", paddingTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-                      <span style={{ fontSize: 12, color: "#a7f3d0" }}>
+                    <div className="zp-action-status-footer">
+                      <span className="zp-action-status-desc">
                         Kumpirmadong bayad na ang aplikante. Maaari nang isagawa ng Municipal Engineer ang &quot;Before&quot; Construction Inspection upang mai-isyu ang pinal na permiso.
                       </span>
 
                       <button
                         type="button"
-                        className="zp-act-btn"
+                        className="zp-act-btn zp-btn-issue-permit"
                         disabled={updating}
                         onClick={() => handleUpdateStatus(selectedApp.id, "approved")}
-                        style={{
-                          background: "#059669",
-                          color: "#fff",
-                          border: "1px solid #34d399",
-                          padding: "8px 18px",
-                          fontWeight: 700,
-                          fontSize: 13,
-                          borderRadius: 8,
-                          cursor: updating ? "not-allowed" : "pointer",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 8,
-                          boxShadow: "0 4px 12px rgba(5, 150, 105, 0.35)",
-                        }}
                       >
                         <IconCheckCircle size={16} />
                         <span>Isagawa ang Before Inspection &amp; I-isyu ang Permiso →</span>
@@ -2838,53 +3070,24 @@ export function ZoningPermitsPage({
                 )}
 
                 {isApproved && (
-                  <div
-                    className="zp-action-final-status is-approved"
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 12,
-                      padding: "12px 16px",
-                      borderRadius: 8,
-                      background: "rgba(16, 185, 129, 0.12)",
-                      border: "1px solid rgba(16, 185, 129, 0.35)",
-                      color: "#34d399",
-                      fontWeight: 600,
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <IconCheckCircle size={18} />
+                  <div className="zp-action-final-status is-approved">
+                    <div className="zp-action-status-left">
+                      <IconCheckCircle size={18} className="zp-action-status-icon" />
                       <span>Naaprubahan na at Nai-isyu ang Opisyal na Permiso / Zoning Clearance.</span>
                     </div>
                   </div>
                 )}
 
                 {isDenied && (
-                  <div
-                    className="zp-action-final-status is-denied"
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 12,
-                      padding: "12px 16px",
-                      borderRadius: 8,
-                      background: "rgba(239, 68, 68, 0.12)",
-                      border: "1px solid rgba(239, 68, 68, 0.35)",
-                      color: "#f87171",
-                      fontWeight: 600,
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <IconAlertTriangle size={18} />
+                  <div className="zp-action-final-status is-denied">
+                    <div className="zp-action-status-left">
+                      <IconAlertTriangle size={18} className="zp-action-status-icon" />
                       <span>Na-deny ang aplikasyong ito dahil sa paglabag sa zoning o site hazards.</span>
                     </div>
                     <button
                       type="button"
                       className="zp-act-btn zp-act--review"
                       onClick={() => handleUpdateStatus(selectedApp.id, "ocular_inspection")}
-                      style={{ fontSize: 12, padding: "5px 12px" }}
                     >
                       I-re-evaluate muli
                     </button>
@@ -2892,30 +3095,15 @@ export function ZoningPermitsPage({
                 )}
 
                 {isReturned && (
-                  <div
-                    className="zp-action-final-status is-returned"
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 12,
-                      padding: "12px 16px",
-                      borderRadius: 8,
-                      background: "rgba(245, 158, 11, 0.12)",
-                      border: "1px solid rgba(245, 158, 11, 0.35)",
-                      color: "#fbbf24",
-                      fontWeight: 600,
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <IconRotateCcw size={18} />
+                  <div className="zp-action-final-status is-returned">
+                    <div className="zp-action-status-left">
+                      <IconRotateCcw size={18} className="zp-action-status-icon" />
                       <span>Kasalukuyang naibalik sa aplikante dahil sa may kulang na dokumento.</span>
                     </div>
                     <button
                       type="button"
                       className="zp-act-btn zp-act--review"
                       onClick={() => handleUpdateStatus(selectedApp.id, "in_review")}
-                      style={{ fontSize: 12, padding: "5px 12px" }}
                     >
                       Ibalik sa &quot;In Review&quot;
                     </button>
@@ -3022,6 +3210,7 @@ export function ZoningPermitsPage({
                 fileName={previewMedia.fileName}
                 isPdf={previewMedia.isPdf}
                 isImg={previewMedia.isImg}
+                size={previewMedia.size}
               />
             </div>
 

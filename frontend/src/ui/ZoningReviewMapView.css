@@ -1,24 +1,35 @@
-/* ── ZoningReviewMapView.css · Review Stage Map & Hazard Layout ── */
+/* ── ZoningReviewMapView.css · Review Stage Map & Hazard Layout (Apple Design System) ── */
 
 .zrm-wrapper {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 /* ── Officer Stage Header Banner ── */
 .zrm-header-banner {
-  background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.85));
-  border: 1px solid rgba(255, 193, 7, 0.35);
-  border-radius: 14px;
-  padding: 16px 20px;
+  background: var(--apple-surface, #ffffff);
+  border: 1px solid var(--apple-border, rgba(0, 0, 0, 0.08));
+  border-radius: var(--apple-radius-md, 14px);
+  padding: 18px 22px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 16px;
   flex-wrap: wrap;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  transition: all 0.2s ease;
+}
+
+[data-theme="dark"] .zrm-header-banner,
+.dark .zrm-header-banner {
+  background: var(--apple-surface, #141518);
+  border-color: var(--apple-border, rgba(255, 255, 255, 0.1));
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 
 .zrm-header-left {
@@ -32,29 +43,48 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: #ffc107;
-  color: #0b1120;
-  font-size: 10.5px;
-  font-weight: 900;
-  padding: 5px 10px;
-  border-radius: 6px;
+  background: rgba(0, 113, 227, 0.08);
+  color: var(--apple-accent, #0071e3);
+  border: 1px solid rgba(0, 113, 227, 0.22);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: var(--apple-radius-sm, 6px);
   letter-spacing: 0.05em;
   white-space: nowrap;
 }
 
+[data-theme="dark"] .zrm-stage-badge,
+.dark .zrm-stage-badge {
+  background: rgba(41, 151, 255, 0.15);
+  color: var(--apple-accent, #2997ff);
+  border-color: rgba(41, 151, 255, 0.3);
+}
+
 .zrm-title {
-  margin: 0 0 4px;
-  font-size: 14.5px;
-  font-weight: 800;
-  color: #ffffff;
+  margin: 0 0 5px;
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--apple-text, #1d1d1f);
+  letter-spacing: -0.01em;
+}
+
+[data-theme="dark"] .zrm-title,
+.dark .zrm-title {
+  color: var(--apple-text, #f5f5f7);
 }
 
 .zrm-desc {
   margin: 0;
-  font-size: 12px;
-  color: #94a3b8;
-  line-height: 1.4;
+  font-size: 0.82rem;
+  color: var(--apple-text-secondary, #6e6e73);
+  line-height: 1.5;
   max-width: 680px;
+}
+
+[data-theme="dark"] .zrm-desc,
+.dark .zrm-desc {
+  color: var(--apple-text-secondary, #94a3b8);
 }
 
 .zrm-header-actions {
@@ -64,85 +94,49 @@
   flex-wrap: wrap;
 }
 
-.zrm-save-pin-btn {
+/* Status Badges */
+.zrm-status-badge {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  background: rgba(56, 189, 248, 0.15);
-  color: #38bdf8;
-  border: 1px solid rgba(56, 189, 248, 0.4);
-  padding: 10px 16px;
-  border-radius: 8px;
-  font-size: 12.5px;
-  font-weight: 800;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  white-space: nowrap;
-}
-
-.zrm-save-pin-btn:hover:not(:disabled) {
-  background: rgba(56, 189, 248, 0.28);
-  color: #bae6fd;
-  border-color: #38bdf8;
-  transform: translateY(-1px);
-}
-
-.zrm-save-pin-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.zrm-endorse-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background: #10b981;
-  color: #ffffff;
-  border: 1px solid #10b981;
-  padding: 10px 18px;
-  border-radius: 8px;
-  font-size: 12.5px;
-  font-weight: 800;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 0 16px rgba(16, 185, 129, 0.35);
-  white-space: nowrap;
-}
-
-.zrm-endorse-btn:hover {
-  background: #059669;
-  transform: translateY(-1px);
-  box-shadow: 0 0 20px rgba(16, 185, 129, 0.5);
-}
-
-/* ── Toast Alert ── */
-.zrm-toast-alert {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: rgba(16, 185, 129, 0.18);
-  border: 1px solid rgba(16, 185, 129, 0.45);
-  color: #34d399;
-  padding: 10px 18px;
-  border-radius: 10px;
-  font-size: 12.5px;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: var(--apple-radius-sm, 6px);
   font-weight: 700;
+  font-size: 0.8rem;
+  white-space: nowrap;
 }
 
-.zrm-toast-close {
-  background: transparent;
-  border: none;
+.zrm-status-badge.is-approved {
+  background: var(--apple-success-bg, rgba(16, 185, 129, 0.1));
+  border: 1px solid rgba(16, 185, 129, 0.28);
+  color: var(--apple-success, #059669);
+}
+
+[data-theme="dark"] .zrm-status-badge.is-approved,
+.dark .zrm-status-badge.is-approved {
+  background: rgba(16, 185, 129, 0.18);
+  border-color: rgba(16, 185, 129, 0.4);
   color: #34d399;
-  margin-left: auto;
-  cursor: pointer;
-  font-size: 14px;
+}
+
+.zrm-status-badge.is-denied {
+  background: var(--apple-danger-bg, rgba(220, 38, 38, 0.1));
+  border: 1px solid rgba(220, 38, 38, 0.28);
+  color: var(--apple-danger, #dc2626);
+}
+
+[data-theme="dark"] .zrm-status-badge.is-denied,
+.dark .zrm-status-badge.is-denied {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #f87171;
 }
 
 /* ── Map Section ── */
 .zrm-map-section {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
 }
 
@@ -150,44 +144,78 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 2px 4px;
+  padding: 4px 6px;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .zrm-map-label-left {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
-  font-weight: 700;
-  color: #f1f5f9;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--apple-text, #1d1d1f);
+}
+
+[data-theme="dark"] .zrm-map-label-left,
+.dark .zrm-map-label-left {
+  color: var(--apple-text, #f5f5f7);
+}
+
+.zrm-map-label-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.zrm-zone-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--apple-radius-sm, 6px);
+  font-size: 0.74rem;
+  font-weight: 600;
 }
 
 .zrm-map-coords-pill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: rgba(56, 189, 248, 0.12);
-  border: 1px solid rgba(56, 189, 248, 0.3);
+  background: var(--apple-surface, #ffffff);
+  border: 1px solid var(--apple-border, rgba(0, 0, 0, 0.08));
   padding: 4px 12px;
   border-radius: 999px;
-  font-size: 12px;
-  color: #94a3b8;
-  font-family: monospace;
+  font-size: 0.75rem;
+  color: var(--apple-text-secondary, #6e6e73);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+[data-theme="dark"] .zrm-map-coords-pill,
+.dark .zrm-map-coords-pill {
+  background: var(--apple-surface, #141518);
+  border-color: var(--apple-border, rgba(255, 255, 255, 0.1));
+  color: var(--apple-text-secondary, #94a3b8);
 }
 
 .zrm-map-coords-pill strong {
-  color: #38bdf8;
-  font-weight: 800;
+  color: var(--apple-accent, #0071e3);
+  font-weight: 700;
 }
 
-/* ── 2 Columns Assessment Grid (Bottom) ── */
+[data-theme="dark"] .zrm-map-coords-pill strong,
+.dark .zrm-map-coords-pill strong {
+  color: var(--apple-accent, #2997ff);
+}
+
+/* ── 2 Columns Assessment Grid ── */
 .zrm-eval-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  gap: 18px;
   width: 100%;
-  margin-top: 4px;
 }
 
 @media (max-width: 900px) {
@@ -196,183 +224,273 @@
   }
 }
 
-/* ── LUISIANA SITING ASSESSMENT (Exact Match with Application) ── */
-.app-assess-card {
+/* Column 1: Siting Assessment Card */
+.zrm-eval-grid .app-assess-card {
   width: 100%;
-  padding: 18px 20px 20px;
-  background: rgba(15, 23, 42, 0.65);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 12px;
-  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.35);
+  padding: 20px;
+  background: var(--apple-surface, #ffffff);
+  border: 1px solid var(--apple-border, rgba(0, 0, 0, 0.08));
+  border-radius: var(--apple-radius-md, 14px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
   display: flex;
   flex-direction: column;
 }
 
-.app-assess-card-title {
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #38bdf8;
-  margin-bottom: 12px;
+[data-theme="dark"] .zrm-eval-grid .app-assess-card,
+.dark .zrm-eval-grid .app-assess-card {
+  background: var(--apple-surface, #141518);
+  border-color: var(--apple-border, rgba(255, 255, 255, 0.1));
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 
-.app-assess-list {
+.zrm-eval-grid .app-assess-card-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--apple-accent, #0071e3);
+  margin-bottom: 14px;
+}
+
+[data-theme="dark"] .zrm-eval-grid .app-assess-card-title,
+.dark .zrm-eval-grid .app-assess-card-title {
+  color: var(--apple-accent, #2997ff);
+}
+
+.zrm-eval-grid .app-assess-list {
   display: flex;
   flex-direction: column;
   margin: 0;
 }
 
-.app-assess-row {
+.zrm-eval-grid .app-assess-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 6px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  font-size: 12.5px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--apple-border, rgba(0, 0, 0, 0.06));
+  font-size: 0.82rem;
 }
 
-.app-assess-row dt {
-  color: rgba(255, 255, 255, 0.72);
+[data-theme="dark"] .zrm-eval-grid .app-assess-row,
+.dark .zrm-eval-grid .app-assess-row {
+  border-bottom-color: var(--apple-border, rgba(255, 255, 255, 0.06));
+}
+
+.zrm-eval-grid .app-assess-row dt {
+  color: var(--apple-text-secondary, #6e6e73);
   margin: 0;
 }
 
-.app-assess-row dd {
+[data-theme="dark"] .zrm-eval-grid .app-assess-row dt,
+.dark .zrm-eval-grid .app-assess-row dt {
+  color: var(--apple-text-secondary, #94a3b8);
+}
+
+.zrm-eval-grid .app-assess-row dd {
   margin: 0;
-  font-weight: 700;
+  font-weight: 600;
   text-align: right;
+  color: var(--apple-text, #1d1d1f);
 }
 
-.app-assess-note {
-  margin: 12px 0 14px;
-  font-size: 11px;
+[data-theme="dark"] .zrm-eval-grid .app-assess-row dd,
+.dark .zrm-eval-grid .app-assess-row dd {
+  color: var(--apple-text, #f5f5f7);
+}
+
+.zrm-eval-grid .app-assess-note {
+  margin: 12px 0 16px;
+  font-size: 0.74rem;
   line-height: 1.45;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--apple-text-tertiary, #86868b);
 }
 
-.app-assess-report-btn {
+.zrm-eval-grid .app-assess-report-btn {
   width: 100%;
-  padding: 9px 14px;
-  background: rgba(56, 189, 248, 0.12);
-  border: 1px solid rgba(56, 189, 248, 0.3);
-  border-radius: 8px;
-  color: #38bdf8;
-  font-size: 12.5px;
-  font-weight: 700;
+  padding: 8px 14px;
+  background: var(--apple-surface-secondary, #f5f5f7);
+  border: 1px solid var(--apple-border-strong, rgba(0, 0, 0, 0.12));
+  border-radius: var(--apple-radius-sm, 8px);
+  color: var(--apple-text, #1d1d1f);
+  font-size: 0.8rem;
+  font-weight: 600;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  transition: all 0.2s ease;
+  transition: all 0.16s ease;
   margin-top: auto;
 }
 
-.app-assess-report-btn:hover {
-  background: rgba(56, 189, 248, 0.22);
-  color: #7dd3fc;
-  border-color: #38bdf8;
+[data-theme="dark"] .zrm-eval-grid .app-assess-report-btn,
+.dark .zrm-eval-grid .app-assess-report-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--apple-text, #f5f5f7);
 }
 
-/* ── CLUP Zoning Card ── */
+.zrm-eval-grid .app-assess-report-btn:hover {
+  background: var(--apple-surface-hover, #e8e8ed);
+  color: var(--apple-accent, #0071e3);
+  border-color: var(--apple-accent, #0071e3);
+}
+
+[data-theme="dark"] .zrm-eval-grid .app-assess-report-btn:hover,
+.dark .zrm-eval-grid .app-assess-report-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--apple-accent, #2997ff);
+  border-color: var(--apple-accent, #2997ff);
+}
+
+/* Column 2: CLUP Zoning Card */
 .zrm-clup-card {
   width: 100%;
-  padding: 18px 20px 20px;
-  background: rgba(15, 23, 42, 0.65);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 12px;
-  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.35);
+  padding: 20px;
+  background: var(--apple-surface, #ffffff);
+  border: 1px solid var(--apple-border, rgba(0, 0, 0, 0.08));
+  border-radius: var(--apple-radius-md, 14px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
   display: flex;
   flex-direction: column;
 }
 
+[data-theme="dark"] .zrm-clup-card,
+.dark .zrm-clup-card {
+  background: var(--apple-surface, #141518);
+  border-color: var(--apple-border, rgba(255, 255, 255, 0.1));
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
 .zrm-clup-title {
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #ffc107;
-  margin-bottom: 12px;
+  color: var(--apple-warn, #b45309);
+  margin-bottom: 14px;
+}
+
+[data-theme="dark"] .zrm-clup-title,
+.dark .zrm-clup-title {
+  color: #fbbf24;
 }
 
 .zrm-clup-rows {
   display: flex;
   flex-direction: column;
-  gap: 9px;
+  gap: 10px;
 }
 
 .zrm-clup-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 12.5px;
-  padding-bottom: 7px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.82rem;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--apple-border, rgba(0, 0, 0, 0.06));
+}
+
+[data-theme="dark"] .zrm-clup-row,
+.dark .zrm-clup-row {
+  border-bottom-color: var(--apple-border, rgba(255, 255, 255, 0.06));
 }
 
 .zrm-clup-row.full {
   flex-direction: column;
   align-items: flex-start;
-  gap: 4px;
+  gap: 6px;
 }
 
 .zrm-clup-lbl {
-  color: rgba(255, 255, 255, 0.65);
+  color: var(--apple-text-secondary, #6e6e73);
+}
+
+[data-theme="dark"] .zrm-clup-lbl,
+.dark .zrm-clup-lbl {
+  color: var(--apple-text-secondary, #94a3b8);
 }
 
 .zrm-clup-val {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #ffffff;
+  color: var(--apple-text, #1d1d1f);
+  font-weight: 600;
+}
+
+[data-theme="dark"] .zrm-clup-val,
+.dark .zrm-clup-val {
+  color: var(--apple-text, #f5f5f7);
 }
 
 .zrm-clup-pill {
-  font-size: 11px;
-  font-weight: 900;
-  color: #ffc107;
-  background: rgba(255, 193, 7, 0.15);
-  border: 1px solid rgba(255, 193, 7, 0.35);
-  padding: 2px 7px;
-  border-radius: 5px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: var(--apple-radius-sm, 6px);
 }
 
 .zrm-conformity-badge {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: rgba(16, 185, 129, 0.15);
-  color: #34d399;
-  border: 1px solid rgba(16, 185, 129, 0.35);
+  background: var(--apple-success-bg, rgba(16, 185, 129, 0.1));
+  color: var(--apple-success, #059669);
+  border: 1px solid rgba(16, 185, 129, 0.25);
   padding: 3px 9px;
-  border-radius: 6px;
-  font-size: 11.5px;
-  font-weight: 800;
+  border-radius: var(--apple-radius-sm, 6px);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+[data-theme="dark"] .zrm-conformity-badge,
+.dark .zrm-conformity-badge {
+  background: rgba(16, 185, 129, 0.18);
+  border-color: rgba(16, 185, 129, 0.4);
+  color: #34d399;
 }
 
 .zrm-clup-desc {
   margin: 0;
-  font-size: 11.5px;
-  color: #94a3b8;
-  line-height: 1.4;
+  font-size: 0.78rem;
+  color: var(--apple-text-secondary, #6e6e73);
+  line-height: 1.5;
 }
 
-/* ── Ocular Inspection Protocol Box ── */
+[data-theme="dark"] .zrm-clup-desc,
+.dark .zrm-clup-desc {
+  color: var(--apple-text-secondary, #94a3b8);
+}
+
+/* Ocular Inspection Protocol Box */
 .zrm-inspection-protocol {
   margin-top: 14px;
-  background: rgba(255, 193, 7, 0.06);
-  border: 1px solid rgba(255, 193, 7, 0.25);
-  border-radius: 8px;
+  background: var(--apple-warn-bg, rgba(217, 119, 6, 0.05));
+  border: 1px solid rgba(217, 119, 6, 0.2);
+  border-radius: var(--apple-radius-sm, 8px);
   padding: 12px 14px;
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
+[data-theme="dark"] .zrm-inspection-protocol,
+.dark .zrm-inspection-protocol {
+  background: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.25);
+}
+
 .zrm-ip-head {
-  font-size: 11.5px;
-  color: #ffc107;
-  font-weight: 800;
+  font-size: 0.76rem;
+  color: var(--apple-warn, #b45309);
+  font-weight: 700;
+}
+
+[data-theme="dark"] .zrm-ip-head,
+.dark .zrm-ip-head {
+  color: #fbbf24;
 }
 
 .zrm-ip-list {
@@ -388,17 +506,651 @@
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  font-size: 11.5px;
+  font-size: 0.76rem;
+  color: var(--apple-text-secondary, #4b5563);
+  line-height: 1.4;
+}
+
+[data-theme="dark"] .zrm-ip-list li,
+.dark .zrm-ip-list li {
   color: #cbd5e1;
-  line-height: 1.35;
 }
 
 .zrm-ip-list li svg {
-  color: #ffc107;
+  color: var(--apple-warn, #b45309);
   flex-shrink: 0;
   margin-top: 2px;
 }
 
-.zrm-ip-list li strong {
-  color: #ffffff;
+[data-theme="dark"] .zrm-ip-list li svg,
+.dark .zrm-ip-list li svg {
+  color: #fbbf24;
 }
+
+.zrm-ip-list li strong {
+  color: var(--apple-text, #1d1d1f);
+}
+
+[data-theme="dark"] .zrm-ip-list li strong,
+.dark .zrm-ip-list li strong {
+  color: var(--apple-text, #f5f5f7);
+}
+
+/* ── Officer Decision & Recommendation Card ── */
+.zrm-officer-decision-card {
+  margin-top: 20px;
+  background: var(--apple-surface, #ffffff);
+  border: 1px solid var(--apple-border, rgba(0, 0, 0, 0.08));
+  border-radius: var(--apple-radius-md, 14px);
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="dark"] .zrm-officer-decision-card,
+.dark .zrm-officer-decision-card {
+  background: var(--apple-surface, #141518);
+  border-color: var(--apple-border, rgba(255, 255, 255, 0.1));
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.zrm-decision-header-lbl {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--apple-accent, #0071e3);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+[data-theme="dark"] .zrm-decision-header-lbl,
+.dark .zrm-decision-header-lbl {
+  color: var(--apple-accent, #2997ff);
+}
+
+.zrm-note-template-btns {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.zrm-note-template-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--apple-radius-sm, 6px);
+  padding: 6px 12px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.zrm-note-template-btn.is-pass {
+  background: var(--apple-success-bg, rgba(16, 185, 129, 0.1));
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  color: var(--apple-success, #059669);
+}
+
+[data-theme="dark"] .zrm-note-template-btn.is-pass,
+.dark .zrm-note-template-btn.is-pass {
+  background: rgba(16, 185, 129, 0.18);
+  border-color: rgba(16, 185, 129, 0.4);
+  color: #34d399;
+}
+
+.zrm-note-template-btn.is-pass:hover {
+  background: rgba(16, 185, 129, 0.18);
+}
+
+.zrm-note-template-btn.is-fail {
+  background: var(--apple-warn-bg, rgba(217, 119, 6, 0.1));
+  border: 1px solid rgba(217, 119, 6, 0.25);
+  color: var(--apple-warn, #b45309);
+}
+
+[data-theme="dark"] .zrm-note-template-btn.is-fail,
+.dark .zrm-note-template-btn.is-fail {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: rgba(245, 158, 11, 0.4);
+  color: #fbbf24;
+}
+
+.zrm-note-template-btn.is-fail:hover {
+  background: rgba(245, 158, 11, 0.2);
+}
+
+.zrm-textarea-lbl {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--apple-text, #1d1d1f);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+[data-theme="dark"] .zrm-textarea-lbl,
+.dark .zrm-textarea-lbl {
+  color: var(--apple-text, #f5f5f7);
+}
+
+.zrm-officer-textarea {
+  width: 100%;
+  background: var(--apple-bg-secondary, #fbfbfd);
+  border: 1px solid var(--apple-border-strong, rgba(0, 0, 0, 0.12));
+  border-radius: var(--apple-radius-sm, 8px);
+  color: var(--apple-text, #1d1d1f);
+  font-size: 0.84rem;
+  line-height: 1.5;
+  padding: 12px;
+  box-sizing: border-box;
+  outline: none;
+  font-family: inherit;
+  resize: vertical;
+  transition: border-color 0.15s ease;
+}
+
+.zrm-officer-textarea:focus {
+  border-color: var(--apple-accent, #0071e3);
+}
+
+[data-theme="dark"] .zrm-officer-textarea,
+.dark .zrm-officer-textarea {
+  background: #090d16;
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #f5f5f7;
+}
+
+[data-theme="dark"] .zrm-officer-textarea:focus,
+.dark .zrm-officer-textarea:focus {
+  border-color: var(--apple-accent, #2997ff);
+}
+
+.zrm-textarea-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.zrm-textarea-hint {
+  font-size: 0.74rem;
+  color: var(--apple-text-tertiary, #86868b);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.zrm-send-notes-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--apple-accent, #0071e3);
+  color: #ffffff;
+  border: 1px solid var(--apple-accent, #0071e3);
+  border-radius: var(--apple-radius-sm, 6px);
+  padding: 7px 16px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.16s ease;
+}
+
+.zrm-send-notes-btn:hover:not(:disabled) {
+  background: var(--apple-primary-hover, #0077ed);
+}
+
+.zrm-send-notes-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.zrm-send-notes-btn.is-sent {
+  background: #059669;
+  border-color: #10b981;
+}
+
+/* Action Section */
+.zrm-actions-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.zrm-actions-lbl {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--apple-text, #1d1d1f);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+[data-theme="dark"] .zrm-actions-lbl,
+.dark .zrm-actions-lbl {
+  color: var(--apple-text, #f5f5f7);
+}
+
+.zrm-action-btns-group {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.zrm-btn-approve-permit {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 18px;
+  background: linear-gradient(135deg, #059669, #10b981);
+  color: #ffffff;
+  border: 1px solid #059669;
+  border-radius: var(--apple-radius-sm, 8px);
+  font-weight: 700;
+  font-size: 0.82rem;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.25);
+  transition: all 0.16s ease;
+}
+
+.zrm-btn-approve-permit:hover:not(:disabled) {
+  background: #047857;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.35);
+}
+
+.zrm-btn-deny-permit {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 18px;
+  background: var(--apple-danger-bg, rgba(220, 38, 38, 0.08));
+  color: var(--apple-danger, #dc2626);
+  border: 1px solid rgba(220, 38, 38, 0.25);
+  border-radius: var(--apple-radius-sm, 8px);
+  font-weight: 700;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.16s ease;
+}
+
+[data-theme="dark"] .zrm-btn-deny-permit,
+.dark .zrm-btn-deny-permit {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #f87171;
+}
+
+.zrm-btn-deny-permit:hover:not(:disabled) {
+  background: rgba(220, 38, 38, 0.15);
+}
+
+.zrm-status-banner-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-radius: var(--apple-radius-sm, 8px);
+  font-weight: 600;
+  font-size: 0.82rem;
+}
+
+.zrm-status-banner-box.is-approved {
+  background: var(--apple-success-bg, rgba(16, 185, 129, 0.1));
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  color: var(--apple-success, #059669);
+}
+
+[data-theme="dark"] .zrm-status-banner-box.is-approved,
+.dark .zrm-status-banner-box.is-approved {
+  background: rgba(16, 185, 129, 0.18);
+  border-color: rgba(16, 185, 129, 0.4);
+  color: #34d399;
+}
+
+.zrm-status-banner-box.is-denied {
+  background: var(--apple-danger-bg, rgba(220, 38, 38, 0.1));
+  border: 1px solid rgba(220, 38, 38, 0.25);
+  color: var(--apple-danger, #dc2626);
+}
+
+[data-theme="dark"] .zrm-status-banner-box.is-denied,
+.dark .zrm-status-banner-box.is-denied {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #f87171;
+}
+
+/* ── Mobile Responsive Overhauls for Tab 2 (ZoningReviewMapView) ── */
+@media (max-width: 768px) {
+  .zrm-wrapper {
+    gap: 14px;
+  }
+
+  /* 1. Officer Header Banner */
+  .zrm-header-banner {
+    padding: 14px 14px;
+    gap: 12px;
+    border-radius: var(--apple-radius-sm, 10px);
+    box-sizing: border-box;
+    width: 100%;
+  }
+
+  .zrm-header-left {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .zrm-stage-badge {
+    align-self: flex-start;
+    white-space: normal;
+    font-size: 0.7rem;
+    padding: 4px 9px;
+    line-height: 1.3;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .zrm-title {
+    font-size: 0.98rem;
+    line-height: 1.35;
+    margin: 0 0 6px;
+    word-break: normal;
+    overflow-wrap: break-word;
+  }
+
+  .zrm-desc {
+    font-size: 0.78rem;
+    line-height: 1.45;
+    max-width: 100%;
+    word-break: normal;
+    overflow-wrap: break-word;
+  }
+
+  .zrm-header-actions {
+    width: 100%;
+  }
+
+  .zrm-status-badge {
+    width: 100%;
+    box-sizing: border-box;
+    justify-content: center;
+    font-size: 0.76rem;
+    padding: 7px 12px;
+    white-space: normal;
+    text-align: center;
+  }
+
+  /* 2. Map Section & Label Bar */
+  .zrm-map-section {
+    width: 100%;
+    box-sizing: border-box;
+    min-width: 0;
+  }
+
+  .zrm-map-label-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 2px 2px;
+    box-sizing: border-box;
+    width: 100%;
+  }
+
+  .zrm-map-label-left {
+    font-size: 0.82rem;
+    line-height: 1.35;
+    word-break: break-word;
+  }
+
+  .zrm-map-label-right {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    width: 100%;
+  }
+
+  .zrm-zone-tag {
+    align-self: flex-start;
+    font-size: 0.72rem;
+    padding: 4px 9px;
+  }
+
+  .zrm-map-coords-pill {
+    width: 100%;
+    box-sizing: border-box;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    padding: 6px 12px;
+    border-radius: 8px;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .zrm-map-coords-pill strong {
+    word-break: break-all;
+  }
+
+  /* 3. 2-Column Assessment Grid */
+  .zrm-eval-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .zrm-eval-grid .app-assess-card,
+  .zrm-clup-card {
+    padding: 15px 14px;
+    border-radius: var(--apple-radius-sm, 10px);
+    box-sizing: border-box;
+    width: 100%;
+  }
+
+  .zrm-eval-grid .app-assess-card-title,
+  .zrm-clup-title {
+    font-size: 0.72rem;
+    line-height: 1.35;
+    margin-bottom: 12px;
+    word-break: break-word;
+  }
+
+  .zrm-eval-grid .app-assess-row,
+  .zrm-clup-row {
+    padding: 7px 0;
+    font-size: 0.8rem;
+    gap: 10px;
+  }
+
+  .zrm-eval-grid .app-assess-row dt,
+  .zrm-clup-lbl {
+    flex-shrink: 0;
+    max-width: 55%;
+  }
+
+  .zrm-eval-grid .app-assess-row dd,
+  .zrm-clup-val {
+    text-align: right;
+    word-break: break-word;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .app-assess-note,
+  .zrm-clup-desc {
+    font-size: 0.74rem;
+    line-height: 1.45;
+  }
+
+  .app-assess-report-btn {
+    font-size: 0.8rem;
+    padding: 10px 14px;
+    min-height: 42px;
+  }
+
+  .zrm-inspection-protocol {
+    padding: 12px 12px;
+    border-radius: 8px;
+  }
+
+  .zrm-ip-head {
+    font-size: 0.74rem;
+  }
+
+  .zrm-ip-list li {
+    font-size: 0.75rem;
+    line-height: 1.4;
+  }
+
+  /* 4. Officer Decision & Recommendation Card */
+  .zrm-officer-decision-card {
+    margin-top: 14px;
+    padding: 16px 14px;
+    border-radius: var(--apple-radius-sm, 10px);
+    box-sizing: border-box;
+    width: 100%;
+  }
+
+  .zrm-decision-header-lbl {
+    font-size: 0.72rem;
+    line-height: 1.35;
+    margin-bottom: 10px;
+    word-break: break-word;
+  }
+
+  .zrm-note-template-btns {
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 14px;
+    width: 100%;
+  }
+
+  .zrm-note-template-btn {
+    width: 100%;
+    justify-content: center;
+    padding: 9px 12px;
+    font-size: 0.78rem;
+    min-height: 40px;
+    box-sizing: border-box;
+  }
+
+  .zrm-textarea-lbl {
+    font-size: 0.72rem;
+    margin-bottom: 6px;
+  }
+
+  .zrm-officer-textarea {
+    font-size: 0.82rem;
+    padding: 10px 12px;
+    border-radius: 8px;
+  }
+
+  .zrm-textarea-foot {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    margin-top: 10px;
+  }
+
+  .zrm-textarea-hint {
+    font-size: 0.72rem;
+    line-height: 1.35;
+  }
+
+  .zrm-send-notes-btn {
+    width: 100%;
+    justify-content: center;
+    padding: 11px 16px;
+    font-size: 0.82rem;
+    min-height: 42px;
+    box-sizing: border-box;
+  }
+
+  .zrm-actions-wrap {
+    margin-top: 16px;
+    gap: 10px;
+  }
+
+  .zrm-actions-lbl {
+    font-size: 0.72rem;
+    line-height: 1.35;
+  }
+
+  .zrm-action-btns-group {
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+  }
+
+  .zrm-btn-approve-permit,
+  .zrm-btn-deny-permit {
+    width: 100%;
+    justify-content: center;
+    min-height: 46px;
+    padding: 12px 16px;
+    font-size: 0.84rem;
+    box-sizing: border-box;
+  }
+
+  .zrm-status-banner-box {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 12px 14px;
+    font-size: 0.8rem;
+    box-sizing: border-box;
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .zrm-header-banner {
+    padding: 12px 10px;
+  }
+
+  .zrm-stage-badge {
+    font-size: 0.66rem;
+    padding: 3px 7px;
+  }
+
+  .zrm-title {
+    font-size: 0.92rem;
+  }
+
+  .zrm-desc {
+    font-size: 0.74rem;
+  }
+
+  .zrm-map-label-left {
+    font-size: 0.78rem;
+  }
+
+  .zrm-eval-grid .app-assess-card,
+  .zrm-clup-card,
+  .zrm-officer-decision-card {
+    padding: 12px 10px;
+  }
+
+  .zrm-eval-grid .app-assess-row,
+  .zrm-clup-row {
+    font-size: 0.76rem;
+  }
+
+  .zrm-btn-approve-permit,
+  .zrm-btn-deny-permit {
+    font-size: 0.8rem;
+    padding: 11px 12px;
+  }
+}
+

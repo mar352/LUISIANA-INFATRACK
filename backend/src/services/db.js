@@ -123,6 +123,34 @@ export async function initDb() {
       ALTER TABLE citizen_applications ADD COLUMN IF NOT EXISTS data_hash VARCHAR(64);
       ALTER TABLE citizen_applications ALTER COLUMN contact_phone TYPE VARCHAR(128);
       ALTER TABLE citizen_applications ALTER COLUMN contact_email TYPE VARCHAR(128);
+      ALTER TABLE citizen_applications ADD COLUMN IF NOT EXISTS engineer_approved BOOLEAN DEFAULT FALSE;
+      ALTER TABLE citizen_applications ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN DEFAULT FALSE;
+      ALTER TABLE citizen_applications ADD COLUMN IF NOT EXISTS engineer_approved_at TIMESTAMPTZ;
+      ALTER TABLE citizen_applications ADD COLUMN IF NOT EXISTS engineer_approved_by VARCHAR(255);
+      ALTER TABLE citizen_applications ADD COLUMN IF NOT EXISTS held_at TIMESTAMPTZ;
+      ALTER TABLE citizen_applications ADD COLUMN IF NOT EXISTS held_by VARCHAR(255);
+      ALTER TABLE citizen_applications ADD COLUMN IF NOT EXISTS hold_reason TEXT;
+      ALTER TABLE citizen_applications ADD COLUMN IF NOT EXISTS payment_status VARCHAR(64);
+      ALTER TABLE citizen_applications ADD COLUMN IF NOT EXISTS or_number VARCHAR(128);
+      ALTER TABLE citizen_applications ADD COLUMN IF NOT EXISTS amount_paid NUMERIC(15, 2);
+      ALTER TABLE citizen_applications ADD COLUMN IF NOT EXISTS payment_date TIMESTAMPTZ;
+      ALTER TABLE citizen_applications ADD COLUMN IF NOT EXISTS terms_accepted BOOLEAN DEFAULT TRUE;
+      ALTER TABLE citizen_applications ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMPTZ;
+      ALTER TABLE citizen_applications ADD COLUMN IF NOT EXISTS terms_version VARCHAR(32) DEFAULT '2026.1';
+      ALTER TABLE citizen_applications ADD COLUMN IF NOT EXISTS terms_consent_details JSONB DEFAULT '{}';
+
+      CREATE TABLE IF NOT EXISTS user_terms_consents (
+        id VARCHAR(64) PRIMARY KEY,
+        ip_address VARCHAR(64),
+        user_agent TEXT,
+        terms_version VARCHAR(32) NOT NULL DEFAULT '2026.1',
+        agreed_terms BOOLEAN NOT NULL DEFAULT TRUE,
+        agreed_privacy BOOLEAN NOT NULL DEFAULT TRUE,
+        agreed_cookies BOOLEAN NOT NULL DEFAULT TRUE,
+        consent_source VARCHAR(64) DEFAULT 'new_application_page',
+        applicant_name VARCHAR(255),
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
 
       CREATE TABLE IF NOT EXISTS application_remarks (
         id VARCHAR(64) PRIMARY KEY,
@@ -156,6 +184,7 @@ export async function initDb() {
       CREATE INDEX IF NOT EXISTS idx_sip_stage ON site_inspection_photos(stage);
       CREATE INDEX IF NOT EXISTS idx_sip_type ON site_inspection_photos(photo_type);
 
+      CREATE INDEX IF NOT EXISTS idx_utc_created_at ON user_terms_consents(created_at);
       CREATE INDEX IF NOT EXISTS idx_ca_tracking ON citizen_applications(tracking_number);
       CREATE INDEX IF NOT EXISTS idx_ca_data_hash ON citizen_applications(data_hash);
       CREATE INDEX IF NOT EXISTS idx_ar_app_id ON application_remarks(application_id);
