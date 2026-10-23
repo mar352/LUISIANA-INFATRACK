@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import type { Project } from "../types";
 import { backendUrl } from "../lib/api";
+import { useTranslation } from "../lib/i18n";
 import "./InspectionUpdateModal.css";
 
 
@@ -43,6 +44,7 @@ export const InspectionUpdateModal: React.FC<InspectionUpdateModalProps> = ({
   onSuccess,
   currentInspector = "Municipal Engineer",
 }) => {
+  const { isEn } = useTranslation();
   const [stage, setStage] = useState<"before" | "during" | "after">("during");
   const [progress, setProgress] = useState<number>(50);
   const [file, setFile] = useState<File | null>(null);
@@ -283,14 +285,14 @@ export const InspectionUpdateModal: React.FC<InspectionUpdateModalProps> = ({
               <path d="M12 20h9" />
               <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
             </svg>
-            <span>Update Site Progress & Inspection</span>
+            <span>{isEn ? "Update Site Progress & Inspection" : "I-update ang Site Progress at Inspeksyon"}</span>
           </h2>
           <button
             type="button"
             className="ium-close-btn"
             onClick={onClose}
-            title="Isara"
-            aria-label="Isara ang modal"
+            title={isEn ? "Close" : "Isara"}
+            aria-label={isEn ? "Close modal" : "Isara ang modal"}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <line x1="18" y1="6" x2="6" y2="18" />
@@ -306,7 +308,7 @@ export const InspectionUpdateModal: React.FC<InspectionUpdateModalProps> = ({
             <div className="ium-app-summary-left">
               <span className="ium-app-tracking">{trackingNumber}</span>
               <span className="ium-app-name">{project.name}</span>
-              <span className="ium-app-applicant">Aplikante: {applicantName}</span>
+              <span className="ium-app-applicant">{isEn ? "Applicant:" : "Aplikante:"} {applicantName}</span>
             </div>
             {project.barangay && (
               <span style={{ fontSize: 12, color: "#94a3b8", display: "inline-flex", alignItems: "center", gap: 4 }}>
@@ -322,8 +324,8 @@ export const InspectionUpdateModal: React.FC<InspectionUpdateModalProps> = ({
           {/* 3-Stage Workflow Selector */}
           <div className="ium-form-group">
             <label className="ium-label">
-              <span>Yugto ng Inspeksyon (Inspection Stage)</span>
-              <span className="ium-label-hint">Magbabago ang kulay ng pin sa mapa</span>
+              <span>{isEn ? "Inspection Stage" : "Yugto ng Inspeksyon (Inspection Stage)"}</span>
+              <span className="ium-label-hint">{isEn ? "Pin color on map will update" : "Magbabago ang kulay ng pin sa mapa"}</span>
             </label>
             <div className="ium-stages-grid">
               {/* Stage 1: Before (0%) */}
@@ -340,7 +342,7 @@ export const InspectionUpdateModal: React.FC<InspectionUpdateModalProps> = ({
                 </div>
                 <div className="ium-stage-name">Before</div>
                 <div className="ium-stage-pct" style={{ color: "#ef4444" }}>0%</div>
-                <div className="ium-stage-desc">Pre-excavation / Bakanteng Lote</div>
+                <div className="ium-stage-desc">{isEn ? "Pre-excavation / Vacant Lot" : "Pre-excavation / Bakanteng Lote"}</div>
               </div>
 
               {/* Stage 2: During (50%) */}
@@ -357,7 +359,7 @@ export const InspectionUpdateModal: React.FC<InspectionUpdateModalProps> = ({
                 </div>
                 <div className="ium-stage-name">During</div>
                 <div className="ium-stage-pct" style={{ color: "#eab308" }}>50%</div>
-                <div className="ium-stage-desc">Kasalukuyang Ginagawa / Pundasyon</div>
+                <div className="ium-stage-desc">{isEn ? "Ongoing Construction / Foundation" : "Kasalukuyang Ginagawa / Pundasyon"}</div>
               </div>
 
               {/* Stage 3: After (100%) */}
@@ -374,7 +376,7 @@ export const InspectionUpdateModal: React.FC<InspectionUpdateModalProps> = ({
                 </div>
                 <div className="ium-stage-name">After</div>
                 <div className="ium-stage-pct" style={{ color: "#22c55e" }}>100%</div>
-                <div className="ium-stage-desc">Tapos Na / Handa sa Occupancy</div>
+                <div className="ium-stage-desc">{isEn ? "Completed / Ready for Occupancy" : "Tapos Na / Handa sa Occupancy"}</div>
               </div>
             </div>
 
@@ -389,9 +391,9 @@ export const InspectionUpdateModal: React.FC<InspectionUpdateModalProps> = ({
                   </svg>
                 </div>
                 <div className="ium-stage-notice-content">
-                  <span className="ium-stage-notice-heading">Gabay sa Before Stage (0%):</span>
+                  <span className="ium-stage-notice-heading">{isEn ? "Guide for Before Stage (0%):" : "Gabay sa Before Stage (0%):"}</span>
                   <span className="ium-stage-notice-text">
-                    Tiyakin ang kumpirmasyon ng mga mohon (boundary monuments), sapat na road right-of-way (ROW), at tamang building setbacks bago simulan ang paghuhukay at pagbuhos.
+                    {isEn ? "Verify boundary monuments (mohon), road right-of-way (ROW), and mandatory building setbacks before excavation and concrete pouring." : "Tiyakin ang kumpirmasyon ng mga mohon (boundary monuments), sapat na road right-of-way (ROW), at tamang building setbacks bago simulan ang paghuhukay at pagbuhos."}
                   </span>
                 </div>
               </div>
@@ -405,9 +407,9 @@ export const InspectionUpdateModal: React.FC<InspectionUpdateModalProps> = ({
                   </svg>
                 </div>
                 <div className="ium-stage-notice-content">
-                  <span className="ium-stage-notice-heading">Gabay sa During Stage (50%):</span>
+                  <span className="ium-stage-notice-heading">{isEn ? "Guide for During Stage (50%):" : "Gabay sa During Stage (50%):"}</span>
                   <span className="ium-stage-notice-text">
-                    I-dokumento ang aktwal na progreso tulad ng pundasyon, poste, at pader. Tiyaking tumutugma ang materyales at estruktura sa inaprubahang structural plan.
+                    {isEn ? "Document actual progress including foundations, columns, and walls. Ensure materials and framing comply with the approved structural plan." : "I-dokumento ang aktwal na progreso tulad ng pundasyon, poste, at pader. Tiyaking tumutugma ang materyales at estruktura sa inaprubahang structural plan."}
                   </span>
                 </div>
               </div>
@@ -423,9 +425,9 @@ export const InspectionUpdateModal: React.FC<InspectionUpdateModalProps> = ({
                   </svg>
                 </div>
                 <div className="ium-stage-notice-content ium-after-notice-content">
-                  <span className="ium-stage-notice-heading ium-after-notice-heading">Paalala sa 100% Completion:</span>
+                  <span className="ium-stage-notice-heading ium-after-notice-heading">{isEn ? "Notice on 100% Completion:" : "Paalala sa 100% Completion:"}</span>
                   <span className="ium-stage-notice-text ium-after-notice-text">
-                    Ang pag-set ng progress sa 100% ay pinal. Awtomatiko nitong tatapusin ang monitoring at magbibigay-hudyat sa system na i-isyu ang Certificate of Occupancy para sa proyektong ito.
+                    {isEn ? "Setting progress to 100% is final. This automatically concludes monitoring and signals the system to issue the Certificate of Occupancy." : "Ang pag-set ng progress sa 100% ay pinal. Awtomatiko nitong tatapusin ang monitoring at magbibigay-hudyat sa system na i-isyu ang Certificate of Occupancy para sa proyektong ito."}
                   </span>
                 </div>
               </div>
@@ -452,14 +454,18 @@ export const InspectionUpdateModal: React.FC<InspectionUpdateModalProps> = ({
                         <circle cx="8.5" cy="8.5" r="1.5"/>
                         <polyline points="21 15 16 10 5 21"/>
                       </svg>
-                      <span>In-upload na Litrato sa Yugtong Ito:</span>
+                      <span>{isEn ? "Uploaded Photos for This Stage:" : "In-upload na Litrato sa Yugtong Ito:"}</span>
                     </span>
                     <span className="ium-existing-count-badge">
-                      📷 {currentExistingPhotos.length} {currentExistingPhotos.length === 1 ? "litrato" : "mga litrato"}
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ marginRight: 4 }}>
+                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                        <circle cx="12" cy="13" r="4" />
+                      </svg>
+                      {currentExistingPhotos.length} {isEn ? (currentExistingPhotos.length === 1 ? "photo" : "photos") : (currentExistingPhotos.length === 1 ? "litrato" : "mga litrato")}
                     </span>
                   </label>
                   <span className="ium-label-hint">
-                    Naka-link sa Street View Pager
+                    {isEn ? "Linked to Street View Pager" : "Naka-link sa Street View Pager"}
                   </span>
                 </div>
 
@@ -472,17 +478,17 @@ export const InspectionUpdateModal: React.FC<InspectionUpdateModalProps> = ({
                       onClick={() => setViewingPhoto(photo.url)}
                       role="button"
                       tabIndex={0}
-                      title="I-click upang i-preview nang malaki ang kuha"
+                      title={isEn ? "Click to view full photo preview" : "I-click upang i-preview nang malaki ang kuha"}
                     >
                       <img
                         src={photo.url}
-                        alt={`Kuha ${idx + 1}`}
+                        alt={`Photo ${idx + 1}`}
                         className="ium-existing-thumb"
                         loading="lazy"
                       />
                       <div className="ium-existing-thumb-overlay">
                         <span className="ium-existing-idx-badge">
-                          Kuha {idx + 1} ng {currentExistingPhotos.length}
+                          {isEn ? `Photo ${idx + 1} of ${currentExistingPhotos.length}` : `Kuha ${idx + 1} ng ${currentExistingPhotos.length}`}
                         </span>
                         <div style={{ display: "flex", justifyContent: "flex-end", width: "100%" }}>
                           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -501,20 +507,23 @@ export const InspectionUpdateModal: React.FC<InspectionUpdateModalProps> = ({
                     </div>
                   ))}
 
-                  {/* ➕ EMBEDDED ADD PHOTO CARD / NEW PREVIEW CARD IN THE SAME ROW */}
+                  {/* EMBEDDED ADD PHOTO CARD / NEW PREVIEW CARD IN THE SAME ROW */}
                   {previewUrl ? (
                     <div
                       className="ium-existing-photo-card is-new-photo-card"
-                      title="Napiling bagong litrato para sa yugtong ito"
+                      title={isEn ? "Selected new photo for this stage" : "Napiling bagong litrato para sa yugtong ito"}
                     >
                       <img
                         src={previewUrl}
-                        alt="Bagong napiling litrato"
+                        alt="New selected photo"
                         className="ium-existing-thumb"
                       />
                       <div className="ium-existing-thumb-overlay is-new-overlay">
                         <span className="ium-new-photo-badge">
-                          ✨ Bagong Kuha
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ marginRight: 4 }}>
+                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                          </svg>
+                          {isEn ? "New Photo" : "Bagong Kuha"}
                         </span>
                         <div className="ium-new-photo-actions">
                           <button
@@ -524,9 +533,9 @@ export const InspectionUpdateModal: React.FC<InspectionUpdateModalProps> = ({
                               e.stopPropagation();
                               fileInputRef.current?.click();
                             }}
-                            title="Palitan ang litrato"
+                            title={isEn ? "Change photo" : "Palitan ang litrato"}
                           >
-                            Palitan
+                            {isEn ? "Change" : "Palitan"}
                           </button>
                           <button
                             type="button"
@@ -537,7 +546,7 @@ export const InspectionUpdateModal: React.FC<InspectionUpdateModalProps> = ({
                               setPreviewUrl(null);
                               if (fileInputRef.current) fileInputRef.current.value = "";
                             }}
-                            title="Tanggalin"
+                            title={isEn ? "Remove" : "Tanggalin"}
                           >
                             ✕
                           </button>
@@ -550,7 +559,7 @@ export const InspectionUpdateModal: React.FC<InspectionUpdateModalProps> = ({
                       onClick={() => fileInputRef.current?.click()}
                       role="button"
                       tabIndex={0}
-                      title="Magdagdag ng panibagong litrato para sa yugtong ito"
+                      title={isEn ? "Add another photo for this stage" : "Magdagdag ng panibagong litrato para sa yugtong ito"}
                     >
                       <div className="ium-add-photo-icon-wrap">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
@@ -558,8 +567,8 @@ export const InspectionUpdateModal: React.FC<InspectionUpdateModalProps> = ({
                           <line x1="5" y1="12" x2="19" y2="12"/>
                         </svg>
                       </div>
-                      <span className="ium-add-photo-text">+ Magdagdag</span>
-                      <span className="ium-add-photo-sub">ng Kuha</span>
+                      <span className="ium-add-photo-text">{isEn ? "+ Add" : "+ Magdagdag"}</span>
+                      <span className="ium-add-photo-sub">{isEn ? "Photo" : "ng Kuha"}</span>
                     </div>
                   )}
                 </div>
@@ -574,9 +583,9 @@ export const InspectionUpdateModal: React.FC<InspectionUpdateModalProps> = ({
                     <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
                     <circle cx="12" cy="13" r="4" />
                   </svg>
-                  <span>Aktwal na Litrato mula sa Site (Street View)</span>
+                  <span>{isEn ? "Actual Site Photo (Street View)" : "Aktwal na Litrato mula sa Site (Street View)"}</span>
                 </span>
-                <span className="ium-label-hint">Litrato mula sa cellphone o camera</span>
+                <span className="ium-label-hint">{isEn ? "Photo from mobile phone or camera" : "Litrato mula sa cellphone o camera"}</span>
               </label>
               <div
                 className={`ium-drop-zone ${previewUrl ? "has-file" : ""}`}
@@ -586,14 +595,14 @@ export const InspectionUpdateModal: React.FC<InspectionUpdateModalProps> = ({
                   <>
                     <img
                       src={previewUrl}
-                      alt="Preview ng bagong litrato"
+                      alt="Preview"
                       className="ium-preview-img"
                     />
                     <div className="ium-drop-text" style={{ color: "#86efac", display: "inline-flex", alignItems: "center", gap: 6 }}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                         <polyline points="20 6 9 17 4 12" />
                       </svg>
-                      <span>May napiling litrato — i-click para palitan</span>
+                      <span>{isEn ? "Photo selected — click to change" : "May napiling litrato — i-click para palitan"}</span>
                     </div>
                   </>
                 ) : (
@@ -613,7 +622,7 @@ export const InspectionUpdateModal: React.FC<InspectionUpdateModalProps> = ({
                       <circle cx="12" cy="13" r="4" />
                     </svg>
                     <div className="ium-drop-text">
-                      I-click dito upang mag-upload ng bagong kuha sa site (JPEG/PNG)
+                      {isEn ? "Click here to upload new site photo (JPEG/PNG)" : "I-click dito upang mag-upload ng bagong kuha sa site (JPEG/PNG)"}
                     </div>
                   </>
                 )}
@@ -624,11 +633,11 @@ export const InspectionUpdateModal: React.FC<InspectionUpdateModalProps> = ({
           {/* Remarks / Field Notes */}
           <div className="ium-form-group">
             <label className="ium-label">
-              <span>Opisyal na Remarks / Obserbasyon</span>
+              <span>{isEn ? "Official Remarks / Field Observations" : "Opisyal na Remarks / Obserbasyon"}</span>
             </label>
             <textarea
               className="ium-textarea"
-              placeholder="Halimbawa: Pundasyon at buhos ng poste tapos na, sumunod sa approved structural plan..."
+              placeholder={isEn ? "Example: Foundation and column pouring complete, compliant with approved structural plan..." : "Halimbawa: Pundasyon at buhos ng poste tapos na, sumunod sa approved structural plan..."}
               value={remarks}
               onChange={(e) => setRemarks(e.target.value)}
             />
@@ -637,14 +646,14 @@ export const InspectionUpdateModal: React.FC<InspectionUpdateModalProps> = ({
           {/* Inspector Name */}
           <div className="ium-form-group">
             <label className="ium-label">
-              <span>Pangalan ng Inspector</span>
+              <span>{isEn ? "Inspector Name" : "Pangalan ng Inspector"}</span>
             </label>
             <input
               type="text"
               className="ium-input"
               value={inspector}
               onChange={(e) => setInspector(e.target.value)}
-              placeholder="Hal. Engr. Dela Cruz"
+              placeholder={isEn ? "e.g. Engr. Dela Cruz" : "Hal. Engr. Dela Cruz"}
             />
           </div>
 
@@ -668,7 +677,7 @@ export const InspectionUpdateModal: React.FC<InspectionUpdateModalProps> = ({
               onClick={onClose}
               disabled={isSubmitting}
             >
-              Kanselahin
+              {isEn ? "Cancel" : "Kanselahin"}
             </button>
             <button
               type="submit"
@@ -680,7 +689,7 @@ export const InspectionUpdateModal: React.FC<InspectionUpdateModalProps> = ({
                 <polyline points="17 21 17 13 7 13 7 21" />
                 <polyline points="7 3 7 8 15 8" />
               </svg>
-              <span>{isSubmitting ? "Sine-save..." : "I-save ang Inspection Update"}</span>
+              <span>{isSubmitting ? (isEn ? "Saving..." : "Sine-save...") : (isEn ? "Save Inspection Update" : "I-save ang Inspection Update")}</span>
             </button>
           </div>
         </form>
@@ -699,13 +708,13 @@ export const InspectionUpdateModal: React.FC<InspectionUpdateModalProps> = ({
               className="ium-photo-preview-close"
               onClick={() => setViewingPhoto(null)}
             >
-              ✕ Isara ang Preview
+              {isEn ? "✕ Close Preview" : "✕ Isara ang Preview"}
             </button>
           </div>
         </div>
       )}
 
-      {/* ⚠️ KUMPIRMASYON SA PAGKUMPLETO (100% AFTER DIALOG) */}
+      {/* KUMPIRMASYON SA PAGKUMPLETO (100% AFTER DIALOG) */}
       {showCompletionConfirm && (
         <div
           className="ium-confirm-backdrop"
@@ -729,21 +738,30 @@ export const InspectionUpdateModal: React.FC<InspectionUpdateModalProps> = ({
 
             <div className="ium-confirm-header">
               <h3 id="ium-confirm-title" className="ium-confirm-title">
-                Kumpirmahin ang Pagkumpleto
+                {isEn ? "Confirm Project Completion" : "Kumpirmahin ang Pagkumpleto"}
               </h3>
               <div className="ium-confirm-badges">
                 <span className="ium-confirm-badge-app">{trackingNumber}</span>
-                <span className="ium-confirm-badge-stage">🏗️ After Construction (100%)</span>
+                <span className="ium-confirm-badge-stage" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <rect x="4" y="2" width="16" height="20" rx="2" />
+                    <line x1="9" y1="22" x2="9" y2="22.01" />
+                    <line x1="15" y1="22" x2="15" y2="22.01" />
+                  </svg>
+                  <span>After Construction (100%)</span>
+                </span>
               </div>
             </div>
 
             <div className="ium-confirm-body">
               <p className="ium-confirm-text">
-                Sigurado ka bang <strong>100% nang tapos at ligtas</strong> ang istrukturang ito? Ang aksyong ito ay hindi na maibabalik (<em>irreversible</em>) at ipapasa na sa pag-iisyu ng <strong>Occupancy Permit</strong>.
+                {isEn
+                  ? "Are you sure this structure is 100% completed and safe? This action is irreversible and proceeds to the issuance of the Occupancy Permit."
+                  : "Sigurado ka bang 100% nang tapos at ligtas ang istrukturang ito? Ang aksyong ito ay hindi na maibabalik (irreversible) at ipapasa na sa pag-iisyu ng Occupancy Permit."}
               </p>
               {applicantName && (
                 <div className="ium-confirm-meta">
-                  <span className="ium-confirm-meta-label">Aplikante:</span>
+                  <span className="ium-confirm-meta-label">{isEn ? "Applicant:" : "Aplikante:"}</span>
                   <span className="ium-confirm-meta-val">{applicantName}</span>
                 </div>
               )}
@@ -756,7 +774,7 @@ export const InspectionUpdateModal: React.FC<InspectionUpdateModalProps> = ({
                 onClick={() => setShowCompletionConfirm(false)}
                 disabled={isSubmitting}
               >
-                Kanselahin
+                {isEn ? "Cancel" : "Kanselahin"}
               </button>
               <button
                 type="button"
@@ -771,14 +789,14 @@ export const InspectionUpdateModal: React.FC<InspectionUpdateModalProps> = ({
                       <circle cx="12" cy="12" r="10" strokeOpacity="0.25" />
                       <path d="M12 2a10 10 0 0 1 10 10" />
                     </svg>
-                    <span>Kino-kumpirma...</span>
+                    <span>{isEn ? "Confirming..." : "Kino-kumpirma..."}</span>
                   </>
                 ) : (
                   <>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                       <polyline points="20 6 9 17 4 12" />
                     </svg>
-                    <span>Oo, Kumpirmahin</span>
+                    <span>{isEn ? "Yes, Confirm" : "Oo, Kumpirmahin"}</span>
                   </>
                 )}
               </button>

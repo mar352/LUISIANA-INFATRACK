@@ -1,0 +1,333 @@
+{
+  "version": "1.2.0",
+  "lastUpdated": "2026-09-22T12:20:28.840Z",
+  "maintenance": {
+    "enabled": false,
+    "message": "Pansamantalang inaayos ang LUISIANA INFA-TRACK system upang mapabuti ang serbisyo. Mangyaring bumalik mamaya.",
+    "estimatedDuration": "2 oras",
+    "updatedAt": "2026-09-22T12:20:28.840Z",
+    "updatedBy": "Super Admin"
+  },
+  "masterlists": {
+    "barangays": [
+      {
+        "id": "brgy-1",
+        "code": "ZONE-1",
+        "name": "Barangay Zone I (Poblacion)",
+        "zone": "Urban / Commercial Zone",
+        "active": true,
+        "isDefault": true
+      },
+      {
+        "id": "brgy-2",
+        "code": "ZONE-2",
+        "name": "Barangay Zone II (Poblacion)",
+        "zone": "Urban / Commercial Zone",
+        "active": true,
+        "isDefault": true
+      },
+      {
+        "id": "brgy-3",
+        "code": "ZONE-3",
+        "name": "Barangay Zone III (Poblacion)",
+        "zone": "Urban / Commercial Zone",
+        "active": true,
+        "isDefault": true
+      },
+      {
+        "id": "brgy-4",
+        "code": "ZONE-4",
+        "name": "Barangay Zone IV (Poblacion)",
+        "zone": "Urban / Commercial Zone",
+        "active": true,
+        "isDefault": true
+      },
+      {
+        "id": "brgy-5",
+        "code": "ZONE-5",
+        "name": "Barangay Zone V (Poblacion)",
+        "zone": "Urban / Commercial Zone",
+        "active": true,
+        "isDefault": true
+      },
+      {
+        "id": "brgy-6",
+        "code": "ZONE-6",
+        "name": "Barangay Zone VI (Poblacion)",
+        "zone": "Urban / Commercial Zone",
+        "active": true,
+        "isDefault": true
+      },
+      {
+        "id": "brgy-7",
+        "code": "ZONE-7",
+        "name": "Barangay Zone VII (Poblacion)",
+        "zone": "Urban / Commercial Zone",
+        "active": true,
+        "isDefault": true
+      },
+      {
+        "id": "brgy-8",
+        "code": "ZONE-8",
+        "name": "Barangay Zone VIII (Poblacion)",
+        "zone": "Urban / Commercial Zone",
+        "active": true,
+        "isDefault": true
+      },
+      {
+        "id": "brgy-9",
+        "code": "DELAPAZ",
+        "name": "De La Paz",
+        "zone": "Rural Zone",
+        "active": true,
+        "isDefault": true
+      },
+      {
+        "id": "brgy-10",
+        "code": "SAN-ANT",
+        "name": "San Antonio",
+        "zone": "Rural Zone",
+        "active": true,
+        "isDefault": true
+      },
+      {
+        "id": "brgy-11",
+        "code": "SAN-BUEN",
+        "name": "San Buenaventura",
+        "zone": "Rural Zone",
+        "active": true,
+        "isDefault": true
+      },
+      {
+        "id": "brgy-12",
+        "code": "SAN-DIEGO",
+        "name": "San Diego",
+        "zone": "Rural Zone",
+        "active": true,
+        "isDefault": true
+      },
+      {
+        "id": "brgy-13",
+        "code": "SAN-ISIDRO",
+        "name": "San Isidro",
+        "zone": "Rural Zone",
+        "active": true,
+        "isDefault": true
+      },
+      {
+        "id": "brgy-14",
+        "code": "SAN-JOSE",
+        "name": "San Jose",
+        "zone": "Rural Zone",
+        "active": true,
+        "isDefault": true
+      },
+      {
+        "id": "brgy-15",
+        "code": "SAN-JUAN",
+        "name": "San Juan",
+        "zone": "Rural Zone",
+        "active": true,
+        "isDefault": true
+      },
+      {
+        "id": "brgy-16",
+        "code": "SAN-LUIS",
+        "name": "San Luis",
+        "zone": "Rural Zone",
+        "active": true,
+        "isDefault": true
+      },
+      {
+        "id": "brgy-17",
+        "code": "SAN-PABLO",
+        "name": "San Pablo",
+        "zone": "Rural Zone",
+        "active": true,
+        "isDefault": true
+      },
+      {
+        "id": "brgy-18",
+        "code": "SAN-PEDRO",
+        "name": "San Pedro",
+        "zone": "Rural Zone",
+        "active": true,
+        "isDefault": true
+      },
+      {
+        "id": "brgy-19",
+        "code": "SAN-RAFAEL",
+        "name": "San Rafael",
+        "zone": "Rural Zone",
+        "active": true,
+        "isDefault": true
+      },
+      {
+        "id": "brgy-20",
+        "code": "SAN-ROQUE",
+        "name": "San Roque",
+        "zone": "Rural Zone",
+        "active": true,
+        "isDefault": true
+      },
+      {
+        "id": "brgy-21",
+        "code": "SAN-SALV",
+        "name": "San Salvador",
+        "zone": "Rural Zone",
+        "active": true,
+        "isDefault": true
+      },
+      {
+        "id": "brgy-22",
+        "code": "STO-DOM",
+        "name": "Santo Domingo",
+        "zone": "Rural Zone",
+        "active": true,
+        "isDefault": true
+      },
+      {
+        "id": "brgy-23",
+        "code": "STO-TOMAS",
+        "name": "Santo Tomas",
+        "zone": "Rural Zone",
+        "active": true,
+        "isDefault": true
+      }
+    ],
+    "buildingTypes": [
+      {
+        "id": "bldg-1",
+        "code": "RESIDENTIAL",
+        "name": "Residential",
+        "desc": "Pabahay para sa pamilya (single-family, duplex)",
+        "active": true,
+        "isDefault": true
+      },
+      {
+        "id": "bldg-2",
+        "code": "APARTMENT",
+        "name": "Apartment",
+        "desc": "Apartment building o paupahang mga yunit",
+        "active": true,
+        "isDefault": true
+      },
+      {
+        "id": "bldg-3",
+        "code": "TOWNHOUSE",
+        "name": "Townhouse",
+        "desc": "Townhouse row o residential cluster",
+        "active": true,
+        "isDefault": true
+      },
+      {
+        "id": "bldg-4",
+        "code": "DORMITORY",
+        "name": "Dormitory",
+        "desc": "Dormitoryo, boarding house, o student housing",
+        "active": true,
+        "isDefault": true
+      },
+      {
+        "id": "bldg-5",
+        "code": "INSTITUTIONAL",
+        "name": "Institutional",
+        "desc": "Paaralan, kapilya/simbahan, o pasilidad ng gobyerno",
+        "active": true,
+        "isDefault": true
+      },
+      {
+        "id": "bldg-6",
+        "code": "COMMERCIAL",
+        "name": "Commercial",
+        "desc": "Tindahan, opisina, mall, restawran, o negosyo",
+        "active": true,
+        "isDefault": true
+      },
+      {
+        "id": "bldg-7",
+        "code": "INDUSTRIAL",
+        "name": "Industrial",
+        "desc": "Bodega, pagawaan, o pasilidad ng industriya",
+        "active": true,
+        "isDefault": true
+      },
+      {
+        "id": "bldg-8",
+        "code": "AGRO_INDUSTRIAL",
+        "name": "Agro-Industrial",
+        "desc": "Pasilidad pang-agrikultura tulad ng poultry, piggery, at feed/rice mill",
+        "active": true,
+        "isDefault": true
+      }
+    ],
+    "zoningClassifications": [
+      {
+        "id": "zone-1",
+        "code": "URBAN_COMMERCIAL",
+        "name": "Urban / Commercial Zone",
+        "desc": "Sentro ng kalakalan at kabayanan (Poblacion)",
+        "active": true,
+        "isDefault": true
+      },
+      {
+        "id": "zone-2",
+        "code": "RURAL_RESIDENTIAL",
+        "name": "Rural Zone",
+        "desc": "Pamayanang rural at pabahay",
+        "active": true,
+        "isDefault": true
+      },
+      {
+        "id": "zone-3",
+        "code": "AGRICULTURAL_FOREST",
+        "name": "Agricultural / Forest Zone",
+        "desc": "Lupaing pansakahan at watershed protection",
+        "active": true,
+        "isDefault": true
+      },
+      {
+        "id": "zone-4",
+        "code": "ECO_TOURISM",
+        "name": "Eco-Tourism Zone",
+        "desc": "Talon (falls) at protektadong kalikasan",
+        "active": true,
+        "isDefault": true
+      }
+    ],
+    "permitCategories": [
+      {
+        "id": "pmt-1",
+        "code": "ZONING_CERT",
+        "name": "Zoning Certificate / Locational Clearance",
+        "desc": "Pagsusuri ng lokasyon alinsunod sa CLUP",
+        "active": true,
+        "isDefault": true
+      },
+      {
+        "id": "pmt-2",
+        "code": "BUILDING_PERMIT",
+        "name": "Building Permit Endorsement",
+        "desc": "Endorsement para sa Tanggapan ng Inhinyero",
+        "active": true,
+        "isDefault": true
+      },
+      {
+        "id": "pmt-3",
+        "code": "LAND_TITLING",
+        "name": "Land Titling / Tax Mapping Clearance",
+        "desc": "Pagsusuri ng titulo at tax declaration sa Assessor",
+        "active": true,
+        "isDefault": true
+      },
+      {
+        "id": "pmt-4",
+        "code": "OCCUPANCY_CERT",
+        "name": "Certificate of Occupancy Clearance",
+        "desc": "Pahintulot para sa paninirahan o operasyon",
+        "active": true,
+        "isDefault": true
+      }
+    ]
+  }
+}

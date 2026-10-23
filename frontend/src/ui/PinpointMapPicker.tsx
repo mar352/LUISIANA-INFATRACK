@@ -12,6 +12,7 @@ import {
 import { fetchGeoriskAssess, type GeoRiskAssess } from "../lib/luisiana-site-assess";
 import { earthquakeProneModel, type EarthquakeGridCell } from "../lib/ml-earthquake";
 import { getClupZone, normalizeBarangayName, type ClupZoneInfo } from "../lib/clup-zones";
+import { resolveTheme, subscribeTheme } from "../lib/theme";
 import "./PinpointMapPicker.css";
 
 /* ── Verified Centroids for All 23 Luisiana Barangays (100% Polygon-Conforming) ── */
@@ -182,6 +183,7 @@ type Props = {
   showHazardToggles?: boolean;
   readOnly?: boolean;
   allowFullscreen?: boolean;
+  isGeotagged?: boolean;
 };
 
 type StyleChoice = "outdoors" | "satellite" | "alidade_smooth" | "alidade_smooth_dark" | "stamen_watercolor" | "stamen_terrain" | "stamen_toner";
@@ -190,7 +192,7 @@ const STYLE_OPTIONS: { id: StyleChoice; label: string; desc: string }[] = [
   { id: "outdoors", label: "Outdoors", desc: "Topographic & lush terrain" },
   { id: "satellite", label: "Satellite", desc: "HD aerial photo imagery" },
   { id: "alidade_smooth", label: "Alidade Smooth", desc: "Clean, minimal modern light" },
-  { id: "alidade_smooth_dark", label: "Smooth Dark", desc: "Sleek night & dark mode" },
+  { id: "alidade_smooth_dark", label: "Stamen Dark", desc: "Sleek night & dark mode" },
   { id: "stamen_watercolor", label: "Watercolor", desc: "Artistic hand-painted style" },
   { id: "stamen_terrain", label: "Stamen Terrain", desc: "Hillshaded natural relief" },
   { id: "stamen_toner", label: "Stamen Toner", desc: "High-contrast bold B&W" },
@@ -206,6 +208,7 @@ export default function PinpointMapPicker({
   showHazardToggles = false,
   readOnly = false,
   allowFullscreen = true,
+  isGeotagged = false,
 }: Props) {
   const cesiumRef = useRef<CesiumMapHandle | null>(null);
   const ringRef = useRef<LonLat[] | null>(null);
@@ -389,7 +392,19 @@ export default function PinpointMapPicker({
 
   // Map Layer Toggles (Barangay overlay OFF by default)
   const [barangaysVisible, setBarangaysVisible] = useState(false);
-  const [activeStyle, setActiveStyle] = useState<StyleChoice>("outdoors");
+  const [activeStyle, setActiveStyle] = useState<StyleChoice>(() => {
+    return resolveTheme() === "dark" ? "alidade_smooth_dark" : "outdoors";
+  });
+
+  useEffect(() => {
+    return subscribeTheme((theme) => {
+      if (theme === "dark") {
+        setActiveStyle("alidade_smooth_dark");
+      } else {
+        setActiveStyle((prev) => (prev === "alidade_smooth_dark" ? "outdoors" : prev));
+      }
+    });
+  }, []);
   const [isStyleLoading, setIsStyleLoading] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [brgyMenuOpen, setBrgyMenuOpen] = useState(false);
@@ -475,19 +490,51 @@ export default function PinpointMapPicker({
   }, [lon, lat, activeBarangay]);
 
   // When barangay changes from external selector, fly to its centroid (in editable mode only)
+  const prevBarangayRef = useRef<string>(selectedBarangay);
   useEffect(() => {
     if (readOnly) return;
     if (isPinClickRef.current) {
       isPinClickRef.current = false;
+      prevBarangayRef.current = selectedBarangay;
       return;
     }
+    if (prevBarangayRef.current === selectedBarangay) {
+      return;
+    }
+    prevBarangayRef.current = selectedBarangay;
+
+    // If coordinates were extracted from a geotagged photo, do NOT overwrite with generic centroid!
+    if (isGeotagged) {
+      return;
+    }
+
     const norm = normalizeBarangayName(selectedBarangay);
     const coords = BARANGAY_COORDINATES[norm] || BARANGAY_COORDINATES[selectedBarangay];
     if (coords && cesiumRef.current) {
       cesiumRef.current.flyToLonLat(coords.lon, coords.lat, 2200);
       onLocationChange?.({ lon: coords.lon, lat: coords.lat });
     }
-  }, [selectedBarangay, readOnly]);
+  }, [selectedBarangay, readOnly, isGeotagged, onLocationChange]);
+
+  // When coordinates change externally (e.g. from Geotag extraction or programmatic coordinates),
+  // smoothly fly the Cesium camera to center on the new marker!
+  const prevCoordsRef = useRef<{ lon: number; lat: number }>({ lon, lat });
+  useEffect(() => {
+    if (readOnly) return;
+    if (isPinClickRef.current) {
+      isPinClickRef.current = false;
+      prevCoordsRef.current = { lon, lat };
+      return;
+    }
+    const coordsChanged =
+      Math.abs(prevCoordsRef.current.lon - lon) > 1e-6 ||
+      Math.abs(prevCoordsRef.current.lat - lat) > 1e-6;
+
+    if (coordsChanged && cesiumRef.current && Number.isFinite(lon) && Number.isFinite(lat)) {
+      prevCoordsRef.current = { lon, lat };
+      cesiumRef.current.flyToLonLat(lon, lat, 2000);
+    }
+  }, [lon, lat, readOnly]);
 
   const handleZoomIn = () => {
     cesiumRef.current?.zoomIn();
@@ -519,7 +566,6 @@ export default function PinpointMapPicker({
       shadowsEnabled: false,
       shadowQuality: "low",
       terrainQuality: "low",
-      motionBlur: 0,
       targetFps: 60,
     };
   }, [basemapStyleId]);
@@ -906,6 +952,12 @@ export default function PinpointMapPicker({
           <div className="pinpoint-coords-brgy">
             {activeBarangay}
           </div>
+          {isGeotagged && (
+            <div className="pinpoint-geotag-pill" title="Awtomatikong nakuha mula sa Geotagged Photo Documentation">
+              <span className="pinpoint-geotag-dot" />
+              <span>📸 Geotagged Photo</span>
+            </div>
+          )}
           <div
             className={`pinpoint-coords-zone-pill ${zoningInfo.isCommercial ? "is-commercial" : "is-outlying"}`}
             style={{

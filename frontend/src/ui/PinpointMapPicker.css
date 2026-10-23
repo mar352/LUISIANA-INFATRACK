@@ -989,3 +989,47 @@
     height: 13px;
   }
 }
+
+/* ── Geotagged Pill Badge on Coordinate Display ──────────────────────────── */
+.pinpoint-geotag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  margin-top: 3px;
+  border-radius: 9999px;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: #059669;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  animation: pinpointPillFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+[data-theme="dark"] .pinpoint-geotag-pill,
+.dark .pinpoint-geotag-pill {
+  background: rgba(16, 185, 129, 0.18);
+  border-color: rgba(52, 211, 153, 0.4);
+  color: #34d399;
+}
+
+.pinpoint-geotag-dot {
+  width: 5.5px;
+  height: 5.5px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 6px #10b981;
+}
+
+@keyframes pinpointPillFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(2px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+

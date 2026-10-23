@@ -29,19 +29,19 @@ const STATUS_ORDER: ProjectStatus[] = [
 ];
 
 const STATUS_FILL: Record<ProjectStatus, string> = {
-  Planned: "#6c8ebf",
-  Ongoing: "#ffc107",
-  Delayed: "#d4a017",
-  Completed: "#151c28",
-  Suspended: "#9b9b9b",
+  Planned: "#0071e3",
+  Ongoing: "#d97706",
+  Delayed: "#dc2626",
+  Completed: "#16a34a",
+  Suspended: "#64748b",
 };
 
 const DEPT_FILL: Record<string, string> = {
   MPDC: "#151c28",
-  Engineering: "#ffc107",
-  Agriculture: "#5b6b7c",
-  "Treasury Office": "#059669",
-  "Negosyo Center": "#059669",
+  Engineering: "#d97706",
+  Agriculture: "#059669",
+  "Treasury Office": "#0284c7",
+  "Negosyo Center": "#7c3aed",
 };
 
 function modelLabel(modelType: string): string {

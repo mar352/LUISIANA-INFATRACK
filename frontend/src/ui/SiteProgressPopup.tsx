@@ -14,6 +14,7 @@ function getHazardColor(val?: string | null) {
   return "#10b981";
 }
 import { backendUrl } from "../lib/api";
+import { useTranslation } from "../lib/i18n";
 import "./SiteProgressPopup.css";
 
 interface SiteProgressPopupProps {
@@ -92,6 +93,7 @@ export const SiteProgressPopup: React.FC<SiteProgressPopupProps> = ({
   onUpdateProgress,
   canInspect = false,
 }) => {
+  const { isEn } = useTranslation();
   // Listen for Escape key to quickly return to map (Google Street View behavior)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -525,7 +527,7 @@ export const SiteProgressPopup: React.FC<SiteProgressPopupProps> = ({
 
   return (
     <div
-      className="streetview-overlay"
+      className={`streetview-overlay ${showRemarksDrawer ? "is-drawer-open" : ""}`}
       role="dialog"
       aria-label="Frontal Street View - Interactive Smartphone Panorama Viewer"
     >
@@ -567,37 +569,55 @@ export const SiteProgressPopup: React.FC<SiteProgressPopupProps> = ({
           <span>Bumalik sa Mapa</span>
         </button>
 
-        {/* Overlay Information (Watermark Style) */}
+        {/* Overlay Information (Landing Page Apple Frosted Showcase Card) */}
         <div className={`streetview-watermark-card ${isWatermarkCollapsed ? "is-collapsed" : ""}`}>
-          {/* Header Tag / Street View Mode */}
+          {/* Header Bar: macOS Showcase Dots + Live Beacon + Mode Tag + Tracking Code */}
           <div className="streetview-watermark-header">
-            <span className="streetview-live-dot" />
-            <span className="streetview-watermark-tag">FRONTAL STREET VIEW • PANORAMA</span>
-            <span className="streetview-tracking-code">#{trackingNumber}</span>
-            <button
-              type="button"
-              className="streetview-watermark-toggle-btn"
-              onClick={() => setIsWatermarkCollapsed(!isWatermarkCollapsed)}
-              title={isWatermarkCollapsed ? "Ipakita ang buong detalye" : "I-minimize ang watermark"}
-              aria-label={isWatermarkCollapsed ? "Expand Details" : "Collapse Details"}
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                style={{
-                  transform: isWatermarkCollapsed ? "rotate(180deg)" : "none",
-                  transition: "transform 0.2s ease",
+            <div className="streetview-header-left">
+              <div className="streetview-mac-dots" aria-hidden="true">
+                <span className="mac-dot mac-dot--red" />
+                <span className="mac-dot mac-dot--amber" />
+                <span className="mac-dot mac-dot--green" />
+              </div>
+              <div className="streetview-live-beacon" title="Live Field Telemetry Active">
+                <span className="streetview-live-ping" />
+                <span className="streetview-live-dot" />
+              </div>
+              <span className="streetview-watermark-tag" title="360° Street View Panorama">360° PANORAMA</span>
+            </div>
+            <div className="streetview-header-right">
+              <span className="streetview-tracking-code">#{trackingNumber}</span>
+              <button
+                type="button"
+                className="streetview-watermark-toggle-btn"
+                onClick={() => {
+                  const next = !isWatermarkCollapsed;
+                  setIsWatermarkCollapsed(next);
+                  if (!next && showRemarksDrawer) {
+                    setShowRemarksDrawer(false);
+                  }
                 }}
+                title={isWatermarkCollapsed ? "Ipakita ang buong detalye" : "I-minimize ang watermark"}
+                aria-label={isWatermarkCollapsed ? "Expand Details" : "Collapse Details"}
               >
-                <polyline points="18 15 12 9 6 15" />
-              </svg>
-            </button>
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={{
+                    transform: isWatermarkCollapsed ? "rotate(180deg)" : "none",
+                    transition: "transform 0.2s ease",
+                  }}
+                >
+                  <polyline points="18 15 12 9 6 15" />
+                </svg>
+              </button>
+            </div>
           </div>
 
           {/* Collapsed Compact View */}
@@ -834,7 +854,13 @@ export const SiteProgressPopup: React.FC<SiteProgressPopupProps> = ({
           <button
             type="button"
             className="streetview-toggle-remarks-btn"
-            onClick={() => setShowRemarksDrawer(!showRemarksDrawer)}
+            onClick={() => {
+              const next = !showRemarksDrawer;
+              setShowRemarksDrawer(next);
+              if (next) {
+                setIsWatermarkCollapsed(true);
+              }
+            }}
             title="Tingnan ang detalye ng aplikante at remarks para sa yugtong ito"
           >
             <span>{showRemarksDrawer ? "Itago ang Detalye" : "Karagdagang Detalye"}</span>
@@ -858,6 +884,24 @@ export const SiteProgressPopup: React.FC<SiteProgressPopupProps> = ({
       {/* SLIDE-UP REMARKS & APPLICANT DETAILS DRAWER */}
       {showRemarksDrawer && (
         <div className="streetview-details-drawer">
+          <div className="streetview-details-drawer-header">
+            <div className="streetview-details-drawer-title-wrap">
+              <span className="streetview-details-drawer-tag">Karagdagang Detalye &amp; Siting</span>
+              <strong className="streetview-details-drawer-project">{projectDisplay}</strong>
+            </div>
+            <button
+              type="button"
+              className="streetview-details-drawer-close-btn"
+              onClick={() => setShowRemarksDrawer(false)}
+              title="Isara ang detalye (Close)"
+              aria-label="Isara ang Karagdagang Detalye"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
           <div className="streetview-details-content">
             <div className="streetview-detail-col">
               <span className="streetview-detail-label">Aplikante:</span>
@@ -1173,7 +1217,7 @@ export const SiteProgressPopup: React.FC<SiteProgressPopupProps> = ({
         </div>
       )}
 
-      {/* 🖼️ CLICKABLE PHOTO LIGHTBOX MODAL (Hindi naka-display sa street, 2D Photo Viewer) */}
+      {/* CLICKABLE PHOTO LIGHTBOX MODAL */}
       {activeSidePhotoPreview && (
         <div
           className="streetview-lightbox-backdrop"
@@ -1188,20 +1232,26 @@ export const SiteProgressPopup: React.FC<SiteProgressPopupProps> = ({
             {/* Header */}
             <div className="streetview-lightbox-header">
               <div className="streetview-lightbox-title-group">
-                <div className="streetview-lightbox-tag">📸 SIDE PHOTO PREVIEW</div>
+                <div className="streetview-lightbox-tag" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                    <circle cx="12" cy="13" r="4" />
+                  </svg>
+                  <span>{isEn ? "SIDE PHOTO PREVIEW" : "PREVIEW NG SIDE PHOTO"}</span>
+                </div>
                 <h4 className="streetview-lightbox-title">
-                  {activeSidePhotoPreview.caption || "Side Inspection Photo"}
+                  {activeSidePhotoPreview.caption || (isEn ? "Side Inspection Photo" : "Kuha ng Inspeksyon sa Gilid")}
                 </h4>
                 <span className="streetview-lightbox-sub">
-                  {formatFilipinoCaptureDate(activeSidePhotoPreview.uploadedAt)} • Yugto: {stageLabel}
+                  {formatFilipinoCaptureDate(activeSidePhotoPreview.uploadedAt)} • {isEn ? "Stage:" : "Yugto:"} {stageLabel}
                 </span>
               </div>
               <button
                 type="button"
                 className="streetview-lightbox-close-btn"
                 onClick={() => setActiveSidePhotoPreview(null)}
-                title="Isara ang photo viewer (Esc)"
-                aria-label="Close"
+                title={isEn ? "Close photo viewer (Esc)" : "Isara ang photo viewer (Esc)"}
+                aria-label={isEn ? "Close" : "Isara"}
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="18" y1="6" x2="6" y2="18" />
@@ -1226,20 +1276,20 @@ export const SiteProgressPopup: React.FC<SiteProgressPopupProps> = ({
                   type="button"
                   className="streetview-lightbox-nav-btn"
                   onClick={handlePrevSidePhoto}
-                  title="Nakaraang side photo"
+                  title={isEn ? "Previous photo" : "Nakaraang kuha"}
                 >
-                  ◀ Nakaraang Kuha
+                  {isEn ? "◀ Previous Photo" : "◀ Nakaraang Kuha"}
                 </button>
                 <span className="streetview-lightbox-pager-info">
-                  Side Photo {currentSideIndex + 1} ng {currentStageSidePhotos.length}
+                  {isEn ? `Side Photo ${currentSideIndex + 1} of ${currentStageSidePhotos.length}` : `Side Photo ${currentSideIndex + 1} ng ${currentStageSidePhotos.length}`}
                 </span>
                 <button
                   type="button"
                   className="streetview-lightbox-nav-btn"
                   onClick={handleNextSidePhoto}
-                  title="Susunod na side photo"
+                  title={isEn ? "Next photo" : "Susunod na kuha"}
                 >
-                  Susunod na Kuha ▶
+                  {isEn ? "Next Photo ▶" : "Susunod na Kuha ▶"}
                 </button>
               </div>
             )}

@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { fetchCitizenApplications, patchCitizenApplication, backendUrl } from "../lib/api";
 import { getClupZone } from "../lib/clup-zones";
+import { InSystemDocModal, isPdfFile, isImageFile } from "./InSystemDocViewer";
+import { ThemeToggle } from "./ThemeToggle";
+import { useTranslation } from "../lib/i18n";
 import "./EngineerApplicationsPage.css";
 
 const BARANGAYS = [
@@ -13,12 +16,20 @@ const BARANGAYS = [
   "Santo Angel", "Santo Domingo", "Santo Tomas"
 ];
 
-const PRESET_HOLD_REASONS = [
+const PRESET_HOLD_REASONS_TL = [
   "Kailangang mag-submit ng revised Structural Plans & Computations na may pirma at selyo ng licensed Civil/Structural Engineer.",
   "Hindi sumunod sa Building Setbacks (kinakailangan ang minimum 3.0m sa harap at 2.0m sa mga gilid at likuran bago magbuhos).",
   "Kailangang kumpirmahin ang aktwal na Boundary Monuments (Mohon) at Road Right-of-Way (ROW) upang maiwasan ang encroachment.",
   "Kulang o malabo ang isinumiteng Barangay Construction Clearance / TCT Title / Tax Declaration.",
   "Nangangailangan ng karagdagang Geohazard Mitigation Plan batay sa on-site ocular evaluation ng Engineering Office."
+];
+
+const PRESET_HOLD_REASONS_EN = [
+  "Must submit revised Structural Plans & Computations signed and sealed by a licensed Civil/Structural Engineer.",
+  "Non-compliant with Building Setbacks (minimum 3.0m front and 2.0m side/rear setbacks required before pouring).",
+  "Must verify actual Boundary Monuments (Mohon) and Road Right-of-Way (ROW) to prevent encroachment.",
+  "Missing or illegible Barangay Construction Clearance / TCT Title / Tax Declaration.",
+  "Requires an additional Geohazard Mitigation Plan based on Engineering Office on-site ocular evaluation."
 ];
 
 interface EngineerApplicationsPageProps {
@@ -71,6 +82,7 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
   onNavigateToProject,
   onApplicationApproved,
 }) => {
+  const { isEn } = useTranslation();
   const [applications, setApplications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -290,33 +302,42 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
   return (
     <div className="eap-container">
       {/* Top Header */}
-      <header className="eap-header">
+      <header className="eap-header topnav-accent-engineering">
         <div className="eap-header-left">
-          <button type="button" className="eap-btn-back" onClick={onBack} title="Bumalik sa 3D Globe / Mapa">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <button
+            type="button"
+            className="eap-btn-back"
+            onClick={onBack}
+            title="Bumalik sa 3D Globe / Mapa"
+            aria-label="Bumalik sa 3D Globe / Mapa"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <line x1="19" y1="12" x2="5" y2="12" />
               <polyline points="12 19 5 12 12 5" />
             </svg>
-            <span>Bumalik sa Mapa</span>
           </button>
-          <div className="eap-title-block">
-            <div className="eap-header-badge">MUNICIPAL ENGINEERING OFFICE</div>
-            <h1 className="eap-title">Engineering Clearance &amp; Site Pinning Portal</h1>
-            <p className="eap-subtitle">
-              Pagsusuri, pag-hold, o pag-apruba sa mga bayad na aplikasyon upang mai-pin sa 3D Cesium GIS para sa on-site inspection.
-            </p>
+          <div className="eap-brand-wrap">
+            <img src="/logo.png" alt="Luisiana Seal" className="eap-brand-logo" />
+            <div className="eap-title-block">
+              <div className="eap-header-badge">MUNICIPAL ENGINEERING OFFICE · LUISIANA</div>
+              <h1 className="eap-title">Engineering Clearance &amp; Site Pinning Portal</h1>
+              <p className="eap-subtitle">
+                Pagsusuri, pag-hold, o pag-apruba sa mga bayad na aplikasyon para sa 3D GIS Mapa at on-site inspection.
+              </p>
+            </div>
           </div>
         </div>
 
         <div className="eap-header-actions">
           <button type="button" className="eap-btn-refresh" onClick={loadData} disabled={loading} title="I-reload ang mga aplikasyon">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={loading ? "eap-spin" : ""}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={loading ? "eap-spin" : ""} aria-hidden>
               <polyline points="23 4 23 10 17 10" />
               <polyline points="1 20 1 14 7 14" />
               <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
             </svg>
             <span>I-refresh</span>
           </button>
+          <ThemeToggle />
         </div>
       </header>
 
@@ -324,13 +345,13 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
       <section className="eap-kpi-grid">
         <div className="eap-kpi-card is-pending">
           <div className="eap-kpi-icon-wrap">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <circle cx="12" cy="12" r="10" />
               <polyline points="12 6 12 12 16 14" />
             </svg>
           </div>
           <div className="eap-kpi-info">
-            <div className="eap-kpi-val" style={{ color: "#f59e0b" }}>{pendingCount}</div>
+            <div className="eap-kpi-val">{pendingCount}</div>
             <div className="eap-kpi-lbl">Naghihintay ng Clearance</div>
             <div className="eap-kpi-sub">Bayad na sa Treasury · Handa sa Pagsusuri</div>
           </div>
@@ -338,14 +359,14 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
 
         <div className="eap-kpi-card is-hold">
           <div className="eap-kpi-icon-wrap">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <circle cx="12" cy="12" r="10" />
               <line x1="15" y1="9" x2="9" y2="15" />
               <line x1="9" y1="9" x2="15" y2="15" />
             </svg>
           </div>
           <div className="eap-kpi-info">
-            <div className="eap-kpi-val" style={{ color: "#ef4444" }}>{holdCount}</div>
+            <div className="eap-kpi-val">{holdCount}</div>
             <div className="eap-kpi-lbl">Naka-Hold / May Kulang</div>
             <div className="eap-kpi-sub">Ibinalik sa Kliyente para Ayusin</div>
           </div>
@@ -353,13 +374,13 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
 
         <div className="eap-kpi-card is-approved">
           <div className="eap-kpi-icon-wrap">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
               <polyline points="9 12 11 14 15 10" />
             </svg>
           </div>
           <div className="eap-kpi-info">
-            <div className="eap-kpi-val" style={{ color: "#22c55e" }}>{approvedCount}</div>
+            <div className="eap-kpi-val">{approvedCount}</div>
             <div className="eap-kpi-lbl">Na-aprubahan &amp; Naka-pin</div>
             <div className="eap-kpi-sub">Aktibo sa 3D Mapa at Handang Inspeksyunin</div>
           </div>
@@ -367,13 +388,13 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
 
         <div className="eap-kpi-card is-total">
           <div className="eap-kpi-icon-wrap">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <rect x="2" y="5" width="20" height="14" rx="2" />
               <line x1="2" y1="10" x2="22" y2="10" />
             </svg>
           </div>
           <div className="eap-kpi-info">
-            <div className="eap-kpi-val" style={{ color: "#38bdf8" }}>{paidApplications.length}</div>
+            <div className="eap-kpi-val">{paidApplications.length}</div>
             <div className="eap-kpi-lbl">Kabuuang Bayad na Aplikasyon</div>
             <div className="eap-kpi-sub">Mula sa Municipal Treasury Office</div>
           </div>
@@ -459,7 +480,12 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
         </div>
       ) : displayedApps.length === 0 ? (
         <div className="eap-empty-state">
-          <div className="eap-empty-icon">📭</div>
+          <div className="eap-empty-icon">
+            <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+              <line x1="9" y1="14" x2="15" y2="14" />
+            </svg>
+          </div>
           <h3>Walang nahanap na aplikasyon</h3>
           <p>
             {searchQuery || barangayFilter || statusFilter !== "all"
@@ -479,7 +505,7 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
             const bldgType = app.lotDetails?.proposedBuildingType || app.buildingType || "Residential Building";
             const estCost = app.estimatedCost || app.budgetTotal;
             const orNumber = app.payment?.orNumber || app.payment?.or_number || app.or_number || "O.R. Pending";
-            const amountPaid = app.payment?.amount_paid ?? app.payment?.amount ?? app.amount_paid ?? 280;
+            const amountPaid = app.payment?.paidAmount ?? app.payment?.amount_paid ?? app.payment?.amount ?? app.amount_paid;
             const paymentDate = app.payment?.payment_date || app.payment?.paidAt || app.payment_date;
             const clupZone = getClupZone(bgy);
             const lat = app.latitude ?? app.lotDetails?.lat ?? app.coordinates?.lat;
@@ -529,19 +555,19 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
                   <div className="eap-card-header-right">
                     {isApproved ? (
                       <span className="eap-status-pill approved">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                           <polyline points="20 6 9 17 4 12" />
                         </svg>
                         <span>Naka-pin sa 3D Mapa</span>
                       </span>
                     ) : isHold ? (
                       <span className="eap-status-pill hold">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                           <circle cx="12" cy="12" r="10" />
                           <line x1="12" y1="8" x2="12" y2="12" />
                           <line x1="12" y1="16" x2="12.01" y2="16" />
                         </svg>
-                        <span>⚠️ Naka-Hold / Ibinalik sa Kliyente</span>
+                        <span>Naka-Hold / Ibinalik sa Kliyente</span>
                       </span>
                     ) : (
                       <span className="eap-status-pill pending">
@@ -558,8 +584,19 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
                     <div className="eap-field-label">Aplikante &amp; May-ari:</div>
                     <strong className="eap-applicant-name">{applicant}</strong>
                     <div className="eap-applicant-meta">
-                      <span>📞 {app.applicant?.contactNumber || app.applicant?.phone || "—"}</span>
-                      <span>📍 Brgy. {bgy}, Luisiana</span>
+                      <span className="eap-meta-item">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+                        </svg>
+                        <span>{app.applicant?.contactNumber || app.applicant?.phone || "—"}</span>
+                      </span>
+                      <span className="eap-meta-item">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                          <circle cx="12" cy="10" r="3" />
+                        </svg>
+                        <span>Brgy. {bgy}, Luisiana</span>
+                      </span>
                     </div>
                   </div>
 
@@ -567,10 +604,23 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
                     <div className="eap-field-label">Ipinapanukalang Gusali:</div>
                     <strong className="eap-bldg-name">{bldgType}</strong>
                     <div className="eap-project-meta">
-                      {estCost && <span>Tinatayang Halaga: {formatCurrency(estCost)}</span>}
+                      {estCost && (
+                        <span className="eap-meta-item">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                            <line x1="12" y1="1" x2="12" y2="23" />
+                            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                          </svg>
+                          <span>Tinatayang Halaga: {formatCurrency(estCost)}</span>
+                        </span>
+                      )}
                       {lat && lon && (
                         <span className="eap-coord-badge">
-                          🌐 {Number(lat).toFixed(5)}, {Number(lon).toFixed(5)}
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                            <circle cx="12" cy="12" r="10" />
+                            <line x1="2" y1="12" x2="22" y2="12" />
+                            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                          </svg>
+                          <span>{Number(lat).toFixed(5)}, {Number(lon).toFixed(5)}</span>
                         </span>
                       )}
                     </div>
@@ -613,19 +663,33 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
                     </div>
                     <div>
                       <div className="eap-treasury-title">
-                        <span>TREASURY OFFICIAL RECEIPT:</span>
+                        <span>OFFICIAL RECEIPT (MULA SA ASSESSOR):</span>
                         <strong className="eap-or-num">{orNumber}</strong>
                       </div>
                       <div className="eap-treasury-sub">
-                        <span>Binayaran: {formatDate(paymentDate)}</span>
+                        <span>Petsa: {formatDate(paymentDate)}</span>
                         {app.payment?.cashier && <span> · Teller: {app.payment.cashier}</span>}
                       </div>
                     </div>
                   </div>
 
                   <div className="eap-treasury-amount">
-                    <span className="eap-amount-lbl">Halagang Binayaran:</span>
-                    <strong className="eap-amount-val">{formatCurrency(amountPaid)}</strong>
+                    <span className="eap-amount-lbl">Katayuan ng Resibo:</span>
+                    <strong className="eap-amount-val">{amountPaid ? formatCurrency(amountPaid) : "Nai-record mula sa Assessor"}</strong>
+                    {(app.payment?.receiptUrl || app.uploads?.officialReceipt?.[0]?.url) && (
+                      <button
+                        type="button"
+                        className="eap-receipt-preview-btn"
+                        onClick={() =>
+                          setViewingDoc({
+                            url: resolveDocUrl(app.payment?.receiptUrl || app.uploads?.officialReceipt?.[0]?.url),
+                            name: `Official Receipt #${orNumber}`,
+                          })
+                        }
+                      >
+                        📄 Tingnan ang Resibo
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -633,7 +697,7 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
                 <div className="eap-clup-row">
                   <div className="eap-clup-badge">
                     <span>Zoning (CLUP):</span>
-                    <strong>{clupZone.zoneName}</strong>
+                    <strong>{clupZone.name || (clupZone as any).zoneName}</strong>
                   </div>
                   <div className="eap-hazard-badge safe">
                     <span>Geohazard Status:</span>
@@ -672,7 +736,10 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
                   {isApproved ? (
                     <div className="eap-approved-actions">
                       <div className="eap-approved-note">
-                        <span>✓ Na-aprubahan ni {app.engineerApprovedBy || "Municipal Engineer"}</span>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                        <span>Na-aprubahan ni {app.engineerApprovedBy || "Municipal Engineer"}</span>
                         {app.engineerApprovedAt && <span> noong {formatDate(app.engineerApprovedAt)}</span>}
                       </div>
                       {onNavigateToProject && (
@@ -681,7 +748,7 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
                           className="eap-btn-view-map"
                           onClick={() => onNavigateToProject(app.id || tracking)}
                         >
-                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                             <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6" />
                             <line x1="8" y1="2" x2="8" y2="18" />
                             <line x1="16" y1="6" x2="16" y2="22" />
@@ -692,13 +759,29 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
                     </div>
                   ) : (
                     <div className="eap-pending-actions">
-                      <span className="eap-ready-hint">
-                        {isHold
-                          ? "⚠️ Naka-hold ang record. Maaari itong i-update o aprubahan kapag naayos na ng kliyente."
-                          : "💡 Suriin ang plano at site. Pwedeng i-hold para ipaayos o aprubahan para mai-pin sa mapa."}
-                      </span>
+                      <div className="eap-ready-hint">
+                        {isHold ? (
+                          <>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                              <line x1="12" y1="9" x2="12" y2="13" />
+                              <line x1="12" y1="17" x2="12.01" y2="17" />
+                            </svg>
+                            <span>Naka-hold ang record. Maaari itong i-update o aprubahan kapag naayos na ng kliyente.</span>
+                          </>
+                        ) : (
+                          <>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                              <circle cx="12" cy="12" r="10" />
+                              <line x1="12" y1="16" x2="12" y2="12" />
+                              <line x1="12" y1="8" x2="12.01" y2="8" />
+                            </svg>
+                            <span>Suriin ang plano at site. Pwedeng i-hold para ipaayos o aprubahan para mai-pin sa mapa.</span>
+                          </>
+                        )}
+                      </div>
                       <div className="eap-action-buttons-group">
-                        {/* ✖ HOLD BUTTON (RED/ORANGE) */}
+                        {/* HOLD BUTTON */}
                         <button
                           type="button"
                           className="eap-btn-hold"
@@ -708,15 +791,22 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
                           }}
                           title="I-hold ang aplikasyon at ibalik sa kliyente para ayusin"
                         >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                            <circle cx="12" cy="12" r="10" />
-                            <line x1="15" y1="9" x2="9" y2="15" />
-                            <line x1="9" y1="9" x2="15" y2="15" />
-                          </svg>
-                          <span>{isHold ? "✏️ Baguhin ang Hold" : "✖ I-hold ang Aplikasyon"}</span>
+                          {isHold ? (
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                            </svg>
+                          ) : (
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                              <circle cx="12" cy="12" r="10" />
+                              <line x1="15" y1="9" x2="9" y2="15" />
+                              <line x1="9" y1="9" x2="15" y2="15" />
+                            </svg>
+                          )}
+                          <span>{isHold ? "Baguhin ang Hold" : "I-hold ang Aplikasyon"}</span>
                         </button>
 
-                        {/* ✔ APPROVE BUTTON (GREEN) */}
+                        {/* APPROVE BUTTON */}
                         <button
                           type="button"
                           className="eap-btn-approve"
@@ -725,10 +815,10 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
                             setApprovalNotes(`Inaprubahan para sa konstruksyon. Pinal nang nai-pin ang site sa 3D GIS Mapa para sa on-site inspection.`);
                           }}
                         >
-                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                             <polyline points="20 6 9 17 4 12" />
                           </svg>
-                          <span>✔ Aprubahan at I-pin sa Mapa</span>
+                          <span>Aprubahan at I-pin sa Mapa</span>
                         </button>
                       </div>
                     </div>
@@ -752,17 +842,17 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
                 </svg>
               </div>
               <div>
-                <h3 className="eap-modal-title">Kumpirmahin ang Pag-apruba at Pag-pin</h3>
+                <h3 className="eap-modal-title">{isEn ? "Confirm Approval and Map Pinning" : "Kumpirmahin ang Pag-apruba at Pag-pin"}</h3>
                 <span className="eap-modal-tracking">{approvingApp.trackingNumber || approvingApp.id}</span>
               </div>
             </div>
 
             <div className="eap-modal-body">
               <div className="eap-modal-app-summary">
-                <div><strong>Aplikante:</strong> {approvingApp.applicant?.fullName || approvingApp.applicantName}</div>
-                <div><strong>Gusali:</strong> {approvingApp.lotDetails?.proposedBuildingType || approvingApp.buildingType || "Residential"}</div>
-                <div><strong>Lokasyon:</strong> Brgy. {approvingApp.applicant?.barangay || approvingApp.barangay}, Luisiana</div>
-                <div><strong>O.R. No:</strong> {approvingApp.payment?.orNumber || approvingApp.or_number || "Paid at Treasury"}</div>
+                <div><strong>{isEn ? "Applicant:" : "Aplikante:"}</strong> {approvingApp.applicant?.fullName || approvingApp.applicantName}</div>
+                <div><strong>{isEn ? "Building:" : "Gusali:"}</strong> {approvingApp.lotDetails?.proposedBuildingType || approvingApp.buildingType || "Residential"}</div>
+                <div><strong>{isEn ? "Location:" : "Lokasyon:"}</strong> Brgy. {approvingApp.applicant?.barangay || approvingApp.barangay}, Luisiana</div>
+                <div><strong>{isEn ? "O.R. No:" : "O.R. No:"}</strong> {approvingApp.payment?.orNumber || approvingApp.or_number || (isEn ? "Paid at Treasury" : "Bayad sa Ingat-Yaman")}</div>
               </div>
 
               <div className="eap-modal-alert">
@@ -772,20 +862,24 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
                   <line x1="12" y1="8" x2="12.01" y2="8" />
                 </svg>
                 <p>
-                  Awtomatikong magkakaroon ng <strong>aktibong private infrastructure pin</strong> ang proyektong ito sa <strong>3D Cesium GIS at Street View</strong> para sa live on-site monitoring ng Engineering Office.
+                  {isEn ? (
+                    <>This project will automatically receive an <strong>active private infrastructure pin</strong> on the <strong>3D Cesium GIS and Street View</strong> for live on-site monitoring by the Engineering Office.</>
+                  ) : (
+                    <>Awtomatikong magkakaroon ng <strong>aktibong private infrastructure pin</strong> ang proyektong ito sa <strong>3D Cesium GIS at Street View</strong> para sa live on-site monitoring ng Engineering Office.</>
+                  )}
                 </p>
               </div>
 
               <div className="eap-form-group">
                 <label className="eap-form-label">
-                  <span>Opisyal na Remarks / Tala ng Engineer:</span>
+                  <span>{isEn ? "Official Engineer Remarks / Notes:" : "Opisyal na Remarks / Tala ng Engineer:"}</span>
                 </label>
                 <textarea
                   className="eap-textarea"
                   rows={3}
                   value={approvalNotes}
                   onChange={(e) => setApprovalNotes(e.target.value)}
-                  placeholder="Halimbawa: Naaprubahan batay sa isinumiteng structural plans. Handa na para sa Before Construction ocular inspection..."
+                  placeholder={isEn ? "Example: Approved based on submitted structural plans. Ready for Before Construction ocular inspection..." : "Halimbawa: Naaprubahan batay sa isinumiteng structural plans. Handa na para sa Before Construction ocular inspection..."}
                 />
               </div>
             </div>
@@ -797,7 +891,7 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
                 onClick={() => setApprovingApp(null)}
                 disabled={isSubmittingApproval}
               >
-                Kanselahin
+                {isEn ? "Cancel" : "Kanselahin"}
               </button>
               <button
                 type="button"
@@ -808,14 +902,14 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
                 {isSubmittingApproval ? (
                   <>
                     <div className="eap-spinner-sm" />
-                    <span>Ina-aprubahan...</span>
+                    <span>{isEn ? "Approving..." : "Ina-aprubahan..."}</span>
                   </>
                 ) : (
                   <>
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       <polyline points="20 6 9 17 4 12" />
                     </svg>
-                    <span>Oo, Aprubahan at I-pin sa Mapa</span>
+                    <span>{isEn ? "Yes, Approve & Pin on Map" : "Oo, Aprubahan at I-pin sa Mapa"}</span>
                   </>
                 )}
               </button>
@@ -837,17 +931,17 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
                 </svg>
               </div>
               <div>
-                <h3 className="eap-modal-title" style={{ color: "#f87171" }}>I-hold at Ibalik ang Aplikasyon sa Kliyente</h3>
+                <h3 className="eap-modal-title">{isEn ? "Hold and Return Application to Client" : "I-hold at Ibalik ang Aplikasyon sa Kliyente"}</h3>
                 <span className="eap-modal-tracking">{holdingApp.trackingNumber || holdingApp.id}</span>
               </div>
             </div>
 
             <div className="eap-modal-body">
               <div className="eap-modal-app-summary">
-                <div><strong>Aplikante:</strong> {holdingApp.applicant?.fullName || holdingApp.applicantName}</div>
-                <div><strong>Gusali:</strong> {holdingApp.lotDetails?.proposedBuildingType || holdingApp.buildingType || "Residential"}</div>
-                <div><strong>Barangay:</strong> Brgy. {holdingApp.applicant?.barangay || holdingApp.barangay}, Luisiana</div>
-                <div><strong>O.R. No:</strong> {holdingApp.payment?.orNumber || holdingApp.or_number || "Paid at Treasury"}</div>
+                <div><strong>{isEn ? "Applicant:" : "Aplikante:"}</strong> {holdingApp.applicant?.fullName || holdingApp.applicantName}</div>
+                <div><strong>{isEn ? "Building:" : "Gusali:"}</strong> {holdingApp.lotDetails?.proposedBuildingType || holdingApp.buildingType || "Residential"}</div>
+                <div><strong>{isEn ? "Barangay:" : "Barangay:"}</strong> Brgy. {holdingApp.applicant?.barangay || holdingApp.barangay}, Luisiana</div>
+                <div><strong>{isEn ? "O.R. No:" : "O.R. No:"}</strong> {holdingApp.payment?.orNumber || holdingApp.or_number || (isEn ? "Paid at Treasury" : "Bayad sa Ingat-Yaman")}</div>
               </div>
 
               <div className="eap-modal-alert is-hold-alert">
@@ -857,17 +951,21 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
                   <line x1="12" y1="17" x2="12.01" y2="17" />
                 </svg>
                 <p>
-                  <strong>Paalala:</strong> Ang pag-hold ay magbabalik ng record sa kliyente kasama ang mga tala/deficiencies ng Engineering Office para sa kanilang pagwawasto. <strong>HINDI ito mai-pin sa mapa</strong> hangga&apos;t hindi naaayos.
+                  {isEn ? (
+                    <><strong>Notice:</strong> Holding this application returns the record to the applicant with the Engineering Office deficiencies for correction. <strong>It CANNOT be pinned on the map</strong> until resolved.</>
+                  ) : (
+                    <><strong>Paalala:</strong> Ang pag-hold ay magbabalik ng record sa kliyente kasama ang mga tala/deficiencies ng Engineering Office para sa kanilang pagwawasto. <strong>HINDI ito mai-pin sa mapa</strong> hangga&apos;t hindi naaayos.</>
+                  )}
                 </p>
               </div>
 
               {/* Preset Quick Deficiency Reasons */}
               <div className="eap-preset-reasons-wrap">
                 <label className="eap-form-label">
-                  <span>Pumili ng Karaniwang Dahilan (I-click para mailagay sa tala):</span>
+                  <span>{isEn ? "Select Common Reason (Click to add to notes):" : "Pumili ng Karaniwang Dahilan (I-click para mailagay sa tala):"}</span>
                 </label>
                 <div className="eap-preset-buttons-grid">
-                  {PRESET_HOLD_REASONS.map((preset, idx) => (
+                  {(isEn ? PRESET_HOLD_REASONS_EN : PRESET_HOLD_REASONS_TL).map((preset, idx) => (
                     <button
                       key={idx}
                       type="button"
@@ -885,14 +983,14 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
 
               <div className="eap-form-group">
                 <label className="eap-form-label">
-                  <span>Opisyal na Dahilan ng Pag-Hold / Mga Dapat Ayusin ng Aplikante: <strong style={{ color: "#ef4444" }}>*</strong></span>
+                  <span>{isEn ? "Official Hold Reason / Applicant Deficiencies:" : "Opisyal na Dahilan ng Pag-Hold / Mga Dapat Ayusin ng Aplikante:"} <strong style={{ color: "#ef4444" }}>*</strong></span>
                 </label>
                 <textarea
                   className="eap-textarea is-hold-textarea"
                   rows={4}
                   value={holdReason}
                   onChange={(e) => setHoldReason(e.target.value)}
-                  placeholder="Isulat ang eksaktong detalye o mga kailangang i-revise ng aplikante bago maaprubahan ang clearance..."
+                  placeholder={isEn ? "Specify the exact details or required revisions before clearance can be approved..." : "Isulat ang eksaktong detalye o mga kailangang i-revise ng aplikante bago maaprubahan ang clearance..."}
                   required
                 />
               </div>
@@ -905,7 +1003,7 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
                 onClick={() => setHoldingApp(null)}
                 disabled={isSubmittingHold}
               >
-                Kanselahin
+                {isEn ? "Cancel" : "Kanselahin"}
               </button>
               <button
                 type="button"
@@ -916,7 +1014,7 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
                 {isSubmittingHold ? (
                   <>
                     <div className="eap-spinner-sm" />
-                    <span>Sine-save ang Hold...</span>
+                    <span>{isEn ? "Saving Hold..." : "Sine-save ang Hold..."}</span>
                   </>
                 ) : (
                   <>
@@ -925,7 +1023,7 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
                       <line x1="15" y1="9" x2="9" y2="15" />
                       <line x1="9" y1="9" x2="15" y2="15" />
                     </svg>
-                    <span>Kumpirmahin ang Pag-Hold at Ibalik</span>
+                    <span>{isEn ? "Confirm Hold and Return" : "Kumpirmahin ang Pag-Hold at Ibalik"}</span>
                   </>
                 )}
               </button>
@@ -934,24 +1032,21 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
         </div>
       )}
 
-      {/* 📄 DOCUMENT LIGHTBOX MODAL */}
-      {viewingDoc && (
-        <div className="eap-doc-lightbox-backdrop" onClick={() => setViewingDoc(null)}>
-          <div className="eap-doc-lightbox-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="eap-doc-lightbox-header">
-              <h4 className="eap-doc-lightbox-title">{viewingDoc.name}</h4>
-              <button type="button" className="eap-doc-lightbox-close" onClick={() => setViewingDoc(null)}>✕</button>
-            </div>
-            <div className="eap-doc-lightbox-body">
-              {viewingDoc.url.toLowerCase().endsWith(".pdf") ? (
-                <iframe src={viewingDoc.url} className="eap-doc-iframe" title={viewingDoc.name} />
-              ) : (
-                <img src={viewingDoc.url} alt={viewingDoc.name} className="eap-doc-img" />
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      {/* 📄 IN-SYSTEM DOCUMENT LIGHTBOX MODAL (Zero new tab redirects) */}
+      <InSystemDocModal
+        media={
+          viewingDoc
+            ? {
+                url: viewingDoc.url,
+                title: viewingDoc.name,
+                fileName: viewingDoc.name,
+                isPdf: isPdfFile(viewingDoc.url, viewingDoc.name),
+                isImg: isImageFile(viewingDoc.url, viewingDoc.name),
+              }
+            : null
+        }
+        onClose={() => setViewingDoc(null)}
+      />
     </div>
   );
 };

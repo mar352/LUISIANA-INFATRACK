@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ThemeToggle } from "./ThemeToggle";
+import { LanguageToggle, useTranslation } from "./LanguageToggle";
 import "./Landing.css";
 
 export type UserRole =
+  | "Super Admin"
   | "MPDC"
   | "Engineer"
   | "Agriculture"
-  | "Treasury Office"
-  | "Negosyo Center"
   | "Barangay Official"
   | "Private Engineer"
   | "Viewer";
@@ -22,11 +22,10 @@ export function isPrivateEngineer(role: UserRole | null | undefined): boolean {
 
 export function isMunicipalStaff(role: UserRole | null | undefined): boolean {
   return (
+    role === "Super Admin" ||
     role === "MPDC" ||
     role === "Engineer" ||
-    role === "Agriculture" ||
-    role === "Treasury Office" ||
-    role === "Negosyo Center"
+    role === "Agriculture"
   );
 }
 
@@ -44,6 +43,18 @@ export interface RoleConfig {
 }
 
 export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
+  "Super Admin": {
+    label: "Super Admin",
+    color: "#4f46e5",
+    description: "System Administrator — Employee Account Management, System Security & Permissions",
+    canSeeLayers: true,
+    canSeeRisk: true,
+    canSeeProjects: true,
+    canSeeAlerts: true,
+    canSeeBusinessPermits: true,
+    canSeePlanning: true,
+    canSeeEngagement: true,
+  },
   MPDC: {
     label: "MPDC",
     color: "#151c28",
@@ -65,7 +76,7 @@ export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
     canSeeProjects: true,
     canSeeAlerts: true,
     canSeeBusinessPermits: false,
-    canSeePlanning: true,
+    canSeePlanning: false,
     canSeeEngagement: true,
   },
   Agriculture: {
@@ -78,30 +89,6 @@ export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
     canSeeAlerts: true,
     canSeeBusinessPermits: false,
     canSeePlanning: true,
-    canSeeEngagement: false,
-  },
-  "Treasury Office": {
-    label: "Treasury Office",
-    color: "#059669",
-    description: "Municipal Treasury Office — Revenue, Payment Collections & Official Receipts (O.R.)",
-    canSeeLayers: false,
-    canSeeRisk: false,
-    canSeeProjects: false,
-    canSeeAlerts: false,
-    canSeeBusinessPermits: true,
-    canSeePlanning: false,
-    canSeeEngagement: false,
-  },
-  "Negosyo Center": {
-    label: "Negosyo Center",
-    color: "#0d9488",
-    description: "Business Permits & Licensing Office (BPLO) — Business clearances, tax orders, and renewals",
-    canSeeLayers: false,
-    canSeeRisk: false,
-    canSeeProjects: false,
-    canSeeAlerts: false,
-    canSeeBusinessPermits: true,
-    canSeePlanning: false,
     canSeeEngagement: false,
   },
   "Barangay Official": {
@@ -143,11 +130,11 @@ export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
 };
 
 export const ROLE_CREDENTIALS: Record<string, UserRole> = {
+  admin: "Super Admin",
   mpdc: "MPDC",
+  mpdc_admin: "Super Admin",
   engineer: "Engineer",
   agriculture: "Agriculture",
-  treasury: "Treasury Office",
-  negosyo: "Treasury Office",
   barangay: "Barangay Official",
   pengineer: "Private Engineer",
 };
@@ -202,7 +189,7 @@ const FEATURES: { icon: FeatureIcon; title: string; desc: string }[] = [
   { icon: "alert", title: "Hazard Risk Siting Assessment", desc: "Evaluate any coordinate for flood, rain-induced landslide, PEIS, and PHIVOLCS 2014 ground shaking before construction." },
   { icon: "building", title: "Infrastructure Tracking", desc: "Pin, place, and monitor municipal infrastructure with live progress milestones, blueprints, and inspector logs." },
   { icon: "bell", title: "Disaster-Resilient Planning", desc: "Barangay project requests scored against geotechnical constraints for MPDC zoning and engineering review." },
-  { icon: "clipboard", title: "Treasury Collections", desc: "Integrated municipal collections for Order of Payment, O.R. issuance, and business clearance fees." },
+  { icon: "clipboard", title: "Direct Citizen O.R. Upload", desc: "Applicants directly upload official receipts for instant verification and engineering inspection routing." },
 ];
 
 type LandingPageId = "overview" | "features" | "departments" | "risk" | "about";
@@ -226,7 +213,9 @@ const PageOverview = ({
   onTrackPermit?: () => void;
   setActivePage: (page: LandingPageId) => void;
 }) => {
+  const { language } = useTranslation();
   const [showcaseMode, setShowcaseMode] = useState<"map" | "video">("map");
+  const isEn = language === "en";
 
   return (
     <>
@@ -234,14 +223,18 @@ const PageOverview = ({
       <section className="hero-flat">
         <div className="hero-status-pill">
           <span className="hero-status-dot" />
-          <span>Live · Municipality of Luisiana, Laguna</span>
+          <span>{isEn ? "Live · Municipality of Luisiana, Laguna" : "Live · Bayan ng Luisiana, Laguna"}</span>
         </div>
 
         <h1>INFA-TRACK</h1>
-        <p className="hero-headline-sub">Precision GIS &amp; Disaster-Resilient Siting</p>
+        <p className="hero-headline-sub">
+          {isEn ? "Precision GIS & Disaster-Resilient Siting" : "Tumpak na GIS & Ligtas sa Sakunang Pagpaplano"}
+        </p>
 
         <p className="hero-lede">
-          Empowering Luisiana&apos;s municipal engineers, planners, and citizens to build on safer ground — featuring real-time 3D terrain intelligence, hazard risk analytics, and inter-departmental workflows.
+          {isEn
+            ? "Empowering Luisiana's municipal engineers, planners, and citizens to build on safer ground — featuring real-time 3D terrain intelligence, hazard risk analytics, and inter-departmental workflows."
+            : "Nagbibigay-kapangyarihan sa mga inhinyero, tagaplano, at mamamayan ng Luisiana na magtayo sa mas ligtas na lupain — tampok ang real-time 3D terrain intelligence, hazard risk analytics, at ugnayan ng mga kagawaran."}
         </p>
 
         <div className="hero-actions-cluster">
@@ -254,7 +247,7 @@ const PageOverview = ({
               <line x1="12" y1="5" x2="12" y2="19" />
               <line x1="5" y1="12" x2="19" y2="12" />
             </svg>
-            <span>Start New Application</span>
+            <span>{isEn ? "Start New Application" : "Magsimula ng Bagong Aplikasyon"}</span>
           </button>
 
           <button
@@ -266,7 +259,7 @@ const PageOverview = ({
               <circle cx="12" cy="12" r="10" />
               <polygon points="12 8 8 12 12 16 12 8" />
             </svg>
-            <span>Open Public Portal</span>
+            <span>{isEn ? "Open Public Portal" : "Buksan ang Pampublikong Portal"}</span>
           </button>
 
           {onTrackPermit && (
@@ -279,12 +272,12 @@ const PageOverview = ({
                 <circle cx="11" cy="11" r="8" />
                 <line x1="21" y1="21" x2="16.65" y2="16.65" />
               </svg>
-              <span>Track Permit</span>
+              <span>{isEn ? "Track Permit" : "Subaybayan ang Permit"}</span>
             </button>
           )}
 
           <button type="button" className="landing-btn landing-btn-ghost" onClick={onEnter}>
-            <span>Department Sign In →</span>
+            <span>{isEn ? "Department Sign In →" : "Pag-login ng Kagawaran →"}</span>
           </button>
         </div>
 
@@ -412,7 +405,6 @@ const PageOverview = ({
           { name: "MPDC", desc: "Pins project locations, evaluates terrain suitability, and coordinates zoning approvals.", scope: ["Site Siting", "Planning Board", "Zoning Clearance"] },
           { name: "Engineering Office", desc: "Performs geotechnical verification, places 3D CAD/glTF models, and monitors construction.", scope: ["3D Placement", "Inspections", "Structural Logs"] },
           { name: "Agriculture Office", desc: "Monitors agro-climatic risks, rural farm infrastructure, and flood vulnerability.", scope: ["Agro-Risk", "Watersheds", "Rural Roads"] },
-          { name: "Treasury Office", desc: "Handles revenue assessment, Order of Payment collection, and official receipt tracking.", scope: ["O.R. Issuance", "Collections", "Permit Fees"] },
           { name: "Barangay Officials", desc: "Submits community infrastructure proposals with ground coordinates and photos.", scope: ["Project Requests", "Local Notices", "Public Feedback"] },
         ].map((d) => (
           <div key={d.name} className="dept-card-flat">
@@ -509,7 +501,6 @@ const PageDepartments = ({ onEnter, onPublicPortal }: { onEnter: () => void; onP
               cfg.canSeeRisk && "Risk Assessment",
               cfg.canSeeProjects && "Infrastructure",
               cfg.canSeeAlerts && "Alerts Feed",
-              cfg.canSeeBusinessPermits && "Permits & Treasury",
               cfg.canSeePlanning && "Planning Board",
             ].filter(Boolean).map((item) => (
               <span key={item as string} className="dept-tag-chip">{item}</span>
@@ -591,7 +582,7 @@ const PageAbout = ({ onEnter, onPublicPortal }: { onEnter: () => void; onPublicP
           INFA-TRACK is the municipal GIS and infrastructure tracking platform developed for the local government unit of Luisiana, Laguna. It replaces fragmented paper files with a single, collaborative 3D geospatial environment.
         </p>
         <p>
-          By connecting MPDC planners, municipal engineers, treasury staff, and barangay captains on one interactive terrain globe, the system ensures that every peso of public investment is sited on safe, resilient ground.
+          By connecting MPDC planners, municipal engineers, and barangay captains on one interactive terrain globe, the system ensures that every peso of public investment is sited on safe, resilient ground.
         </p>
         <div style={{ display: "flex", gap: 10, marginTop: 24 }}>
           <button type="button" className="landing-btn landing-btn-primary" onClick={onPublicPortal}>
@@ -695,12 +686,15 @@ export function LandingPage({
     };
   }, []);
 
+  const { language } = useTranslation();
+  const isEn = language === "en";
+
   const NAV_LINKS: { label: string; page: LandingPageId }[] = [
-    { label: "Overview", page: "overview" },
-    { label: "Capabilities", page: "features" },
-    { label: "Departments", page: "departments" },
-    { label: "Risk Siting", page: "risk" },
-    { label: "About", page: "about" },
+    { label: isEn ? "Overview" : "Pangkalahatan", page: "overview" },
+    { label: isEn ? "Capabilities" : "Mga Tampok", page: "features" },
+    { label: isEn ? "Departments" : "Mga Kagawaran", page: "departments" },
+    { label: isEn ? "Risk Siting" : "Panganib sa Sakuna", page: "risk" },
+    { label: isEn ? "About" : "Tungkol", page: "about" },
   ];
 
   const PAGE_MAP = useMemo(
@@ -759,6 +753,7 @@ export function LandingPage({
         </div>
 
         <div className="landing-nav-actions">
+          <LanguageToggle />
           <ThemeToggle iconOnly />
 
           {onTrackPermit && (
@@ -766,13 +761,13 @@ export function LandingPage({
               type="button"
               className="landing-btn landing-btn-outline landing-nav-hide-mobile"
               onClick={onTrackPermit}
-              title="Track Permit Status"
+              title={isEn ? "Track Permit Status" : "Subaybayan ang Katayuan ng Permit"}
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                 <circle cx="11" cy="11" r="8" />
                 <line x1="21" y1="21" x2="16.65" y2="16.65" />
               </svg>
-              <span>Track Permit</span>
+              <span>{isEn ? "Track Permit" : "Subaybayan ang Permit"}</span>
             </button>
           )}
 
@@ -788,8 +783,8 @@ export function LandingPage({
               <line x1="12" y1="5" x2="12" y2="19" />
               <line x1="5" y1="12" x2="19" y2="12" />
             </svg>
-            <span className="landing-btn-label-desktop">New Application</span>
-            <span className="landing-btn-label-mobile">New App</span>
+            <span className="landing-btn-label-desktop">{isEn ? "New Application" : "Bagong Aplikasyon"}</span>
+            <span className="landing-btn-label-mobile">{isEn ? "New App" : "Bagong App"}</span>
           </button>
 
           <button
@@ -797,7 +792,7 @@ export function LandingPage({
             className="landing-btn landing-btn-secondary landing-nav-btn-signin"
             onClick={onEnter}
           >
-            <span>Sign In</span>
+            <span>{isEn ? "Sign In" : "Mag-sign In"}</span>
           </button>
 
           {/* Mobile hamburger menu toggle */}
@@ -843,7 +838,7 @@ export function LandingPage({
                 >
                   <span>{link.label}</span>
                   {activePage === link.page ? (
-                    <span className="active-pill">Current</span>
+                    <span className="active-pill">{isEn ? "Current" : "Kasalukuyan"}</span>
                   ) : (
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                       <polyline points="9 18 15 12 9 6" />
@@ -854,6 +849,9 @@ export function LandingPage({
             </div>
 
             <div className="landing-mobile-drawer-actions">
+              <div style={{ display: "flex", justifyContent: "center", marginBottom: "10px" }}>
+                <LanguageToggle />
+              </div>
               {onTrackPermit && (
                 <button
                   type="button"
@@ -867,7 +865,7 @@ export function LandingPage({
                     <circle cx="11" cy="11" r="8" />
                     <line x1="21" y1="21" x2="16.65" y2="16.65" />
                   </svg>
-                  <span>Track Permit Status</span>
+                  <span>{isEn ? "Track Permit Status" : "Subaybayan ang Katayuan ng Permit"}</span>
                 </button>
               )}
 
@@ -883,7 +881,7 @@ export function LandingPage({
                   <line x1="12" y1="5" x2="12" y2="19" />
                   <line x1="5" y1="12" x2="19" y2="12" />
                 </svg>
-                <span>Start New Application</span>
+                <span>{isEn ? "Start New Application" : "Magsimula ng Bagong Aplikasyon"}</span>
               </button>
 
               <button
@@ -894,7 +892,7 @@ export function LandingPage({
                   onEnter();
                 }}
               >
-                <span>Department Sign In</span>
+                <span>{isEn ? "Department Sign In" : "Pag-login ng Kagawaran"}</span>
               </button>
             </div>
 
@@ -961,26 +959,34 @@ export function LoginScreen({
     setLoading(false);
   }
 
+  const { language } = useTranslation();
+  const isEn = language === "en";
+
   return (
     <div className="login">
       <div className="login-nav-top">
         <button type="button" className="landing-btn landing-btn-ghost" onClick={onBack}>
-          ← Back to Overview
+          {isEn ? "← Back to Overview" : "← Bumalik sa Pangkalahatan"}
         </button>
-        <ThemeToggle iconOnly />
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <LanguageToggle />
+          <ThemeToggle iconOnly />
+        </div>
       </div>
 
       <div className="login-container">
         <div className="login-card-flat">
           <div className="login-card-header">
             <img src="/logo.png" alt="Luisiana Seal" className="login-card-logo" />
-            <h2>Sign In to INFA-TRACK</h2>
-            <p>Access your municipal department workspace</p>
+            <h2 style={{ fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
+              {isEn ? "Sign In to INFA-TRACK" : "Mag-login sa INFA-TRACK"}
+            </h2>
+            <p>{isEn ? "Access your municipal department workspace" : "I-access ang workspace ng iyong tanggapan"}</p>
           </div>
 
           <form onSubmit={handleSubmit} className="login-form">
             <div className="field">
-              <label htmlFor="login-user">Department Account / Username</label>
+              <label htmlFor="login-user">{isEn ? "Department Account / Username" : "Account sa Tanggapan / Username"}</label>
               <input
                 id="login-user"
                 type="text"
@@ -988,12 +994,12 @@ export function LoginScreen({
                 value={username}
                 autoFocus
                 onChange={(e) => { setUsername(e.target.value); setError(""); }}
-                placeholder="mpdc / engineer / agriculture / treasury / barangay"
+                placeholder="admin / mpdc_admin / mpdc / engineer / agriculture"
               />
             </div>
 
             <div className="field">
-              <label htmlFor="login-pass">Password</label>
+              <label htmlFor="login-pass">{isEn ? "Password" : "Password"}</label>
               <div className="login-password-wrap">
                 <input
                   id="login-pass"
@@ -1029,12 +1035,14 @@ export function LoginScreen({
             {error && <div className="login-error-pill">{error}</div>}
 
             <button type="submit" className="login-submit-btn" disabled={loading}>
-              {loading ? "Verifying credentials..." : "Sign In to Dashboard"}
+              {loading
+                ? (isEn ? "Verifying credentials..." : "Sinusuri ang impormasyon...")
+                : (isEn ? "Sign In to Dashboard" : "Mag-login sa Dashboard")}
             </button>
           </form>
 
           <div className="login-accounts-ref">
-            <div className="login-accounts-title">Authorized Roles</div>
+            <div className="login-accounts-title">{isEn ? "Authorized Roles" : "Mga Awtorisadong Tungkulin"}</div>
             <div className="login-accounts-grid">
               {(Object.entries(ROLE_CONFIGS) as [UserRole, RoleConfig][]).map(([roleKey, cfg]) => (
                 <div key={roleKey} className="login-account-item">

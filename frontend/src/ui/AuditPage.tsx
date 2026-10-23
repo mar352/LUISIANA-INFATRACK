@@ -4,11 +4,17 @@ import {
   type AuditCategory,
   type AuditEvent,
 } from "../services/firestore-audit";
+import type { SessionUser } from "../services/auth";
 import { ThemeToggle } from "./ThemeToggle";
+import SideNavbar from "./SideNavbar";
+import MpdcTopNavbar from "./MpdcTopNavbar";
 import "./AuditPage.css";
 
 type Props = {
   onBack: () => void;
+  onNavigate?: (screen: string) => void;
+  session?: SessionUser | null;
+  onLogout?: () => void;
 };
 
 const CATEGORIES: { id: AuditCategory | ""; label: string }[] = [
@@ -30,7 +36,7 @@ function formatWhen(iso: string) {
   }
 }
 
-export default function AuditPage({ onBack }: Props) {
+export default function AuditPage({ onBack, onNavigate, session, onLogout }: Props) {
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -89,25 +95,35 @@ export default function AuditPage({ onBack }: Props) {
 
   return (
     <div className="audit-page">
-      <header className="audit-top">
-        <div className="audit-top-left">
-          <button type="button" className="audit-back" onClick={onBack}>
-            ← Map
-          </button>
-          <div>
-            <h1>Activity log</h1>
-            <p className="audit-sub">Audit trail of sign-ins and municipal record changes</p>
-          </div>
-        </div>
-        <div className="audit-top-actions">
-          <ThemeToggle iconOnly />
-          <button type="button" className="audit-export" onClick={exportCsv} disabled={filtered.length === 0}>
+      <MpdcTopNavbar
+        title="Talaan ng Aktibidad (Audit Trail)"
+        subtitle="Audit trail ng mga sign-in at mga pagbabago sa talaan ng munisipyo · 24 Oras na Retensyon"
+        brandPill="MPDC"
+        accentClass="topnav-accent-mpdc"
+        onBack={onBack}
+        backLabel="Bumalik"
+        serviceTag="Security & Audit Trail"
+        serviceSla="24-Hour Real-Time Tamper-Proof Trail"
+        session={session}
+        userDept="Security & Records Custodian"
+        onLogout={onLogout}
+        extraControls={
+          <button
+            type="button"
+            className="audit-export"
+            onClick={exportCsv}
+            disabled={filtered.length === 0}
+            title="I-export ang audit log bilang CSV file"
+          >
             Export CSV
           </button>
-        </div>
-      </header>
+        }
+      />
 
-      <div className="audit-toolbar">
+      <div className="app-page-body-with-side-nav">
+        <SideNavbar currentScreen="audit" onNavigate={onNavigate} currentRole={session?.role || "MPDC"} />
+        <div className="app-page-main-with-side-nav">
+          <div className="audit-toolbar">
         <input
           type="search"
           className="audit-search"
@@ -133,7 +149,7 @@ export default function AuditPage({ onBack }: Props) {
         {loading && <p className="audit-empty">Loading activity…</p>}
         {error && <p className="audit-empty">Could not load the audit trail: {error}</p>}
         {!loading && !error && filtered.length === 0 && (
-          <p className="audit-empty">No matching events yet. Sign-ins and record edits will appear here.</p>
+          <p className="audit-empty">No matching events in the past 24 hours. Sign-ins and record edits from the last 24 hours will appear here.</p>
         )}
         {!loading && filtered.length > 0 && (
           <table className="audit-table">
@@ -162,6 +178,8 @@ export default function AuditPage({ onBack }: Props) {
             </tbody>
           </table>
         )}
+      </div>
+        </div>
       </div>
     </div>
   );

@@ -34,21 +34,22 @@ export function getPlanningPermissions(role: UserRole | null): PlanningPermissio
 
   const isViewer = role === "Viewer";
   const isBarangay = role === "Barangay Official";
-  const isMpdC = role === "MPDC";
+  const isMpdC = role === "MPDC" || role === "Super Admin";
   const isTreasury = role === "Treasury Office" || role === "Negosyo Center";
+  const isEngineer = role === "Engineer" || role === "Private Engineer";
 
   return {
-    canView: !isViewer && !isTreasury,
-    canCreate: !isViewer && !isTreasury,
-    canComment: !isViewer && !isTreasury,
+    canView: !isViewer && !isTreasury && !isEngineer,
+    canCreate: !isViewer && !isTreasury && !isEngineer,
+    canComment: !isViewer && !isTreasury && !isEngineer,
     canSetPriority: isMpdC,
     canAssign: isMpdC,
     canRecommend: isMpdC,
     canApprove: isMpdC,
     canChangeStatus: isMpdC,
-    canVote: !isViewer && !isBarangay && !isTreasury,
-    canManageCalendar: !isViewer && !isBarangay && !isTreasury,
-    canManageMeetings: (isMpdC || role === "Engineer") && !isBarangay && !isTreasury,
+    canVote: !isViewer && !isBarangay && !isTreasury && !isEngineer,
+    canManageCalendar: !isViewer && !isBarangay && !isTreasury && !isEngineer,
+    canManageMeetings: isMpdC,
   };
 }
 
@@ -59,8 +60,8 @@ export function allowedStatusTransitions(
 ): PlanningProposalStatus[] {
   if (!role || role === "Viewer" || role === "Treasury Office" || role === "Negosyo Center") return [];
 
-  // Submitters may only file / resubmit. MPDC owns the review pipeline.
-  if (role !== "MPDC") {
+  // Submitters may only file / resubmit. MPDC (and Super Admin) owns the review pipeline.
+  if (role !== "MPDC" && role !== "Super Admin") {
     if (status === "draft" || status === "returned") return ["submitted"];
     return [];
   }

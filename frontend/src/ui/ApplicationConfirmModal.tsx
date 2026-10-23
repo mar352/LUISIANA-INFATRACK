@@ -1,6 +1,38 @@
 import React, { useEffect } from "react";
 import type { ProjectCategory } from "../types";
+import { useTranslation } from "./LanguageToggle";
 import "./ApplicationConfirmModal.css";
+
+/* ── SVG Icons (Zero Emoji) ── */
+const IconClipboard = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+    <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+  </svg>
+);
+const IconUser = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+    <circle cx="12" cy="7" r="4" />
+  </svg>
+);
+const IconTag = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+    <line x1="7" y1="7" x2="7.01" y2="7" />
+  </svg>
+);
+const IconPin = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+    <circle cx="12" cy="10" r="3" />
+  </svg>
+);
+const IconFolder = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+  </svg>
+);
 
 export interface ApplicationConfirmData {
   category: ProjectCategory;
@@ -31,6 +63,7 @@ export interface ApplicationConfirmData {
   targetBeneficiaries?: string;
   // GIS & Hazard
   pinnedCoords: { lat: number; lon: number };
+  isGeotagged?: boolean;
   floodHazard?: string;
   landslideHazard?: string;
   banahawKm: number;
@@ -56,6 +89,9 @@ export default function ApplicationConfirmModal({
   submitting,
   data,
 }: ApplicationConfirmModalProps) {
+  const { language } = useTranslation();
+  const isEn = language === "en";
+
   // Listen for Escape key
   useEffect(() => {
     if (!isOpen) return;
@@ -73,12 +109,13 @@ export default function ApplicationConfirmModal({
   const getHazardBadge = (val?: string) => {
     const v = String(val || "Safe").toLowerCase();
     let badgeClass = "is-safe";
-    if (v.includes("high") || v.includes("critical") || v.includes("very high")) {
+    if (v.includes("high") || v.includes("critical") || v.includes("very high") || v.includes("mataas")) {
       badgeClass = "is-danger";
-    } else if (v.includes("mod") || v.includes("medium") || v.includes("warn") || v.includes("low")) {
+    } else if (v.includes("mod") || v.includes("medium") || v.includes("warn") || v.includes("low") || v.includes("katamtaman")) {
       badgeClass = "is-warn";
     }
-    return <span className={`app-confirm-badge ${badgeClass}`}>{val || "Safe"}</span>;
+    const label = val || (isEn ? "Low / Safe" : "Ligtas / Mababa");
+    return <span className={`app-confirm-badge ${badgeClass}`}>{label}</span>;
   };
 
   return (
@@ -100,10 +137,12 @@ export default function ApplicationConfirmModal({
             <img src="/logo.png" alt="Bayan ng Luisiana" className="app-confirm-logo" />
             <div>
               <h2 id="app-confirm-title" className="app-confirm-title">
-                Suriin at Kumpirmahin ang Aplikasyon
+                {isEn ? "Review & Confirm Application" : "Suriin at Kumpirmahin ang Aplikasyon"}
               </h2>
               <p className="app-confirm-subtitle">
-                Pakisuri ang mga impormasyon bago opisyal na isumite sa Tanggapan ng MPDC
+                {isEn
+                  ? "Please review all details before officially submitting to the MPDC Office"
+                  : "Pakisuri ang mga impormasyon bago opisyal na isumite sa Tanggapan ng MPDC"}
               </p>
             </div>
           </div>
@@ -112,8 +151,8 @@ export default function ApplicationConfirmModal({
               type="button"
               className="app-confirm-close-btn"
               onClick={onClose}
-              aria-label="Isara ang pagsusuri"
-              title="Isara"
+              aria-label={isEn ? "Close review modal" : "Isara ang pagsusuri"}
+              title={isEn ? "Close" : "Isara"}
             >
               ✕
             </button>
@@ -126,8 +165,8 @@ export default function ApplicationConfirmModal({
           <div className="app-confirm-card">
             <div className="app-confirm-card-head">
               <div className="app-confirm-card-title">
-                <span>📋</span>
-                <span>Kategorya at Proyekto</span>
+                <IconClipboard />
+                <span>{isEn ? "Category & Project" : "Kategorya at Proyekto"}</span>
               </div>
               <span className="app-confirm-badge is-accent">
                 {data.categoryLabel}
@@ -135,19 +174,19 @@ export default function ApplicationConfirmModal({
             </div>
             <div className="app-confirm-grid">
               <div className="app-confirm-item full-width">
-                <span className="app-confirm-item-label">Pamagat ng Proyekto</span>
-                <span className="app-confirm-item-val">{data.title || "Walang Pamagat"}</span>
+                <span className="app-confirm-item-label">{isEn ? "Project Title" : "Pamagat ng Proyekto"}</span>
+                <span className="app-confirm-item-val">{data.title || (isEn ? "Untitled Application" : "Walang Pamagat")}</span>
               </div>
               <div className="app-confirm-item">
-                <span className="app-confirm-item-label">Tinatayang Halaga (Cost)</span>
+                <span className="app-confirm-item-label">{isEn ? "Estimated Cost" : "Tinatayang Halaga (Cost)"}</span>
                 <span className="app-confirm-item-val">
                   {typeof data.estimatedCostPhp === "number" && data.estimatedCostPhp > 0
                     ? `₱${data.estimatedCostPhp.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`
-                    : "Hindi Tinukoy"}
+                    : (isEn ? "Not Specified" : "Hindi Tinukoy")}
                 </span>
               </div>
               <div className="app-confirm-item">
-                <span className="app-confirm-item-label">Serbisyo ng Tanggapan</span>
+                <span className="app-confirm-item-label">{isEn ? "Department Service" : "Serbisyo ng Tanggapan"}</span>
                 <span className="app-confirm-item-val">Locational Clearance / Zoning</span>
               </div>
 
@@ -155,16 +194,16 @@ export default function ApplicationConfirmModal({
               {data.category === "agricultural" && (
                 <>
                   <div className="app-confirm-item">
-                    <span className="app-confirm-item-label">Uri ng Sakahan / Hayop</span>
-                    <span className="app-confirm-item-val">{data.farmType || "Hindi tinukoy"}</span>
+                    <span className="app-confirm-item-label">{isEn ? "Farm / Livestock Type" : "Uri ng Sakahan / Hayop"}</span>
+                    <span className="app-confirm-item-val">{data.farmType || (isEn ? "Not specified" : "Hindi tinukoy")}</span>
                   </div>
                   <div className="app-confirm-item">
-                    <span className="app-confirm-item-label">Kapasidad (Head Capacity)</span>
+                    <span className="app-confirm-item-label">{isEn ? "Head Capacity" : "Kapasidad (Head Capacity)"}</span>
                     <span className="app-confirm-item-val">{data.headCapacity ? `${data.headCapacity} heads` : "0"}</span>
                   </div>
                   <div className="app-confirm-item full-width">
-                    <span className="app-confirm-item-label">Pamamahala ng Dumi (Waste Mgt.)</span>
-                    <span className="app-confirm-item-val">{data.wasteManagement || "Hindi tinukoy"}</span>
+                    <span className="app-confirm-item-label">{isEn ? "Waste Management" : "Pamamahala ng Dumi (Waste Mgt.)"}</span>
+                    <span className="app-confirm-item-val">{data.wasteManagement || (isEn ? "Not specified" : "Hindi tinukoy")}</span>
                   </div>
                 </>
               )}
@@ -173,11 +212,11 @@ export default function ApplicationConfirmModal({
               {data.category === "municipal_project" && (
                 <>
                   <div className="app-confirm-item">
-                    <span className="app-confirm-item-label">Kagawaran / Tanggapan</span>
+                    <span className="app-confirm-item-label">{isEn ? "Department / Office" : "Kagawaran / Tanggapan"}</span>
                     <span className="app-confirm-item-val">{data.implementingDepartment || "LGU Luisiana"}</span>
                   </div>
                   <div className="app-confirm-item">
-                    <span className="app-confirm-item-label">Pinagmulan ng Pondo</span>
+                    <span className="app-confirm-item-label">{isEn ? "Funding Source" : "Pinagmulan ng Pondo"}</span>
                     <span className="app-confirm-item-val">{data.fundingSource || "General Fund / 20% DF"}</span>
                   </div>
                   {data.cipCode && (
@@ -188,7 +227,7 @@ export default function ApplicationConfirmModal({
                   )}
                   {data.targetBeneficiaries && (
                     <div className="app-confirm-item">
-                      <span className="app-confirm-item-label">Mga Benepisyaryo</span>
+                      <span className="app-confirm-item-label">{isEn ? "Target Beneficiaries" : "Mga Benepisyaryo"}</span>
                       <span className="app-confirm-item-val">{data.targetBeneficiaries}</span>
                     </div>
                   )}
@@ -201,29 +240,29 @@ export default function ApplicationConfirmModal({
           <div className="app-confirm-card">
             <div className="app-confirm-card-head">
               <div className="app-confirm-card-title">
-                <span>👤</span>
-                <span>Impormasyon ng Aplikante</span>
+                <IconUser />
+                <span>{isEn ? "Applicant Information" : "Impormasyon ng Aplikante"}</span>
               </div>
             </div>
             <div className="app-confirm-grid">
               <div className="app-confirm-item">
-                <span className="app-confirm-item-label">Buong Pangalan</span>
-                <span className="app-confirm-item-val">{data.applicantName || "Aplikante"}</span>
+                <span className="app-confirm-item-label">{isEn ? "Full Name" : "Buong Pangalan"}</span>
+                <span className="app-confirm-item-val">{data.applicantName || (isEn ? "Applicant" : "Aplikante")}</span>
               </div>
               <div className="app-confirm-item">
-                <span className="app-confirm-item-label">Numero ng Telepono</span>
-                <span className="app-confirm-item-val">{data.contactPhone || "Walang numero"}</span>
+                <span className="app-confirm-item-label">{isEn ? "Phone Number" : "Numero ng Telepono"}</span>
+                <span className="app-confirm-item-val">{data.contactPhone || (isEn ? "No number" : "Walang numero")}</span>
               </div>
               <div className="app-confirm-item">
-                <span className="app-confirm-item-label">Email Address</span>
-                <span className="app-confirm-item-val">{data.contactEmail || "Walang email"}</span>
+                <span className="app-confirm-item-label">{isEn ? "Email Address" : "Email Address"}</span>
+                <span className="app-confirm-item-val">{data.contactEmail || (isEn ? "No email" : "Walang email")}</span>
               </div>
               <div className="app-confirm-item">
-                <span className="app-confirm-item-label">Barangay sa Luisiana</span>
+                <span className="app-confirm-item-label">{isEn ? "Barangay in Luisiana" : "Barangay sa Luisiana"}</span>
                 <span className="app-confirm-item-val">{data.barangay}</span>
               </div>
               <div className="app-confirm-item full-width">
-                <span className="app-confirm-item-label">Tirahan / Lokasyon ng Lote</span>
+                <span className="app-confirm-item-label">{isEn ? "Address / Lot Location" : "Tirahan / Lokasyon ng Lote"}</span>
                 <span className="app-confirm-item-val">{data.locationDescription || `${data.barangay}, Luisiana, Laguna`}</span>
               </div>
             </div>
@@ -233,8 +272,8 @@ export default function ApplicationConfirmModal({
           <div className="app-confirm-card">
             <div className="app-confirm-card-head">
               <div className="app-confirm-card-title">
-                <span>🏷️</span>
-                <span>Detalye ng Lote at Zoning</span>
+                <IconTag />
+                <span>{isEn ? "Lot & Zoning Details" : "Detalye ng Lote at Zoning"}</span>
               </div>
               {data.zoningClassification && (
                 <span className="app-confirm-badge is-accent">
@@ -244,33 +283,35 @@ export default function ApplicationConfirmModal({
             </div>
             <div className="app-confirm-grid">
               <div className="app-confirm-item">
-                <span className="app-confirm-item-label">TCT No. / Titulo</span>
-                <span className="app-confirm-item-val">{data.tctNo || "Hindi Tinukoy"}</span>
+                <span className="app-confirm-item-label">{isEn ? "TCT No. / Title" : "TCT No. / Titulo"}</span>
+                <span className="app-confirm-item-val">{data.tctNo || (isEn ? "Not Specified" : "Hindi Tinukoy")}</span>
               </div>
               <div className="app-confirm-item">
-                <span className="app-confirm-item-label">Tax Declaration No.</span>
-                <span className="app-confirm-item-val">{data.taxDecNo || "Hindi Tinukoy"}</span>
+                <span className="app-confirm-item-label">{isEn ? "Tax Declaration No." : "Tax Declaration No."}</span>
+                <span className="app-confirm-item-val">{data.taxDecNo || (isEn ? "Not Specified" : "Hindi Tinukoy")}</span>
               </div>
               <div className="app-confirm-item">
-                <span className="app-confirm-item-label">Katayuan sa Lote</span>
+                <span className="app-confirm-item-label">{isEn ? "Lot Ownership Status" : "Katayuan sa Lote"}</span>
                 <span className="app-confirm-item-val">
-                  {data.isOwner ? "Aplikante ang May-ari" : "May Pahintulot / Kinatawan"}
+                  {data.isOwner
+                    ? (isEn ? "Applicant is the Owner" : "Aplikante ang May-ari")
+                    : (isEn ? "Authorized Representative" : "May Pahintulot / Kinatawan")}
                 </span>
               </div>
               <div className="app-confirm-item">
-                <span className="app-confirm-item-label">Uri ng Gusali</span>
+                <span className="app-confirm-item-label">{isEn ? "Building Type" : "Uri ng Gusali"}</span>
                 <span className="app-confirm-item-val">{data.buildingType || "Residential / Standard"}</span>
               </div>
               <div className="app-confirm-item">
-                <span className="app-confirm-item-label">Sukat ng Lote</span>
+                <span className="app-confirm-item-label">{isEn ? "Lot Area" : "Sukat ng Lote"}</span>
                 <span className="app-confirm-item-val">
                   {typeof data.lotAreaSqM === "number" && data.lotAreaSqM > 0
                     ? `${data.lotAreaSqM.toLocaleString()} sq.m.`
-                    : "Hindi Tinukoy"}
+                    : (isEn ? "Not Specified" : "Hindi Tinukoy")}
                 </span>
               </div>
               <div className="app-confirm-item">
-                <span className="app-confirm-item-label">Opisyal na CLUP Zone</span>
+                <span className="app-confirm-item-label">{isEn ? "Official CLUP Zone" : "Opisyal na CLUP Zone"}</span>
                 <span className="app-confirm-item-val">{data.zoningClassification || "Urban / Rural Zone"}</span>
               </div>
             </div>
@@ -280,27 +321,34 @@ export default function ApplicationConfirmModal({
           <div className="app-confirm-card">
             <div className="app-confirm-card-head">
               <div className="app-confirm-card-title">
-                <span>📍</span>
-                <span>GIS Location &amp; Hazard Clearance</span>
+                <IconPin />
+                <span>{isEn ? "GIS Location & Hazard Clearance" : "Lokasyon sa GIS & Clearance sa Panganib"}</span>
               </div>
             </div>
             <div className="app-confirm-grid">
               <div className="app-confirm-item">
-                <span className="app-confirm-item-label">Koordinada ng Lote (Pin)</span>
-                <span className="app-confirm-item-val" style={{ fontFamily: "monospace", fontSize: "0.82rem" }}>
-                  {data.pinnedCoords.lat.toFixed(6)}° N, {data.pinnedCoords.lon.toFixed(6)}° E
+                <span className="app-confirm-item-label">{isEn ? "Lot Coordinates (Pin)" : "Koordinada ng Lote (Pin)"}</span>
+                <span className="app-confirm-item-val" style={{ fontFamily: "monospace", fontSize: "0.82rem", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                  <span>{data.pinnedCoords.lat.toFixed(6)}° N, {data.pinnedCoords.lon.toFixed(6)}° E</span>
+                  {data.isGeotagged && (
+                    <span style={{ fontSize: "0.72rem", padding: "1px 6px", borderRadius: 4, background: "rgba(16,185,129,0.15)", color: "#10b981", fontWeight: 600 }}>
+                      📸 Geotag
+                    </span>
+                  )}
                 </span>
               </div>
               <div className="app-confirm-item">
-                <span className="app-confirm-item-label">Mt. Banahaw Distance</span>
-                <span className="app-confirm-item-val">{data.banahawKm.toFixed(1)} km hilaga ng summit</span>
+                <span className="app-confirm-item-label">{isEn ? "Mt. Banahaw Distance" : "Distansya sa Mt. Banahaw"}</span>
+                <span className="app-confirm-item-val">
+                  {data.banahawKm.toFixed(1)} {isEn ? "km north of summit" : "km hilaga ng summit"}
+                </span>
               </div>
               <div className="app-confirm-item">
-                <span className="app-confirm-item-label">Katayuan sa Baha (Flood Hazard)</span>
+                <span className="app-confirm-item-label">{isEn ? "Flood Hazard Status" : "Katayuan sa Baha (Flood Hazard)"}</span>
                 <div>{getHazardBadge(data.floodHazard)}</div>
               </div>
               <div className="app-confirm-item">
-                <span className="app-confirm-item-label">Katayuan sa Landslide (Ulan)</span>
+                <span className="app-confirm-item-label">{isEn ? "Rain-Induced Landslide Status" : "Katayuan sa Landslide (Ulan)"}</span>
                 <div>{getHazardBadge(data.landslideHazard)}</div>
               </div>
             </div>
@@ -310,8 +358,8 @@ export default function ApplicationConfirmModal({
           <div className="app-confirm-card">
             <div className="app-confirm-card-head">
               <div className="app-confirm-card-title">
-                <span>📁</span>
-                <span>Mga Kalakip na Dokumento</span>
+                <IconFolder />
+                <span>{isEn ? "Attached Documents" : "Mga Kalakip na Dokumento"}</span>
               </div>
             </div>
             <div className="app-confirm-docs-list">
@@ -329,7 +377,9 @@ export default function ApplicationConfirmModal({
                   ))
               ) : (
                 <div style={{ fontSize: "0.8rem", color: "var(--apple-text-secondary, #6e6e73)", fontStyle: "italic", padding: "4px 0" }}>
-                  Walang na-upload na file (Maaari ding i-presenta ang pisikal na kopya sa tanggapan ng MPDC).
+                  {isEn
+                    ? "No uploaded files (Physical copies may also be presented at the MPDC Office)."
+                    : "Walang na-upload na file (Maaari ding i-presenta ang pisikal na kopya sa tanggapan ng MPDC)."}
                 </div>
               )}
             </div>
@@ -342,7 +392,15 @@ export default function ApplicationConfirmModal({
               <polyline points="9 12 11 14 15 10" />
             </svg>
             <span>
-              Sa pagpindot ng <strong>"Kumpirmahin at I-submit Na"</strong>, pinatutunayan mo na totoo, kumpleto, at wasto ang lahat ng impormasyon na iyong ipinahayag alinsunod sa mga panuntunan ng Bayan ng Luisiana at Data Privacy Act (RA 10173).
+              {isEn ? (
+                <>
+                  By clicking <strong>"Confirm & Submit Now"</strong>, you certify that all information declared is true, complete, and correct pursuant to the regulations of the Municipality of Luisiana and the Data Privacy Act (RA 10173).
+                </>
+              ) : (
+                <>
+                  Sa pagpindot ng <strong>"Kumpirmahin at I-submit Na"</strong>, pinatutunayan mo na totoo, kumpleto, at wasto ang lahat ng impormasyon na iyong ipinahayag alinsunod sa mga panuntunan ng Bayan ng Luisiana at Data Privacy Act (RA 10173).
+                </>
+              )}
             </span>
           </div>
         </div>
@@ -355,7 +413,7 @@ export default function ApplicationConfirmModal({
             onClick={onClose}
             disabled={submitting}
           >
-            <span>← Baguhin ang Form</span>
+            <span>{isEn ? "← Edit Form" : "← Baguhin ang Form"}</span>
           </button>
           <button
             type="button"
@@ -364,10 +422,10 @@ export default function ApplicationConfirmModal({
             onClick={onConfirmSubmit}
           >
             {submitting ? (
-              <span>Isinusumite ang Aplikasyon...</span>
+              <span>{isEn ? "Submitting Application..." : "Isinusumite ang Aplikasyon..."}</span>
             ) : (
               <>
-                <span>Kumpirmahin at I-submit Na</span>
+                <span>{isEn ? "Confirm & Submit Now" : "Kumpirmahin at I-submit Na"}</span>
                 <span>✓</span>
               </>
             )}

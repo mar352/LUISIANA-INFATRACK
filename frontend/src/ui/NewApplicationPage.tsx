@@ -8,6 +8,8 @@ import type {
 } from "../types";
 import { LUISIANA_CENTER } from "../lib/solar";
 import { ThemeToggle } from "./ThemeToggle";
+import { useTranslation, LanguageToggle } from "./LanguageToggle";
+import { useSystemConfig } from "../services/systemConfig";
 import PinpointMapPicker, { BARANGAY_COORDINATES } from "./PinpointMapPicker";
 import { normalizeBarangayName, getClupZone } from "../lib/clup-zones";
 import {
@@ -17,6 +19,8 @@ import {
 } from "../lib/luisiana-site-assess";
 import { printSiteHazardReport } from "../lib/hazard-report";
 import { uploadCitizenDocument, submitCitizenApplication } from "../lib/api";
+import { validateApplicationFile } from "../lib/documentValidation";
+import { extractGeotagCoordinates, type GeotagExtractionResult } from "../lib/geotag";
 import ApplicationTermsModal from "./ApplicationTermsModal";
 import ApplicationConfirmModal, { type ApplicationConfirmData } from "./ApplicationConfirmModal";
 import { isAppTermsAccepted, setAppTermsAccepted, fetchClientPublicIp } from "../lib/terms-consent";
@@ -54,6 +58,74 @@ const IconBuilding = ({ size = 32, color = "currentColor" }: { size?: number; co
   </svg>
 );
 
+const IconHome = ({ size = 30, color = "currentColor" }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+    <polyline points="9 22 9 12 15 12 15 22" />
+  </svg>
+);
+
+const IconApartment = ({ size = 30, color = "currentColor" }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <rect x="3" y="3" width="18" height="18" rx="2" />
+    <path d="M7 7h2v2H7z" />
+    <path d="M15 7h2v2h-2z" />
+    <path d="M7 11h2v2H7z" />
+    <path d="M15 11h2v2h-2z" />
+    <path d="M7 15h2v2H7z" />
+    <path d="M15 15h2v2h-2z" />
+    <line x1="11" y1="21" x2="11" y2="15" />
+    <line x1="13" y1="21" x2="13" y2="15" />
+    <line x1="11" y1="15" x2="13" y2="15" />
+  </svg>
+);
+
+const IconTownhouse = ({ size = 30, color = "currentColor" }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M2 10l5-4 5 4v10H2z" />
+    <path d="M12 10l5-4 5 4v10h-10z" />
+    <path d="M5 14h2" />
+    <path d="M15 14h2" />
+  </svg>
+);
+
+const IconDormitory = ({ size = 30, color = "currentColor" }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M2 4v16" />
+    <path d="M2 8h18a2 2 0 0 1 2 2v10" />
+    <path d="M2 17h20" />
+    <path d="M6 8v9" />
+    <circle cx="6" cy="6" r="2" />
+  </svg>
+);
+
+const IconInstitutional = ({ size = 30, color = "currentColor" }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <line x1="2" y1="21" x2="22" y2="21" />
+    <line x1="4" y1="10" x2="4" y2="21" />
+    <line x1="8" y1="10" x2="8" y2="21" />
+    <line x1="12" y1="10" x2="12" y2="21" />
+    <line x1="16" y1="10" x2="16" y2="21" />
+    <line x1="20" y1="10" x2="20" y2="21" />
+    <polygon points="12 2 2 8 22 8" />
+  </svg>
+);
+
+const IconCommercial = ({ size = 30, color = "currentColor" }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
+    <line x1="3" y1="6" x2="21" y2="6" />
+    <path d="M16 10a4 4 0 0 1-8 0" />
+  </svg>
+);
+
+const IconIndustrial = ({ size = 30, color = "currentColor" }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M2 20h20" />
+    <path d="M3 20V8l6 4V8l6 4V4l6 4v12" />
+  </svg>
+);
+
 const IconAgriculture = ({ size = 32, color = "currentColor" }: { size?: number; color?: string }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
     <path d="M12 2a9 9 0 0 1 9 9c0 4.97-4.03 9-9 9A9 9 0 0 1 3 11c0-4.97 4.03-9 9-9z" />
@@ -62,6 +134,199 @@ const IconAgriculture = ({ size = 32, color = "currentColor" }: { size?: number;
     <path d="M8 15c2-2 4-2 4-2s2 0 4 2" />
   </svg>
 );
+
+const IconAgroIndustrial = IconAgriculture;
+
+export function getOfficialCategories(isEn: boolean) {
+  return [
+    {
+      key: "Residential",
+      title: "Residential",
+      tagline: isEn ? "Family Housing / Residence" : "Pabahay para sa Pamilya",
+      desc: isEn
+        ? "Single-family homes, duplex, bungalow, or private family residence."
+        : "Single-family homes, duplex, bungalow, o pribadong tirahan ng pamilya.",
+      badge: isEn ? "Housing" : "Pabahay",
+      color: "var(--apple-accent, #0071e3)",
+      icon: IconHome,
+      isAgro: false,
+      features: isEn
+        ? [
+            "Building setback and zoning clearance",
+            "Siting hazard screening",
+            "Land title / Tax Dec verification",
+          ]
+        : [
+            "Building setback at zoning clearance",
+            "Siting hazard screening",
+            "Land title / Tax Dec verification",
+          ],
+    },
+    {
+      key: "Apartment",
+      title: "Apartment",
+      tagline: isEn ? "Rental Building / Multi-Unit" : "Paupahang Gusali / Multi-Unit",
+      desc: isEn
+        ? "Apartment complex, rental units, or residential rental buildings."
+        : "Apartment complex, paupahang mga yunit, o residential rental buildings.",
+      badge: isEn ? "Multi-Unit" : "Multi-Unit",
+      color: "#2563eb",
+      icon: IconApartment,
+      isAgro: false,
+      features: isEn
+        ? [
+            "Density and parking requirements",
+            "Fire safety and egress clearance",
+            "Locational clearance endorsement",
+          ]
+        : [
+            "Density at parking requirement",
+            "Fire safety at egress clearance",
+            "Locational clearance endorsement",
+          ],
+    },
+    {
+      key: "Townhouse",
+      title: "Townhouse",
+      tagline: isEn ? "Row House / Cluster" : "Row House / Cluster",
+      desc: isEn
+        ? "Townhouses, attached dwelling units, or residential cluster development."
+        : "Townhouses, attached dwelling units, o residential cluster development.",
+      badge: isEn ? "Row House" : "Row House",
+      color: "#0284c7",
+      icon: IconTownhouse,
+      isAgro: false,
+      features: isEn
+        ? [
+            "Party-wall and setback compliance",
+            "Drainage and utility clearance",
+            "Residential zone verification",
+          ]
+        : [
+            "Party-wall at setback compliance",
+            "Drainage and utility clearance",
+            "Residential zone verification",
+          ],
+    },
+    {
+      key: "Dormitory",
+      title: "Dormitory",
+      tagline: isEn ? "Boarding House / Transient" : "Boarding House / Transient",
+      desc: isEn
+        ? "Dormitory, boarding house, staff housing, or transient lodging facilities."
+        : "Dormitoryo, boarding house, staff housing, o pasilidad para sa transient.",
+      badge: isEn ? "Boarding" : "Boarding",
+      color: "#7c3aed",
+      icon: IconDormitory,
+      isAgro: false,
+      features: isEn
+        ? [
+            "Sanitation and occupancy check",
+            "CLUP urban zoning evaluation",
+            "Barangay clearance validation",
+          ]
+        : [
+            "Sanitation at occupancy check",
+            "CLUP urban zoning evaluation",
+            "Barangay clearance validation",
+          ],
+    },
+    {
+      key: "Institutional",
+      title: "Institutional",
+      tagline: isEn ? "School, Chapel, Facility" : "Paaralan, Kapilya, Pasilidad",
+      desc: isEn
+        ? "Private school, chapel, church, community facility, or civic center."
+        : "Pribadong paaralan, kapilya, simbahan, pasilidad ng komunidad, o civic center.",
+      badge: isEn ? "School / Church" : "School / Church",
+      color: "#9333ea",
+      icon: IconInstitutional,
+      isAgro: false,
+      features: isEn
+        ? [
+            "Institutional zoning endorsement",
+            "Traffic & accessibility screening",
+            "Environmental screening",
+          ]
+        : [
+            "Institutional zoning endorsement",
+            "Traffic & accessibility screening",
+            "Environmental screening",
+          ],
+    },
+    {
+      key: "Commercial",
+      title: "Commercial",
+      tagline: isEn ? "Store, Office, Business" : "Tindahan, Opisina, Negosyo",
+      desc: isEn
+        ? "Retail store, restaurant, commercial office, bank, or shopping complex."
+        : "Tindahan, retail store, restawran, commercial office, bangko, o shopping complex.",
+      badge: isEn ? "Business / Store" : "Negosyo / Store",
+      color: "#d97706",
+      icon: IconCommercial,
+      isAgro: false,
+      features: isEn
+        ? [
+            "Commercial CLUP zone check",
+            "Clearance for Business Permit",
+            "Traffic and parking review",
+          ]
+        : [
+            "Commercial CLUP zone check",
+            "Clearance para sa Business Permit",
+            "Traffic at parking review",
+          ],
+    },
+    {
+      key: "Industrial",
+      title: "Industrial",
+      tagline: isEn ? "Warehouse, Workshop, Plant" : "Bodega, Pagawaan, Warehouse",
+      desc: isEn
+        ? "Light industrial facility, warehouse, storage, packaging, or fabrication shop."
+        : "Light industrial facility, bodega, storage, packaging, o fabrication shop.",
+      badge: isEn ? "Warehouse / Factory" : "Warehouse / Factory",
+      color: "#475569",
+      icon: IconIndustrial,
+      isAgro: false,
+      features: isEn
+        ? [
+            "Industrial zoning compliance",
+            "Heavy vehicle access clearance",
+            "Environmental safety screening",
+          ]
+        : [
+            "Industrial zoning compliance",
+            "Heavy vehicle access clearance",
+            "Environmental safety screening",
+          ],
+    },
+    {
+      key: "Agro-Industrial",
+      title: "Agro-Industrial",
+      tagline: isEn ? "Poultry, Piggery, Feed/Rice Mill" : "Poultry, Piggery, Feed/Rice Mill",
+      desc: isEn
+        ? "Agricultural and processing facilities like broiler/layer poultry, piggery, and feed mills."
+        : "Pasilidad pang-agrikultura at pagproseso tulad ng broiler/layer poultry, babuyan, at feed mill.",
+      badge: isEn ? "Poultry / Piggery" : "Poultry / Piggery",
+      color: "var(--apple-safe, #15803d)",
+      icon: IconAgroIndustrial,
+      isAgro: true,
+      features: isEn
+        ? [
+            "500m mandatory buffer from residential zones",
+            "200m buffer from rivers and water bodies",
+            "Biogas and waste management plan",
+          ]
+        : [
+            "500m mandatory buffer mula sa kabahayan",
+            "200m buffer mula sa ilog at tubig",
+            "Biogas at waste management plan",
+          ],
+    },
+  ];
+}
+
+export const OFFICIAL_CATEGORIES = getOfficialCategories(false);
 
 const IconMunicipal = ({ size = 32, color = "currentColor" }: { size?: number; color?: string }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -221,9 +486,16 @@ export default function NewApplicationPage({
   onViewOnMap,
   onTrackApplication,
 }: Props) {
+  const { language } = useTranslation();
+  const isEn = language === "en";
+  const categoriesList = useMemo(() => getOfficialCategories(isEn), [isEn]);
+
   // Load draft from localStorage once on initial mount
   const initialDraft = useMemo(() => loadApplicationDraft(), []);
   const [draftRestored, setDraftRestored] = useState<boolean>(() => initialDraft !== null);
+
+  // Dynamic system configuration & masterlists
+  const { activeBarangays, activeBuildingTypes } = useSystemConfig();
 
   const [step, setStep] = useState<Step>(() => {
     if (typeof window === "undefined") return 1;
@@ -240,7 +512,7 @@ export default function NewApplicationPage({
   const isStepPopRef = useRef(false);
 
   const [category, setCategory] = useState<ApplicationCategory>(
-    () => initialDraft?.category || "private_infrastructure"
+    () => (initialDraft?.category && initialDraft.category !== "municipal_project" ? initialDraft.category : "private_infrastructure")
   );
 
   // Common form state
@@ -331,7 +603,15 @@ export default function NewApplicationPage({
   // Private Infrastructure fields
   const [tctNo, setTctNo] = useState(() => initialDraft?.tctNo || "");
   const [taxDecNo, setTaxDecNo] = useState(() => initialDraft?.taxDecNo || "");
-  const [buildingType, setBuildingType] = useState(() => initialDraft?.buildingType || "Residential");
+  const [buildingType, setBuildingType] = useState(() => {
+    if (initialDraft?.buildingType) {
+      return initialDraft.buildingType;
+    }
+    if (initialDraft?.category === "agricultural") {
+      return "Agro-Industrial";
+    }
+    return "Residential";
+  });
   const [isOwner, setIsOwner] = useState<boolean>(() => initialDraft?.isOwner ?? true);
 
   // Agricultural fields
@@ -381,10 +661,73 @@ export default function NewApplicationPage({
     () => docFromDraft(initialDraft?.attachedDocs?.photoDocs)
   );
 
+  // Geotag extraction & coordinate source tracking
+  const [geotagResult, setGeotagResult] = useState<GeotagExtractionResult | null>(null);
+  const [coordinateSource, setCoordinateSource] = useState<"manual" | "geotag">("manual");
+  const [isOcrProcessing, setIsOcrProcessing] = useState<boolean>(false);
+  const quickGeotagInputRef = useRef<HTMLInputElement | null>(null);
+
   const handleAttachFile = async (
     file: File,
-    setter: React.Dispatch<React.SetStateAction<AttachedDocument | null>>
+    fieldKey: string,
+    setter: React.Dispatch<React.SetStateAction<AttachedDocument | null>>,
+    options?: { isQuickGeotag?: boolean }
   ) => {
+    // 1. Gather other attached documents for duplicate file prevention
+    const existingDocsSnapshot = {
+      landTitle: landTitleDoc ? { name: landTitleDoc.name, size: landTitleDoc.size } : null,
+      taxDec: taxDecDoc ? { name: taxDecDoc.name, size: taxDecDoc.size } : null,
+      rptReceipt: rptReceiptDoc ? { name: rptReceiptDoc.name, size: rptReceiptDoc.size } : null,
+      brgyClearance: brgyClearanceDoc ? { name: brgyClearanceDoc.name, size: brgyClearanceDoc.size } : null,
+      ploCert: ploCertDoc ? { name: ploCertDoc.name, size: ploCertDoc.size } : null,
+      photoDocs: photoDocsDoc ? { name: photoDocsDoc.name, size: photoDocsDoc.size } : null,
+    };
+
+    // 2. Perform client-side format, magic byte, size, and duplicate checks
+    const valResult = await validateApplicationFile(file, fieldKey, existingDocsSnapshot);
+    if (!valResult.valid) {
+      alert(valResult.error || (isEn ? "Cannot accept file for this field." : "Hindi matanggap ang file para sa field na ito."));
+      setter(null);
+      return;
+    }
+
+    // 3. IMMEDIATE CLIENT-SIDE GEOTAG & OCR EXTRACTION:
+    // Extract GPS coordinates right away without waiting for network upload!
+    if (fieldKey === "photoDocs") {
+      setIsOcrProcessing(true);
+      try {
+        const geotag = await extractGeotagCoordinates(file);
+        setGeotagResult(geotag);
+        if (geotag.hasGeotag && geotag.coords) {
+          if (geotag.isWithinLuisiana) {
+            // ONLY PINPOINT ON INTERACTIVE MAP IF WITHIN LUISIANA BORDER!
+            setPinnedCoords({ lat: geotag.coords.lat, lon: geotag.coords.lon });
+            setCoordinateSource("geotag");
+            if (geotag.detectedBarangay) {
+              setBarangay(geotag.detectedBarangay);
+            }
+          } else {
+            // DO NOT PINPOINT IF OUTSIDE LUISIANA BORDER!
+            alert(
+              isEn
+                ? `Notice: The photo's latitude and coordinates (Lat: ${geotag.coords.lat.toFixed(6)}° N, Lon: ${geotag.coords.lon.toFixed(6)}° E) are outside the Luisiana municipal border.\n\nAutomatic map pinpointing has been blocked. Please upload a site photo taken within the Municipality of Luisiana, or pinpoint your project location manually on the interactive map.`
+                : `Paunawa: Ang latitude at coordinates ng litrato (Lat: ${geotag.coords.lat.toFixed(6)}° N, Lon: ${geotag.coords.lon.toFixed(6)}° E) ay nasa labas ng border ng Bayan ng Luisiana.\n\nHindi ito awtomatikong nai-pin sa mapa. Mag-upload ng litratong kuha sa loob ng Bayan ng Luisiana, o gamitin ang interactive map pinpointer upang ituro ang lokasyon.`
+            );
+          }
+        } else if (options?.isQuickGeotag) {
+          alert(
+            isEn
+              ? "Notice: No GPS coordinates or watermark were recognized in this photo.\n\nPlease ensure your photo has GPS tags or a visible camera watermark, or pinpoint your project location manually on the interactive map."
+              : "Paunawa: Walang natagpuang GPS coordinates o camera watermark ang litratong ito.\n\nSiguraduhing may GPS tags o camera watermark ang litrato, o gamitin ang interactive map pinpointer upang piliin ang lokasyon."
+          );
+        }
+      } catch (err) {
+        console.warn("[Geotag Auto-Extract Error]", err);
+      } finally {
+        setIsOcrProcessing(false);
+      }
+    }
+
     setter({
       file,
       name: file.name,
@@ -393,7 +736,7 @@ export default function NewApplicationPage({
     });
 
     try {
-      const uploaded = await uploadCitizenDocument(file);
+      const uploaded = await uploadCitizenDocument(file, fieldKey);
       setter({
         file,
         url: uploaded.url,
@@ -401,15 +744,38 @@ export default function NewApplicationPage({
         size: uploaded.size || file.size,
         uploading: false,
       });
-    } catch {
-      // Gracefully retain file reference and local object preview if backend is offline
-      setter({
-        file,
-        url: URL.createObjectURL(file),
-        name: file.name,
-        size: file.size,
-        uploading: false,
-      });
+    } catch (err: any) {
+      const errMsg = err?.message || "";
+      const isSecurityOrFormatError =
+        errMsg.includes("Tanggihang Seguridad") ||
+        errMsg.includes("Di-wastong format") ||
+        errMsg.includes("aktibong script") ||
+        errMsg.includes("FILE_SECURITY_VIOLATION") ||
+        errMsg.includes("INVALID_FILE_SIGNATURE") ||
+        errMsg.includes("INVALID_FIELD_DOCUMENT") ||
+        errMsg.includes("Bawal ang PDF") ||
+        errMsg.includes("Allowed formats") ||
+        errMsg.includes("File too large");
+
+      if (isSecurityOrFormatError) {
+        alert(
+          `[SECURITY ALERT] ${isEn ? "Document Rejected" : "Hindi Matanggap ang Dokumento"}:\n\n${errMsg}\n\n${isEn ? "Please ensure the document is clean and in an official format with no embedded scripts." : "Pakitiyak na ang dokumento ay malinis at opisyal na format na walang nakapaloob na script o macro."}`
+        );
+        setter(null);
+        if (fieldKey === "photoDocs") {
+          setGeotagResult(null);
+          setCoordinateSource("manual");
+        }
+      } else {
+        // Fallback for offline demo mode or backend server unreachable
+        setter({
+          file,
+          url: URL.createObjectURL(file),
+          name: file.name,
+          size: file.size,
+          uploading: false,
+        });
+      }
     }
   };
 
@@ -472,7 +838,6 @@ export default function NewApplicationPage({
 
     // Only save if there is some meaningful progress or input
     const hasAnyInput =
-      step > 1 ||
       title.trim().length > 0 ||
       applicantName.trim().length > 0 ||
       contactPhone.trim().length > 0 ||
@@ -480,9 +845,10 @@ export default function NewApplicationPage({
       locationDescription.trim().length > 0 ||
       tctNo.trim().length > 0 ||
       taxDecNo.trim().length > 0 ||
-      lotAreaSqM !== "" ||
-      estimatedCostPhp !== "" ||
+      (lotAreaSqM !== "" && Number(lotAreaSqM) > 0) ||
+      (estimatedCostPhp !== "" && Number(estimatedCostPhp) > 0) ||
       cipCode.trim().length > 0 ||
+      notes.trim().length > 0 ||
       landTitleDoc !== null ||
       taxDecDoc !== null ||
       rptReceiptDoc !== null ||
@@ -490,7 +856,10 @@ export default function NewApplicationPage({
       ploCertDoc !== null ||
       photoDocsDoc !== null;
 
-    if (!hasAnyInput) return;
+    if (!hasAnyInput) {
+      clearApplicationDraft();
+      return;
+    }
 
     const timer = setTimeout(() => {
       const draft: ApplicationDraft = {
@@ -570,7 +939,6 @@ export default function NewApplicationPage({
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (step < 4) {
         const hasInput =
-          step > 1 ||
           title.trim().length > 0 ||
           applicantName.trim().length > 0 ||
           contactPhone.trim().length > 0 ||
@@ -590,7 +958,7 @@ export default function NewApplicationPage({
 
   // Start fresh / Reset draft
   const handleResetDraft = () => {
-    if (window.confirm("Nais mo bang burahin ang na-save na draft at magsimula muli mula sa simula?")) {
+    if (window.confirm(isEn ? "Do you want to clear your saved draft and start over from the beginning?" : "Nais mo bang burahin ang na-save na draft at magsimula muli mula sa simula?")) {
       clearApplicationDraft();
       setDraftRestored(false);
       setStep(1);
@@ -673,45 +1041,43 @@ export default function NewApplicationPage({
 
   const getStep2MissingFields = () => {
     const missing: string[] = [];
-    if (!title.trim()) missing.push("Pangalan ng Proyekto / Title");
-    if (!applicantName.trim()) missing.push("Pangalan ng Aplikante / May-ari");
+    if (!title.trim()) missing.push(isEn ? "Project Name / Application Title" : "Pangalan ng Proyekto / Title");
+    if (!applicantName.trim()) missing.push(isEn ? "Applicant / Owner Name" : "Pangalan ng Aplikante / May-ari");
     if (!contactPhone.trim() || contactPhone.trim().length < 11) {
-      missing.push("Mobile Contact No. (11-digit, hal. 09171234567)");
+      missing.push(isEn ? "Mobile Contact No. (11-digit, e.g. 09171234567)" : "Mobile Contact No. (11-digit, hal. 09171234567)");
     }
     if (!contactEmail.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail.trim())) {
-      missing.push("Wastong Email Address");
+      missing.push(isEn ? "Valid Email Address" : "Wastong Email Address");
     }
-    if (!locationDescription.trim()) missing.push("Sitio / Street / Landmark Address");
+    if (!locationDescription.trim()) missing.push(isEn ? "Sitio / Street / Landmark Address" : "Sitio / Street / Landmark Address");
 
     if (category === "private_infrastructure") {
       if (!tctNo.trim()) missing.push("TCT No.");
       if (!taxDecNo.trim()) missing.push("Tax Declaration (TD) No.");
-      if (typeof lotAreaSqM !== "number" || lotAreaSqM <= 0) missing.push("Sukat ng Lote (sq.m.)");
+      if (typeof lotAreaSqM !== "number" || lotAreaSqM <= 0) missing.push(isEn ? "Lot Area (sq.m.)" : "Sukat ng Lote (sq.m.)");
     }
 
     if (category === "agricultural") {
-      if (typeof headCapacity !== "number" || headCapacity <= 0) missing.push("Target Head Capacity (Bilang ng Hayop)");
-      if (!wasteManagement.trim()) missing.push("Waste Management System");
-      if (!bufferComplianceConfirmed) missing.push("Environmental Buffer Zone Compliance");
+      if (!bufferComplianceConfirmed) missing.push(isEn ? "Environmental Buffer Zone Compliance (500m / 200m Buffer)" : "Environmental Buffer Zone Compliance (500m / 200m Buffer)");
     }
 
     if (category === "municipal_project") {
       if (!implementingDepartment.trim()) missing.push("Implementing Department");
       if (!cipCode.trim()) missing.push("AIP / CIP Reference Code");
       if (!targetBeneficiaries.trim()) missing.push("Target Beneficiaries");
-      if (typeof estimatedCostPhp !== "number" || estimatedCostPhp <= 0) missing.push("Tinatayang Badyet (Estimated Cost in ₱)");
+      if (typeof estimatedCostPhp !== "number" || estimatedCostPhp <= 0) missing.push(isEn ? "Estimated Budget (Estimated Cost in ₱)" : "Tinatayang Badyet (Estimated Cost in ₱)");
     }
 
     // 6 Mandatory Documentary Requirements
-    if (!landTitleDoc) missing.push("Dokumento #1: TCT (Land Title)");
-    if (!taxDecDoc) missing.push("Dokumento #2: Tax Declaration");
-    if (!rptReceiptDoc) missing.push("Dokumento #3: Real Property Tax Receipt (Amilyar)");
-    if (!brgyClearanceDoc) missing.push("Dokumento #4: Barangay Clearance");
-    if (!ploCertDoc) missing.push("Dokumento #5: PLO Certification (MERALCO)");
-    if (!photoDocsDoc) missing.push("Dokumento #6: Photo Documentation (Loob at Labas)");
+    if (!landTitleDoc) missing.push(isEn ? "Document #1: TCT (Land Title)" : "Dokumento #1: TCT (Land Title)");
+    if (!taxDecDoc) missing.push(isEn ? "Document #2: Tax Declaration" : "Dokumento #2: Tax Declaration");
+    if (!rptReceiptDoc) missing.push(isEn ? "Document #3: Real Property Tax Receipt (Amilyar)" : "Dokumento #3: Real Property Tax Receipt (Amilyar)");
+    if (!brgyClearanceDoc) missing.push(isEn ? "Document #4: Barangay Clearance" : "Dokumento #4: Barangay Clearance");
+    if (!ploCertDoc) missing.push(isEn ? "Document #5: PLO Certification (MERALCO)" : "Dokumento #5: PLO Certification (MERALCO)");
+    if (!photoDocsDoc) missing.push(isEn ? "Document #6: Photo Documentation (Interior & Exterior)" : "Dokumento #6: Photo Documentation (Loob at Labas)");
 
     if ([landTitleDoc, taxDecDoc, rptReceiptDoc, brgyClearanceDoc, ploCertDoc, photoDocsDoc].some((d) => d?.uploading)) {
-      missing.push("May dokumentong kasalukuyan pang nag-a-upload...");
+      missing.push(isEn ? "Some documents are currently uploading..." : "May dokumentong kasalukuyan pang nag-a-upload...");
     }
 
     return missing;
@@ -870,17 +1236,23 @@ export default function NewApplicationPage({
   };
 
   const getCategoryLabel = (cat: string) => {
+    if (buildingType === "Agro-Industrial" || cat === "agricultural") {
+      return "Agro-Industrial (Poultry / Piggery / Farm)";
+    }
+    if (buildingType) {
+      return buildingType;
+    }
     switch (cat) {
       case "private_infrastructure":
-        return "Pribadong Imprastraktura";
+        return isEn ? "Private Infrastructure" : "Pribadong Imprastraktura";
       case "commercial_business":
-        return "Komersyal at Negosyo";
+        return isEn ? "Commercial & Business" : "Komersyal at Negosyo";
       case "agricultural":
-        return "Agrikultural at Paghahayupan";
+        return "Agro-Industrial (Poultry / Piggery / Farm)";
       case "municipal_project":
-        return "Proyektong Pambayan (LGU)";
+        return isEn ? "Municipal Project (LGU)" : "Proyektong Pambayan (LGU)";
       case "special_use":
-        return "Espesyal na Paggamit";
+        return isEn ? "Special Use" : "Espesyal na Paggamit";
       default:
         return "Locational Clearance / Zoning";
     }
@@ -890,7 +1262,7 @@ export default function NewApplicationPage({
     category,
     categoryLabel: getCategoryLabel(category),
     title: title.trim() || `${category.replace("_", " ")} Application`,
-    applicantName: applicantName.trim() || "Aplikante",
+    applicantName: applicantName.trim() || (isEn ? "Applicant" : "Aplikante"),
     contactPhone: contactPhone.trim(),
     contactEmail: contactEmail.trim(),
     locationDescription: locationDescription.trim(),
@@ -911,16 +1283,17 @@ export default function NewApplicationPage({
     cipCode,
     targetBeneficiaries,
     pinnedCoords,
+    isGeotagged: coordinateSource === "geotag" && Boolean(geotagResult?.hasGeotag),
     floodHazard: geoRisk?.flood?.value || "Safe",
     landslideHazard: geoRisk?.landslide?.value || "Safe",
     banahawKm: ban.km,
     attachedDocs: [
-      { label: "Titulo ng Lupa / TCT / Deed of Sale", filename: landTitleDoc?.name },
-      { label: "Tax Declaration", filename: taxDecDoc?.name },
-      { label: "RPT / Real Property Tax Receipt", filename: rptReceiptDoc?.name },
-      { label: "Barangay Clearance", filename: brgyClearanceDoc?.name },
-      { label: "Location Plan / PLO Certification", filename: ploCertDoc?.name },
-      { label: "Mga Larawan ng Site", filename: photoDocsDoc?.name },
+      { label: isEn ? "Land Title / TCT / Deed of Sale" : "Titulo ng Lupa / TCT / Deed of Sale", filename: landTitleDoc?.name },
+      { label: isEn ? "Tax Declaration" : "Tax Declaration", filename: taxDecDoc?.name },
+      { label: isEn ? "RPT / Real Property Tax Receipt" : "RPT / Real Property Tax Receipt", filename: rptReceiptDoc?.name },
+      { label: isEn ? "Barangay Clearance" : "Barangay Clearance", filename: brgyClearanceDoc?.name },
+      { label: isEn ? "Location Plan / PLO Certification" : "Location Plan / PLO Certification", filename: ploCertDoc?.name },
+      { label: isEn ? "Site Photos" : "Mga Larawan ng Site", filename: photoDocsDoc?.name },
     ],
   };
 
@@ -933,8 +1306,8 @@ export default function NewApplicationPage({
             type="button"
             className="new-app-back-btn"
             onClick={handleBack}
-            aria-label={step > 1 ? "Bumalik sa nakaraang hakbang" : "Bumalik sa dashboard"}
-            title={step > 1 ? "Bumalik" : "Bumalik sa dashboard"}
+            aria-label={step > 1 ? (isEn ? "Back to previous step" : "Bumalik sa nakaraang hakbang") : (isEn ? "Back to dashboard" : "Bumalik sa dashboard")}
+            title={step > 1 ? (isEn ? "Back" : "Bumalik") : (isEn ? "Back to dashboard" : "Bumalik sa dashboard")}
           >
             <IconBackArrow />
           </button>
@@ -948,15 +1321,27 @@ export default function NewApplicationPage({
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <a
+            href="#infa-form"
+            className="new-app-terms-trigger-btn"
+            style={{ textDecoration: "none", color: "var(--apple-accent, #2997ff)", borderColor: "rgba(41, 151, 255, 0.4)", display: "inline-flex", alignItems: "center", gap: 5 }}
+            title={isEn ? "Try the New Modern Application Form (Agricultural / Enterprise)" : "Subukan ang Bagong Modern Application Form (Agricultural / Enterprise)"}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+            </svg>
+            <span>Modern Dark Form</span>
+          </a>
           <button
             type="button"
             className="new-app-terms-trigger-btn"
             onClick={() => setTermsModalOpen(true)}
-            title="Tingnan ang Mga Tuntunin at Kundisyon (Terms & Conditions)"
+            title={isEn ? "View Terms & Conditions" : "Tingnan ang Mga Tuntunin at Kundisyon (Terms & Conditions)"}
           >
             <IconShieldCheck size={14} color="currentColor" />
-            <span className="new-app-terms-trigger-label">Tuntunin at Kundisyon</span>
+            <span className="new-app-terms-trigger-label">{isEn ? "Terms & Conditions" : "Tuntunin at Kundisyon"}</span>
           </button>
+          <LanguageToggle />
           <ThemeToggle iconOnly />
         </div>
       </header>
@@ -967,12 +1352,12 @@ export default function NewApplicationPage({
           {/* Mobile Compact Progress Indicator */}
           <div className="new-app-stepper-mobile-meta">
             <div className="new-app-stepper-mobile-indicator">
-              <span className="new-app-stepper-mobile-badge">Hakbang {step} ng 4</span>
+              <span className="new-app-stepper-mobile-badge">{isEn ? `Step ${step} of 4` : `Hakbang ${step} ng 4`}</span>
               <span className="new-app-stepper-mobile-label">
-                {step === 1 && "1. Kategorya (Ano ang ia-apply?)"}
-                {step === 2 && "2. Impormasyon ng Proyekto"}
-                {step === 3 && "3. GIS Location & Hazard"}
-                {step === 4 && "4. Pagkumpirma"}
+                {step === 1 && (isEn ? "1. Category (Select Application Type)" : "1. Kategorya (Ano ang ia-apply?)")}
+                {step === 2 && (isEn ? "2. Project Information" : "2. Impormasyon ng Proyekto")}
+                {step === 3 && (isEn ? "3. GIS Location & Hazard" : "3. GIS Location & Hazard")}
+                {step === 4 && (isEn ? "4. Confirmation" : "4. Pagkumpirma")}
               </span>
             </div>
             <div className="new-app-stepper-mobile-bar">
@@ -981,20 +1366,20 @@ export default function NewApplicationPage({
                 onClick={() => { if (step > 1) setStep(1); }}
                 role={step > 1 ? "button" : undefined}
                 tabIndex={step > 1 ? 0 : undefined}
-                title="1. Kategorya"
+                title={isEn ? "1. Category" : "1. Kategorya"}
               >
                 <div className={`new-app-mobile-segment ${step >= 1 ? "filled" : ""}`} />
-                <span className="new-app-mobile-step-text">1. Kategorya</span>
+                <span className="new-app-mobile-step-text">{isEn ? "1. Category" : "1. Kategorya"}</span>
               </div>
               <div
                 className={`new-app-mobile-step-item ${step === 2 ? "active" : step > 2 ? "completed" : ""}`}
                 onClick={() => { if (step > 2) setStep(2); }}
                 role={step > 2 ? "button" : undefined}
                 tabIndex={step > 2 ? 0 : undefined}
-                title="2. Impormasyon"
+                title={isEn ? "2. Information" : "2. Impormasyon"}
               >
                 <div className={`new-app-mobile-segment ${step >= 2 ? "filled" : ""}`} />
-                <span className="new-app-mobile-step-text">2. Impormasyon</span>
+                <span className="new-app-mobile-step-text">{isEn ? "2. Information" : "2. Impormasyon"}</span>
               </div>
               <div
                 className={`new-app-mobile-step-item ${step === 3 ? "active" : step > 3 ? "completed" : ""}`}
@@ -1008,10 +1393,10 @@ export default function NewApplicationPage({
               </div>
               <div
                 className={`new-app-mobile-step-item ${step === 4 ? "active" : ""}`}
-                title="4. Pagkumpirma"
+                title={isEn ? "4. Confirmation" : "4. Pagkumpirma"}
               >
                 <div className={`new-app-mobile-segment ${step >= 4 ? "filled" : ""}`} />
-                <span className="new-app-mobile-step-text">4. Kumpirma</span>
+                <span className="new-app-mobile-step-text">{isEn ? "4. Confirm" : "4. Kumpirma"}</span>
               </div>
             </div>
           </div>
@@ -1021,16 +1406,16 @@ export default function NewApplicationPage({
             <div className={`new-app-page-step ${step === 1 ? "active" : step > 1 ? "completed" : ""}`}>
               <span className="new-app-page-step-badge">{step > 1 ? "✓" : "1"}</span>
               <span className="new-app-page-step-text">
-                <span className="new-app-step-full">1. Kategorya (Ano ang ia-apply?)</span>
-                <span className="new-app-step-short">1. Kategorya</span>
+                <span className="new-app-step-full">{isEn ? "1. Category (Select Application Type)" : "1. Kategorya (Ano ang ia-apply?)"}</span>
+                <span className="new-app-step-short">{isEn ? "1. Category" : "1. Kategorya"}</span>
               </span>
             </div>
             <div className={`new-app-page-step-divider ${step > 1 ? "completed" : ""}`} />
             <div className={`new-app-page-step ${step === 2 ? "active" : step > 2 ? "completed" : ""}`}>
               <span className="new-app-page-step-badge">{step > 2 ? "✓" : "2"}</span>
               <span className="new-app-page-step-text">
-                <span className="new-app-step-full">2. Impormasyon ng Proyekto</span>
-                <span className="new-app-step-short">2. Impormasyon</span>
+                <span className="new-app-step-full">{isEn ? "2. Project Information" : "2. Impormasyon ng Proyekto"}</span>
+                <span className="new-app-step-short">{isEn ? "2. Information" : "2. Impormasyon"}</span>
               </span>
             </div>
             <div className={`new-app-page-step-divider ${step > 2 ? "completed" : ""}`} />
@@ -1045,8 +1430,8 @@ export default function NewApplicationPage({
             <div className={`new-app-page-step ${step === 4 ? "completed active" : ""}`}>
               <span className="new-app-page-step-badge">{step === 4 ? "✓" : "4"}</span>
               <span className="new-app-page-step-text">
-                <span className="new-app-step-full">4. Pagkumpirma</span>
-                <span className="new-app-step-short">4. Kumpirma</span>
+                <span className="new-app-step-full">{isEn ? "4. Confirmation" : "4. Pagkumpirma"}</span>
+                <span className="new-app-step-short">{isEn ? "4. Confirm" : "4. Kumpirma"}</span>
               </span>
             </div>
           </div>
@@ -1061,17 +1446,29 @@ export default function NewApplicationPage({
             <div className="new-app-draft-banner-left">
               <IconCheck size={16} color="var(--apple-safe, #15803d)" />
               <span>
-                <strong>Awtomatikong naibalik ang iyong draft:</strong> Na-restore ang iyong mga naunang inilagay na impormasyon at napiling kategorya.
+                <strong>{isEn ? "Your draft was automatically restored:" : "Awtomatikong naibalik ang iyong draft:"}</strong>{" "}
+                {isEn ? "Your previously entered information and selected category have been restored." : "Na-restore ang iyong mga naunang inilagay na impormasyon at napiling kategorya."}
               </span>
             </div>
-            <button
-              type="button"
-              className="new-app-draft-reset-btn"
-              onClick={handleResetDraft}
-              title="Burahin ang draft at magsimula muli"
-            >
-              Mag-umpisa Muli (Clear Draft)
-            </button>
+            <div className="new-app-draft-banner-actions">
+              <button
+                type="button"
+                className="new-app-draft-reset-btn"
+                onClick={handleResetDraft}
+                title={isEn ? "Clear draft and start over" : "Burahin ang draft at magsimula muli"}
+              >
+                {isEn ? "Start Over (Clear Draft)" : "Mag-umpisa Muli (Clear Draft)"}
+              </button>
+              <button
+                type="button"
+                className="new-app-draft-dismiss-btn"
+                onClick={() => setDraftRestored(false)}
+                title={isEn ? "Dismiss notice" : "Itago ang paunawa"}
+                aria-label={isEn ? "Close notice" : "Isara ang paunawa"}
+              >
+                ✕
+              </button>
+            </div>
           </div>
         )}
 
@@ -1079,130 +1476,83 @@ export default function NewApplicationPage({
         {step === 1 && (
           <div>
             <div className="new-app-heading-wrap">
-              <h1 className="new-app-main-heading">Ano ang ia-apply?</h1>
+              <h1 className="new-app-main-heading">{isEn ? "What are you applying for?" : "Ano ang ia-apply?"}</h1>
               <p className="new-app-main-lead">
-                Pumili ng tamang kategorya ng aplikasyon upang maipagkaloob ang karampatang zoning evaluation, environmental buffer checking, at GIS hazard screening.
+                {isEn
+                  ? "Select the correct application category to obtain the appropriate zoning evaluation, environmental buffer checking, and GIS hazard screening."
+                  : "Pumili ng tamang kategorya ng aplikasyon upang maipagkaloob ang karampatang zoning evaluation, environmental buffer checking, at GIS hazard screening."}
               </p>
             </div>
 
-            <div className="new-app-page-cards-grid" role="radiogroup" aria-label="Kategorya ng Aplikasyon">
-              {/* Card 1: Private Infrastructure */}
-              <div
-                className={`new-app-page-card ${category === "private_infrastructure" ? "selected" : ""}`}
-                onClick={() => setCategory("private_infrastructure")}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    setCategory("private_infrastructure");
-                  }
-                }}
-                role="radio"
-                aria-checked={category === "private_infrastructure"}
-                tabIndex={0}
-              >
-                <div className="new-app-card-radio-indicator" aria-hidden="true">
-                  <IconCheck size={12} color="#ffffff" />
-                </div>
-                <div className="new-app-card-top-row">
-                  <div className="new-app-card-icon-wrap" style={{ color: "var(--apple-accent, #0071e3)" }}>
-                    <IconBuilding size={30} color="var(--apple-accent, #0071e3)" />
-                  </div>
-                  <div className="new-app-card-header-text">
-                    <div className="new-app-card-title">Private Infrastructure</div>
-                    <span className="new-app-card-badge tag-private">Residential / Commercial</span>
-                  </div>
-                </div>
-                <div className="new-app-card-desc">
-                  Para sa mga pribadong gusali, bahay, commercial spaces, subdibisyon, bodega, o private telecom structures.
-                </div>
-                <ul className="new-app-card-features">
-                  <li><IconCheck size={13} /> Land title (TCT / Tax Dec) verification</li>
-                  <li><IconCheck size={13} /> Building setback &amp; zoning clearance</li>
-                  <li><IconCheck size={13} /> Slope &amp; flood hazard assessment</li>
-                </ul>
-              </div>
+            <div className="new-app-page-cards-grid" role="radiogroup" aria-label={isEn ? "Application Category" : "Kategorya ng Aplikasyon"}>
+              {categoriesList.map((item) => {
+                const IconComponent = item.icon;
+                const isSelected = item.isAgro
+                  ? category === "agricultural"
+                  : category === "private_infrastructure" && (buildingType === item.key || (!buildingType && item.key === "Residential"));
 
-              {/* Card 2: Agricultural (Poultry / Piggery) */}
-              <div
-                className={`new-app-page-card ${category === "agricultural" ? "selected" : ""}`}
-                onClick={() => setCategory("agricultural")}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
+                const handleSelect = () => {
+                  if (item.isAgro) {
                     setCategory("agricultural");
+                    setBuildingType("Agro-Industrial");
+                  } else {
+                    setCategory("private_infrastructure");
+                    setBuildingType(item.key);
                   }
-                }}
-                role="radio"
-                aria-checked={category === "agricultural"}
-                tabIndex={0}
-              >
-                <div className="new-app-card-radio-indicator" aria-hidden="true">
-                  <IconCheck size={12} color="#ffffff" />
-                </div>
-                <div className="new-app-card-top-row">
-                  <div className="new-app-card-icon-wrap" style={{ color: "var(--apple-safe, #15803d)" }}>
-                    <IconAgriculture size={30} color="var(--apple-safe, #15803d)" />
-                  </div>
-                  <div className="new-app-card-header-text">
-                    <div className="new-app-card-title">Agricultural</div>
-                    <span className="new-app-card-badge tag-agri">Poultry / Piggery / Farm</span>
-                  </div>
-                </div>
-                <div className="new-app-card-desc">
-                  Para sa mga pasilidad pang-agrikultura tulad ng broiler/layer poultry farms, babuyan (piggery), at livestock.
-                </div>
-                <ul className="new-app-card-features">
-                  <li><IconCheck size={13} /> 500m mandatory buffer mula sa kabahayan</li>
-                  <li><IconCheck size={13} /> 200m buffer mula sa mga ilog at tubig</li>
-                  <li><IconCheck size={13} /> Biogas at waste management plan</li>
-                </ul>
-              </div>
+                };
 
-              {/* Card 3: Municipal Projects */}
-              <div
-                className={`new-app-page-card ${category === "municipal_project" ? "selected" : ""}`}
-                onClick={() => setCategory("municipal_project")}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    setCategory("municipal_project");
-                  }
-                }}
-                role="radio"
-                aria-checked={category === "municipal_project"}
-                tabIndex={0}
-              >
-                <div className="new-app-card-radio-indicator" aria-hidden="true">
-                  <IconCheck size={12} color="#ffffff" />
-                </div>
-                <div className="new-app-card-top-row">
-                  <div className="new-app-card-icon-wrap" style={{ color: "var(--apple-warn, #b45309)" }}>
-                    <IconMunicipal size={30} color="var(--apple-warn, #b45309)" />
+                return (
+                  <div
+                    key={item.key}
+                    className={`new-app-page-card ${isSelected ? "selected" : ""}`}
+                    onClick={handleSelect}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        handleSelect();
+                      }
+                    }}
+                    role="radio"
+                    aria-checked={isSelected}
+                    tabIndex={0}
+                  >
+                    <div className="new-app-card-radio-indicator" aria-hidden="true">
+                      <IconCheck size={12} color="#ffffff" />
+                    </div>
+                    <div className="new-app-card-top-row">
+                      <div className="new-app-card-icon-wrap" style={{ color: item.color }}>
+                        <IconComponent size={28} color={item.color} />
+                      </div>
+                      <div className="new-app-card-header-text">
+                        <div className="new-app-card-title">{item.title}</div>
+                        <div className="new-app-card-tagline">{item.tagline}</div>
+                        <span className="new-app-card-badge" style={{ borderColor: item.color, color: item.color, background: `${item.color}14` }}>
+                          {item.badge}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="new-app-card-desc">{item.desc}</div>
+                    <ul className="new-app-card-features">
+                      {item.features.map((feat, fIdx) => (
+                        <li key={fIdx}>
+                          <IconCheck size={13} color={item.color} />
+                          <span>{feat}</span>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
-                  <div className="new-app-card-header-text">
-                    <div className="new-app-card-title">Municipal Projects</div>
-                    <span className="new-app-card-badge tag-municipal">LGU Public Works / CIP</span>
-                  </div>
-                </div>
-                <div className="new-app-card-desc">
-                  Para sa mga pampublikong imprastraktura ng Pamahalaang Bayan: mga kalsada, evacuation centers, barangay halls, at RHU.
-                </div>
-                <ul className="new-app-card-features">
-                  <li><IconCheck size={13} /> Implementing department routing</li>
-                  <li><IconCheck size={13} /> 20% LDF / LGU budget source tracking</li>
-                  <li><IconCheck size={13} /> Multi-hazard disaster mitigation siting</li>
-                </ul>
-              </div>
+                );
+              })}
             </div>
 
             <div className="new-app-page-footer new-app-step1-footer">
-              <button type="button" className="new-app-page-btn new-app-page-btn-secondary" onClick={onBack} title="Bumalik sa Dashboard">
-                <span className="new-app-btn-text-full">← Bumalik sa Dashboard</span>
-                <span className="new-app-btn-text-short">← Bumalik</span>
+              <button type="button" className="new-app-page-btn new-app-page-btn-secondary" onClick={onBack} title={isEn ? "Back to Dashboard" : "Bumalik sa Dashboard"}>
+                <span className="new-app-btn-text-full">{isEn ? "← Back to Dashboard" : "← Bumalik sa Dashboard"}</span>
+                <span className="new-app-btn-text-short">{isEn ? "← Back" : "← Bumalik"}</span>
               </button>
               <button type="button" className="new-app-page-btn new-app-page-btn-primary" onClick={() => setStep(2)}>
-                <span className="new-app-btn-text-full">Magpatuloy sa Impormasyon</span>
-                <span className="new-app-btn-text-short">Magpatuloy</span>
+                <span className="new-app-btn-text-full">{isEn ? "Proceed to Information" : "Magpatuloy sa Impormasyon"}</span>
+                <span className="new-app-btn-text-short">{isEn ? "Proceed" : "Magpatuloy"}</span>
                 <span>→</span>
               </button>
             </div>
@@ -1217,24 +1567,26 @@ export default function NewApplicationPage({
                 {category === "private_infrastructure" && (
                   <>
                     <IconBuilding size={20} color="var(--apple-accent, #0071e3)" />
-                    <span>Private Infrastructure Application Details</span>
+                    <span>{isEn ? "Private Infrastructure Application Details" : "Private Infrastructure Application Details"}</span>
                   </>
                 )}
                 {category === "agricultural" && (
                   <>
-                    <IconAgriculture size={20} color="var(--apple-safe, #15803d)" />
-                    <span>Agricultural (Poultry / Piggery) Farm Application Details</span>
+                    <IconAgroIndustrial size={20} color="var(--apple-safe, #15803d)" />
+                    <span>{isEn ? "Agro-Industrial Application Details" : "Agro-Industrial Application Details"}</span>
                   </>
                 )}
                 {category === "municipal_project" && (
                   <>
                     <IconMunicipal size={20} color="var(--apple-warn, #b45309)" />
-                    <span>Municipal Infrastructure Project Details</span>
+                    <span>{isEn ? "Municipal Infrastructure Project Details" : "Municipal Infrastructure Project Details"}</span>
                   </>
                 )}
               </h2>
               <div className="new-app-form-sub">
-                Punan ang mga kailangang impormasyon para sa opisyal na pagtatala at pagsusuri ng MPDC.
+                {isEn
+                  ? "Fill in the required information for official recording and MPDC evaluation."
+                  : "Punan ang mga kailangang impormasyon para sa opisyal na pagtatala at pagsusuri ng MPDC."}
               </div>
             </div>
 
@@ -1242,7 +1594,7 @@ export default function NewApplicationPage({
               {/* Project Title */}
               <div className="new-app-field full-width">
                 <label className="new-app-label">
-                  Pangalan ng Proyekto / Application Title *
+                  {isEn ? "Project Name / Application Title *" : "Pangalan ng Proyekto / Application Title *"}
                 </label>
                 <input
                   type="text"
@@ -1251,10 +1603,10 @@ export default function NewApplicationPage({
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder={
                     category === "private_infrastructure"
-                      ? "hal. 2-Storey Commercial Building - Santos Lot"
+                      ? (isEn ? "e.g. 2-Storey Commercial Building - Santos Lot" : "hal. 2-Storey Commercial Building - Santos Lot")
                       : category === "agricultural"
-                      ? "hal. Luisiana Broiler Poultry Farm Phase 1"
-                      : "hal. Barangay San Salvador Evacuation Center"
+                      ? (isEn ? "e.g. Luisiana Agro-Industrial Broiler Farm Phase 1" : "hal. Luisiana Agro-Industrial Broiler Farm Phase 1")
+                      : (isEn ? "e.g. Barangay San Salvador Evacuation Center" : "hal. Barangay San Salvador Evacuation Center")
                   }
                 />
               </div>
@@ -1262,20 +1614,22 @@ export default function NewApplicationPage({
               {/* Applicant / Proponent Name */}
               <div className="new-app-field">
                 <label className="new-app-label">
-                  {category === "municipal_project" ? "Project Proponent / Focal Engineer *" : "Pangalan ng Aplikante / May-ari *"}
+                  {category === "municipal_project"
+                    ? (isEn ? "Project Proponent / Focal Engineer *" : "Project Proponent / Focal Engineer *")
+                    : (isEn ? "Applicant / Owner Name *" : "Pangalan ng Aplikante / May-ari *")}
                 </label>
                 <input
                   type="text"
                   className={`new-app-input ${attemptedStep2Proceed && !applicantName.trim() ? "is-missing-field" : ""}`}
                   value={applicantName}
                   onChange={(e) => setApplicantName(e.target.value)}
-                  placeholder="hal. Juan Dela Cruz"
+                  placeholder={isEn ? "e.g. Juan Dela Cruz" : "hal. Juan Dela Cruz"}
                 />
               </div>
 
               {/* Mobile Phone */}
               <div className="new-app-field">
-                <label className="new-app-label">Mobile Contact Number (11-digit) *</label>
+                <label className="new-app-label">{isEn ? "Mobile Contact Number (11-digit) *" : "Mobile Contact Number (11-digit) *"}</label>
                 <input
                   type="tel"
                   inputMode="numeric"
@@ -1293,7 +1647,7 @@ export default function NewApplicationPage({
 
               {/* Email */}
               <div className="new-app-field">
-                <label className="new-app-label">Email Address *</label>
+                <label className="new-app-label">{isEn ? "Email Address *" : "Email Address *"}</label>
                 <input
                   type="email"
                   className={`new-app-input ${attemptedStep2Proceed && (!contactEmail.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail.trim())) ? "is-missing-field" : ""}`}
@@ -1305,13 +1659,13 @@ export default function NewApplicationPage({
 
               {/* Barangay Location */}
               <div className="new-app-field">
-                <label className="new-app-label">Barangay Location *</label>
+                <label className="new-app-label">{isEn ? "Barangay Location *" : "Barangay Location *"}</label>
                 <select
                   className="new-app-select"
                   value={barangay}
                   onChange={(e) => handleBarangayChange(e.target.value)}
                 >
-                  {BARANGAY_LIST.map((b) => (
+                  {activeBarangays.map((b) => (
                     <option key={b} value={b}>
                       {b}
                     </option>
@@ -1321,29 +1675,73 @@ export default function NewApplicationPage({
 
               {/* Specific Sitio / Street */}
               <div className="new-app-field full-width">
-                <label className="new-app-label">Sitio / Street / Landmark Address *</label>
+                <label className="new-app-label">{isEn ? "Sitio / Street / Landmark Address *" : "Sitio / Street / Landmark Address *"}</label>
                 <input
                   type="text"
                   className={`new-app-input ${attemptedStep2Proceed && !locationDescription.trim() ? "is-missing-field" : ""}`}
                   value={locationDescription}
                   onChange={(e) => setLocationDescription(e.target.value)}
-                  placeholder="hal. Sitio Mahabang Parang, tapat ng Barangay Outpost"
+                  placeholder={isEn ? "e.g. Sitio Mahabang Parang, near Barangay Outpost" : "hal. Sitio Mahabang Parang, tapat ng Barangay Outpost"}
                 />
               </div>
 
               {/* Interactive Location Pinpoint Map */}
-              <div className="new-app-field full-width" style={{ marginTop: 4 }}>
-                <label className="new-app-label new-app-map-label">
-                  <span>Eksaktong Lokasyon ng Proyekto (Interactive Map Pinpoint) *</span>
-                  <span className="new-app-map-coords-text">
-                    {pinnedCoords.lat.toFixed(6)}° N, {pinnedCoords.lon.toFixed(6)}° E
-                  </span>
-                </label>
+              <div id="new-app-location-section" className="new-app-field full-width" style={{ marginTop: 4 }}>
+                <input
+                  ref={quickGeotagInputRef}
+                  type="file"
+                  accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                  style={{ display: "none" }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (file) {
+                      void handleAttachFile(file, "photoDocs", setPhotoDocsDoc, { isQuickGeotag: true });
+                    }
+                  }}
+                />
+                <div className="new-app-label new-app-map-label">
+                  <div className="new-app-map-label-left">
+                    <span>{isEn ? "Exact Project Location (Interactive Map Pinpoint) *" : "Eksaktong Lokasyon ng Proyekto (Interactive Map Pinpoint) *"}</span>
+                    {coordinateSource === "geotag" && geotagResult?.hasGeotag ? (
+                      <span className="new-app-coord-source-badge geotag" title={isEn ? "Coordinates auto-extracted from photo documentation" : "Awtomatikong nakuha mula sa photo documentation"}>
+                        📸 {isEn ? "Geotagged Photo" : "Geotagged Litrato"}
+                      </span>
+                    ) : (
+                      <span className="new-app-coord-source-badge manual" title={isEn ? "Manually pinned using map pinpointer" : "Manwal na nai-pin gamit ang map pinpointer"}>
+                        📍 {isEn ? "Map Pinpointer" : "Map Pinpointer"}
+                      </span>
+                    )}
+                  </div>
+                  <div className="new-app-map-label-right">
+                    <span className="new-app-map-coords-text">
+                      {pinnedCoords.lat.toFixed(6)}° N, {pinnedCoords.lon.toFixed(6)}° E
+                    </span>
+                    <button
+                      type="button"
+                      className={`new-app-quick-geotag-btn${isOcrProcessing ? " is-scanning" : ""}`}
+                      onClick={() => !isOcrProcessing && quickGeotagInputRef.current?.click()}
+                      disabled={isOcrProcessing}
+                      title={isEn ? "Upload geotagged photo to automatically extract coordinates and pin the map" : "Mag-upload ng geotagged photo upang awtomatikong mag-pin sa mapa"}
+                    >
+                      <IconCamera size={13} />
+                      <span>
+                        {isOcrProcessing
+                          ? (isEn ? "Reading Location..." : "Binabasa ang Lokasyon...")
+                          : (isEn ? "Upload Geotagged Photo" : "I-upload ang Geotagged Litrato")}
+                      </span>
+                    </button>
+                  </div>
+                </div>
                 <PinpointMapPicker
                   lon={pinnedCoords.lon}
                   lat={pinnedCoords.lat}
                   selectedBarangay={barangay}
-                  onLocationChange={(coords) => setPinnedCoords(coords)}
+                  isGeotagged={coordinateSource === "geotag" && Boolean(geotagResult?.hasGeotag)}
+                  onLocationChange={(coords) => {
+                    setPinnedCoords(coords);
+                    setCoordinateSource("manual");
+                  }}
                   onBarangayChange={(detected) => setBarangay(detected)}
                 />
               </div>
@@ -1352,23 +1750,30 @@ export default function NewApplicationPage({
               {category === "private_infrastructure" && (
                 <>
                   <div className="new-app-field">
-                    <label className="new-app-label">Uri ng Gusali (Building Type) *</label>
+                    <label className="new-app-label">{isEn ? "Building Type / Category *" : "Uri ng Gusali / Kategorya (Building Type / Category) *"}</label>
                     <select
                       className="new-app-select"
                       value={buildingType}
-                      onChange={(e) => setBuildingType(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setBuildingType(val);
+                        if (val === "Agro-Industrial") {
+                          setCategory("agricultural");
+                        } else {
+                          setCategory("private_infrastructure");
+                        }
+                      }}
                     >
-                      <option value="Residential">Residential (Single Family / Duplex)</option>
-                      <option value="Commercial">Commercial (Store, Retail, Office)</option>
-                      <option value="Mixed-Use">Mixed-Use (Commercial Ground + Residential)</option>
-                      <option value="Institutional">Private Institutional / School / Chapel</option>
-                      <option value="Subdivision">Subdivision / Housing Development</option>
-                      <option value="Industrial">Light Industrial / Warehouse</option>
+                      {activeBuildingTypes.map((bType) => (
+                        <option key={bType} value={bType}>
+                          {bType}
+                        </option>
+                      ))}
                     </select>
                   </div>
 
                   <div className="new-app-field">
-                    <label className="new-app-label">Sukat ng Lote (Lot Area in sq.m.) *</label>
+                    <label className="new-app-label">{isEn ? "Lot Area (sq.m.) *" : "Sukat ng Lote (Lot Area in sq.m.) *"}</label>
                     <input
                       type="text"
                       inputMode="decimal"
@@ -1381,79 +1786,69 @@ export default function NewApplicationPage({
                         setLotAreaSqM(sanitized === "" ? "" : Number(sanitized));
                       }}
                       onKeyDown={handleDecimalKeyDown}
-                      placeholder="hal. 250"
+                      placeholder={isEn ? "e.g. 250" : "hal. 250"}
                     />
                   </div>
 
                   <div className="new-app-field">
-                    <label className="new-app-label">TCT No. (Transfer Certificate of Title) *</label>
+                    <label className="new-app-label">{isEn ? "TCT No. (Transfer Certificate of Title) *" : "TCT No. (Transfer Certificate of Title) *"}</label>
                     <input
                       type="text"
                       className={`new-app-input ${attemptedStep2Proceed && !tctNo.trim() ? "is-missing-field" : ""}`}
                       value={tctNo}
                       onChange={(e) => setTctNo(e.target.value)}
-                      placeholder="hal. TCT-059-2023001234"
+                      placeholder={isEn ? "e.g. TCT-059-2023001234" : "hal. TCT-059-2023001234"}
                     />
                   </div>
 
                   <div className="new-app-field">
-                    <label className="new-app-label">Tax Declaration (TD) No. *</label>
+                    <label className="new-app-label">{isEn ? "Tax Declaration (TD) No. *" : "Tax Declaration (TD) No. *"}</label>
                     <input
                       type="text"
                       className={`new-app-input ${attemptedStep2Proceed && !taxDecNo.trim() ? "is-missing-field" : ""}`}
                       value={taxDecNo}
                       onChange={(e) => setTaxDecNo(e.target.value)}
-                      placeholder="hal. TD-2024-0012-0045"
+                      placeholder={isEn ? "e.g. TD-2024-0012-0045" : "hal. TD-2024-0012-0045"}
                     />
                   </div>
                 </>
               )}
 
-              {/* ── AGRICULTURAL SPECIFIC FIELDS ── */}
+              {/* ── AGRO-INDUSTRIAL SPECIFIC FIELDS ── */}
               {category === "agricultural" && (
                 <>
-                  <div className="new-app-field">
-                    <label className="new-app-label">Type of Agricultural Farm</label>
+                  <div className="new-app-field full-width">
+                    <label className="new-app-label">{isEn ? "Project Category *" : "Kategorya ng Proyekto (Category) *"}</label>
+                    <select
+                      className="new-app-select"
+                      value="Agro-Industrial"
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setBuildingType(val);
+                        if (val !== "Agro-Industrial") {
+                          setCategory("private_infrastructure");
+                        }
+                      }}
+                    >
+                      {activeBuildingTypes.map((bType) => (
+                        <option key={bType} value={bType}>
+                          {bType}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="new-app-field full-width">
+                    <label className="new-app-label">{isEn ? "Agro-Industrial Facility Type *" : "Uri ng Pasilidad sa Agro-Industrial (Facility Type) *"}</label>
                     <select
                       className="new-app-select"
                       value={farmType}
                       onChange={(e) => setFarmType(e.target.value as AgriculturalFarmType)}
                     >
-                      <option value="poultry_broiler">Poultry Farm - Broiler (Meat Production)</option>
-                      <option value="poultry_layer">Poultry Farm - Layer (Egg Production)</option>
-                      <option value="piggery_swine">Piggery / Swine Raising Farm</option>
-                      <option value="livestock_cattle">Livestock / Cattle / Goat Feedlot</option>
-                      <option value="agro_processing">Agro-Industrial / Feed Mill / Rice Mill</option>
-                    </select>
-                  </div>
-
-                  <div className="new-app-field">
-                    <label className="new-app-label">Target Head Capacity (Bilang ng Hayop) *</label>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      className={`new-app-input ${attemptedStep2Proceed && (typeof headCapacity !== "number" || headCapacity <= 0) ? "is-missing-field" : ""}`}
-                      value={headCapacity === "" ? "" : headCapacity}
-                      onChange={(e) => {
-                        const clean = e.target.value.replace(/\D/g, "");
-                        setHeadCapacity(clean === "" ? "" : Number(clean));
-                      }}
-                      onKeyDown={handleIntegerKeyDown}
-                      placeholder="hal. 5000 para sa poultry, 200 para sa baboy"
-                    />
-                  </div>
-
-                  <div className="new-app-field full-width">
-                    <label className="new-app-label">Pasilidad sa Pamamahala ng Dumi at Amoy *</label>
-                    <select
-                      className="new-app-select"
-                      value={wasteManagement}
-                      onChange={(e) => setWasteManagement(e.target.value)}
-                    >
-                      <option value="Biogas Digester + Wastewater Lagoon">Biogas Digester + 3-Stage Wastewater Treatment Lagoon</option>
-                      <option value="Closed Tunnel Ventilated with Odor Scrubber">Closed Tunnel Ventilated Housing with Odor Scrubber</option>
-                      <option value="Dry Bedding System (Deep Litter / Rice Hull)">Dry Bedding System (Deep Litter / Rice Hull Microbe)</option>
-                      <option value="Covered Slurry Tank with Aerator">Covered Slurry Tank with Aeration System</option>
+                      <option value="poultry_housing">Poultry Housing (Broiler/Layer)</option>
+                      <option value="piggery_pen">Piggery Pen (Farrowing/Fattening)</option>
+                      <option value="farm_storage">Agro-Industrial Storage / Warehouse / Feed Mill</option>
+                      <option value="greenhouse">Greenhouse / Post-Harvest Processing</option>
                     </select>
                   </div>
 
@@ -1461,13 +1856,13 @@ export default function NewApplicationPage({
                     <div className={`new-app-buffer-box ${attemptedStep2Proceed && !bufferComplianceConfirmed ? "is-missing-box" : ""}`}>
                       <div className="new-app-buffer-title">
                         <IconShieldCheck size={18} color="var(--apple-safe, #15803d)" />
-                        <span>Mandatory Environmental Buffer Zone Compliance *</span>
+                        <span>{isEn ? "Mandatory Environmental Buffer Zone Compliance *" : "Mandatory Environmental Buffer Zone Compliance *"}</span>
                       </div>
                       <div className="new-app-buffer-text">
-                        Ayon sa Municipal Zoning &amp; Sanitary Code ng Bayan ng Luisiana:
+                        {isEn ? "According to the Municipal Zoning & Sanitary Code of the Municipality of Luisiana:" : "Ayon sa Municipal Zoning & Sanitary Code ng Bayan ng Luisiana:"}
                         <ul style={{ margin: "6px 0 0 20px", padding: 0 }}>
-                          <li><b>500 metro</b> minimum distance mula sa built-up residential areas at mga paaralan.</li>
-                          <li><b>200 metro</b> minimum distance mula sa mga pangunahing ilog at water supply intake.</li>
+                          <li><b>{isEn ? "500 meters" : "500 metro"}</b> {isEn ? "minimum distance from built-up residential areas and schools." : "minimum distance mula sa kabahayan at mga paaralan."}</li>
+                          <li><b>{isEn ? "200 meters" : "200 metro"}</b> {isEn ? "minimum distance from major rivers and water supply intake." : "minimum distance mula sa mga pangunahing ilog at water supply intake."}</li>
                         </ul>
                       </div>
                       <label className="new-app-checkbox-label">
@@ -1476,7 +1871,7 @@ export default function NewApplicationPage({
                           checked={bufferComplianceConfirmed}
                           onChange={(e) => setBufferComplianceConfirmed(e.target.checked)}
                         />
-                        <span>Pinatutunayan na sumusunod ang napiling lokasyon sa itinakdang environmental distance buffers.</span>
+                        <span>{isEn ? "I certify that the selected location complies with the prescribed environmental distance buffers." : "Pinatutunayan na sumusunod ang napiling lokasyon sa itinakdang environmental distance buffers."}</span>
                       </label>
                     </div>
                   </div>
@@ -1487,7 +1882,7 @@ export default function NewApplicationPage({
               {category === "municipal_project" && (
                 <>
                   <div className="new-app-field">
-                    <label className="new-app-label">Implementing Department / Office *</label>
+                    <label className="new-app-label">{isEn ? "Implementing Department / Office *" : "Implementing Department / Office *"}</label>
                     <select
                       className="new-app-select"
                       value={implementingDepartment}
@@ -1502,7 +1897,7 @@ export default function NewApplicationPage({
                   </div>
 
                   <div className="new-app-field">
-                    <label className="new-app-label">Funding Source *</label>
+                    <label className="new-app-label">{isEn ? "Funding Source *" : "Pinagmumulan ng Pondo (Funding Source) *"}</label>
                     <select
                       className="new-app-select"
                       value={fundingSource}
@@ -1518,29 +1913,29 @@ export default function NewApplicationPage({
                   </div>
 
                   <div className="new-app-field">
-                    <label className="new-app-label">AIP / CIP Reference Code *</label>
+                    <label className="new-app-label">{isEn ? "AIP / CIP Reference Code *" : "AIP / CIP Reference Code *"}</label>
                     <input
                       type="text"
                       className={`new-app-input ${attemptedStep2Proceed && !cipCode.trim() ? "is-missing-field" : ""}`}
                       value={cipCode}
                       onChange={(e) => setCipCode(e.target.value)}
-                      placeholder="hal. LUIS-CIP-2026-INFRA-08"
+                      placeholder={isEn ? "e.g. LUIS-CIP-2026-INFRA-08" : "hal. LUIS-CIP-2026-INFRA-08"}
                     />
                   </div>
 
                   <div className="new-app-field">
-                    <label className="new-app-label">Target Beneficiaries *</label>
+                    <label className="new-app-label">{isEn ? "Target Beneficiaries *" : "Target Beneficiaries *"}</label>
                     <input
                       type="text"
                       className={`new-app-input ${attemptedStep2Proceed && !targetBeneficiaries.trim() ? "is-missing-field" : ""}`}
                       value={targetBeneficiaries}
                       onChange={(e) => setTargetBeneficiaries(e.target.value)}
-                      placeholder="hal. All residents of Luisiana"
+                      placeholder={isEn ? "e.g. All residents of Luisiana" : "hal. Lahat ng mamamayan ng Luisiana"}
                     />
                   </div>
 
                   <div className="new-app-field">
-                    <label className="new-app-label">Tinatayang Badyet (Estimated Cost in ₱ PHP) *</label>
+                    <label className="new-app-label">{isEn ? "Estimated Budget (Estimated Cost in ₱ PHP) *" : "Tinatayang Badyet (Estimated Cost in ₱ PHP) *"}</label>
                     <input
                       type="text"
                       inputMode="decimal"
@@ -1553,7 +1948,7 @@ export default function NewApplicationPage({
                         setEstimatedCostPhp(sanitized === "" ? "" : Number(sanitized));
                       }}
                       onKeyDown={handleDecimalKeyDown}
-                      placeholder="hal. 3500000"
+                      placeholder={isEn ? "e.g. 3500000" : "hal. 3500000"}
                     />
                   </div>
                 </>
@@ -1565,14 +1960,16 @@ export default function NewApplicationPage({
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, width: "100%" }}>
                     <div className="new-app-docs-title">
                       <IconUploadCloud size={22} color="var(--apple-text, #1d1d1f)" />
-                      <span>Anim (6) na Mandatory Documents (Citizen&apos;s Charter) *</span>
+                      <span>{isEn ? "Six (6) Mandatory Documents (Citizen's Charter) *" : "Anim (6) na Mandatory Documents (Citizen's Charter) *"}</span>
                     </div>
                     <span className={`new-app-docs-counter ${uploadedDocsCount === 6 ? "complete" : "incomplete"}`}>
-                      {uploadedDocsCount === 6 ? "Kumpleto (6/6) ✓" : `${uploadedDocsCount} of 6 Naka-attach`}
+                      {uploadedDocsCount === 6 ? (isEn ? "Complete (6/6) ✓" : "Kumpleto (6/6) ✓") : (isEn ? `${uploadedDocsCount} of 6 Attached` : `${uploadedDocsCount} of 6 Naka-attach`)}
                     </span>
                   </div>
                   <div className="new-app-docs-sub">
-                    Ayon sa Citizen&apos;s Charter ng Bayan ng Luisiana, kailangang mai-upload ang lahat ng anim (6) na mandatory na dokumento bago magpatuloy sa pagsusuri.
+                    {isEn
+                      ? "Under the Citizen's Charter of the Municipality of Luisiana, all six (6) mandatory documents must be uploaded before proceeding to evaluation."
+                      : "Ayon sa Citizen's Charter ng Bayan ng Luisiana, kailangang mai-upload ang lahat ng anim (6) na mandatory na dokumento bago magpatuloy sa pagsusuri."}
                   </div>
                 </div>
 
@@ -1582,20 +1979,24 @@ export default function NewApplicationPage({
                     <input
                       id="upload-land-title"
                       type="file"
-                      accept="image/*,application/pdf"
+                      accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
                       style={{ display: "none" }}
                       onChange={(e) => {
                         const file = e.target.files?.[0];
-                        if (file) void handleAttachFile(file, setLandTitleDoc);
+                        e.target.value = "";
+                        if (file) void handleAttachFile(file, "landTitle", setLandTitleDoc);
                       }}
                     />
                     <div className="new-app-upload-icon">
                       <IconFileTextDoc size={24} />
                     </div>
-                    <div className="new-app-upload-title">Photocopy ng TCT (Land Title) *</div>
+                    <div className="new-app-upload-title">{isEn ? "Photocopy of TCT (Land Title) *" : "Photocopy ng TCT (Land Title) *"}</div>
                     <div className="new-app-upload-desc">
-                      Scanned o malinaw na kopya ng Transfer Certificate of Title (TCT) o OCT bilang katibayan ng pag-aari.
+                      {isEn
+                        ? "Scanned or clear copy of Transfer Certificate of Title (TCT) or OCT as proof of ownership."
+                        : "Scanned o malinaw na kopya ng Transfer Certificate of Title (TCT) o OCT bilang katibayan ng pag-aari."}
                     </div>
+                    <div className="new-app-upload-format-badge doc">{isEn ? "Accepted: PDF, JPG, PNG, WEBP (Max 15MB)" : "Tinatanggap: PDF, JPG, PNG, WEBP (Max 15MB)"}</div>
 
                     {landTitleDoc ? (
                       <div className="new-app-file-preview-wrap">
@@ -1610,19 +2011,19 @@ export default function NewApplicationPage({
                             setLandTitleDoc(null);
                           }}
                         >
-                          Alisin
+                          {isEn ? "Remove" : "Alisin"}
                         </button>
                       </div>
                     ) : (
                       <label htmlFor="upload-land-title" className={`new-app-upload-status ${attemptedStep2Proceed ? "missing" : "pending"}`} style={{ cursor: "pointer" }}>
-                        <span>{attemptedStep2Proceed ? "Kailangan (Pumili ng File) *" : "Pumili ng File *"}</span>
+                        <span>{attemptedStep2Proceed ? (isEn ? "Required (Select File) *" : "Kailangan (Pumili ng File) *") : (isEn ? "Select File *" : "Pumili ng File *")}</span>
                         <span>+</span>
                       </label>
                     )}
 
                     {landTitleDoc && (
                       <div className="new-app-upload-status success">
-                        <span>✓ Naka-attach ({(landTitleDoc.size / 1024).toFixed(0)} KB)</span>
+                        <span>✓ {isEn ? "Attached" : "Naka-attach"} ({(landTitleDoc.size / 1024).toFixed(0)} KB)</span>
                       </div>
                     )}
                   </div>
@@ -1632,11 +2033,12 @@ export default function NewApplicationPage({
                     <input
                       id="upload-tax-dec"
                       type="file"
-                      accept="image/*,application/pdf"
+                      accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
                       style={{ display: "none" }}
                       onChange={(e) => {
                         const file = e.target.files?.[0];
-                        if (file) void handleAttachFile(file, setTaxDecDoc);
+                        e.target.value = "";
+                        if (file) void handleAttachFile(file, "taxDec", setTaxDecDoc);
                       }}
                     />
                     <div className="new-app-upload-icon">
@@ -1644,8 +2046,11 @@ export default function NewApplicationPage({
                     </div>
                     <div className="new-app-upload-title">Tax Declaration *</div>
                     <div className="new-app-upload-desc">
-                      Certified True Copy ng pinakahuling Tax Declaration para sa lupa mula sa Municipal Assessor.
+                      {isEn
+                        ? "Certified True Copy of the latest Tax Declaration for the property from the Municipal Assessor."
+                        : "Certified True Copy ng pinakahuling Tax Declaration para sa lupa mula sa Municipal Assessor."}
                     </div>
+                    <div className="new-app-upload-format-badge doc">{isEn ? "Accepted: PDF, JPG, PNG, WEBP (Max 15MB)" : "Tinatanggap: PDF, JPG, PNG, WEBP (Max 15MB)"}</div>
 
                     {taxDecDoc ? (
                       <div className="new-app-file-preview-wrap">
@@ -1660,19 +2065,19 @@ export default function NewApplicationPage({
                             setTaxDecDoc(null);
                           }}
                         >
-                          Alisin
+                          {isEn ? "Remove" : "Alisin"}
                         </button>
                       </div>
                     ) : (
                       <label htmlFor="upload-tax-dec" className={`new-app-upload-status ${attemptedStep2Proceed ? "missing" : "pending"}`} style={{ cursor: "pointer" }}>
-                        <span>{attemptedStep2Proceed ? "Kailangan (Pumili ng File) *" : "Pumili ng File *"}</span>
+                        <span>{attemptedStep2Proceed ? (isEn ? "Required (Select File) *" : "Kailangan (Pumili ng File) *") : (isEn ? "Select File *" : "Pumili ng File *")}</span>
                         <span>+</span>
                       </label>
                     )}
 
                     {taxDecDoc && (
                       <div className="new-app-upload-status success">
-                        <span>✓ Naka-attach ({(taxDecDoc.size / 1024).toFixed(0)} KB)</span>
+                        <span>✓ {isEn ? "Attached" : "Naka-attach"} ({(taxDecDoc.size / 1024).toFixed(0)} KB)</span>
                       </div>
                     )}
                   </div>
@@ -1682,20 +2087,24 @@ export default function NewApplicationPage({
                     <input
                       id="upload-rpt-receipt"
                       type="file"
-                      accept="image/*,application/pdf"
+                      accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
                       style={{ display: "none" }}
                       onChange={(e) => {
                         const file = e.target.files?.[0];
-                        if (file) void handleAttachFile(file, setRptReceiptDoc);
+                        e.target.value = "";
+                        if (file) void handleAttachFile(file, "rptReceipt", setRptReceiptDoc);
                       }}
                     />
                     <div className="new-app-upload-icon">
                       <IconReceipt size={24} />
                     </div>
-                    <div className="new-app-upload-title">Current Real Property Tax Receipt (Amilyar) *</div>
+                    <div className="new-app-upload-title">{isEn ? "Current Real Property Tax Receipt (Amilyar) *" : "Current Real Property Tax Receipt (Amilyar) *"}</div>
                     <div className="new-app-upload-desc">
-                      Resibo ng bayad sa amilyar (Official Receipt / Tax Clearance) para sa kasalukuyang taon.
+                      {isEn
+                        ? "Official Receipt / Tax Clearance for real property tax payment for the current year."
+                        : "Resibo ng bayad sa amilyar (Official Receipt / Tax Clearance) para sa kasalukuyang taon."}
                     </div>
+                    <div className="new-app-upload-format-badge doc">{isEn ? "Accepted: PDF, JPG, PNG, WEBP (Max 15MB)" : "Tinatanggap: PDF, JPG, PNG, WEBP (Max 15MB)"}</div>
 
                     {rptReceiptDoc ? (
                       <div className="new-app-file-preview-wrap">
@@ -1710,19 +2119,19 @@ export default function NewApplicationPage({
                             setRptReceiptDoc(null);
                           }}
                         >
-                          Alisin
+                          {isEn ? "Remove" : "Alisin"}
                         </button>
                       </div>
                     ) : (
                       <label htmlFor="upload-rpt-receipt" className={`new-app-upload-status ${attemptedStep2Proceed ? "missing" : "pending"}`} style={{ cursor: "pointer" }}>
-                        <span>{attemptedStep2Proceed ? "Kailangan (Pumili ng File) *" : "Pumili ng File *"}</span>
+                        <span>{attemptedStep2Proceed ? (isEn ? "Required (Select File) *" : "Kailangan (Pumili ng File) *") : (isEn ? "Select File *" : "Pumili ng File *")}</span>
                         <span>+</span>
                       </label>
                     )}
 
                     {rptReceiptDoc && (
                       <div className="new-app-upload-status success">
-                        <span>✓ Naka-attach ({(rptReceiptDoc.size / 1024).toFixed(0)} KB)</span>
+                        <span>✓ {isEn ? "Attached" : "Naka-attach"} ({(rptReceiptDoc.size / 1024).toFixed(0)} KB)</span>
                       </div>
                     )}
                   </div>
@@ -1732,11 +2141,12 @@ export default function NewApplicationPage({
                     <input
                       id="upload-brgy-clearance"
                       type="file"
-                      accept="image/*,application/pdf"
+                      accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
                       style={{ display: "none" }}
                       onChange={(e) => {
                         const file = e.target.files?.[0];
-                        if (file) void handleAttachFile(file, setBrgyClearanceDoc);
+                        e.target.value = "";
+                        if (file) void handleAttachFile(file, "brgyClearance", setBrgyClearanceDoc);
                       }}
                     />
                     <div className="new-app-upload-icon">
@@ -1744,8 +2154,11 @@ export default function NewApplicationPage({
                     </div>
                     <div className="new-app-upload-title">Barangay Clearance *</div>
                     <div className="new-app-upload-desc">
-                      Opisyal na clearance para sa konstruksyon / lokasyon mula sa Barangay kung saan nakatirik ang lote.
+                      {isEn
+                        ? "Official clearance for construction / location from the Barangay where the lot is located."
+                        : "Opisyal na clearance para sa konstruksyon / lokasyon mula sa Barangay kung saan nakatirik ang lote."}
                     </div>
+                    <div className="new-app-upload-format-badge doc">{isEn ? "Accepted: PDF, JPG, PNG, WEBP (Max 15MB)" : "Tinatanggap: PDF, JPG, PNG, WEBP (Max 15MB)"}</div>
 
                     {brgyClearanceDoc ? (
                       <div className="new-app-file-preview-wrap">
@@ -1760,19 +2173,19 @@ export default function NewApplicationPage({
                             setBrgyClearanceDoc(null);
                           }}
                         >
-                          Alisin
+                          {isEn ? "Remove" : "Alisin"}
                         </button>
                       </div>
                     ) : (
                       <label htmlFor="upload-brgy-clearance" className={`new-app-upload-status ${attemptedStep2Proceed ? "missing" : "pending"}`} style={{ cursor: "pointer" }}>
-                        <span>{attemptedStep2Proceed ? "Kailangan (Pumili ng File) *" : "Pumili ng File *"}</span>
+                        <span>{attemptedStep2Proceed ? (isEn ? "Required (Select File) *" : "Kailangan (Pumili ng File) *") : (isEn ? "Select File *" : "Pumili ng File *")}</span>
                         <span>+</span>
                       </label>
                     )}
 
                     {brgyClearanceDoc && (
                       <div className="new-app-upload-status success">
-                        <span>✓ Naka-attach ({(brgyClearanceDoc.size / 1024).toFixed(0)} KB)</span>
+                        <span>✓ {isEn ? "Attached" : "Naka-attach"} ({(brgyClearanceDoc.size / 1024).toFixed(0)} KB)</span>
                       </div>
                     )}
                   </div>
@@ -1782,11 +2195,12 @@ export default function NewApplicationPage({
                     <input
                       id="upload-plo-cert"
                       type="file"
-                      accept="image/*,application/pdf"
+                      accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
                       style={{ display: "none" }}
                       onChange={(e) => {
                         const file = e.target.files?.[0];
-                        if (file) void handleAttachFile(file, setPloCertDoc);
+                        e.target.value = "";
+                        if (file) void handleAttachFile(file, "ploCert", setPloCertDoc);
                       }}
                     />
                     <div className="new-app-upload-icon">
@@ -1794,8 +2208,11 @@ export default function NewApplicationPage({
                     </div>
                     <div className="new-app-upload-title">PLO Certification (MERALCO) *</div>
                     <div className="new-app-upload-desc">
-                      Clearance mula sa MERALCO / Public Lighting Office para sa opisyal na koneksyon ng kuryente.
+                      {isEn
+                        ? "Clearance from MERALCO / Public Lighting Office for official power utility connection."
+                        : "Clearance mula sa MERALCO / Public Lighting Office para sa opisyal na koneksyon ng kuryente."}
                     </div>
+                    <div className="new-app-upload-format-badge doc">{isEn ? "Accepted: PDF, JPG, PNG, WEBP (Max 15MB)" : "Tinatanggap: PDF, JPG, PNG, WEBP (Max 15MB)"}</div>
 
                     {ploCertDoc ? (
                       <div className="new-app-file-preview-wrap">
@@ -1810,19 +2227,19 @@ export default function NewApplicationPage({
                             setPloCertDoc(null);
                           }}
                         >
-                          Alisin
+                          {isEn ? "Remove" : "Alisin"}
                         </button>
                       </div>
                     ) : (
                       <label htmlFor="upload-plo-cert" className={`new-app-upload-status ${attemptedStep2Proceed ? "missing" : "pending"}`} style={{ cursor: "pointer" }}>
-                        <span>{attemptedStep2Proceed ? "Kailangan (Pumili ng File) *" : "Pumili ng File *"}</span>
+                        <span>{attemptedStep2Proceed ? (isEn ? "Required (Select File) *" : "Kailangan (Pumili ng File) *") : (isEn ? "Select File *" : "Pumili ng File *")}</span>
                         <span>+</span>
                       </label>
                     )}
 
                     {ploCertDoc && (
                       <div className="new-app-upload-status success">
-                        <span>✓ Naka-attach ({(ploCertDoc.size / 1024).toFixed(0)} KB)</span>
+                        <span>✓ {isEn ? "Attached" : "Naka-attach"} ({(ploCertDoc.size / 1024).toFixed(0)} KB)</span>
                       </div>
                     )}
                   </div>
@@ -1832,20 +2249,24 @@ export default function NewApplicationPage({
                     <input
                       id="upload-photo-docs"
                       type="file"
-                      accept="image/*,application/pdf"
+                      accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
                       style={{ display: "none" }}
                       onChange={(e) => {
                         const file = e.target.files?.[0];
-                        if (file) void handleAttachFile(file, setPhotoDocsDoc);
+                        e.target.value = "";
+                        if (file) void handleAttachFile(file, "photoDocs", setPhotoDocsDoc);
                       }}
                     />
                     <div className="new-app-upload-icon">
                       <IconCamera size={24} />
                     </div>
-                    <div className="new-app-upload-title">Photo Documentation *</div>
+                    <div className="new-app-upload-title">{isEn ? "Photo Documentation *" : "Photo Documentation *"}</div>
                     <div className="new-app-upload-desc">
-                      Mga litrato ng loob at labas ng mismong lote/site (aktwal na kalagayan ng lugar).
+                      {isEn
+                        ? "Photographs of the interior and exterior of the lot/site (actual on-ground condition)."
+                        : "Mga litrato ng loob at labas ng mismong lote/site (aktwal na kalagayan ng lugar)."}
                     </div>
+                    <div className="new-app-upload-format-badge photo">{isEn ? "Accepted: Photos Only (JPG, PNG, WEBP) · No PDF" : "Tinatanggap: Litrato Lamang (JPG, PNG, WEBP) · Bawal ang PDF"}</div>
 
                     {photoDocsDoc ? (
                       <div className="new-app-file-preview-wrap">
@@ -1858,23 +2279,27 @@ export default function NewApplicationPage({
                           onClick={(e) => {
                             e.stopPropagation();
                             setPhotoDocsDoc(null);
+                            setGeotagResult(null);
+                            setCoordinateSource("manual");
                           }}
                         >
-                          Alisin
+                          {isEn ? "Remove" : "Alisin"}
                         </button>
                       </div>
                     ) : (
                       <label htmlFor="upload-photo-docs" className={`new-app-upload-status ${attemptedStep2Proceed ? "missing" : "pending"}`} style={{ cursor: "pointer" }}>
-                        <span>{attemptedStep2Proceed ? "Kailangan (Pumili ng File) *" : "Pumili ng File *"}</span>
+                        <span>{attemptedStep2Proceed ? (isEn ? "Required (Select File) *" : "Kailangan (Pumili ng File) *") : (isEn ? "Select File *" : "Pumili ng File *")}</span>
                         <span>+</span>
                       </label>
                     )}
 
                     {photoDocsDoc && (
                       <div className="new-app-upload-status success">
-                        <span>✓ Naka-attach ({(photoDocsDoc.size / 1024).toFixed(0)} KB)</span>
+                        <span>✓ {isEn ? "Attached" : "Naka-attach"} ({(photoDocsDoc.size / 1024).toFixed(0)} KB)</span>
                       </div>
                     )}
+
+
                   </div>
                 </div>
               </div>
@@ -1885,7 +2310,7 @@ export default function NewApplicationPage({
                 <div className="new-app-missing-alert">
                   <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600, color: "var(--apple-danger, #b91c1c)" }}>
                     <IconAlert size={18} color="#ef4444" />
-                    <span>Dapat kumpleto ang lahat ng patlang at 6 na mandatory requirements bago magpatuloy ({getStep2MissingFields().length} kulang):</span>
+                    <span>{isEn ? `All fields and 6 mandatory requirements must be complete before proceeding (${getStep2MissingFields().length} missing):` : `Dapat kumpleto ang lahat ng patlang at 6 na mandatory requirements bago magpatuloy (${getStep2MissingFields().length} kulang):`}</span>
                   </div>
                   <div className="new-app-missing-chips">
                     {getStep2MissingFields().map((f, i) => (
@@ -1899,8 +2324,8 @@ export default function NewApplicationPage({
 
               <div className="new-app-footer-actions">
                 <button type="button" className="new-app-page-btn new-app-page-btn-secondary" onClick={handleBack}>
-                  <span className="new-app-btn-text-full">← Bumalik sa Kategorya</span>
-                  <span className="new-app-btn-text-short">← Bumalik</span>
+                  <span className="new-app-btn-text-full">{isEn ? "← Back to Category" : "← Bumalik sa Kategorya"}</span>
+                  <span className="new-app-btn-text-short">{isEn ? "← Back" : "← Bumalik"}</span>
                 </button>
                 <button
                   type="button"
@@ -1914,10 +2339,10 @@ export default function NewApplicationPage({
                       setAttemptedStep2Proceed(true);
                     }
                   }}
-                  title={!isStep2Valid() ? "Pakikumpleto muna ang lahat ng patlang at 6 na kalakip bago magpatuloy" : undefined}
+                  title={!isStep2Valid() ? (isEn ? "Please complete all fields and 6 attachments before proceeding" : "Pakikumpleto muna ang lahat ng patlang at 6 na kalakip bago magpatuloy") : undefined}
                 >
-                  <span className="new-app-btn-text-full">Magpatuloy sa GIS Siting</span>
-                  <span className="new-app-btn-text-short">Magpatuloy</span>
+                  <span className="new-app-btn-text-full">{isEn ? "Proceed to GIS Siting" : "Magpatuloy sa GIS Siting"}</span>
+                  <span className="new-app-btn-text-short">{isEn ? "Proceed" : "Magpatuloy"}</span>
                   <span>→</span>
                 </button>
               </div>
@@ -1934,7 +2359,9 @@ export default function NewApplicationPage({
                 <span>GIS Location Siting &amp; Hazard Clearance</span>
               </h2>
               <div className="new-app-form-sub">
-                Awtomatikong sinusuri ng GIS engine ang elevation slope, fault proximity, at hazard zones sa Bayan ng Luisiana.
+                {isEn
+                  ? "The GIS engine automatically evaluates elevation slope, fault proximity, and hazard zones across the Municipality of Luisiana."
+                  : "Awtomatikong sinusuri ng GIS engine ang elevation slope, fault proximity, at hazard zones sa Bayan ng Luisiana."}
               </div>
             </div>
 
@@ -1944,7 +2371,7 @@ export default function NewApplicationPage({
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
                 </svg>
-                <span>Luisiana Siting Assessment</span>
+                <span>{isEn ? "Luisiana Siting Assessment" : "Pagsusuri ng Lokasyon sa Luisiana"}</span>
               </div>
 
               <dl className="app-assess-list">
@@ -1960,16 +2387,16 @@ export default function NewApplicationPage({
 
                 <div className="app-assess-row">
                   <dt>Siting class</dt>
-                  <dd className="app-assess-val-accent">LOW — standard seismic design</dd>
+                  <dd className="app-assess-val-accent">{isEn ? "LOW — standard seismic design" : "MABABA — standard seismic design"}</dd>
                 </div>
 
                 <div className="app-assess-row">
                   <dt>Terrain model</dt>
-                  <dd className="app-assess-val-muted">Not ready</dd>
+                  <dd className="app-assess-val-muted">{isEn ? "Not ready" : "Hindi pa handa"}</dd>
                 </div>
 
                 <div className="app-assess-row">
-                  <dt>Flood</dt>
+                  <dt>{isEn ? "Flood" : "Baha"}</dt>
                   <dd>
                     <span className={`app-hazard-badge ${getHazardBadgeClass(geoRisk?.flood?.value)}`}>
                       {geoRisk?.flood?.value || "Safe"}
@@ -1978,7 +2405,7 @@ export default function NewApplicationPage({
                 </div>
 
                 <div className="app-assess-row">
-                  <dt>Rain-induced landslide</dt>
+                  <dt>{isEn ? "Rain-induced landslide" : "Landslide dulot ng ulan"}</dt>
                   <dd>
                     <span className={`app-hazard-badge ${getHazardBadgeClass(geoRisk?.landslide?.value)}`}>
                       {geoRisk?.landslide?.value || "Safe"}
@@ -1989,7 +2416,7 @@ export default function NewApplicationPage({
                 <div className="app-assess-row">
                   <dt>Mt. Banahaw</dt>
                   <dd className="app-assess-val-normal">
-                    {ban.km.toFixed(1)} km north of summit
+                    {ban.km.toFixed(1)} {isEn ? "km north of summit" : "km hilaga ng summit"}
                   </dd>
                 </div>
               </dl>
@@ -2000,7 +2427,7 @@ export default function NewApplicationPage({
                   <line x1="12" y1="16" x2="12" y2="12" />
                   <line x1="12" y1="8" x2="12.01" y2="8" />
                 </svg>
-                <span>Luisiana only · MGB flood &amp; landslide (GeoRiskPH) + PHIVOLCS 2014 sheets + local terrain model.</span>
+                <span>{isEn ? "Luisiana only · MGB flood & landslide (GeoRiskPH) + PHIVOLCS 2014 sheets + local terrain model." : "Luisiana only · MGB baha at landslide (GeoRiskPH) + PHIVOLCS 2014 sheets + lokal na terrain model."}</span>
               </p>
 
               <button
@@ -2028,7 +2455,7 @@ export default function NewApplicationPage({
                   <line x1="16" y1="17" x2="8" y2="17" />
                   <polyline points="10 9 9 9 8 9" />
                 </svg>
-                <span>View report</span>
+                <span>{isEn ? "View report" : "Tingnan ang ulat (Report)"}</span>
               </button>
             </div>
 
@@ -2047,14 +2474,14 @@ export default function NewApplicationPage({
               }}
             >
               <IconInfo size={18} color="var(--apple-accent, #0071e3)" />
-              <span>Pagkatapos i-submit, maaari mong buksan agad ang interactive 2D map upang mai-plot ang eksaktong perimeter gamit ang cursor.</span>
+              <span>{isEn ? "After submission, you can immediately open the interactive 2D map to inspect the exact perimeter." : "Pagkatapos i-submit, maaari mong buksan agad ang interactive 2D map upang mai-plot ang eksaktong perimeter gamit ang cursor."}</span>
             </div>
 
             <div className="new-app-page-footer">
               <div className="new-app-footer-actions">
                 <button type="button" className="new-app-page-btn new-app-page-btn-secondary" onClick={handleBack}>
-                  <span className="new-app-btn-text-full">← Bumalik sa Form</span>
-                  <span className="new-app-btn-text-short">← Bumalik</span>
+                  <span className="new-app-btn-text-full">{isEn ? "← Back to Form" : "← Bumalik sa Form"}</span>
+                  <span className="new-app-btn-text-short">{isEn ? "← Back" : "← Bumalik"}</span>
                 </button>
                 <button
                   type="button"
@@ -2064,11 +2491,11 @@ export default function NewApplicationPage({
                 >
                   <span>
                     {submitting ? (
-                      "Isinusumite..."
+                      (isEn ? "Submitting..." : "Isinusumite...")
                     ) : (
                       <>
-                        <span className="new-app-btn-text-full">Kumpirmahin at I-submit</span>
-                        <span className="new-app-btn-text-short">I-submit</span>
+                        <span className="new-app-btn-text-full">{isEn ? "Confirm & Submit" : "Kumpirmahin at I-submit"}</span>
+                        <span className="new-app-btn-text-short">{isEn ? "Submit" : "I-submit"}</span>
                       </>
                     )}
                   </span>
@@ -2086,10 +2513,12 @@ export default function NewApplicationPage({
               <IconCheckCircle size={56} color="var(--apple-safe, #15803d)" />
             </div>
             <h1 style={{ margin: "0 0 8px", fontSize: "1.5rem", fontWeight: 700, color: "var(--apple-safe, #15803d)", letterSpacing: "-0.02em" }}>
-              Matagumpay na Nalikha ang Aplikasyon!
+              {isEn ? "Application Successfully Created!" : "Matagumpay na Nalikha ang Aplikasyon!"}
             </h1>
             <p style={{ margin: "0 auto 24px", fontSize: "0.94rem", color: "var(--apple-text-secondary, #6e6e73)", maxWidth: 520, lineHeight: 1.55 }}>
-              Nailagay na sa database ng Bayan ng Luisiana ang inyong aplikasyon para sa opisyal na pagsusuri ng MPDC at Engineering Office.
+              {isEn
+                ? "Your application has been officially recorded in the database of the Municipality of Luisiana for MPDC and Engineering evaluation."
+                : "Nailagay na sa database ng Bayan ng Luisiana ang inyong aplikasyon para sa opisyal na pagsusuri ng MPDC at Engineering Office."}
             </p>
 
             <div
@@ -2103,7 +2532,7 @@ export default function NewApplicationPage({
               }}
             >
               <div style={{ fontSize: 12, color: "var(--apple-text-secondary, #6e6e73)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>
-                Tracking Reference Number
+                {isEn ? "Tracking Reference Number" : "Tracking Reference Number"}
               </div>
               <div style={{ fontSize: "1.75rem", fontWeight: 800, color: "var(--apple-text, #1d1d1f)", marginTop: 6, letterSpacing: "0.05em", fontFamily: "monospace" }}>
                 {generatedTrackingNo}
@@ -2114,44 +2543,44 @@ export default function NewApplicationPage({
             <div style={{ maxWidth: 580, margin: "0 auto 28px", textAlign: "left", background: "var(--apple-surface-secondary, #f5f5f7)", border: "1px solid var(--apple-border, rgba(0, 0, 0, 0.08))", borderRadius: "var(--apple-radius-md, 10px)", padding: "18px 20px" }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: "var(--apple-text-secondary, #6e6e73)", textTransform: "uppercase", marginBottom: 12, display: "flex", alignItems: "center", gap: 6 }}>
                 <IconUploadCloud size={16} color="var(--apple-text, #1d1d1f)" />
-                <span>Nai-attach na mga Dokumento ({[landTitleDoc, taxDecDoc, rptReceiptDoc, brgyClearanceDoc, ploCertDoc, photoDocsDoc].filter(Boolean).length} of 6)</span>
+                <span>{isEn ? "Attached Documents" : "Nai-attach na mga Dokumento"} ({[landTitleDoc, taxDecDoc, rptReceiptDoc, brgyClearanceDoc, ploCertDoc, photoDocsDoc].filter(Boolean).length} of 6)</span>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 9, fontSize: "0.82rem" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: landTitleDoc ? "var(--apple-safe, #15803d)" : "var(--apple-text-tertiary, #86868b)" }}>
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                    <IconFileTextDoc size={14} color="currentColor" /> Photocopy ng TCT (Land Title):
+                    <IconFileTextDoc size={14} color="currentColor" /> {isEn ? "Photocopy of TCT (Land Title):" : "Photocopy ng TCT (Land Title):"}
                   </span>
-                  <strong>{landTitleDoc ? `✓ ${landTitleDoc.name}` : "Walang kalakip"}</strong>
+                  <strong>{landTitleDoc ? `✓ ${landTitleDoc.name}` : (isEn ? "None attached" : "Walang kalakip")}</strong>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: taxDecDoc ? "var(--apple-safe, #15803d)" : "var(--apple-text-tertiary, #86868b)" }}>
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                     <IconFileTextDoc size={14} color="currentColor" /> Tax Declaration:
                   </span>
-                  <strong>{taxDecDoc ? `✓ ${taxDecDoc.name}` : "Walang kalakip"}</strong>
+                  <strong>{taxDecDoc ? `✓ ${taxDecDoc.name}` : (isEn ? "None attached" : "Walang kalakip")}</strong>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: rptReceiptDoc ? "var(--apple-safe, #15803d)" : "var(--apple-text-tertiary, #86868b)" }}>
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                    <IconReceipt size={14} color="currentColor" /> Current Real Property Tax Receipt (Amilyar):
+                    <IconReceipt size={14} color="currentColor" /> {isEn ? "Current Real Property Tax Receipt (Amilyar):" : "Current Real Property Tax Receipt (Amilyar):"}
                   </span>
-                  <strong>{rptReceiptDoc ? `✓ ${rptReceiptDoc.name}` : "Walang kalakip"}</strong>
+                  <strong>{rptReceiptDoc ? `✓ ${rptReceiptDoc.name}` : (isEn ? "None attached" : "Walang kalakip")}</strong>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: brgyClearanceDoc ? "var(--apple-safe, #15803d)" : "var(--apple-text-tertiary, #86868b)" }}>
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                     <IconShieldCheck size={14} color="currentColor" /> Barangay Clearance:
                   </span>
-                  <strong>{brgyClearanceDoc ? `✓ ${brgyClearanceDoc.name}` : "Walang kalakip"}</strong>
+                  <strong>{brgyClearanceDoc ? `✓ ${brgyClearanceDoc.name}` : (isEn ? "None attached" : "Walang kalakip")}</strong>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: ploCertDoc ? "var(--apple-safe, #15803d)" : "var(--apple-text-tertiary, #86868b)" }}>
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                    <IconBolt size={14} color="currentColor" /> PLO Certification (MERALCO Clearance):
+                    <IconBolt size={14} color="currentColor" /> {isEn ? "PLO Certification (MERALCO Clearance):" : "PLO Certification (MERALCO Clearance):"}
                   </span>
-                  <strong>{ploCertDoc ? `✓ ${ploCertDoc.name}` : "Walang kalakip"}</strong>
+                  <strong>{ploCertDoc ? `✓ ${ploCertDoc.name}` : (isEn ? "None attached" : "Walang kalakip")}</strong>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", color: photoDocsDoc ? "var(--apple-safe, #15803d)" : "var(--apple-text-tertiary, #86868b)" }}>
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                    <IconCamera size={14} color="currentColor" /> Photo Documentation (Loob at Labas ng Site):
+                    <IconCamera size={14} color="currentColor" /> {isEn ? "Photo Documentation (Site Photos):" : "Photo Documentation (Loob at Labas ng Site):"}
                   </span>
-                  <strong>{photoDocsDoc ? `✓ ${photoDocsDoc.name}` : "Walang kalakip"}</strong>
+                  <strong>{photoDocsDoc ? `✓ ${photoDocsDoc.name}` : (isEn ? "None attached" : "Walang kalakip")}</strong>
                 </div>
               </div>
             </div>
@@ -2167,7 +2596,7 @@ export default function NewApplicationPage({
                 }}
               >
                 <IconPin size={16} color="currentColor" />
-                <span>Subaybayan ang Aplikasyon (Live Tracker)</span>
+                <span>{isEn ? "Track Application (Live Tracker)" : "Subaybayan ang Aplikasyon (Live Tracker)"}</span>
               </button>
 
               {onViewOnMap && (
@@ -2177,7 +2606,7 @@ export default function NewApplicationPage({
                   onClick={() => onViewOnMap(pinnedCoords.lon, pinnedCoords.lat)}
                 >
                   <IconMap size={16} color="currentColor" />
-                  <span>Tingnan sa 2D Mapa</span>
+                  <span>{isEn ? "View on 2D Map" : "Tingnan sa 2D Mapa"}</span>
                 </button>
               )}
               <button
@@ -2185,7 +2614,7 @@ export default function NewApplicationPage({
                 className="new-app-page-btn new-app-page-btn-secondary"
                 onClick={onBack}
               >
-                Bumalik sa Dashboard / Landing
+                {isEn ? "Back to Dashboard / Landing" : "Bumalik sa Dashboard / Landing"}
               </button>
             </div>
           </div>

@@ -116,8 +116,46 @@ export function createCitizenApplication(data) {
     const zoningClassification =
       data.zoningClassification || (isUrban ? "Urban / Commercial Zone" : "Rural Zone");
 
-    const newApp = {
-      id: `app-${Date.now()}-${Math.round(Math.random() * 1e6)}`,
+  // Validate mandatory document uploads when submitted via citizen application
+  if (data.uploads && typeof data.uploads === "object") {
+    // 1. Photo documentation must not be a PDF
+    if (Array.isArray(data.uploads.photoDocs)) {
+      for (const doc of data.uploads.photoDocs) {
+        const name = (doc.originalName || doc.url || "").toLowerCase();
+        if (name.endsWith(".pdf")) {
+          throw new Error("Di-pinahihintulutan: Ang Photo Documentation ay para lamang sa mga litrato (JPG, PNG, WEBP). Hindi pinapayagan ang PDF sa field na ito.");
+        }
+      }
+    }
+
+    // 2. Cross-field duplicate file detection (ensure distinct documents across mandatory fields)
+    const checkedFields = ["tctTaxDec", "taxDeclaration", "rptReceipt", "brgyClearance", "ploCert", "photoDocs"];
+    const seenUrls = new Map();
+    const seenNames = new Map();
+
+    for (const field of checkedFields) {
+      const items = Array.isArray(data.uploads[field]) ? data.uploads[field] : [];
+      for (const item of items) {
+        if (item.url) {
+          const normUrl = item.url.trim().toLowerCase();
+          if (seenUrls.has(normUrl)) {
+            throw new Error(`Nauulit na file sa aplikasyon: Ang dokumento sa "${field}" ay katulad ng sa "${seenUrls.get(normUrl)}". Ang bawat requirement ay dapat may sariling kaukulang dokumento.`);
+          }
+          seenUrls.set(normUrl, field);
+        }
+        if (item.originalName && item.size) {
+          const sig = `${item.originalName.trim().toLowerCase()}-${item.size}`;
+          if (seenNames.has(sig)) {
+            throw new Error(`Nauulit na dokumento: Ang file na "${item.originalName}" ay ginamit na sa "${seenNames.get(sig)}".`);
+          }
+          seenNames.set(sig, field);
+        }
+      }
+    }
+  }
+
+  const newApp = {
+    id: `app-${Date.now()}-${Math.round(Math.random() * 1e6)}`,
       trackingNumber,
       serviceType,
       projectTitle,
@@ -244,83 +282,171 @@ export function createCitizenApplication(data) {
     }).catch(() => {});
   }
 
-  // Sync to PostgreSQL with hashed personal fields for privacy
+  // Sync to PostgreSQL normalized schema (3NF)
   if (isDbConnected()) {
-    const hashedName = hashField(newApp.applicant.fullName);
-    const hashedPhone = hashField(newApp.applicant.contactPhone);
-    const hashedEmail = hashField(newApp.applicant.contactEmail);
-    const hashedAddress = hashField(newApp.applicant.address);
+    const hashedName = hashField(newApp.applicant?.fullName || "");
+    const hashedPhone = hashField(newApp.applicant?.contactPhone || "");
+    const hashedEmail = hashField(newApp.applicant?.contactEmail || "");
+    const hashedAddress = hashField(newApp.applicant?.address || "");
+    const applicantId = `app-user-${newApp.id}`;
 
+    // 1. Insert/Update applicant profile
+    query(
+      `INSERT INTO applicants (id, full_name, contact_phone, contact_email, address, barangay, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       ON CONFLICT (id) DO UPDATE SET
+         full_name = EXCLUDED.full_name,
+         contact_phone = EXCLUDED.contact_phone,
+         contact_email = EXCLUDED.contact_email,
+         address = EXCLUDED.address,
+         barangay = EXCLUDED.barangay,
+         updated_at = NOW()`,
+      [
+        applicantId,
+        hashedName || "Applicant",
+        hashedPhone || "",
+        hashedEmail || "",
+        hashedAddress || "",
+        newApp.applicant?.barangay || "Poblacion",
+        newApp.createdAt || new Date().toISOString(),
+        newApp.updatedAt || new Date().toISOString(),
+      ]
+    ).catch((err) => console.warn("[PostgreSQL] Insert applicant failed:", err.message));
+
+    // 2. Insert/Update core citizen permit application
     query(
       `INSERT INTO citizen_applications (
-        id, tracking_number, service_type, applicant_name,
-        contact_phone, contact_email, address, barangay,
-        latitude, longitude,
-        project_title, category, estimated_cost,
-        geo_risk, agricultural_details, municipal_details,
-        lot_details, uploads, status, step_progress,
-        responsible_officers, sla_days, sla_minutes, fee,
-        notes, zoning_classification, data_hash, created_at, updated_at,
-        terms_accepted, terms_accepted_at, terms_version, terms_consent_details
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33)
+        id, tracking_number, applicant_id, service_type, category,
+        status, project_title, estimated_cost, uploads, step_progress,
+        responsible_officers, sla_days, sla_minutes, fee, notes,
+        data_hash, created_at, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
       ON CONFLICT (tracking_number) DO UPDATE SET
-        applicant_name = EXCLUDED.applicant_name,
-        contact_phone = EXCLUDED.contact_phone,
-        contact_email = EXCLUDED.contact_email,
-        address = EXCLUDED.address,
-        latitude = EXCLUDED.latitude,
-        longitude = EXCLUDED.longitude,
-        project_title = EXCLUDED.project_title,
+        applicant_id = EXCLUDED.applicant_id,
+        service_type = EXCLUDED.service_type,
         category = EXCLUDED.category,
+        status = EXCLUDED.status,
+        project_title = EXCLUDED.project_title,
         estimated_cost = EXCLUDED.estimated_cost,
-        geo_risk = EXCLUDED.geo_risk,
-        agricultural_details = EXCLUDED.agricultural_details,
-        municipal_details = EXCLUDED.municipal_details,
-        lot_details = EXCLUDED.lot_details,
         uploads = EXCLUDED.uploads,
-        zoning_classification = EXCLUDED.zoning_classification,
+        step_progress = EXCLUDED.step_progress,
+        responsible_officers = EXCLUDED.responsible_officers,
+        sla_days = EXCLUDED.sla_days,
+        sla_minutes = EXCLUDED.sla_minutes,
+        fee = EXCLUDED.fee,
+        notes = EXCLUDED.notes,
         data_hash = EXCLUDED.data_hash,
-        terms_accepted = EXCLUDED.terms_accepted,
-        terms_accepted_at = EXCLUDED.terms_accepted_at,
-        terms_version = EXCLUDED.terms_version,
-        terms_consent_details = EXCLUDED.terms_consent_details,
         updated_at = NOW()`,
       [
         newApp.id,
         newApp.trackingNumber,
+        applicantId,
         newApp.serviceType,
-        hashedName,
-        hashedPhone,
-        hashedEmail,
-        hashedAddress,
-        newApp.applicant.barangay,
-        lat,
-        lon,
-        projectTitle,
         category,
-        estimatedCost,
-        JSON.stringify(geoRisk),
-        JSON.stringify(agriculturalDetails),
-        JSON.stringify(municipalDetails),
-        JSON.stringify(newApp.lotDetails),
-        JSON.stringify(newApp.uploads),
         newApp.status,
-        JSON.stringify(newApp.stepProgress),
-        JSON.stringify(newApp.responsibleOfficers),
-        newApp.slaDays,
-        newApp.slaMinutes,
-        newApp.fee,
-        newApp.notes,
-        zoningClassification,
+        projectTitle,
+        estimatedCost,
+        JSON.stringify(newApp.uploads || {}),
+        JSON.stringify(newApp.stepProgress || {}),
+        JSON.stringify(newApp.responsibleOfficers || []),
+        newApp.slaDays || 1,
+        newApp.slaMinutes || 12,
+        newApp.fee || "None (Free)",
+        newApp.notes || "",
         newApp.dataHash,
         newApp.createdAt,
         newApp.updatedAt,
-        newApp.termsAccepted,
-        newApp.termsAcceptedAt,
-        newApp.termsVersion,
-        JSON.stringify(newApp.termsConsentDetails),
       ]
     ).catch((err) => console.warn("[PostgreSQL] Insert application failed:", err.message));
+
+    // 3. Insert/Update location and zoning details
+    query(
+      `INSERT INTO application_locations (
+        id, application_id, latitude, longitude, barangay,
+        lot_area_sqm, lot_location_description, zoning_classification,
+        tct_no, tax_dec_no, lot_owner, is_applicant_owner,
+        geo_risk, lot_details, agricultural_details, municipal_details
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+      ON CONFLICT (application_id) DO UPDATE SET
+        latitude = EXCLUDED.latitude,
+        longitude = EXCLUDED.longitude,
+        barangay = EXCLUDED.barangay,
+        zoning_classification = EXCLUDED.zoning_classification,
+        geo_risk = EXCLUDED.geo_risk,
+        lot_details = EXCLUDED.lot_details,
+        agricultural_details = EXCLUDED.agricultural_details,
+        municipal_details = EXCLUDED.municipal_details`,
+      [
+        `loc-${newApp.id}`,
+        newApp.id,
+        lat,
+        lon,
+        newApp.applicant?.barangay || "Poblacion",
+        Number(newApp.lotDetails?.lotAreaSqM || 0),
+        newApp.lotDetails?.lotLocationDescription || "",
+        zoningClassification,
+        newApp.lotDetails?.tctNo || "",
+        newApp.lotDetails?.taxDecNo || "",
+        newApp.lotDetails?.lotOwner || "",
+        Boolean(newApp.lotDetails?.isApplicantOwner),
+        JSON.stringify(geoRisk || {}),
+        JSON.stringify(newApp.lotDetails || {}),
+        JSON.stringify(agriculturalDetails || {}),
+        JSON.stringify(municipalDetails || {}),
+      ]
+    ).catch((err) => console.warn("[PostgreSQL] Insert application location failed:", err.message));
+
+    // 4. Insert/Update treasury payment record
+    query(
+      `INSERT INTO application_payments (
+        id, application_id, payment_status, order_of_payment_no,
+        amount_due, or_number, amount_paid, payment_date, cashier
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      ON CONFLICT (application_id) DO UPDATE SET
+        payment_status = EXCLUDED.payment_status,
+        amount_due = EXCLUDED.amount_due,
+        or_number = EXCLUDED.or_number,
+        amount_paid = EXCLUDED.amount_paid,
+        payment_date = EXCLUDED.payment_date`,
+      [
+        `pay-${newApp.id}`,
+        newApp.id,
+        newApp.payment?.status || "unpaid",
+        newApp.payment?.orderOfPaymentNo || null,
+        Number(newApp.payment?.feeAmount || 0),
+        newApp.payment?.orNumber || null,
+        Number(newApp.payment?.paidAmount || 0),
+        newApp.payment?.paidAt || null,
+        newApp.payment?.cashier || null,
+      ]
+    ).catch((err) => console.warn("[PostgreSQL] Insert application payment failed:", err.message));
+
+    // 5. Insert/Update engineering review record
+    query(
+      `INSERT INTO engineering_reviews (
+        id, application_id, engineer_approved, engineer_approved_at,
+        engineer_approved_by, is_pinned, held_at, held_by, hold_reason
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      ON CONFLICT (application_id) DO UPDATE SET
+        engineer_approved = EXCLUDED.engineer_approved,
+        engineer_approved_at = EXCLUDED.engineer_approved_at,
+        engineer_approved_by = EXCLUDED.engineer_approved_by,
+        is_pinned = EXCLUDED.is_pinned,
+        held_at = EXCLUDED.held_at,
+        held_by = EXCLUDED.held_by,
+        hold_reason = EXCLUDED.hold_reason`,
+      [
+        `eng-${newApp.id}`,
+        newApp.id,
+        Boolean(newApp.engineerApproved),
+        newApp.engineerApprovedAt || null,
+        newApp.engineerApprovedBy || null,
+        Boolean(newApp.isPinned),
+        newApp.heldAt || null,
+        newApp.heldBy || null,
+        newApp.holdReason || null,
+      ]
+    ).catch((err) => console.warn("[PostgreSQL] Insert engineering review failed:", err.message));
 
     if (newApp.remarks && newApp.remarks.length > 0) {
       query(
@@ -357,43 +483,70 @@ export function updateCitizenApplication(id, patch) {
   };
 
   // Sync stepProgress according to Citizen's Charter workflow stages
+  // Sync stepProgress according to 5-Stage Citizen's Charter workflow
   const nextSt = (patch.status || current.status || "").toLowerCase();
   const currentProgress = { ...(current.stepProgress || {}) };
-  if (nextSt === "ocular_inspection" || nextSt === "for_ocular_inspection" || nextSt === "inspection") {
+
+  if (nextSt === "for_assessment" || nextSt === "assessor_review" || nextSt === "pending_assessment") {
+    updated.status = "for_assessment";
     updated.stepProgress = {
       ...currentProgress,
       currentStep: 2,
-      totalSteps: currentProgress.totalSteps || 3,
+      totalSteps: 5,
       step1Completed: true,
       step1At: currentProgress.step1At || new Date().toISOString(),
-      step1By: currentProgress.step1By || "Bon Ryan P. Pedron (Admin Aide / IT Officer)",
+      step1By: currentProgress.step1By || patch.author || "Edward B. Romulo, EnP. (MPDC Zoning Officer)",
+      step2Completed: false,
+    };
+  } else if (nextSt === "ocular_inspection" || nextSt === "for_ocular_inspection" || nextSt === "inspection") {
+    updated.stepProgress = {
+      ...currentProgress,
+      currentStep: 1,
+      totalSteps: 5,
+      step1Completed: false,
     };
   } else if (nextSt === "for_payment" || nextSt === "approved_for_payment") {
+    updated.status = "for_payment";
     updated.stepProgress = {
       ...currentProgress,
       currentStep: 3,
-      totalSteps: 4,
+      totalSteps: 5,
       step1Completed: true,
       step2Completed: true,
       step2At: currentProgress.step2At || new Date().toISOString(),
-      step2By: currentProgress.step2By || "Edward B. Romulo, EnP. (Zoning Officer)",
+      step2By: patch.assessedBy || patch.author || currentProgress.step2By || "Municipal Assessor's Office (Fee Assessment)",
       step3Completed: false,
     };
-    if (!updated.payment || updated.payment.status === "unpaid") {
-      const opSuffix = (updated.trackingNumber || "").slice(-4) || String(Math.floor(1000 + Math.random() * 9000));
-      updated.payment = {
-        status: "order_of_payment_issued",
-        orderOfPaymentNo: `OP-2026-${opSuffix}`,
-        feeAmount: 280,
-        breakdown: [
-          { label: "Zoning Clearance Assessment Fee", amount: 250 },
-          { label: "Legal & Filing Assessment Fee", amount: 30 },
-        ],
-        issuedAt: new Date().toISOString(),
-        issuedBy: "Edward B. Romulo, EnP. (Zoning Administrator)",
-        instruction: "Zoning Approved. Ipakita ang pahinang ito sa Municipal Treasury Office upang magbayad ng kaukulang fee.",
-      };
-    }
+
+    const opSuffix = (updated.trackingNumber || "").slice(-4) || String(Math.floor(1000 + Math.random() * 9000));
+    const feeAmt = Number(
+      patch.feeAmount ??
+      patch.amount ??
+      patch.payment?.feeAmount ??
+      patch.payment?.amount ??
+      updated.payment?.feeAmount ??
+      updated.payment?.amount ??
+      280
+    );
+    const breakdown = patch.breakdown || patch.payment?.breakdown || updated.payment?.breakdown || [
+      { label: "Zoning Clearance Assessment Fee", amount: 250 },
+      { label: "Legal & Filing Assessment Fee", amount: 30 },
+    ];
+
+    updated.payment = {
+      ...(updated.payment || {}),
+      status: "order_of_payment_issued",
+      orderOfPaymentNo: patch.orderOfPaymentNo || updated.payment?.orderOfPaymentNo || `OP-2026-${opSuffix}`,
+      feeAmount: feeAmt,
+      amount: feeAmt,
+      breakdown,
+      assessedAt: new Date().toISOString(),
+      assessedBy: patch.assessedBy || patch.author || "Municipal Assessor's Office",
+      issuedAt: new Date().toISOString(),
+      issuedBy: patch.assessedBy ? `Municipal Assessor's Office (${patch.assessedBy})` : "Municipal Assessor's Office",
+      instruction: "Assessor Fee Computed. Ipakita ang pahinang ito sa Municipal Treasury Office upang magbayad ng kaukulang fee.",
+      notes: patch.assessorNotes || patch.notes || updated.payment?.notes || "",
+    };
   } else if (
     nextSt === "for_engineering_inspection" ||
     nextSt === "pending_engineering_inspection" ||
@@ -403,29 +556,61 @@ export function updateCitizenApplication(id, patch) {
     updated.stepProgress = {
       ...currentProgress,
       currentStep: 4,
-      totalSteps: 4,
+      totalSteps: 5,
       step1Completed: true,
       step2Completed: true,
       step3Completed: true,
       step3At: currentProgress.step3At || patch.payment_date || patch.paidAt || new Date().toISOString(),
       step3By: patch.user_id ? `Municipal Treasury (${patch.user_id})` : "Municipal Treasury (Payment Confirmed)",
+      step4Completed: false,
     };
-  } else if (nextSt === "approved" || nextSt === "completed" || nextSt === "approved_for_construction" || patch.engineerApproved) {
+  } else if (
+    nextSt === "approved" ||
+    nextSt === "completed" ||
+    nextSt === "approved_for_occupancy" ||
+    nextSt === "occupancy_ready" ||
+    (patch.progress != null && Number(patch.progress) >= 100)
+  ) {
+    updated.occupancyReady = true;
+    const opSuffix = (updated.trackingNumber || "").slice(-4) || String(Math.floor(1000 + Math.random() * 9000));
+    updated.occupancyPermitNo = updated.occupancyPermitNo || `OCC-2026-${opSuffix}`;
     updated.stepProgress = {
       ...currentProgress,
-      currentStep: 4,
-      totalSteps: 4,
+      currentStep: 5,
+      totalSteps: 5,
       step1Completed: true,
       step2Completed: true,
-      step2At: currentProgress.step2At || new Date().toISOString(),
-      step2By: currentProgress.step2By || "Edward B. Romulo, EnP. (Zoning Officer)",
       step3Completed: true,
-      step3At: currentProgress.step3At || new Date().toISOString(),
-      step3By: "Municipal Treasury (Payment Verified)",
       step4Completed: true,
-      step4At: new Date().toISOString(),
-      step4By: patch.engineerApprovedBy || "Engr. Mario S. Baldovino (Municipal Engineer)",
+      step4At: currentProgress.step4At || new Date().toISOString(),
+      step4By: currentProgress.step4By || patch.engineerApprovedBy || "Engr. Mario S. Baldovino (Municipal Engineer)",
+      step5Completed: true,
+      step5At: new Date().toISOString(),
+      step5By: "Municipal Building Official & Assessor's Office",
     };
+  }
+
+  // Handle Post-Occupancy Assessor Cycle (New Tax Declaration for Amilyar)
+  if (patch.newTaxDecNo || patch.propertyIndexNo || patch.assessorPostTaxDec) {
+    updated.assessorPostAssessment = {
+      newTaxDecNo: patch.newTaxDecNo || updated.assessorPostAssessment?.newTaxDecNo || "",
+      propertyIndexNo: patch.propertyIndexNo || updated.assessorPostAssessment?.propertyIndexNo || "",
+      assessedValue: Number(patch.assessedValue ?? updated.assessorPostAssessment?.assessedValue ?? 0),
+      marketValue: Number(patch.marketValue ?? updated.assessorPostAssessment?.marketValue ?? 0),
+      assessedAt: new Date().toISOString(),
+      assessedBy: patch.assessedBy || "Municipal Assessor's Office",
+      notes: patch.postAssessmentNotes || patch.notes || "",
+    };
+
+    if (!Array.isArray(updated.remarks)) updated.remarks = [];
+    updated.remarks.push({
+      id: `rem-assessor-post-${Date.now()}`,
+      fromOffice: "Assessor",
+      author: patch.assessedBy || "Municipal Assessor's Office",
+      message: `Nai-assess ang bagong tayong gusali para sa Amilyar. Bagong Tax Declaration No: ${patch.newTaxDecNo || "N/A"} (Property Index No: ${patch.propertyIndexNo || "N/A"}). Handa na para sa Real Property Tax sa susunod na taon.`,
+      createdAt: new Date().toISOString(),
+      requiresAction: false,
+    });
   }
 
   // Handle Engineer Approval & Map Pinning
@@ -564,24 +749,12 @@ export function updateCitizenApplication(id, patch) {
   saveApplications(applications);
 
   if (isDbConnected()) {
+    // 1. Update core application table
     query(
       `UPDATE citizen_applications SET
-        status = $1, notes = $2, step_progress = $3,
-        latitude = COALESCE($5, latitude),
-        longitude = COALESCE($6, longitude),
-        geo_risk = COALESCE($7, geo_risk),
-        lot_details = COALESCE($8, lot_details),
-        engineer_approved = $9,
-        is_pinned = $10,
-        engineer_approved_at = $11,
-        engineer_approved_by = $12,
-        held_at = $13,
-        held_by = $14,
-        hold_reason = $15,
-        payment_status = $16,
-        or_number = $17,
-        amount_paid = $18,
-        payment_date = $19,
+        status = $1,
+        notes = $2,
+        step_progress = $3,
         updated_at = NOW()
        WHERE id = $4 OR tracking_number = $4`,
       [
@@ -589,10 +762,40 @@ export function updateCitizenApplication(id, patch) {
         updated.notes,
         JSON.stringify(updated.stepProgress),
         id,
+      ]
+    ).catch((err) => console.warn("[PostgreSQL] Update application core failed:", err.message));
+
+    // 2. Update location & GIS attributes
+    query(
+      `UPDATE application_locations SET
+        latitude = COALESCE($2, latitude),
+        longitude = COALESCE($3, longitude),
+        geo_risk = COALESCE($4, geo_risk),
+        lot_details = COALESCE($5, lot_details)
+       WHERE application_id = (SELECT id FROM citizen_applications WHERE id = $1 OR tracking_number = $1 LIMIT 1)`,
+      [
+        id,
         updated.latitude ?? updated.coordinates?.lat ?? null,
         updated.longitude ?? updated.coordinates?.lon ?? null,
         updated.geoRisk ? JSON.stringify(updated.geoRisk) : null,
         updated.lotDetails ? JSON.stringify(updated.lotDetails) : null,
+      ]
+    ).catch((err) => console.warn("[PostgreSQL] Update application location failed:", err.message));
+
+    // 3. Update engineering reviews
+    query(
+      `UPDATE engineering_reviews SET
+        engineer_approved = $2,
+        is_pinned = $3,
+        engineer_approved_at = $4,
+        engineer_approved_by = $5,
+        held_at = $6,
+        held_by = $7,
+        hold_reason = $8,
+        updated_at = NOW()
+       WHERE application_id = (SELECT id FROM citizen_applications WHERE id = $1 OR tracking_number = $1 LIMIT 1)`,
+      [
+        id,
         Boolean(updated.engineerApproved),
         Boolean(updated.isPinned),
         updated.engineerApprovedAt || null,
@@ -600,12 +803,33 @@ export function updateCitizenApplication(id, patch) {
         updated.heldAt || null,
         updated.heldBy || null,
         updated.status === "returned" ? (updated.notes || null) : null,
-        updated.payment?.status || (updated.or_number ? "paid" : null),
-        updated.or_number || updated.payment?.or_number || updated.payment?.orNumber || null,
-        updated.amount_paid != null ? Number(updated.amount_paid) : (updated.payment?.amount_paid != null ? Number(updated.payment.amount_paid) : null),
-        updated.payment_date || updated.payment?.paidAt || null,
       ]
-    ).catch((err) => console.warn("[PostgreSQL] Update application failed:", err.message));
+    ).catch((err) => console.warn("[PostgreSQL] Update engineering review failed:", err.message));
+
+    // 4. Update payments
+    const payStatus = updated.payment?.status || (updated.or_number ? "paid" : null);
+    const orNum = updated.or_number || updated.payment?.or_number || updated.payment?.orNumber || null;
+    const amtPaid = updated.amount_paid != null ? Number(updated.amount_paid) : (updated.payment?.amount_paid != null ? Number(updated.payment.amount_paid) : null);
+    const payDate = updated.payment_date || updated.payment?.paidAt || null;
+
+    if (payStatus || orNum || amtPaid != null || payDate) {
+      query(
+        `UPDATE application_payments SET
+          payment_status = COALESCE($2, payment_status),
+          or_number = COALESCE($3, or_number),
+          amount_paid = COALESCE($4, amount_paid),
+          payment_date = COALESCE($5, payment_date),
+          updated_at = NOW()
+         WHERE application_id = (SELECT id FROM citizen_applications WHERE id = $1 OR tracking_number = $1 LIMIT 1)`,
+        [
+          id,
+          payStatus,
+          orNum,
+          amtPaid,
+          payDate,
+        ]
+      ).catch((err) => console.warn("[PostgreSQL] Update payment failed:", err.message));
+    }
   }
 
   return updated;
@@ -667,21 +891,24 @@ export function submitOfficialReceipt(trackingNumber, receiptData) {
   if (index === -1) return null;
   const current = applications[index];
 
-  const orNumber = String(receiptData.orNumber || "").trim() || `OR-${Date.now().toString().slice(-6)}`;
-  const paidAmount = Number(receiptData.paidAmount) || 280;
+  const orNumber = String(receiptData.orNumber || "").trim() || (current.trackingNumber ? `OR-ASSESSOR-${current.trackingNumber.replace(/^LUIS-ZC-/, "")}` : `OR-${Date.now().toString().slice(-6)}`);
+  const rawAmt = receiptData.paidAmount !== undefined && receiptData.paidAmount !== null && String(receiptData.paidAmount).trim() !== ""
+    ? Number(receiptData.paidAmount)
+    : null;
+  const paidAmount = Number.isFinite(rawAmt) && rawAmt > 0 ? rawAmt : null;
   const paidAt = receiptData.paidAt || new Date().toISOString();
 
   const paymentObj = {
     ...(current.payment || {}),
     status: "paid",
     orNumber,
-    paidAmount,
+    paidAmount: paidAmount || undefined,
     paidAt,
     receiptUrl: receiptData.receiptUrl,
     receiptOriginalName: receiptData.receiptOriginalName || "Official_Receipt.jpg",
     receiptSize: receiptData.receiptSize,
     submittedAt: new Date().toISOString(),
-    verifiedBy: "Municipal Treasury Office",
+    verifiedBy: "Applicant Upload (Assessor Receipt)",
   };
 
   const receiptFile = {
@@ -700,9 +927,9 @@ export function submitOfficialReceipt(trackingNumber, receiptData) {
 
   const receiptRemark = {
     id: `rem-receipt-${Date.now()}`,
-    fromOffice: "Treasury",
-    author: "Municipal Treasury & Applicant",
-    message: `Opisyal na Resibo (O.R. #${orNumber}) na nagkakahalagang ₱${paidAmount.toFixed(2)} ay matagumpay na naisumite. Naka-endorso na sa Municipal Engineering Office para sa "Before" Inspection.`,
+    fromOffice: "Applicant",
+    author: "Applicant (Proof of Payment)",
+    message: `Opisyal na Resibo mula sa Assessor (${receiptFile.originalName}) ay matagumpay na naisumite. Naka-endorso na sa Municipal Engineering Office para sa Site Inspection.`,
     createdAt: new Date().toISOString(),
     requiresAction: false,
     attachedFile: receiptFile.originalName,
@@ -717,18 +944,64 @@ export function submitOfficialReceipt(trackingNumber, receiptData) {
     updatedAt: new Date().toISOString(),
     stepProgress: {
       ...(current.stepProgress || {}),
-      currentStep: 4,
-      totalSteps: 4,
+      currentStep: 3,
+      totalSteps: 3,
       step1Completed: true,
       step2Completed: true,
-      step3Completed: true,
-      step3At: new Date().toISOString(),
-      step3By: "Municipal Treasury (Payment Verified)",
+      step2At: new Date().toISOString(),
+      step2By: "Applicant (Official Receipt Uploaded)",
+      step3Completed: false,
     },
   };
-
   applications[index] = updated;
   saveApplications(applications);
+
+  if (isDbConnected()) {
+    query(
+      `UPDATE citizen_applications SET
+        status = $1,
+        uploads = $2,
+        step_progress = $3,
+        updated_at = NOW()
+       WHERE id = $4 OR tracking_number = $4`,
+      [
+        updated.status,
+        JSON.stringify(updated.uploads),
+        JSON.stringify(updated.stepProgress),
+        current.id,
+      ]
+    ).catch((err) => console.warn("[PostgreSQL] Update application for receipt failed:", err.message));
+
+    query(
+      `UPDATE application_payments SET
+        payment_status = 'paid',
+        or_number = $1,
+        amount_paid = $2,
+        payment_date = $3,
+        updated_at = NOW()
+       WHERE application_id = $4`,
+      [orNumber, paidAmount, paidAt, current.id]
+    ).catch((err) => console.warn("[PostgreSQL] Update payment for receipt failed:", err.message));
+
+    query(
+      `INSERT INTO application_remarks (
+        id, application_id, tracking_number, from_office, author, message, requires_action, attached_file, created_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      ON CONFLICT (id) DO NOTHING`,
+      [
+        receiptRemark.id,
+        current.id,
+        current.trackingNumber,
+        receiptRemark.fromOffice,
+        receiptRemark.author,
+        receiptRemark.message,
+        receiptRemark.requiresAction,
+        receiptRemark.attachedFile,
+        receiptRemark.createdAt,
+      ]
+    ).catch((err) => console.warn("[PostgreSQL] Insert receipt remark failed:", err.message));
+  }
+
   return updated;
 }
 
@@ -895,6 +1168,17 @@ export function updateSiteInspection(idOrTracking, { stage, progress, photoUrl, 
 
   if (numericProgress >= 100) {
     app.status = "approved";
+    app.occupancyReady = true;
+    const opSuffix = (app.trackingNumber || "").slice(-4) || String(Math.floor(1000 + Math.random() * 9000));
+    app.occupancyPermitNo = app.occupancyPermitNo || `OCC-2026-${opSuffix}`;
+    if (!app.stepProgress) app.stepProgress = {};
+    app.stepProgress.currentStep = 3;
+    app.stepProgress.totalSteps = 3;
+    app.stepProgress.step1Completed = true;
+    app.stepProgress.step2Completed = true;
+    app.stepProgress.step3Completed = true;
+    app.stepProgress.step3At = now;
+    app.stepProgress.step3By = inspector || "Engr. Mario S. Baldovino (Municipal Engineer)";
   } else if (app.status === "for_engineering_inspection" || app.status === "paid") {
     app.status = "in_review";
   }

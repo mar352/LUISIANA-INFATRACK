@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode, type SyntheticEvent } from "react";
+import { createPortal } from "react-dom";
 import { GlobeOfflineButton } from "./GlobeOfflineButton";
 import { StadiaStylePicker } from "./StadiaStylePicker";
 import type { StadiaMapStyleId } from "../lib/stadia";
@@ -128,35 +129,58 @@ export function MapShortcuts({
                 <polyline points="2 12 12 17 22 12" />
               </svg>
             </IconBtn>
-            {showStyles && onSelectStyle && (
-              <div className="stadia-style-popover">
-                <div className="stadia-style-popover-title">
-                  <span>Basemap Style</span>
+            {showStyles && onSelectStyle && typeof document !== "undefined" &&
+              createPortal(
+                <>
                   <button
                     type="button"
+                    className="stadia-style-backdrop"
+                    aria-label="Close basemap styles"
                     onClick={() => setShowStyles(false)}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      cursor: "pointer",
-                      fontSize: 14,
-                      color: "var(--muted)",
-                      padding: "0 4px",
-                    }}
+                  />
+                  <div
+                    className="stadia-style-popover"
+                    role="dialog"
+                    aria-modal="false"
+                    aria-label="Basemap Style Selector"
                   >
-                    ✕
-                  </button>
-                </div>
-                <StadiaStylePicker
-                  currentStyle={currentStyle}
-                  compact
-                  onSelectStyle={(id) => {
-                    onSelectStyle(id);
-                    setShowStyles(false);
-                  }}
-                />
-              </div>
-            )}
+                    <div className="stadia-style-popover-title">
+                      <span>Basemap Style</span>
+                      <button
+                        type="button"
+                        className="stadia-style-close-btn"
+                        onClick={() => setShowStyles(false)}
+                        aria-label="Close basemap style selector"
+                        title="Close"
+                      >
+                        <svg
+                          width="12"
+                          height="12"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.4"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <line x1="18" y1="6" x2="6" y2="18" />
+                          <line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+                      </button>
+                    </div>
+                    <StadiaStylePicker
+                      currentStyle={currentStyle}
+                      compact
+                      onSelectStyle={(id) => {
+                        onSelectStyle(id);
+                        setShowStyles(false);
+                      }}
+                    />
+                  </div>
+                </>,
+                document.body
+              )}
           </div>
           <IconBtn
             label="Projects"
@@ -185,8 +209,6 @@ export function MapShortcuts({
         </>
       )}
 
-      {canSeeLayers && canSeeRisk && <div className="map-shortcut-gap" />}
-
       {canSeeRisk && (
         <IconBtn
           label="Quake heat"
@@ -201,7 +223,7 @@ export function MapShortcuts({
         </IconBtn>
       )}
 
-      <div className="map-shortcut-gap" />
+      {(canSeeLayers || canSeeRisk) && <div className="map-shortcut-gap" />}
 
       <IconBtn
         label="Fullscreen"

@@ -9,7 +9,10 @@ import type {
 import { LUISIANA_CENTER } from "../lib/solar";
 import ApplicationTermsModal from "./ApplicationTermsModal";
 import { isAppTermsAccepted, setAppTermsAccepted, fetchClientPublicIp } from "../lib/terms-consent";
+import { uploadCitizenDocument } from "../lib/api";
+import { validateApplicationFile } from "../lib/documentValidation";
 import "./NewApplicationModal.css";
+import "./NewApplicationPage.css";
 
 /* ── SVG Icons ── */
 const IconPlus = ({ size = 16, color = "currentColor" }: { size?: number; color?: string }) => (
@@ -95,6 +98,55 @@ const IconInfo = ({ size = 16, color = "currentColor" }: { size?: number; color?
   </svg>
 );
 
+const IconUploadCloud = ({ size = 22, color = "currentColor" }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <polyline points="16 16 12 12 8 16" />
+    <line x1="12" y1="12" x2="12" y2="21" />
+    <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" />
+    <polyline points="16 16 12 12 8 16" />
+  </svg>
+);
+
+const IconFileTextDoc = ({ size = 20, color = "currentColor" }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <polyline points="14 2 14 8 20 8" />
+    <line x1="16" y1="13" x2="8" y2="13" />
+    <line x1="16" y1="17" x2="8" y2="17" />
+    <polyline points="10 9 9 9 8 9" />
+  </svg>
+);
+
+const IconReceipt = ({ size = 22, color = "currentColor" }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1-2-1z" />
+    <line x1="8" y1="8" x2="16" y2="8" />
+    <line x1="8" y1="12" x2="16" y2="12" />
+    <line x1="8" y1="16" x2="13" y2="16" />
+  </svg>
+);
+
+const IconBolt = ({ size = 22, color = "currentColor" }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+  </svg>
+);
+
+const IconCamera = ({ size = 22, color = "currentColor" }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+    <circle cx="12" cy="13" r="4" />
+  </svg>
+);
+
+export interface AttachedDocument {
+  file?: File;
+  url?: string;
+  name: string;
+  size: number;
+  uploading?: boolean;
+}
+
 type Props = {
   isOpen: boolean;
   onClose: () => void;
@@ -143,6 +195,93 @@ export function NewApplicationModal({
   const [targetBeneficiaries, setTargetBeneficiaries] = useState("All residents of Luisiana");
   const [notes, setNotes] = useState("");
 
+  // ── Document Attachments (6 Mandatory Citizen Requirements) ──
+  const [landTitleDoc, setLandTitleDoc] = useState<AttachedDocument | null>(null);
+  const [taxDecDoc, setTaxDecDoc] = useState<AttachedDocument | null>(null);
+  const [rptReceiptDoc, setRptReceiptDoc] = useState<AttachedDocument | null>(null);
+  const [brgyClearanceDoc, setBrgyClearanceDoc] = useState<AttachedDocument | null>(null);
+  const [ploCertDoc, setPloCertDoc] = useState<AttachedDocument | null>(null);
+  const [photoDocsDoc, setPhotoDocsDoc] = useState<AttachedDocument | null>(null);
+
+  const handleAttachFile = async (
+    file: File,
+    fieldKey: string,
+    setter: React.Dispatch<React.SetStateAction<AttachedDocument | null>>
+  ) => {
+    const existingDocsSnapshot = {
+      landTitle: landTitleDoc ? { name: landTitleDoc.name, size: landTitleDoc.size } : null,
+      taxDec: taxDecDoc ? { name: taxDecDoc.name, size: taxDecDoc.size } : null,
+      rptReceipt: rptReceiptDoc ? { name: rptReceiptDoc.name, size: rptReceiptDoc.size } : null,
+      brgyClearance: brgyClearanceDoc ? { name: brgyClearanceDoc.name, size: brgyClearanceDoc.size } : null,
+      ploCert: ploCertDoc ? { name: ploCertDoc.name, size: ploCertDoc.size } : null,
+      photoDocs: photoDocsDoc ? { name: photoDocsDoc.name, size: photoDocsDoc.size } : null,
+    };
+
+    const valResult = await validateApplicationFile(file, fieldKey, existingDocsSnapshot);
+    if (!valResult.valid) {
+      alert(valResult.error || "Hindi matanggap ang file para sa field na ito.");
+      setter(null);
+      return;
+    }
+
+    setter({
+      file,
+      name: file.name,
+      size: file.size,
+      uploading: true,
+    });
+
+    try {
+      const uploaded = await uploadCitizenDocument(file, fieldKey);
+      setter({
+        file,
+        url: uploaded.url,
+        name: uploaded.originalName || file.name,
+        size: uploaded.size || file.size,
+        uploading: false,
+      });
+    } catch (err: any) {
+      const errMsg = err?.message || "";
+      const isSecurityOrFormatError =
+        errMsg.includes("Tanggihang Seguridad") ||
+        errMsg.includes("Di-wastong format") ||
+        errMsg.includes("aktibong script") ||
+        errMsg.includes("FILE_SECURITY_VIOLATION") ||
+        errMsg.includes("INVALID_FILE_SIGNATURE") ||
+        errMsg.includes("INVALID_FIELD_DOCUMENT") ||
+        errMsg.includes("Bawal ang PDF") ||
+        errMsg.includes("Allowed formats") ||
+        errMsg.includes("File too large");
+
+      if (isSecurityOrFormatError) {
+        alert(
+          `[SECURITY ALERT] Hindi Matanggap ang Dokumento:\n\n${errMsg}\n\nPakitiyak na ang dokumento ay malinis at opisyal na format na walang nakapaloob na script o macro.`
+        );
+        setter(null);
+      } else if (errMsg.includes("Failed to fetch") || errMsg.includes("NetworkError")) {
+        setter({
+          file,
+          url: URL.createObjectURL(file),
+          name: file.name,
+          size: file.size,
+          uploading: false,
+        });
+      } else {
+        alert(`[ALERT] Hindi Matanggap ang Dokumento:\n\n${errMsg || "Nabigong i-upload ang file."}`);
+        setter(null);
+      }
+    }
+  };
+
+  const uploadedDocsCount = [
+    landTitleDoc,
+    taxDecDoc,
+    rptReceiptDoc,
+    brgyClearanceDoc,
+    ploCertDoc,
+    photoDocsDoc,
+  ].filter(Boolean).length;
+
   // Generated Result
   const [generatedTrackingNo, setGeneratedTrackingNo] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -181,6 +320,12 @@ export function NewApplicationModal({
     setCipCode("");
     setTargetBeneficiaries("All residents of Luisiana");
     setNotes("");
+    setLandTitleDoc(null);
+    setTaxDecDoc(null);
+    setRptReceiptDoc(null);
+    setBrgyClearanceDoc(null);
+    setPloCertDoc(null);
+    setPhotoDocsDoc(null);
     setGeneratedTrackingNo("");
     setSubmitting(false);
   };
@@ -212,6 +357,18 @@ export function NewApplicationModal({
     if (category === "municipal_project") {
       if (!implementingDepartment.trim()) missing.push("Implementing Department");
       if (typeof estimatedCostPhp !== "number" || estimatedCostPhp <= 0) missing.push("Estimated Cost (₱)");
+    }
+
+    // 6 Mandatory Documentary Requirements
+    if (!landTitleDoc) missing.push("Dokumento #1: TCT (Land Title)");
+    if (!taxDecDoc) missing.push("Dokumento #2: Tax Declaration");
+    if (!rptReceiptDoc) missing.push("Dokumento #3: Real Property Tax Receipt (Amilyar)");
+    if (!brgyClearanceDoc) missing.push("Dokumento #4: Barangay Clearance");
+    if (!ploCertDoc) missing.push("Dokumento #5: PLO Certification (MERALCO)");
+    if (!photoDocsDoc) missing.push("Dokumento #6: Photo Documentation (Loob at Labas)");
+
+    if ([landTitleDoc, taxDecDoc, rptReceiptDoc, brgyClearanceDoc, ploCertDoc, photoDocsDoc].some((d) => d?.uploading)) {
+      missing.push("May dokumentong kasalukuyan pang nag-a-upload...");
     }
 
     return missing;
@@ -371,33 +528,12 @@ export function NewApplicationModal({
                   <div className="new-app-category-icon" style={{ color: "#34d399" }}>
                     <IconAgriculture size={40} color="#34d399" />
                   </div>
-                  <div className="new-app-category-name">Agricultural</div>
+                  <div className="new-app-category-name">Agro-Industrial</div>
                   <span className="new-app-category-tag tag-agri">
                     Poultry / Piggery / Farm
                   </span>
                   <div className="new-app-category-desc">
                     Poultry farm, babuyan, livestock, at pasilidad pang-agrikultura na may environmental buffer checking.
-                  </div>
-                </div>
-
-                {/* 3. Municipal Projects */}
-                <div
-                  className={`new-app-category-card ${
-                    category === "municipal_project" ? "selected" : ""
-                  }`}
-                  onClick={() => setCategory("municipal_project")}
-                  role="button"
-                  tabIndex={0}
-                >
-                  <div className="new-app-category-icon" style={{ color: "#fbbf24" }}>
-                    <IconMunicipal size={40} color="#fbbf24" />
-                  </div>
-                  <div className="new-app-category-name">Municipal Projects</div>
-                  <span className="new-app-category-tag tag-municipal">
-                    LGU Public Works / CIP
-                  </span>
-                  <div className="new-app-category-desc">
-                    Proyekto ng Pamahalaang Bayan: mga kalsada, evacuation center, barangay hall, RHU, tulay, at floodway.
                   </div>
                 </div>
               </div>
@@ -418,7 +554,7 @@ export function NewApplicationModal({
                   {category === "agricultural" && (
                     <>
                       <IconAgriculture size={18} color="#34d399" />
-                      <span>Agricultural (Poultry / Piggery) Application</span>
+                      <span>Agro-Industrial Application</span>
                     </>
                   )}
                   {category === "municipal_project" && (
@@ -518,12 +654,14 @@ export function NewApplicationModal({
                         value={buildingType}
                         onChange={(e) => setBuildingType(e.target.value)}
                       >
-                        <option value="Residential">Residential (Single Family / Duplex)</option>
-                        <option value="Commercial">Commercial (Store, Retail, Office)</option>
-                        <option value="Mixed-Use">Mixed-Use (Commercial Ground + Residential)</option>
-                        <option value="Institutional">Private Institutional / School / Chapel</option>
-                        <option value="Subdivision">Subdivision / Housing Development</option>
-                        <option value="Industrial">Light Industrial / Warehouse</option>
+                        <option value="Residential">Residential</option>
+                        <option value="Apartment">Apartment</option>
+                        <option value="Townhouse">Townhouse</option>
+                        <option value="Dormitory">Dormitory</option>
+                        <option value="Institutional">Institutional</option>
+                        <option value="Commercial">Commercial</option>
+                        <option value="Industrial">Industrial</option>
+                        <option value="Agro-Industrial">Agro-Industrial</option>
                       </select>
                     </div>
 
@@ -688,6 +826,338 @@ export function NewApplicationModal({
                     </div>
                   </>
                 )}
+              </div>
+
+              {/* ── DOCUMENT UPLOAD SECTION (6 Mandatory Requirements) ── */}
+              <div className="new-app-docs-section">
+                <div className="new-app-docs-header">
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, width: "100%" }}>
+                    <div className="new-app-docs-title">
+                      <IconUploadCloud size={22} color="var(--apple-text, #1d1d1f)" />
+                      <span>Anim (6) na Mandatory Documents (Citizen&apos;s Charter) *</span>
+                    </div>
+                    <span className={`new-app-docs-counter ${uploadedDocsCount === 6 ? "complete" : "incomplete"}`}>
+                      {uploadedDocsCount === 6 ? "Kumpleto (6/6) ✓" : `${uploadedDocsCount} of 6 Naka-attach`}
+                    </span>
+                  </div>
+                  <div className="new-app-docs-sub">
+                    Ayon sa Citizen&apos;s Charter ng Bayan ng Luisiana, kailangang mai-upload ang lahat ng anim (6) na mandatory na dokumento bago magpatuloy sa pagsusuri.
+                  </div>
+                </div>
+
+                <div className="new-app-docs-grid">
+                  {/* Upload Box 1: Photocopy ng TCT (Land Title) */}
+                  <div className={`new-app-upload-box${landTitleDoc ? " attached" : ""}`}>
+                    <input
+                      id="modal-upload-land-title"
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+                      style={{ display: "none" }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = "";
+                        if (file) void handleAttachFile(file, "landTitle", setLandTitleDoc);
+                      }}
+                    />
+                    <div className="new-app-upload-icon">
+                      <IconFileTextDoc size={24} />
+                    </div>
+                    <div className="new-app-upload-title">Photocopy ng TCT (Land Title) *</div>
+                    <div className="new-app-upload-desc">
+                      Scanned o malinaw na kopya ng Transfer Certificate of Title (TCT) o OCT bilang katibayan ng pag-aari.
+                    </div>
+                    <div className="new-app-upload-format-badge doc">Tinatanggap: PDF, JPG, PNG, WEBP (Max 15MB)</div>
+
+                    {landTitleDoc ? (
+                      <div className="new-app-file-preview-wrap">
+                        <span className="new-app-file-name" title={landTitleDoc.name} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                          <IconFileTextDoc size={13} color="currentColor" /> {landTitleDoc.name}
+                        </span>
+                        <button
+                          type="button"
+                          className="new-app-file-remove-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setLandTitleDoc(null);
+                          }}
+                        >
+                          Alisin
+                        </button>
+                      </div>
+                    ) : (
+                      <label htmlFor="modal-upload-land-title" className="new-app-upload-status pending" style={{ cursor: "pointer" }}>
+                        <span>Pumili ng File *</span>
+                        <span>+</span>
+                      </label>
+                    )}
+
+                    {landTitleDoc && (
+                      <div className="new-app-upload-status success">
+                        <span>✓ Naka-attach ({(landTitleDoc.size / 1024).toFixed(0)} KB)</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Upload Box 2: Tax Declaration */}
+                  <div className={`new-app-upload-box${taxDecDoc ? " attached" : ""}`}>
+                    <input
+                      id="modal-upload-tax-dec"
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+                      style={{ display: "none" }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = "";
+                        if (file) void handleAttachFile(file, "taxDec", setTaxDecDoc);
+                      }}
+                    />
+                    <div className="new-app-upload-icon">
+                      <IconFileTextDoc size={24} />
+                    </div>
+                    <div className="new-app-upload-title">Tax Declaration *</div>
+                    <div className="new-app-upload-desc">
+                      Certified True Copy ng pinakahuling Tax Declaration para sa lupa mula sa Municipal Assessor.
+                    </div>
+                    <div className="new-app-upload-format-badge doc">Tinatanggap: PDF, JPG, PNG, WEBP (Max 15MB)</div>
+
+                    {taxDecDoc ? (
+                      <div className="new-app-file-preview-wrap">
+                        <span className="new-app-file-name" title={taxDecDoc.name} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                          <IconFileTextDoc size={13} color="currentColor" /> {taxDecDoc.name}
+                        </span>
+                        <button
+                          type="button"
+                          className="new-app-file-remove-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setTaxDecDoc(null);
+                          }}
+                        >
+                          Alisin
+                        </button>
+                      </div>
+                    ) : (
+                      <label htmlFor="modal-upload-tax-dec" className="new-app-upload-status pending" style={{ cursor: "pointer" }}>
+                        <span>Pumili ng File *</span>
+                        <span>+</span>
+                      </label>
+                    )}
+
+                    {taxDecDoc && (
+                      <div className="new-app-upload-status success">
+                        <span>✓ Naka-attach ({(taxDecDoc.size / 1024).toFixed(0)} KB)</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Upload Box 3: Current Real Property Tax Receipt */}
+                  <div className={`new-app-upload-box${rptReceiptDoc ? " attached" : ""}`}>
+                    <input
+                      id="modal-upload-rpt-receipt"
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+                      style={{ display: "none" }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = "";
+                        if (file) void handleAttachFile(file, "rptReceipt", setRptReceiptDoc);
+                      }}
+                    />
+                    <div className="new-app-upload-icon">
+                      <IconReceipt size={24} />
+                    </div>
+                    <div className="new-app-upload-title">Current Real Property Tax Receipt (Amilyar) *</div>
+                    <div className="new-app-upload-desc">
+                      Resibo ng bayad sa amilyar (Official Receipt / Tax Clearance) para sa kasalukuyang taon.
+                    </div>
+                    <div className="new-app-upload-format-badge doc">Tinatanggap: PDF, JPG, PNG, WEBP (Max 15MB)</div>
+
+                    {rptReceiptDoc ? (
+                      <div className="new-app-file-preview-wrap">
+                        <span className="new-app-file-name" title={rptReceiptDoc.name} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                          <IconFileTextDoc size={13} color="currentColor" /> {rptReceiptDoc.name}
+                        </span>
+                        <button
+                          type="button"
+                          className="new-app-file-remove-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setRptReceiptDoc(null);
+                          }}
+                        >
+                          Alisin
+                        </button>
+                      </div>
+                    ) : (
+                      <label htmlFor="modal-upload-rpt-receipt" className="new-app-upload-status pending" style={{ cursor: "pointer" }}>
+                        <span>Pumili ng File *</span>
+                        <span>+</span>
+                      </label>
+                    )}
+
+                    {rptReceiptDoc && (
+                      <div className="new-app-upload-status success">
+                        <span>✓ Naka-attach ({(rptReceiptDoc.size / 1024).toFixed(0)} KB)</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Upload Box 4: Barangay Clearance */}
+                  <div className={`new-app-upload-box${brgyClearanceDoc ? " attached" : ""}`}>
+                    <input
+                      id="modal-upload-brgy-clearance"
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+                      style={{ display: "none" }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = "";
+                        if (file) void handleAttachFile(file, "brgyClearance", setBrgyClearanceDoc);
+                      }}
+                    />
+                    <div className="new-app-upload-icon">
+                      <IconShieldCheck size={24} />
+                    </div>
+                    <div className="new-app-upload-title">Barangay Clearance *</div>
+                    <div className="new-app-upload-desc">
+                      Opisyal na clearance para sa konstruksyon / lokasyon mula sa Barangay kung saan nakatirik ang lote.
+                    </div>
+                    <div className="new-app-upload-format-badge doc">Tinatanggap: PDF, JPG, PNG, WEBP (Max 15MB)</div>
+
+                    {brgyClearanceDoc ? (
+                      <div className="new-app-file-preview-wrap">
+                        <span className="new-app-file-name" title={brgyClearanceDoc.name} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                          <IconFileTextDoc size={13} color="currentColor" /> {brgyClearanceDoc.name}
+                        </span>
+                        <button
+                          type="button"
+                          className="new-app-file-remove-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setBrgyClearanceDoc(null);
+                          }}
+                        >
+                          Alisin
+                        </button>
+                      </div>
+                    ) : (
+                      <label htmlFor="modal-upload-brgy-clearance" className="new-app-upload-status pending" style={{ cursor: "pointer" }}>
+                        <span>Pumili ng File *</span>
+                        <span>+</span>
+                      </label>
+                    )}
+
+                    {brgyClearanceDoc && (
+                      <div className="new-app-upload-status success">
+                        <span>✓ Naka-attach ({(brgyClearanceDoc.size / 1024).toFixed(0)} KB)</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Upload Box 5: PLO Certification */}
+                  <div className={`new-app-upload-box${ploCertDoc ? " attached" : ""}`}>
+                    <input
+                      id="modal-upload-plo-cert"
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+                      style={{ display: "none" }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = "";
+                        if (file) void handleAttachFile(file, "ploCert", setPloCertDoc);
+                      }}
+                    />
+                    <div className="new-app-upload-icon">
+                      <IconBolt size={24} />
+                    </div>
+                    <div className="new-app-upload-title">PLO Certification (MERALCO) *</div>
+                    <div className="new-app-upload-desc">
+                      Clearance mula sa MERALCO / Public Lighting Office para sa opisyal na koneksyon ng kuryente.
+                    </div>
+                    <div className="new-app-upload-format-badge doc">Tinatanggap: PDF, JPG, PNG, WEBP (Max 15MB)</div>
+
+                    {ploCertDoc ? (
+                      <div className="new-app-file-preview-wrap">
+                        <span className="new-app-file-name" title={ploCertDoc.name} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                          <IconFileTextDoc size={13} color="currentColor" /> {ploCertDoc.name}
+                        </span>
+                        <button
+                          type="button"
+                          className="new-app-file-remove-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPloCertDoc(null);
+                          }}
+                        >
+                          Alisin
+                        </button>
+                      </div>
+                    ) : (
+                      <label htmlFor="modal-upload-plo-cert" className="new-app-upload-status pending" style={{ cursor: "pointer" }}>
+                        <span>Pumili ng File *</span>
+                        <span>+</span>
+                      </label>
+                    )}
+
+                    {ploCertDoc && (
+                      <div className="new-app-upload-status success">
+                        <span>✓ Naka-attach ({(ploCertDoc.size / 1024).toFixed(0)} KB)</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Upload Box 6: Photo Documentation */}
+                  <div className={`new-app-upload-box${photoDocsDoc ? " attached" : ""}`}>
+                    <input
+                      id="modal-upload-photo-docs"
+                      type="file"
+                      accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                      style={{ display: "none" }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = "";
+                        if (file) void handleAttachFile(file, "photoDocs", setPhotoDocsDoc);
+                      }}
+                    />
+                    <div className="new-app-upload-icon">
+                      <IconCamera size={24} />
+                    </div>
+                    <div className="new-app-upload-title">Photo Documentation *</div>
+                    <div className="new-app-upload-desc">
+                      Mga litrato ng loob at labas ng mismong lote/site (aktwal na kalagayan ng lugar).
+                    </div>
+                    <div className="new-app-upload-format-badge photo">Tinatanggap: Litrato Lamang (JPG, PNG, WEBP) · Bawal ang PDF</div>
+
+                    {photoDocsDoc ? (
+                      <div className="new-app-file-preview-wrap">
+                        <span className="new-app-file-name" title={photoDocsDoc.name} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                          <IconFileTextDoc size={13} color="currentColor" /> {photoDocsDoc.name}
+                        </span>
+                        <button
+                          type="button"
+                          className="new-app-file-remove-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPhotoDocsDoc(null);
+                          }}
+                        >
+                          Alisin
+                        </button>
+                      </div>
+                    ) : (
+                      <label htmlFor="modal-upload-photo-docs" className="new-app-upload-status pending" style={{ cursor: "pointer" }}>
+                        <span>Pumili ng File *</span>
+                        <span>+</span>
+                      </label>
+                    )}
+
+                    {photoDocsDoc && (
+                      <div className="new-app-upload-status success">
+                        <span>✓ Naka-attach ({(photoDocsDoc.size / 1024).toFixed(0)} KB)</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           )}

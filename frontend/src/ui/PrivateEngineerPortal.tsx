@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from "react";
 import type { SessionUser } from "../services/auth";
 import { fetchCitizenApplications, uploadCitizenDocument } from "../lib/api";
-import { BARANGAY_LIST } from "../types";
+import { useTranslation } from "../lib/i18n";
 import { ThemeToggle } from "./ThemeToggle";
 import "./PrivateEngineerPortal.css";
 
@@ -64,6 +64,7 @@ const IconAlert = () => (
 );
 
 export function PrivateEngineerPortal({ onBack, session, onOpenLiveMap }: Props) {
+  const { isEn } = useTranslation();
   const [tab, setTab] = useState<Tab>("projects");
   const [applications, setApplications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -193,9 +194,9 @@ export function PrivateEngineerPortal({ onBack, session, onOpenLiveMap }: Props)
       }
       setUploadSuccess(true);
       setTimeout(() => setUploadSuccess(false), 4000);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert("Hindi ma-upload ang file. Pakisubukang muli.");
+      alert(err?.message || "Hindi ma-upload ang file. Pakisubukang muli.");
     } finally {
       setUploading(false);
     }
@@ -219,7 +220,7 @@ export function PrivateEngineerPortal({ onBack, session, onOpenLiveMap }: Props)
   return (
     <div className="pe-portal">
       {/* Header */}
-      <header className="pe-header">
+      <header className="pe-header topnav-accent-private">
         <div className="pe-header-left">
           <div className="pe-brand-title">
             <h1>
@@ -503,14 +504,14 @@ export function PrivateEngineerPortal({ onBack, session, onOpenLiveMap }: Props)
                 <input
                   type="file"
                   multiple
-                  accept=".pdf,.png,.jpg,.jpeg,.dwg,.glb,.obj,.doc,.docx"
+                  accept=".pdf,.png,.jpg,.jpeg,.dwg,.obj,.doc,.docx"
                   style={{ display: "none" }}
                   onChange={handleFileUpload}
                   disabled={uploading}
                 />
                 <IconUpload />
                 <h4>Pumili ng File o I-drag Dito</h4>
-                <p>Tumatanggap ng PDF, DWG, GLB, JPG, PNG (Max: 25 MB)</p>
+                <p>Tumatanggap ng PDF, DWG, JPG, PNG, DOCX (Max: 25 MB)</p>
                 <span className="pe-btn-action pe-btn-primary">
                   {uploading ? "Nag-a-upload..." : "Pumili ng Plano mula sa Computer"}
                 </span>
@@ -744,19 +745,19 @@ export function PrivateEngineerPortal({ onBack, session, onOpenLiveMap }: Props)
                 <span className="pe-status-badge approved">{selectedApp.trackingNumber}</span>
                 <h3 style={{ marginTop: 6 }}>{selectedApp.applicant?.fullName} — {selectedApp.property?.proposedBuildingType}</h3>
               </div>
-              <button type="button" className="pe-btn-close" onClick={() => setSelectedApp(null)}>
+              <button type="button" className="pe-btn-close" onClick={() => setSelectedApp(null)} aria-label={isEn ? "Close" : "Isara"}>
                 &times;
               </button>
             </div>
 
             <div className="pe-siting-calc-box" style={{ marginBottom: 16 }}>
-              <h4 style={{ margin: "0 0 8px 0" }}>Impormasyon ng Lupa at May-ari</h4>
+              <h4 style={{ margin: "0 0 8px 0" }}>{isEn ? "Land & Property Information" : "Impormasyon ng Lupa at May-ari"}</h4>
               <div className="pe-siting-metric">
-                <span>Barangay:</span>
+                <span>{isEn ? "Barangay:" : "Barangay:"}</span>
                 <strong>{selectedApp.applicant?.barangay}</strong>
               </div>
               <div className="pe-siting-metric">
-                <span>Sukat ng Lupa:</span>
+                <span>{isEn ? "Lot Area:" : "Sukat ng Lupa:"}</span>
                 <strong>{selectedApp.property?.lotAreaSqM ? `${selectedApp.property.lotAreaSqM} sq.m.` : "—"}</strong>
               </div>
               <div className="pe-siting-metric">
@@ -764,35 +765,37 @@ export function PrivateEngineerPortal({ onBack, session, onOpenLiveMap }: Props)
                 <strong>{selectedApp.property?.taxDecNo || selectedApp.property?.tctNo || "—"}</strong>
               </div>
               <div className="pe-siting-metric">
-                <span>Address / Landmark:</span>
+                <span>{isEn ? "Address / Landmark:" : "Address / Palatandaan:"}</span>
                 <strong>{selectedApp.property?.locationDescription || selectedApp.applicant?.address || "Luisiana"}</strong>
               </div>
             </div>
 
             <div className="pe-siting-calc-box" style={{ marginBottom: 16 }}>
-              <h4 style={{ margin: "0 0 8px 0" }}>Regulatory Permitting Status</h4>
+              <h4 style={{ margin: "0 0 8px 0" }}>{isEn ? "Regulatory Permitting Status" : "Katayuan ng Permiso ng Pamahalaan"}</h4>
               <div className="pe-siting-metric">
-                <span>MPDC Zoning Clearance:</span>
+                <span>{isEn ? "MPDC Zoning Clearance:" : "MPDC Zoning Clearance:"}</span>
                 <strong className={selectedApp.status === "approved" ? "pe-metric-safe" : "pe-metric-warn"}>
-                  {selectedApp.status === "approved" ? "✓ Approved" : "⏳ In Review"}
+                  {selectedApp.status === "approved" ? (isEn ? "Approved" : "Aprubado") : (isEn ? "In Review" : "Kasalukuyang Sinusuri")}
                 </strong>
               </div>
               <div className="pe-siting-metric">
-                <span>MEO Building Permit Status:</span>
+                <span>{isEn ? "MEO Building Permit Status:" : "Katayuan ng MEO Building Permit:"}</span>
                 <strong className={selectedApp.status === "approved" ? "pe-metric-safe" : "pe-metric-warn"}>
-                  {selectedApp.status === "approved" ? "✓ Building Permit Issued" : "⏳ Pending Engineering Evaluation"}
+                  {selectedApp.status === "approved"
+                    ? (isEn ? "Building Permit Issued" : "Naiisyu ang Building Permit")
+                    : (isEn ? "Pending Engineering Evaluation" : "Naghihintay ng Pagsusuri ng Inhenyero")}
                 </strong>
               </div>
               {selectedApp.notes && (
                 <div style={{ marginTop: 8, fontSize: "0.82rem", color: "var(--muted)" }}>
-                  <strong>LGU Officer Notes:</strong> {selectedApp.notes}
+                  <strong>{isEn ? "LGU Officer Notes:" : "Mga Tala ng Opisyal ng LGU:"}</strong> {selectedApp.notes}
                 </div>
               )}
             </div>
 
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
               <button type="button" className="pe-btn-action" onClick={() => setSelectedApp(null)}>
-                Isara
+                {isEn ? "Close" : "Isara"}
               </button>
               <button
                 type="button"
@@ -803,7 +806,8 @@ export function PrivateEngineerPortal({ onBack, session, onOpenLiveMap }: Props)
                   setTab("plans");
                 }}
               >
-                📤 Mag-upload ng Bagong Plano
+                <IconUpload />
+                <span>{isEn ? "Upload New Plan" : "Mag-upload ng Bagong Plano"}</span>
               </button>
             </div>
           </div>

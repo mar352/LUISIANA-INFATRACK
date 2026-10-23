@@ -1,7 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { io } from "socket.io-client";
-import { backendUrl, reuploadCitizenDocument } from "../lib/api";
+import { backendUrl, reuploadCitizenDocument, submitCitizenReceipt } from "../lib/api";
+import { PdfCanvasViewer } from "./InSystemDocViewer";
 import { ThemeToggle } from "./ThemeToggle";
+import { useTranslation, LanguageToggle } from "./LanguageToggle";
 import "./ApplicantTrackingPage.css";
 
 /* ── Vector SVG Icons ── */
@@ -71,12 +73,43 @@ const IconReceipt = () => (
   </svg>
 );
 
+const IconFileTextDoc = ({ size = 16, color = "currentColor" }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <polyline points="14 2 14 8 20 8" />
+    <line x1="16" y1="13" x2="8" y2="13" />
+    <line x1="16" y1="17" x2="8" y2="17" />
+    <polyline points="10 9 9 9 8 9" />
+  </svg>
+);
 
+const IconCamera = ({ size = 18, color = "currentColor" }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+    <circle cx="12" cy="13" r="4" />
+  </svg>
+);
+
+const IconAward = ({ size = 22, color = "currentColor" }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <circle cx="12" cy="8" r="7" />
+    <polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88" />
+  </svg>
+);
+
+const IconCalendar = ({ size = 14, color = "currentColor" }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+    <line x1="16" y1="2" x2="16" y2="6" />
+    <line x1="8" y1="2" x2="8" y2="6" />
+    <line x1="3" y1="10" x2="21" y2="10" />
+  </svg>
+);
 
 /* ── Stepper Definition ── */
 export type TrackingStage = {
   step: number;
-  id: "submitted" | "in_review_mpdc" | "for_payment_treasury" | "technical_review_engineering" | "ready_for_release";
+  id: string;
   label: string;
   office: string;
   officer: string;
@@ -88,73 +121,51 @@ export type TrackingStage = {
   };
 };
 
-export const TRACKING_STAGES: TrackingStage[] = [
-  {
-    step: 1,
-    id: "submitted",
-    label: "1. Pagsusumite / Intake",
-    office: "Online Resident Intake",
-    officer: "Document Integrity Verified",
-    theme: {
-      activeBg: "#0284c7",
-      activeBorder: "#38bdf8",
-      activeGlow: "rgba(56, 189, 248, 0.3)",
-      activeText: "#38bdf8",
+export function getTrackingStages(isEn: boolean): TrackingStage[] {
+  return [
+    {
+      step: 1,
+      id: "mpdc_approval",
+      label: isEn ? "1. MPDC Zoning Approval" : "1. Pag-apruba ng MPDC Zoning",
+      office: isEn ? "MPDC & Zoning Board" : "MPDC at Lupon ng Zoning",
+      officer: isEn ? "Edward B. Romulo, EnP. · Zoning Review" : "Edward B. Romulo, EnP. · Pagsusuri sa Zoning",
+      theme: {
+        activeBg: "#0284c7",
+        activeBorder: "#38bdf8",
+        activeGlow: "rgba(56, 189, 248, 0.3)",
+        activeText: "#38bdf8",
+      },
     },
-  },
-  {
-    step: 2,
-    id: "in_review_mpdc",
-    label: "2. MPDC Zoning Review",
-    office: "Zoning & Land Use",
-    officer: "Edward B. Romulo, EnP.",
-    theme: {
-      activeBg: "#0284c7",
-      activeBorder: "#38bdf8",
-      activeGlow: "rgba(56, 189, 248, 0.35)",
-      activeText: "#38bdf8",
+    {
+      step: 2,
+      id: "client_receipt_upload",
+      label: isEn ? "2. Client Uploads Receipt (O.R.)" : "2. Pag-upload ng Resibo (O.R.)",
+      office: isEn ? "Applicant Portal · Proof of Payment" : "Portal ng Aplikante · Katibayan ng Bayad",
+      officer: isEn ? "Direct Applicant O.R. Attachment" : "Direktang Kalakip ng O.R. ng Aplikante",
+      theme: {
+        activeBg: "#059669",
+        activeBorder: "#10b981",
+        activeGlow: "rgba(16, 185, 129, 0.35)",
+        activeText: "#34d399",
+      },
     },
-  },
-  {
-    step: 3,
-    id: "for_payment_treasury",
-    label: "3. Pagbabayad sa Treasury",
-    office: "Municipal Treasury",
-    officer: "Order of Payment & O.R. Receipt",
-    theme: {
-      activeBg: "#059669",
-      activeBorder: "#10b981",
-      activeGlow: "rgba(16, 185, 129, 0.35)",
-      activeText: "#34d399",
+    {
+      step: 3,
+      id: "engineering_inspection",
+      label: isEn ? "3. Engineering Site Inspection" : "3. Engineering Site Inspection",
+      office: isEn ? "Municipal Engineering Office" : "Tanggapan ng Inhinyero ng Munisipyo",
+      officer: isEn ? "Engr. Mario S. Baldovino · Building Clearance & Pinning" : "Engr. Mario S. Baldovino · Building Clearance & Pinning",
+      theme: {
+        activeBg: "#ea580c",
+        activeBorder: "#f97316",
+        activeGlow: "rgba(249, 115, 22, 0.35)",
+        activeText: "#fb923c",
+      },
     },
-  },
-  {
-    step: 4,
-    id: "technical_review_engineering",
-    label: "4. Engineering 'Before' Inspection",
-    office: "Municipal Engineering Office",
-    officer: "Engr. Mario S. Baldovino",
-    theme: {
-      activeBg: "#d97706",
-      activeBorder: "#f59e0b",
-      activeGlow: "rgba(245, 158, 11, 0.35)",
-      activeText: "#fbbf24",
-    },
-  },
-  {
-    step: 5,
-    id: "ready_for_release",
-    label: "5. Pagpapalabas ng Permiso",
-    office: "MPDC / Mayor's Office",
-    officer: "Approved & Sealed",
-    theme: {
-      activeBg: "#16a34a",
-      activeBorder: "#22c55e",
-      activeGlow: "rgba(34, 197, 94, 0.4)",
-      activeText: "#4ade80",
-    },
-  },
-];
+  ];
+}
+
+export const TRACKING_STAGES: TrackingStage[] = getTrackingStages(true);
 
 export type ApplicationRemark = {
   id: string;
@@ -230,6 +241,10 @@ type Props = {
 };
 
 export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Props) {
+  const { language } = useTranslation();
+  const isEn = language === "en";
+  const stages = useMemo(() => getTrackingStages(isEn), [isEn]);
+
   const [searchInput, setSearchInput] = useState(initialTrackingNo || "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -246,6 +261,13 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
 
   // Receipt Modal Preview State
   const [previewingReceipt, setPreviewingReceipt] = useState<{ url: string; title: string } | null>(null);
+
+  // Official Receipt (O.R.) Client Upload State
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptFilePreview, setReceiptFilePreview] = useState<string | null>(null);
+  const [submittingReceipt, setSubmittingReceipt] = useState(false);
+  const [receiptUploadSuccess, setReceiptUploadSuccess] = useState<string | null>(null);
+  const [receiptUploadError, setReceiptUploadError] = useState<string | null>(null);
 
   // Loaded Application Data
   const [app, setApp] = useState<TrackedApplication | null>(null);
@@ -283,9 +305,17 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
 
       // If backend does not have it, show genuine error message
       setApp(null);
-      setError(`Walang natagpuang aplikasyon sa Tracking Reference na "${query}". Pakitiyak kung tama ang na-type.`);
+      setError(
+        isEn
+          ? `No application found for Tracking Reference "${query}". Please ensure the code is typed correctly.`
+          : `Walang natagpuang aplikasyon sa Tracking Reference na "${query}". Pakitiyak kung tama ang na-type.`
+      );
     } catch {
-      setError("Hindi ma-access ang tracking server sa ngayon. Pakisubukang muli.");
+      setError(
+        isEn
+          ? "Unable to access the tracking server at this time. Please try again."
+          : "Hindi ma-access ang tracking server sa ngayon. Pakisubukang muli."
+      );
     } finally {
       setLoading(false);
     }
@@ -334,7 +364,11 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
             : prev.remarks;
 
           if (payload.notes && payload.notes !== prev.notes) {
-            setRealtimeNotice("Natanggap ang bagong opisyal na notes mula sa Tanggapan ng MPDC / Zoning.");
+            setRealtimeNotice(
+              isEn
+                ? "New official notes received from the MPDC / Zoning Office."
+                : "Natanggap ang bagong opisyal na notes mula sa Tanggapan ng MPDC / Zoning."
+            );
             setTimeout(() => setRealtimeNotice(null), 6000);
           }
 
@@ -363,7 +397,11 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
           if (existingRemarks.some((r) => r.id === newRemark.id)) return prev;
 
           if (newRemark.fromOffice !== "Applicant") {
-            setRealtimeNotice(`Bagong memo/notes mula sa ${newRemark.fromOffice}: "${newRemark.message.slice(0, 60)}..."`);
+            setRealtimeNotice(
+              isEn
+                ? `New memo/notes from ${newRemark.fromOffice}: "${newRemark.message.slice(0, 60)}..."`
+                : `Bagong memo/notes mula sa ${newRemark.fromOffice}: "${newRemark.message.slice(0, 60)}..."`
+            );
             setTimeout(() => setRealtimeNotice(null), 6000);
           }
 
@@ -384,7 +422,7 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
     return () => {
       if (socket) socket.disconnect();
     };
-  }, [app?.trackingNumber, app?.id]);
+  }, [app?.trackingNumber, app?.id, isEn]);
 
   useEffect(() => {
     const scrollVal = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("scroll") : null;
@@ -410,19 +448,26 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
   const rejectedEntries = Object.entries(app?.rejectedDocs || {});
   const hasRejectedDocs = rejectedEntries.length > 0;
 
-  // Determine current active stage in the 5-step lifecycle
+  // Determine current active stage in the streamlined 3-step lifecycle
+  // Step 1 (Index 0): MPDC Zoning Approval
+  // Step 2 (Index 1): Client Uploads Official Receipt (O.R.)
+  // Step 3 (Index 2): Engineering Site Inspection
   const currentStageIndex = (() => {
     const st = (app?.status || "submitted").toLowerCase();
     const paySt = (app?.payment?.status || "").toLowerCase();
+    const isPaid = paySt === "paid" || Boolean(app?.payment?.orNumber) || Boolean((app as any)?.or_number) || Boolean(app?.payment?.receiptUrl);
 
-    if (st.includes("release") || st === "completed" || st === "approved") return 4; // Stage 5: Ready for Release / Tapos Na
-    if (st.includes("engineering") || st === "for_engineering_inspection" || paySt === "paid") return 3; // Stage 4: Engineering 'Before' Inspection
-    if (st.includes("payment") || st === "for_payment" || st === "approved_for_payment" || paySt === "order_of_payment_issued") return 2; // Stage 3: Treasury Payment
-    if (st.includes("ocular") || st.includes("inspection") || st.includes("in_review") || st.includes("zoning") || st === "flagged") return 1; // Stage 2: MPDC Review
-    return 0; // Stage 1: Submitted
+    // Step 3 (Index 2): Engineering Site Inspection & Pinning
+    if (st.includes("engineering") || st === "for_engineering_inspection" || st === "approved_for_construction" || st === "completed" || st === "approved" || isPaid) return 2;
+
+    // Step 2 (Index 1): Client Uploads Receipt (O.R.)
+    if (st === "approved_for_payment" || st === "for_payment" || st === "for_assessment" || paySt === "order_of_payment_issued" || Boolean(app?.payment?.orderOfPaymentNo)) return 1;
+
+    // Step 1 (Index 0): MPDC Zoning Review & Document Verification
+    return 0;
   })();
 
-  const activeStage = TRACKING_STAGES[currentStageIndex] || TRACKING_STAGES[0];
+  const activeStage = stages[currentStageIndex] || stages[0];
 
   // Payment Status & Aging / Overdue Calculation
   const isPaymentPending = Boolean(
@@ -458,12 +503,12 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
     (app?.trackingNumber ? `OP-${new Date().getFullYear()}-${app.trackingNumber.slice(-4)}` : "OP-PENDING");
 
   const formattedApprovalDate = paymentIssuedRaw
-    ? new Date(paymentIssuedRaw).toLocaleDateString("tl-PH", {
+    ? new Date(paymentIssuedRaw).toLocaleDateString(isEn ? "en-PH" : "tl-PH", {
         year: "numeric",
         month: "long",
         day: "numeric",
       })
-    : "Kasalukuyan";
+    : (isEn ? "Current" : "Kasalukuyan");
 
   // Copy tracking number to clipboard
   const handleCopyTracking = () => {
@@ -481,7 +526,7 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
     const newRemark: ApplicationRemark = {
       id: `rem-app-${Date.now()}`,
       fromOffice: "Applicant",
-      author: app.applicant?.fullName || "Aplikante",
+      author: app.applicant?.fullName || (isEn ? "Applicant" : "Aplikante"),
       message: newRemarkText.trim(),
       createdAt: new Date().toISOString(),
       requiresAction: false,
@@ -502,6 +547,61 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
     setSubmittingRemark(false);
   };
 
+  // Handle Direct Citizen Official Receipt (O.R.) Upload
+  const handleUploadOfficialReceipt = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!app?.trackingNumber) return;
+    if (!receiptFile) {
+      setReceiptUploadError(
+        isEn
+          ? "Please select or upload a copy (photo or PDF) of your Official Receipt from the Assessor."
+          : "Mangyaring pumili o mag-upload ng kopya (litrato o PDF) ng inyong Official Receipt mula sa Assessor."
+      );
+      return;
+    }
+
+    setSubmittingReceipt(true);
+    setReceiptUploadError(null);
+    setReceiptUploadSuccess(null);
+
+    // Automatic receipt reference generation from tracking reference
+    const autoOrNumber = `OR-ASSESSOR-${app.trackingNumber.replace(/^LUIS-ZC-/, "")}`;
+
+    try {
+      const res = await submitCitizenReceipt(app.trackingNumber, {
+        orNumber: autoOrNumber,
+        paidAt: new Date().toISOString(),
+        file: receiptFile,
+      });
+
+      if (res && res.ok && res.application) {
+        setApp(res.application);
+        setReceiptUploadSuccess(
+          isEn
+            ? "Official Receipt from Assessor successfully uploaded! Recorded and automatically forwarded to the Engineering Office for Site Inspection."
+            : "Matagumpay na nai-upload ang Official Receipt mula sa Assessor! Naitala na ito at awtomatikong naipasa ang inyong aplikasyon sa Tanggapan ng Inhinyero para sa Site Inspection."
+        );
+        setReceiptFile(null);
+        setReceiptFilePreview(null);
+      } else {
+        setReceiptUploadError(
+          isEn
+            ? "Receipt submission failed. Please try again."
+            : "Hindi naipasa ang resibo. Pakisubukang muli."
+        );
+      }
+    } catch (err: any) {
+      setReceiptUploadError(
+        err?.message ||
+          (isEn
+            ? "Failed to upload receipt. Please check your connection."
+            : "Nabigong i-upload ang resibo. Pakisuri ang koneksyon.")
+      );
+    } finally {
+      setSubmittingReceipt(false);
+    }
+  };
+
   // Inline Document Re-upload action
   const handleReuploadDoc = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -510,15 +610,21 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
     const confirmationRemark: ApplicationRemark = {
       id: `rem-reup-${Date.now()}`,
       fromOffice: "Applicant",
-      author: app.applicant?.fullName || "Aplikante",
-      message: `Nai-upload na po ang bagong kopya ng dokumento: "${file.name}" bilang tugon sa paalala ng Engineering Office.`,
+      author: app.applicant?.fullName || (isEn ? "Applicant" : "Aplikante"),
+      message: isEn
+        ? `A new copy of the document has been uploaded: "${file.name}" in response to the Engineering Office notice.`
+        : `Nai-upload na po ang bagong kopya ng dokumento: "${file.name}" bilang tugon sa paalala ng Engineering Office.`,
       createdAt: new Date().toISOString(),
       requiresAction: false,
       attachedFile: file.name,
     };
 
     setApp((prev) => (prev ? { ...prev, remarks: [...(prev.remarks || []), confirmationRemark] } : prev));
-    setReuploadSuccess(`Matagumpay na nai-upload ang "${file.name}". Naitugon na ito sa Engineering.`);
+    setReuploadSuccess(
+      isEn
+        ? `"${file.name}" uploaded successfully. Forwarded to Engineering.`
+        : `Matagumpay na nai-upload ang "${file.name}". Naitugon na ito sa Engineering.`
+    );
     setTimeout(() => setReuploadSuccess(null), 5000);
   };
 
@@ -540,14 +646,18 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
       if (res && res.application) {
         setApp(res.application);
         setReuploadDocSuccess(
-          `Matagumpay na nai-upload ang bagong kopya para sa "${docTitle}" (${file.name})! Naipasa na muli sa MPDC para sa pagsusuri.`
+          isEn
+            ? `New copy for "${docTitle}" (${file.name}) uploaded successfully! Resubmitted to MPDC for review.`
+            : `Matagumpay na nai-upload ang bagong kopya para sa "${docTitle}" (${file.name})! Naipasa na muli sa MPDC para sa pagsusuri.`
         );
         setTimeout(() => setReuploadDocSuccess(null), 7000);
       } else {
-        setReuploadDocError("Hindi nai-save ang dokumento. Pakisubukang muli.");
+        setReuploadDocError(
+          isEn ? "Document could not be saved. Please try again." : "Hindi nai-save ang dokumento. Pakisubukang muli."
+        );
       }
     } catch (err: any) {
-      setReuploadDocError(err?.message || "Nabigong i-upload ang dokumento.");
+      setReuploadDocError(err?.message || (isEn ? "Failed to upload document." : "Nabigong i-upload ang dokumento."));
     } finally {
       setUploadingDocKey(null);
       e.target.value = "";
@@ -561,20 +671,25 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
       {/* Top Navigation */}
       <header className="at-nav">
         <div className="at-nav-left">
-          <button type="button" className="at-back-btn" onClick={onBack} title="Bumalik">
+          <button type="button" className="at-back-btn" onClick={onBack} title={isEn ? "Back" : "Bumalik"}>
             <IconBack />
-            <span>Bumalik</span>
+            <span>{isEn ? "Back" : "Bumalik"}</span>
           </button>
           <div className="at-nav-brand">
             <img src="/logo.png" alt="Luisiana Seal" />
             <div>
-              <div className="at-nav-title">Republika ng Pilipinas · Bayan ng Luisiana</div>
-              <div className="at-nav-sub">MPDC Online Citizen Permit Tracking Portal</div>
+              <div className="at-nav-title">
+                {isEn ? "Republic of the Philippines · Municipality of Luisiana" : "Republika ng Pilipinas · Bayan ng Luisiana"}
+              </div>
+              <div className="at-nav-sub">
+                {isEn ? "MPDC Online Citizen Permit Tracking Portal" : "MPDC Online Citizen Permit Tracking Portal"}
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="at-nav-right">
+        <div className="at-nav-right" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <LanguageToggle />
           <ThemeToggle />
         </div>
       </header>
@@ -585,13 +700,13 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
           <div className="at-search-card">
             <div className="at-search-title">
               <IconSearch />
-              <span>Mag-track ng Ibang Aplikasyon</span>
+              <span>{isEn ? "Track Another Application" : "Mag-track ng Ibang Aplikasyon"}</span>
             </div>
             <div className="at-search-box">
               <input
                 type="text"
                 className="at-search-input"
-                placeholder="Hal. LUIS-ZC-2026-9078"
+                placeholder={isEn ? "e.g. LUIS-ZC-2026-9078" : "Hal. LUIS-ZC-2026-9078"}
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && fetchApplication(searchInput)}
@@ -602,7 +717,7 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
                 disabled={loading || !searchInput.trim()}
                 onClick={() => fetchApplication(searchInput)}
               >
-                {loading ? "Naghahanap…" : "Hanapin"}
+                {loading ? (isEn ? "Searching..." : "Naghahanap…") : (isEn ? "Search" : "Hanapin")}
               </button>
             </div>
           </div>
@@ -612,7 +727,7 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
         {loading && !app && (
           <div className="at-loading-box">
             <div className="at-spinner" />
-            <p>Kinukuha ang kumpidensyal na talaan ng aplikasyon…</p>
+            <p>{isEn ? "Retrieving confidential application record…" : "Kinukuha ang kumpidensyal na talaan ng aplikasyon…"}</p>
           </div>
         )}
 
@@ -631,21 +746,29 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
                 <path d="M7 11V7a5 5 0 0 1 10 0v4" />
               </svg>
-              <span>Protektado at Kumpidensyal na Talaan</span>
+              <span>{isEn ? "Protected & Confidential Record" : "Protektado at Kumpidensyal na Talaan"}</span>
             </div>
 
             <h2 className="at-empty-title">
-              Ilagay ang Inyong Tracking Reference Number
+              {isEn ? "Enter Your Tracking Reference Number" : "Ilagay ang Inyong Tracking Reference Number"}
             </h2>
             <p className="at-empty-desc">
-              Alinsunod sa mga patakaran sa kumpidensyalidad ng Bayan ng Luisiana, hindi awtomatikong inilalantad ang mga personal na detalye ng anumang aplikasyon nang walang wastong reference number. Mangyaring i-type sa ibaba ang inyong opisyal na <strong>Tracking Reference Code</strong> (Hal. <code>LUIS-ZC-2026-9078</code>) upang mabuksan ang live progress nito.
+              {isEn ? (
+                <>
+                  Pursuant to privacy regulations of the Municipality of Luisiana, personal application details are protected and cannot be displayed without a valid tracking code. Please enter your official <strong>Tracking Reference Code</strong> (e.g. <code>LUIS-ZC-2026-9078</code>) below to view its live multi-office progress.
+                </>
+              ) : (
+                <>
+                  Alinsunod sa mga patakaran sa kumpidensyalidad ng Bayan ng Luisiana, hindi awtomatikong inilalantad ang mga personal na detalye ng anumang aplikasyon nang walang wastong reference number. Mangyaring i-type sa ibaba ang inyong opisyal na <strong>Tracking Reference Code</strong> (Hal. <code>LUIS-ZC-2026-9078</code>) upang mabuksan ang live progress nito.
+                </>
+              )}
             </p>
 
             <div className="at-empty-search-box">
               <input
                 type="text"
                 className="at-empty-input"
-                placeholder="I-type ang Tracking No. (Hal. LUIS-ZC-2026-9078)"
+                placeholder={isEn ? "Type Tracking No. (e.g. LUIS-ZC-2026-9078)" : "I-type ang Tracking No. (Hal. LUIS-ZC-2026-9078)"}
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && fetchApplication(searchInput)}
@@ -657,7 +780,7 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
                 disabled={loading || !searchInput.trim()}
                 onClick={() => fetchApplication(searchInput)}
               >
-                Subaybayan ang Aplikasyon →
+                {isEn ? "Track Application →" : "Subaybayan ang Aplikasyon →"}
               </button>
             </div>
 
@@ -665,22 +788,34 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
               <div className="at-empty-guide-item">
                 <div className="at-empty-guide-num">1</div>
                 <div>
-                  <strong>Saan Makikita ang Reference?</strong>
-                  <p>Makikita ito sa inyong official filing acknowledgment slip, SMS notification, o papel na resibo mula sa MPDC.</p>
+                  <strong>{isEn ? "Where to Find the Reference?" : "Saan Makikita ang Reference?"}</strong>
+                  <p>
+                    {isEn
+                      ? "Found on your official filing acknowledgment slip, SMS notification, or printed receipt from MPDC."
+                      : "Makikita ito sa inyong official filing acknowledgment slip, SMS notification, o papel na resibo mula sa MPDC."}
+                  </p>
                 </div>
               </div>
               <div className="at-empty-guide-item">
                 <div className="at-empty-guide-num">2</div>
                 <div>
-                  <strong>Live Multi-Office Progress</strong>
-                  <p>Masusubaybayan ang real-time na progreso mula sa MPDC Zoning Review, Treasury Payment, hanggang Engineering Inspection.</p>
+                  <strong>{isEn ? "Live Multi-Office Progress" : "Live Multi-Office Progress"}</strong>
+                  <p>
+                    {isEn
+                      ? "Track real-time progress across MPDC Zoning Review, Receipt Upload, through Engineering Inspection."
+                      : "Masusubaybayan ang real-time na progreso mula sa MPDC Zoning Review, Pag-upload ng Resibo, hanggang Engineering Inspection."}
+                  </p>
                 </div>
               </div>
               <div className="at-empty-guide-item">
                 <div className="at-empty-guide-num">3</div>
                 <div>
-                  <strong>Kumpidensyal at Ligtas</strong>
-                  <p>Tanging ang may hawak ng tamang tracking reference ang maaaring makakita sa mga personal na dokumento at assessment notes.</p>
+                  <strong>{isEn ? "Confidential & Secure" : "Kumpidensyal at Ligtas"}</strong>
+                  <p>
+                    {isEn
+                      ? "Only the holder of the correct tracking reference can view personal documents and assessment notes."
+                      : "Tanging ang may hawak ng tamang tracking reference ang maaaring makakita sa mga personal na dokumento at assessment notes."}
+                  </p>
                 </div>
               </div>
             </div>
@@ -693,15 +828,15 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
             <div className="at-hero-card">
               <div className="at-hero-left">
                 <div className="at-hero-tag">
-                  <span>● Live System Tracking</span>
+                  <span>● {isEn ? "Live System Tracking" : "Live System Tracking"}</span>
                   <span>·</span>
-                  <span>Zoning &amp; Building Permit</span>
+                  <span>{isEn ? "Zoning & Building Permit" : "Zoning & Building Permit"}</span>
                 </div>
                 <h1 className="at-hero-title">
-                  {app.lotDetails?.proposedBuildingType || "Zoning Clearance for Construction"}
+                  {app.lotDetails?.proposedBuildingType || (isEn ? "Zoning Clearance for Construction" : "Zoning Clearance for Construction")}
                 </h1>
                 <div className="at-hero-applicant">
-                  <strong>Aplikante:</strong> {app.applicant?.fullName || "Aplikante ng Luisiana"}
+                  <strong>{isEn ? "Applicant:" : "Aplikante:"}</strong> {app.applicant?.fullName || (isEn ? "Applicant of Luisiana" : "Aplikante ng Luisiana")}
                   <span>·</span>
                   <span>Barangay: <strong>{app.applicant?.barangay || "Poblacion"}</strong></span>
                 </div>
@@ -714,56 +849,39 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
                     type="button"
                     className="at-copy-btn"
                     onClick={handleCopyTracking}
-                    title="Kopyahin ang Tracking Reference Number"
+                    title={isEn ? "Copy Tracking Reference Number" : "Kopyahin ang Tracking Reference Number"}
                   >
-                    {copied ? "Nai-kopya!" : "Kopyahin"}
+                    {copied ? (isEn ? "Copied!" : "Nai-kopya!") : (isEn ? "Copy" : "Kopyahin")}
                   </button>
                 </div>
                 <div className="at-hero-date">
-                  Petsa ng Pagsusumite: {new Date(app.createdAt).toLocaleDateString("tl-PH", { year: "numeric", month: "long", day: "numeric" })}
+                  {isEn
+                    ? `Date Submitted: ${new Date(app.createdAt).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}`
+                    : `Petsa ng Pagsusumite: ${new Date(app.createdAt).toLocaleDateString("tl-PH", { year: "numeric", month: "long", day: "numeric" })}`}
                 </div>
               </div>
             </div>
 
             {/* ══════════════════════════════════════════════════════════════
-               UI ELEMENT 1: LIVE PROGRESS TRACKER BAR (5-Stage Visual Stepper)
+               UI ELEMENT 1: LIVE PROGRESS TRACKER BAR (3-Stage Visual Stepper)
                ══════════════════════════════════════════════════════════════ */}
-            <div
-              className="at-stepper-card"
-              style={
-                {
-                  "--step-active-bg": activeStage.theme.activeBg,
-                  "--step-active-border": activeStage.theme.activeBorder,
-                  "--step-active-glow": activeStage.theme.activeGlow,
-                  "--step-active-text": activeStage.theme.activeText,
-                  "--step-active-color": activeStage.theme.activeBg,
-                } as React.CSSProperties
-              }
-            >
+            <div className="at-stepper-card">
               <div className="at-stepper-header">
                 <div className="at-stepper-title">
-                  <span>Live Progress Tracker Bar</span>
-                  <span>(5-Stage Municipal Lifecycle)</span>
+                  <span>{isEn ? "Application Process" : "Proseso ng Aplikasyon"}</span>
+                  <span className="at-stepper-sub-badge">{isEn ? "3-Step Workflow" : "3-Hakbang na Proseso"}</span>
                 </div>
-                <div
-                  className="at-stepper-current-badge"
-                  style={{
-                    background: `${activeStage.theme.activeBg}22`,
-                    border: `1px solid ${activeStage.theme.activeBorder}55`,
-                    color: activeStage.theme.activeText,
-                  }}
-                >
-                  <span>Kasalukuyang Yugto:</span>
-                  <strong>{isAllApproved ? "5. Pagpapalabas ng Permiso · Naaprubahan Na" : activeStage.label}</strong>
+                <div className="at-stepper-current-badge">
+                  <span>{isEn ? "Current Stage:" : "Kasalukuyang Yugto:"}</span>
+                  <strong>{isAllApproved ? (isEn ? "3. Clearance & Review Completed" : "3. Kumpleto Na ang Pagsusuri") : activeStage.label}</strong>
                 </div>
               </div>
 
               {/* Stepper Track */}
               <div className="at-stepper-track">
-                {TRACKING_STAGES.map((st, idx) => {
+                {stages.map((st, idx) => {
                   const isCompleted = isAllApproved ? true : idx < currentStageIndex;
-                  const isActive = isAllApproved ? idx === 4 : idx === currentStageIndex;
-                  const isUpcoming = !isAllApproved && idx > currentStageIndex;
+                  const isActive = isAllApproved ? idx === 2 : idx === currentStageIndex;
 
                   return (
                     <div
@@ -771,26 +889,14 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
                       className={`at-step-item ${isCompleted ? "completed" : ""} ${isActive ? "active" : ""} ${isCompleted && idx === currentStageIndex - 1 ? "active-next" : ""}`}
                     >
                       <div className="at-step-circle">
-                        {isCompleted ? <IconCheck size={18} color="#fff" /> : st.step}
+                        {isCompleted ? <IconCheck size={18} color="#ffffff" /> : st.step}
                       </div>
                       <div className="at-step-label">{st.label}</div>
                       <div className="at-step-office">{st.office}</div>
                       <div
-                        className="at-step-status-tag"
-                        style={{
-                          background: isCompleted
-                            ? "rgba(16, 185, 129, 0.2)"
-                            : isActive
-                            ? `${st.theme.activeBg}33`
-                            : "rgba(255, 255, 255, 0.08)",
-                          color: isCompleted
-                            ? "#34d399"
-                            : isActive
-                            ? st.theme.activeText
-                            : "rgba(255, 255, 255, 0.4)",
-                        }}
+                        className={`at-step-status-tag ${isCompleted ? "completed" : isActive ? "active" : "upcoming"}`}
                       >
-                        {isCompleted ? "✓ Tapos Na" : isActive ? "Kasalukuyan" : "Kasunod"}
+                        {isCompleted ? (isEn ? "✓ Done" : "✓ Tapos Na") : isActive ? (isEn ? "Current" : "Kasalukuyan") : (isEn ? "Next" : "Kasunod")}
                       </div>
                     </div>
                   );
@@ -799,131 +905,197 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
             </div>
 
             {/* ══════════════════════════════════════════════════════════════
-               OPISYAL NA NOTICE / PAALALA SA PAGBABAYAD (MUNICIPAL NOTICE)
+               HAKBANG 2: CLIENT UPLOADS OFFICIAL RECEIPT (O.R.) MULA SA ASSESSOR
                ══════════════════════════════════════════════════════════════ */}
-            {isPaymentPending && (
-              <div
-                className={`at-notice-banner ${isPaymentOverdue ? "overdue" : "pending"}`}
-                style={{
-                  background: isPaymentOverdue
-                    ? "linear-gradient(135deg, rgba(239, 68, 68, 0.14) 0%, rgba(185, 28, 28, 0.22) 100%)"
-                    : "linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(5, 150, 105, 0.18) 100%)",
-                  border: isPaymentOverdue
-                    ? "1.5px solid rgba(239, 68, 68, 0.7)"
-                    : "1.5px solid rgba(16, 185, 129, 0.55)",
-                  borderRadius: "14px",
-                  padding: "20px 24px",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "14px",
-                  boxShadow: isPaymentOverdue
-                    ? "0 8px 30px rgba(239, 68, 68, 0.25)"
-                    : "0 8px 30px rgba(16, 185, 129, 0.18)",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "12px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                    <div
-                      style={{
-                        width: "38px",
-                        height: "38px",
-                        borderRadius: "10px",
-                        background: isPaymentOverdue ? "rgba(239, 68, 68, 0.25)" : "rgba(16, 185, 129, 0.25)",
-                        border: isPaymentOverdue ? "1px solid #f87171" : "1px solid #34d399",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flexShrink: 0,
-                      }}
-                    >
-                      {isPaymentOverdue ? <IconAlert size={22} color="#f87171" /> : <IconReceipt />}
+            {/* Case A: Receipt Not Yet Uploaded & MPDC Has Approved (Stage 2 Active) */}
+            {(currentStageIndex === 1 || app.status === "approved_for_payment" || app.status === "for_payment" || app.status === "for_assessment") && !app.payment?.orNumber && !app.payment?.receiptUrl && (
+              <div className="at-receipt-upload-card">
+                <div className="at-receipt-upload-header">
+                  <div className="at-receipt-upload-header-left">
+                    <div className="at-receipt-icon-badge">
+                      <IconReceipt />
                     </div>
-                    <div>
-                      <div
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "6px",
-                          padding: "3px 10px",
-                          borderRadius: "9999px",
-                          fontSize: "0.75rem",
-                          fontWeight: 800,
-                          letterSpacing: "0.04em",
-                          textTransform: "uppercase",
-                          background: isPaymentOverdue ? "#fee2e2" : "#d1fae5",
-                          color: isPaymentOverdue ? "#991b1b" : "#065f46",
-                          border: isPaymentOverdue ? "1px solid #f87171" : "1px solid #34d399",
-                        }}
-                      >
-                        {isPaymentOverdue ? "⚠️ Opisyal na Notice: Overdue Payment (>30 Araw)" : "ℹ️ Opisyal na Paalala sa Pagbabayad (Stage 3)"}
+                    <div className="at-receipt-header-titles">
+                      <div className="at-receipt-step-tag">
+                        {isEn ? "Step 2: Receipt Upload from Assessor" : "Hakbang 2: Pag-upload ng Resibo mula sa Assessor"}
                       </div>
-                      <h2 style={{ fontSize: "1.2rem", fontWeight: 800, color: "#fff", margin: "6px 0 0", lineHeight: 1.3 }}>
-                        {isPaymentOverdue
-                          ? "Kagyat na Paalala: Lampas na sa 30 Araw ang Inyong Order of Payment"
-                          : "Naaprubahan na ng MPDC — Handa na para sa Pagbabayad sa Treasury"}
+                      <h2 className="at-receipt-card-title">
+                        {isEn ? "Upload Official Receipt (O.R.) from Assessor" : "I-upload ang Opisyal na Resibo (O.R.) mula sa Assessor"}
                       </h2>
                     </div>
                   </div>
 
-                  <div
-                    style={{
-                      background: "rgba(15, 23, 42, 0.75)",
-                      border: "1px solid rgba(255, 255, 255, 0.15)",
-                      borderRadius: "10px",
-                      padding: "8px 16px",
-                      textAlign: "right",
-                    }}
-                  >
-                    <div style={{ fontSize: "0.72rem", color: "rgba(255, 255, 255, 0.6)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                      Payment Reference No.
-                    </div>
-                    <div style={{ fontSize: "1.1rem", fontWeight: 800, color: "#38bdf8", fontFamily: "monospace", letterSpacing: "0.05em" }}>
-                      {orderOfPaymentNo}
-                    </div>
+                  <div className="at-receipt-step-pill">
+                    <span>{isEn ? "Awaiting Receipt" : "Naghihintay ng Resibo"}</span>
                   </div>
                 </div>
 
-                <div
-                  style={{
-                    background: "rgba(15, 23, 42, 0.55)",
-                    border: "1px solid rgba(255, 255, 255, 0.08)",
-                    borderRadius: "10px",
-                    padding: "16px 20px",
-                    fontSize: "0.93rem",
-                    lineHeight: 1.6,
-                    color: "rgba(255, 255, 255, 0.9)",
-                  }}
-                >
-                  {isPaymentOverdue ? (
-                    <>
-                      <p style={{ margin: "0 0 10px" }}>
-                        Ang inyong Order of Payment ay inilabas noong <strong>{formattedApprovalDate}</strong> (
-                        <strong style={{ color: "#f87171" }}>{paymentAgeDays} araw nang nakalipas</strong>).
-                        Lumagpas na ito sa karaniwang 30-araw na palugit para sa pagbabayad ng munisipyo.
-                      </p>
-                      <p style={{ margin: 0, color: "#fca5a5" }}>
-                        <strong>Aksyon na Kinakailangan:</strong> Mangyaring magtungo agad sa <strong>Municipal Treasury Office (1st Floor, Munisipyo ng Luisiana)</strong> at sabihin sa cashier ang inyong <strong>Payment Number: {orderOfPaymentNo}</strong> upang magbayad ng kaukulang halaga na <strong>₱{Number(app.payment?.amount || 280).toFixed(2)}</strong>. Upang hindi mapawalang-bisa o kailangang i-reassess ng MPDC ang inyong clearance, pakiproseso ito sa lalong madaling panahon.
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <p style={{ margin: "0 0 10px" }}>
-                        Inaprubahan ng Tanggapan ng MPDC ang inyong aplikasyon noong <strong>{formattedApprovalDate}</strong> ({paymentAgeDays === 0 ? "ngayong araw" : `${paymentAgeDays} araw ang nakalipas`}).
-                      </p>
-                      <p style={{ margin: 0 }}>
-                        <strong>Gabay sa Aplikante:</strong> Magtungo sa <strong>Municipal Treasury Office (1st Floor, Munisipyo ng Luisiana)</strong> at sabihin sa teller/cashier ang inyong <strong>Payment Reference: {orderOfPaymentNo}</strong> para sa pagbabayad ng halagang <strong>₱{Number(app.payment?.amount || 280).toFixed(2)}</strong>. Hindi na kinakailangang mag-upload ng resibo online; awtomatikong mag-uupdate ang inyong tracker papunta sa <strong>Stage 4 (Engineering Inspection)</strong> sa oras na maitala ng Treasury ang inyong Official Receipt.
-                      </p>
-                    </>
+                <div className="at-receipt-desc-box">
+                  <p className="at-receipt-desc-lead">
+                    {isEn ? (
+                      <>
+                        Your zoning clearance has been approved by the <strong>MPDC Zoning Officer</strong>. After receiving your <strong>Official Receipt (O.R.)</strong> from the Assessor / Municipal Treasury, attach a photo or copy here to automatically route your application to the <strong>Municipal Engineering Office</strong> for Site Inspection.
+                      </>
+                    ) : (
+                      <>
+                        Naaprubahan na ng <strong>MPDC Zoning Officer</strong> ang inyong zoning clearance. Matapos matanggap ang inyong <strong>Opisyal na Resibo (Official Receipt / O.R.)</strong> mula sa Tanggapan ng Assessor / Munisipyo, i-attach lamang dito ang litrato o kopya nito upang awtomatikong mag-proceed ang aplikasyon sa <strong>Tanggapan ng Inhinyero (Engineering Office)</strong> para sa Site Inspection.
+                      </>
+                    )}
+                  </p>
+                  <div className="at-receipt-desc-endorse">
+                    <IconCheck size={16} color="currentColor" />
+                    <span>
+                      {isEn ? (
+                        <><strong>Direct Routing:</strong> Once your receipt is uploaded, your application immediately reaches the Engineering Office for Pre-Construction Site Inspection and Coordinate Pinning.</>
+                      ) : (
+                        <><strong>Direktang Pag-endorso:</strong> Pagka-upload ng inyong resibo mula sa Assessor, awtomatikong darating ang inyong aplikasyon sa Tanggapan ng Inhinyero para sa Pre-Construction Site Inspection at Coordinate Pinning.</>
+                      )}
+                    </span>
+                  </div>
+                </div>
+
+                {receiptUploadSuccess && (
+                  <div className="at-reupload-toast success">
+                    <IconCheck size={16} color="#10b981" />
+                    <span>{receiptUploadSuccess}</span>
+                  </div>
+                )}
+
+                {receiptUploadError && (
+                  <div className="at-reupload-toast error">
+                    <IconAlert size={16} color="#ef4444" />
+                    <span>{receiptUploadError}</span>
+                  </div>
+                )}
+
+                <form onSubmit={handleUploadOfficialReceipt} className="at-receipt-form">
+                  {/* Dropzone / File Picker (Direct receipt upload - no manual typing required) */}
+                  <div className="at-receipt-field">
+                    <label className="at-receipt-dropzone">
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,application/pdf"
+                        style={{ display: "none" }}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) {
+                            setReceiptFile(f);
+                            setReceiptFilePreview(f.name);
+                            setReceiptUploadError(null);
+                          }
+                        }}
+                      />
+                      <div className="at-receipt-dropzone-icon">
+                        <IconUpload />
+                      </div>
+                      <div className="at-receipt-dropzone-title">
+                        {receiptFile
+                          ? (isEn ? "Change Selected Receipt" : "Palitan ang Napiling Resibo")
+                          : (isEn ? "Click to select or drag photo/PDF of Receipt from Assessor" : "I-click para pumili o i-drag ang Litrato o PDF ng Resibo mula sa Assessor")}
+                      </div>
+                      <div className="at-receipt-dropzone-subtitle">
+                        {isEn
+                          ? "Accepts clear photo of receipt or scanned PDF (Up to 15MB)"
+                          : "Tumatanggap ng malinaw na litrato ng resibo o scanned PDF (Hanggang 15MB)"}
+                      </div>
+                    </label>
+
+                    {receiptFile && (
+                      <div className="at-receipt-preview-chip">
+                        <div className="at-receipt-preview-chip-info">
+                          <span className="at-receipt-preview-file-icon">
+                            <IconFileTextDoc size={14} color="currentColor" />
+                          </span>
+                          <div>
+                            <strong className="at-receipt-preview-name">{receiptFile.name}</strong>
+                            <div className="at-receipt-preview-size">
+                              {(receiptFile.size / 1024).toFixed(1)} KB · {isEn ? "Ready to upload" : "Handa nang i-upload"}
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="at-receipt-preview-remove-btn"
+                          onClick={() => {
+                            setReceiptFile(null);
+                            setReceiptFilePreview(null);
+                          }}
+                        >
+                          {isEn ? "Remove" : "Alisin"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="at-receipt-submit-row">
+                    <button
+                      type="submit"
+                      className="at-receipt-submit-btn"
+                      disabled={submittingReceipt || !receiptFile}
+                    >
+                      {submittingReceipt
+                        ? (isEn ? "Uploading Receipt…" : "Ina-upload ang Resibo…")
+                        : (isEn ? "Submit Receipt (Proceed to Engineering) →" : "I-sumite ang Resibo (Mag-proceed sa Engineering) →")}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {/* Case B: Receipt Already Uploaded and Verified (Stage 3 Active or Engineering Stage) */}
+            {(Boolean(app.payment?.orNumber) || Boolean(app.payment?.receiptUrl) || app.status === "for_engineering_inspection" || currentStageIndex === 2) && (
+              <div className="at-receipt-verified-card">
+                <div className="at-receipt-verified-head">
+                  <div className="at-receipt-verified-badge">
+                    <IconCheck size={20} color="#15803d" />
+                    <span>{isEn ? "Official Receipt from Assessor: Uploaded" : "Opisyal na Resibo mula sa Assessor: Na-upload Na"}</span>
+                  </div>
+                  <span className="at-receipt-verified-step-tag">
+                    {isEn ? "Step 2 Completed ✓" : "Hakbang 2 Tapos Na ✓"}
+                  </span>
+                </div>
+
+                <div className="at-receipt-verified-grid">
+                  <div className="at-receipt-verified-col">
+                    <span className="at-receipt-verified-col-label">{isEn ? "Receipt Reference" : "Reperensya ng Resibo"}</span>
+                    <strong className="at-receipt-verified-col-val mono">
+                      {app.payment?.orNumber || "OR-VERIFIED"}
+                    </strong>
+                  </div>
+                  <div className="at-receipt-verified-col">
+                    <span className="at-receipt-verified-col-label">{isEn ? "Status" : "Katayuan"}</span>
+                    <strong className="at-receipt-verified-col-val safe">
+                      {isEn ? "Recorded from Assessor" : "Nai-record mula sa Assessor"}
+                    </strong>
+                  </div>
+                  <div className="at-receipt-verified-col">
+                    <span className="at-receipt-verified-col-label">{isEn ? "Upload Date" : "Petsa ng Pag-upload"}</span>
+                    <strong className="at-receipt-verified-col-val">
+                      {app.payment?.paidAt
+                        ? new Date(app.payment.paidAt).toLocaleDateString(isEn ? "en-PH" : "tl-PH", { year: "numeric", month: "short", day: "numeric" })
+                        : (isEn ? "Verified" : "Naberipika")}
+                    </strong>
+                  </div>
+                </div>
+
+                <div className="at-receipt-verified-footer">
+                  <p className="at-receipt-verified-notice">
+                    {isEn ? (
+                      <>The receipt from the Assessor has been recorded. Your application has proceeded directly to the <strong>Municipal Engineering Office</strong> for Pre-Construction Site Inspection and Geo-pinning.</>
+                    ) : (
+                      <>Nai-upload na ang resibo mula sa Assessor. Direkta nang pumasok ang inyong aplikasyon sa <strong>Tanggapan ng Inhinyero (Municipal Engineering Office)</strong> para sa Pre-Construction Site Inspection at Geo-pinning.</>
+                    )}
+                  </p>
+                  {app.payment?.receiptUrl && (
+                    <button
+                      type="button"
+                      className="at-receipt-view-btn"
+                      onClick={() => setPreviewingReceipt({ url: app.payment!.receiptUrl!, title: `Official Receipt #${app.payment?.orNumber || "O.R."}` })}
+                    >
+                      <IconReceipt />
+                      <span>{isEn ? "View Receipt" : "Tingnan ang Resibo"}</span>
+                    </button>
                   )}
-                </div>
-
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "10px", fontSize: "0.84rem", color: "rgba(255, 255, 255, 0.75)" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    <span>📍 Lugar ng Bayaran: <strong>Municipal Treasury Counter (1st Floor, Munisipyo)</strong></span>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                    <span>💵 Kabuuang Babayaran: <strong style={{ color: "#34d399", fontSize: "1rem" }}>₱{Number(app.payment?.amount || 280).toFixed(2)}</strong></span>
-                  </div>
                 </div>
               </div>
             )}
@@ -940,22 +1112,25 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
                     </div>
                     <div>
                       <h2 className="at-reupload-title">
-                        Mga Dokumentong Kailangang I-reupload / Palitan
+                        {isEn ? "Documents Requiring Re-upload / Replacement" : "Mga Dokumentong Kailangang I-reupload / Palitan"}
                       </h2>
                       <p className="at-reupload-sub">
-                        Pagsusuri ng MPDC / Zoning Administrator — Maling Dokumento
+                        {isEn ? "MPDC / Zoning Administrator Evaluation — Document Correction" : "Pagsusuri ng MPDC / Zoning Administrator — Maling Dokumento"}
                       </p>
                     </div>
                   </div>
                   <div className="at-reupload-count-badge">
-                    <span>{rejectedEntries.length} Kailangang Palitan</span>
+                    <span>{isEn ? `${rejectedEntries.length} Required to Replace` : `${rejectedEntries.length} Kailangang Palitan`}</span>
                   </div>
                 </div>
 
                 <div className="at-reupload-alert-banner">
                   <IconAlert size={18} color="#f87171" style={{ flexShrink: 0, marginTop: 2 }} />
                   <div>
-                    <strong>Pansin sa Aplikante:</strong> May mga isinumiteng dokumento na tinanggihan ng MPDC Officer dahil hindi wasto, malabo, o expired. Mangyaring basahin ang dahilan ng pag-reject sa bawat dokumento sa ibaba at i-upload ang bago at wastong kopya upang maipagpatuloy ang pag-apruba.
+                    <strong>{isEn ? "Notice to Applicant:" : "Pansin sa Aplikante:"}</strong>{" "}
+                    {isEn
+                      ? "Certain submitted documents were rejected by the MPDC Officer because they were invalid, illegible, or expired. Please check the reason for rejection for each document below and upload a clear, valid copy to continue approval."
+                      : "May mga isinumiteng dokumento na tinanggihan ng MPDC Officer dahil hindi wasto, malabo, o expired. Mangyaring basahin ang dahilan ng pag-reject sa bawat dokumento sa ibaba at i-upload ang bago at wastong kopya upang maipagpatuloy ang pag-apruba."}
                   </div>
                 </div>
 
@@ -981,25 +1156,24 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
                       <div key={docKey} className="at-reupload-item-card">
                         <div className="at-reupload-item-top">
                           <div className="at-reupload-item-title-row">
-                            <span className="at-reupload-doc-badge">Tinanggihan / Maling Dokumento</span>
+                            <span className="at-reupload-doc-badge">{isEn ? "Rejected / Incorrect Document" : "Tinanggihan / Maling Dokumento"}</span>
                             <h3 className="at-reupload-item-title">{docTitle}</h3>
                           </div>
                           {rejectInfo.rejectedAt && (
                             <span className="at-reupload-item-time">
-                              Petsa: {new Date(rejectInfo.rejectedAt).toLocaleDateString("tl-PH", {
-                                month: "short",
-                                day: "numeric",
-                              })}
+                              {isEn
+                                ? `Date: ${new Date(rejectInfo.rejectedAt).toLocaleDateString("en-PH", { month: "short", day: "numeric" })}`
+                                : `Petsa: ${new Date(rejectInfo.rejectedAt).toLocaleDateString("tl-PH", { month: "short", day: "numeric" })}`}
                             </span>
                           )}
                         </div>
 
                         <div className="at-reupload-reason-box">
                           <strong className="at-reupload-reason-lbl">
-                            Dahilan ng Pag-reject:
+                            {isEn ? "Reason for Rejection:" : "Dahilan ng Pag-reject:"}
                           </strong>
                           <p className="at-reupload-reason-text">
-                            {rejectInfo.reason || "Hindi wasto o malabo ang naunang kopya."}
+                            {rejectInfo.reason || (isEn ? "The previous copy was invalid or illegible." : "Hindi wasto o malabo ang naunang kopya.")}
                           </p>
                         </div>
 
@@ -1015,12 +1189,14 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
                             <IconUpload />
                             <span>
                               {isUploadingThis
-                                ? "Ikinakarga ang bagong file…"
-                                : `Mag-upload ng Bagong Kopya para sa "${docTitle}" →`}
+                                ? (isEn ? "Uploading new file…" : "Ikinakarga ang bagong file…")
+                                : (isEn ? `Upload New Copy for "${docTitle}" →` : `Mag-upload ng Bagong Kopya para sa "${docTitle}" →`)}
                             </span>
                           </label>
                           <span className="at-reupload-hint">
-                            Tumatanggap ng PDF, JPG, o PNG (Siguraduhing malinaw at kumpleto ang pahina)
+                            {isEn
+                              ? "Accepts PDF, JPG, or PNG (Ensure page is clear and complete)"
+                              : "Tumatanggap ng PDF, JPG, o PNG (Siguraduhing malinaw at kumpleto ang pahina)"}
                           </span>
                         </div>
                       </div>
@@ -1030,176 +1206,6 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
               </div>
             )}
 
-            {/* ══════════════════════════════════════════════════════════════
-               DIGITAL ORDER OF PAYMENT & OFFICIAL RECEIPT UPLOAD
-               ══════════════════════════════════════════════════════════════ */}
-            {(app.status === "for_payment" || app.status === "for_engineering_inspection" || Boolean(app.payment?.orderOfPaymentNo) || currentStageIndex >= 2) && (
-              <div className="at-payment-section-card">
-                <div className="at-payment-header">
-                  <div className="at-payment-header-left">
-                    <div className="at-payment-icon-badge">
-                      <IconReceipt />
-                    </div>
-                    <div>
-                      <h2 className="at-payment-title">Municipal Order of Payment (Digital Slip)</h2>
-                      <p className="at-payment-sub">Kagawaran ng Ingat-Yaman (Treasury) &amp; MPDC Zoning Assessment</p>
-                    </div>
-                  </div>
-                  <div className="at-payment-status-badge">
-                    {app.payment?.status === "paid" || app.status === "for_engineering_inspection" ? (
-                      <span className="at-badge-paid"><IconCheck size={14} color="#10b981" /> Bayad Na (O.R. Naitala)</span>
-                    ) : (
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                        <span className="at-badge-pending">Naghihintay ng Pagbabayad sa Treasury</span>
-                        {isPaymentOverdue && (
-                          <span className="at-badge-overdue">
-                            ⚠️ &gt;30 Araw (Aging / Overdue)
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Mandated Instruction Banner */}
-                <div
-                  className="at-op-instruction-banner"
-                  style={
-                    isPaymentOverdue
-                      ? {
-                          borderColor: "rgba(239, 68, 68, 0.6)",
-                          background: "rgba(239, 68, 68, 0.12)",
-                        }
-                      : undefined
-                  }
-                >
-                  <div className="at-op-instruction-icon">
-                    {isPaymentOverdue ? (
-                      <IconAlert size={22} color="#ef4444" />
-                    ) : (
-                      <IconCheck size={22} color="#059669" />
-                    )}
-                  </div>
-                  <div className="at-op-instruction-text">
-                    <div
-                      className="at-op-instruction-main"
-                      style={isPaymentOverdue ? { color: "#fca5a5" } : undefined}
-                    >
-                      {isPaymentOverdue
-                        ? `⚠️ PAALALA SA PAGBABAYAD: Lumagpas na sa 30 Araw ang Order of Payment (${paymentAgeDays} araw ang nakalipas).`
-                        : "Zoning Approved. Ipakita ang pahinang ito sa Municipal Treasury Office upang magbayad ng kaukulang fee."}
-                    </div>
-                    <div className="at-op-instruction-sub">
-                      {isPaymentOverdue
-                        ? `Inaprubahan ito noong ${formattedApprovalDate}. Mangyaring magtungo agad sa Tanggapan ng Ingat-Yaman (Treasury Office, 1st Floor, Munisipyo ng Luisiana). Ipakita ang Payment Reference: ${orderOfPaymentNo} upang bayaran ang ₱${Number(app.payment?.amount || 280).toFixed(2)} at maiwasan ang muling pagsusuri ng inyong clearance.`
-                        : `Matapos maaprubahan ang inyong Zoning Clearance, magtungo sa Tanggapan ng Ingat-Yaman (Municipal Treasury Office, 1st Floor, Munisipyo ng Luisiana). Ipakita ang Reference o Payment Number (${orderOfPaymentNo}) sa Cashier upang magbayad. Awtomatikong maitatala ng Treasury ang inyong Official Receipt sa sistema.`}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Digital Slip Content */}
-                <div className="at-op-slip">
-                  <div className="at-op-slip-header">
-                    <div className="at-op-slip-seal">
-                      <img src="/logo.png" alt="Luisiana Seal" />
-                      <div>
-                        <strong>BAYAN NG LUISIANA</strong>
-                        <small>Lalawigan ng Laguna · Tanggapan ng Ingat-Yaman</small>
-                      </div>
-                    </div>
-                    <div className="at-op-slip-meta">
-                      <div className="at-op-meta-item">
-                        <span>Order of Payment No:</span>
-                        <strong>{app.payment?.orderOfPaymentNo || `OP-${new Date().getFullYear()}-${app.trackingNumber.slice(-4)}`}</strong>
-                      </div>
-                      <div className="at-op-meta-item">
-                        <span>Petsa ng Pagkaka-isyu:</span>
-                        <strong>{app.payment?.issuedAt ? new Date(app.payment.issuedAt).toLocaleDateString("tl-PH", { year: "numeric", month: "long", day: "numeric" }) : new Date().toLocaleDateString("tl-PH", { year: "numeric", month: "long", day: "numeric" })}</strong>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="at-op-table-wrap">
-                    <table className="at-op-table">
-                      <thead>
-                        <tr>
-                          <th>Deskripsyon ng Bayarin (Nature of Collection)</th>
-                          <th>Account / Kodigo</th>
-                          <th style={{ textAlign: "right" }}>Kaukulang Halaga</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(app.payment?.feeBreakdown || [
-                          { item: "Zoning Clearance Fee (Locational Assessment)", amount: 250 },
-                          { item: "Legal & Filing / Document Processing", amount: 30 },
-                        ]).map((f, i) => (
-                          <tr key={i}>
-                            <td>{f.item}</td>
-                            <td><code>4-01-01-010</code></td>
-                            <td style={{ textAlign: "right" }}>₱{Number(f.amount).toFixed(2)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr>
-                          <td colSpan={2} style={{ textAlign: "right" }}><strong>Kabuuang Bayarin (Total Amount Due):</strong></td>
-                          <td style={{ textAlign: "right" }}><strong className="at-op-total-amount">₱{Number(app.payment?.amount || 280).toFixed(2)}</strong></td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                </div>
-
-                {/* Receipt Verified Notice (Shown only if already paid / recorded by Treasury) */}
-                {(app.payment?.status === "paid" || app.status === "for_engineering_inspection") && (
-                  <div className="at-receipt-verified-box">
-                    <div className="at-receipt-verified-header">
-                      <div className="at-receipt-v-icon">
-                        <IconCheck size={22} color="#10b981" />
-                      </div>
-                      <div>
-                        <div className="at-receipt-v-title">Naitala na ang Inyong Official Receipt (O.R.)</div>
-                        <div className="at-receipt-v-sub">
-                          Ang inyong aplikasyon ay opisyal nang pumasok sa dashboard ng Engineering Office para sa "Before" Ocular &amp; Construction Inspection.
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="at-receipt-details-grid">
-                      <div className="at-receipt-col">
-                        <span>Official Receipt (O.R.) No:</span>
-                        <strong>{app.payment?.orNumber || "OR-VERIFIED"}</strong>
-                      </div>
-                      <div className="at-receipt-col">
-                        <span>Halagang Binayaran:</span>
-                        <strong>₱{Number(app.payment?.amount || 280).toFixed(2)}</strong>
-                      </div>
-                      <div className="at-receipt-col">
-                        <span>Petsa ng Resibo:</span>
-                        <strong>{app.payment?.paymentDate || new Date().toISOString().split("T")[0]}</strong>
-                      </div>
-                      <div className="at-receipt-col">
-                        <span>Katayuan sa Engineering:</span>
-                        <strong style={{ color: "#10b981" }}>Papasok na sa "Before" Inspection</strong>
-                      </div>
-                    </div>
-
-                    {app.payment?.receiptUrl && (
-                      <div className="at-receipt-preview-row">
-                        <button
-                          type="button"
-                          className="at-view-receipt-btn"
-                          onClick={() => setPreviewingReceipt({ url: backendUrl(app.payment?.receiptUrl || ""), title: `Official Receipt - ${app.payment?.orNumber}` })}
-                        >
-                          <IconReceipt />
-                          <span>Tingnan ang In-upload na Resibo (In-System Viewer)</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* ══════════════════════════════════════════════════════════════
                UI ELEMENT 2 & 3: STATUS CARD & MESSAGE/REMARKS BOARD
@@ -1208,9 +1214,9 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
               {/* STATUS CARD */}
               <div className="at-status-card">
                 <div className="at-status-card-header">
-                  <span className="at-status-card-title">Status Card &amp; Assessment</span>
+                  <span className="at-status-card-title">{isEn ? "Status Card & Assessment" : "Status Card & Assessment"}</span>
                   <span style={{ fontSize: 11, color: "#38bdf8", fontWeight: 700 }}>
-                    Official Municipal Record
+                    {isEn ? "Official Municipal Record" : "Opisyal na Talaan ng Munisipyo"}
                   </span>
                 </div>
 
@@ -1218,26 +1224,28 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
                   <span style={{ color: isRejected ? "#ef4444" : isFlagged ? "#fbbf24" : isAllApproved ? "#10b981" : activeStage.theme.activeText }}>●</span>
                   <span style={{ color: isRejected ? "#f87171" : isFlagged ? "#fbbf24" : undefined }}>
                     {isRejected
-                      ? "Status: Tinanggihan / Disapproved (Hindi Wasto ang Dokumento)"
+                      ? (isEn ? "Status: Disapproved / Rejected (Invalid Document)" : "Status: Tinanggihan / Disapproved (Hindi Wasto ang Dokumento)")
                       : isFlagged
-                      ? "Status: Flagged (Nangangailangan ng Re-upload ng Dokumento)"
+                      ? (isEn ? "Status: Flagged (Document Re-upload Required)" : "Status: Flagged (Nangangailangan ng Re-upload ng Dokumento)")
                       : isAllApproved
-                      ? "Status: Naaprubahan na ang Permiso (Zoning & Building Clearance Released)"
+                      ? (isEn ? "Status: Permit Approved (Zoning Clearance & Occupancy Ready)" : "Status: Naaprubahan na ang Permiso (Zoning Clearance & Occupancy Ready)")
                       : app.status === "for_engineering_inspection"
-                      ? "Status: Bayad Na - Nakatakda para sa Engineering 'Before' Inspection"
+                      ? (isEn ? "Status: Paid - Scheduled for Engineering Site Inspection (0% · 50% · 100%)" : "Status: Bayad Na - Nakatakda para sa Engineering Site Inspection (0% · 50% · 100%)")
                       : app.status === "for_payment"
-                      ? "Status: Zoning Approved - Naghihintay ng Pagbabayad sa Treasury"
+                      ? (isEn ? "Status: Approved by MPDC - Ready for Receipt Upload" : "Status: Inaprubahan ng MPDC - Handa para sa Pag-upload ng Resibo")
+                      : app.status === "approved_for_payment" || app.status === "for_payment"
+                      ? (isEn ? "Status: Approved by MPDC - Awaiting Official Receipt (O.R.) Upload" : "Status: Inaprubahan ng MPDC - Naghihintay ng Pag-upload ng Official Receipt (O.R.)")
                       : app.status === "ocular_inspection"
-                      ? "Status: Para sa Ocular Inspection - Sinusuri ng Zoning Officer"
+                      ? (isEn ? "Status: For Ocular Inspection - Under Zoning Review" : "Status: Para sa Ocular Inspection - Sinusuri ng Zoning Officer")
                       : app.status === "returned"
-                      ? "Status: Naibalik sa Aplikante (May Kulang na Dokumento)"
-                      : "Status: Pending MPDC Review - Document Integrity Verified"}
+                      ? (isEn ? "Status: Returned to Applicant (Deficient Documents)" : "Status: Naibalik sa Aplikante (May Kulang na Dokumento)")
+                      : (isEn ? "Status: Pending MPDC Review - Document Integrity & Zoning Verified" : "Status: Pending MPDC Review - Document Integrity & Zoning Verified")}
                   </span>
                 </div>
 
                 <dl className="at-status-details-list">
                   <div className="at-status-row">
-                    <dt>Kasalukuyang May Hawak:</dt>
+                    <dt>{isEn ? "Current Office / Officer:" : "Kasalukuyang May Hawak:"}</dt>
                     <dd style={{ color: isRejected ? "#f87171" : isFlagged ? "#fbbf24" : isAllApproved ? "#34d399" : activeStage.theme.activeText }}>
                       {isRejected
                         ? "MPDC / Zoning Office (Disapproved / Rejected)"
@@ -1249,27 +1257,36 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
                     </dd>
                   </div>
                   <div className="at-status-row">
-                    <dt>Citizen's Charter Turnaround:</dt>
+                    <dt>{isEn ? "Citizen's Charter Turnaround:" : "Citizen's Charter Turnaround:"}</dt>
                     <dd style={{ color: isRejected ? "#f87171" : isFlagged ? "#fbbf24" : "#34d399" }}>
-                      {isRejected ? "Tinanggihan ang Aplikasyon" : isFlagged ? "Flagged (Aksyon ng Aplikante)" : isAllApproved ? "Kompelto / Naaprubahan Na" : "1 Day 12 Minutes (SLA Target)"}
+                      {isRejected
+                        ? (isEn ? "Application Disapproved" : "Tinanggihan ang Aplikasyon")
+                        : isFlagged
+                        ? (isEn ? "Flagged (Applicant Action Required)" : "Flagged (Aksyon ng Aplikante)")
+                        : isAllApproved
+                        ? (isEn ? "Completed / Approved" : "Kompelto / Naaprubahan Na")
+                        : "1 Day 12 Minutes (SLA Target)"}
                     </dd>
                   </div>
                   <div className="at-status-row">
-                    <dt>Target Barangay:</dt>
+                    <dt>{isEn ? "Target Barangay:" : "Target Barangay:"}</dt>
                     <dd>{app.applicant?.barangay || "San Roque"}</dd>
                   </div>
                   <div className="at-status-row">
-                    <dt>GIS Hazard Clearance:</dt>
+                    <dt>{isEn ? "GIS Hazard Clearance:" : "GIS Hazard Clearance:"}</dt>
                     <dd style={{ color: "#34d399" }}>
-                      🟢 Safe Zone (Landslide &amp; Flood Assessment Low)
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        <IconCheck size={14} color="#34d399" />
+                        <span>{isEn ? "Safe Zone (Landslide & Flood Assessment Low)" : "Ligtas na Sona (Landslide & Flood Assessment Mababa)"}</span>
+                      </span>
                     </dd>
                   </div>
                   <div className="at-status-row">
-                    <dt>Tax Dec / TCT No:</dt>
+                    <dt>{isEn ? "Tax Dec / TCT No:" : "Tax Dec / TCT No:"}</dt>
                     <dd style={{ fontFamily: "monospace" }}>{app.lotDetails?.taxDecNo || "TD-2026-901"}</dd>
                   </div>
                   <div className="at-status-row">
-                    <dt>Kabuuang Sukat ng Lote:</dt>
+                    <dt>{isEn ? "Total Lot Area:" : "Kabuuang Sukat ng Lote:"}</dt>
                     <dd>{app.lotDetails?.lotAreaSqM ? `${app.lotDetails.lotAreaSqM} sq.m.` : "185 sq.m."}</dd>
                   </div>
                 </dl>
@@ -1277,37 +1294,59 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
                 <div className="at-status-instruction-box">
                   <IconAlert size={18} color={isRejected ? "#ef4444" : isFlagged ? "#fbbf24" : isAllApproved ? "#10b981" : "#38bdf8"} />
                   <div>
-                    <strong>Payo para sa Aplikante:</strong>
+                    <strong>{isEn ? "Advice for Applicant:" : "Payo para sa Aplikante:"}</strong>
                     <div style={{ marginTop: 2, fontSize: 12 }}>
                       {isRejected ? (
                         <span style={{ color: "#fca5a5" }}>
-                          Tinanggihan ang aplikasyong ito ng Tanggapan ng MPDC dahil sa hindi wastong mga dokumento. Mangyaring basahin ang opisyal na memo sa <strong>Message / Remarks Board</strong> sa tabi para sa partikular na dahilan at kaukulang gabay.
+                          {isEn
+                            ? "This application was disapproved by the MPDC Office due to invalid or deficient documents. Please consult the official memo on the Message / Remarks Board for specific guidance."
+                            : "Tinanggihan ang aplikasyong ito ng Tanggapan ng MPDC dahil sa hindi wastong mga dokumento. Mangyaring basahin ang opisyal na memo sa Message / Remarks Board sa tabi para sa partikular na dahilan at kaukulang gabay."}
                         </span>
                       ) : isFlagged ? (
                         <span style={{ color: "#fcd34d" }}>
-                          Ang inyong aplikasyon ay <strong>Flagged</strong> dahil mayroong dokumento na tinanggihan ng MPDC at kailangang palitan. Mangyaring gamitin ang <strong>Mga Dokumentong Kailangang I-reupload</strong> sa itaas upang magsumite ng bagong kopya.
+                          {isEn
+                            ? "Your application is Flagged because one or more documents were rejected by MPDC. Please use the Documents Requiring Re-upload section above to upload revised copies."
+                            : "Ang inyong aplikasyon ay Flagged dahil mayroong dokumento na tinanggihan ng MPDC at kailangang palitan. Mangyaring gamitin ang Mga Dokumentong Kailangang I-reupload sa itaas upang magsumite ng bagong kopya."}
                         </span>
                       ) : isAllApproved ? (
                         <span style={{ color: "#6ee7b7" }}>
-                          Tapos na ang proseso ng inyong aplikasyon! Opisyal nang naaprubahan at nai-isyu ang inyong permiso. Maaari ninyo itong i-print o kuhain ang opisyal na may selyong kopya sa Munisipyo.
+                          {isEn
+                            ? "Your application process is complete! Your permit has been officially approved and issued. You may print your summary sheet or collect your official stamped copy at the Municipal Hall."
+                            : "Tapos na ang proseso ng inyong aplikasyon! Opisyal nang naaprubahan at nai-isyu ang inyong permiso. Maaari ninyo itong i-print o kuhain ang opisyal na may selyong kopya sa Munisipyo."}
                         </span>
                       ) : app.status === "for_payment" || isPaymentPending ? (
                         <span>
                           {isPaymentOverdue ? (
                             <span style={{ color: "#fca5a5" }}>
-                              ⚠️ <strong>OVERDUE ANG BAYARIN:</strong> Nakalipas na ang {paymentAgeDays} araw mula nang maaprubahan ang Order of Payment. Agad na magtungo sa Tanggapan ng Ingat-Yaman (Treasury Office, Cashier) at ibigay ang Payment Number <strong>{orderOfPaymentNo}</strong> para mabayaran ang ₱{Number(app.payment?.amount || 280).toFixed(2)}.
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "#ef4444", fontWeight: 700 }}>
+                                <IconAlert size={14} color="#ef4444" />
+                                {isEn ? "OVERDUE PAYMENT:" : "OVERDUE ANG BAYARIN:"}
+                              </span>{" "}
+                              {isEn
+                                ? `Over ${paymentAgeDays} days have passed since the Order of Payment was issued. Please proceed immediately to the Municipal Treasury Office (Cashier) with Payment Number ${orderOfPaymentNo} to settle ₱${Number(app.payment?.amount || 280).toFixed(2)}.`
+                                : `Nakalipas na ang ${paymentAgeDays} araw mula nang maaprubahan ang Order of Payment. Agad na magtungo sa Tanggapan ng Ingat-Yaman (Treasury Office, Cashier) at ibigay ang Payment Number ${orderOfPaymentNo} para mabayaran ang ₱${Number(app.payment?.amount || 280).toFixed(2)}.`}
                             </span>
                           ) : (
                             <span>
-                              Pumunta sa Tanggapan ng Ingat-Yaman (Treasury Office, Cashier) dala ang inyong Payment Reference <strong>{orderOfPaymentNo}</strong> upang magbayad ng ₱{Number(app.payment?.amount || 280).toFixed(2)} at kumuha ng Official Receipt (O.R.).
+                              {isEn
+                                ? `MPDC has approved your Zoning Clearance! Please pay the standard fee of ₱${Number(app.payment?.amount || 280).toFixed(2)} and upload your Official Receipt (O.R.) in the form above to route directly to the Engineering Office.`
+                                : `Inaprubahan na ng MPDC ang inyong Zoning Clearance! Mangyaring bayaran ang standard fee na ₱${Number(app.payment?.amount || 280).toFixed(2)} at i-upload ang inyong Official Receipt (O.R.) sa form sa itaas upang dumiretso ang aplikasyon sa Tanggapan ng Inhinyero.`}
                             </span>
                           )}
                         </span>
+                      ) : app.status === "for_assessment" || currentStageIndex === 1 ? (
+                        <span>
+                          {isEn
+                            ? "MPDC has approved your Zoning Clearance! Please upload your Official Receipt (O.R.) in the form above to proceed to the Engineering Office for site inspection."
+                            : "Inaprubahan ng MPDC ang inyong Zoning Clearance! Mangyaring i-upload ang inyong Official Receipt (O.R.) sa form sa itaas upang dumiretso ang aplikasyon sa Tanggapan ng Inhinyero para sa site inspection."}
+                        </span>
                       ) : (
                         <span>
-                          Walang kinakailangang pagpunta sa munisipyo sa ngayon. Pakitingnan ang{" "}
-                          <strong>Message/Remarks Board</strong> sa tabi kung may karagdagang tagubilin mula sa
-                          Municipal Engineer o MPDC.
+                          {isEn ? (
+                            <>No municipal hall visit is required at this time. Please check the <strong>Message / Remarks Board</strong> for any updates from the municipal offices.</>
+                          ) : (
+                            <>Walang kinakailangang pagpunta sa munisipyo sa ngayon. Pakitingnan ang <strong>Message/Remarks Board</strong> sa tabi kung may karagdagang tagubilin mula sa munisipyo.</>
+                          )}
                         </span>
                       )}
                     </div>
@@ -1320,10 +1359,10 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
                 <div className="at-remarks-header">
                   <div className="at-remarks-title">
                     <IconMessage />
-                    <span>Message / Remarks Board</span>
+                    <span>{isEn ? "Message / Remarks Board" : "Message / Remarks Board"}</span>
                   </div>
                   <span className="at-remarks-count-tag">
-                    {app.remarks?.length || 0} Mensahe / Memo
+                    {isEn ? `${app.remarks?.length || 0} Messages / Memos` : `${app.remarks?.length || 0} Mensahe / Memo`}
                   </span>
                 </div>
 
@@ -1382,11 +1421,11 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
                             <div className="at-reupload-box">
                               <div className="at-reupload-label">
                                 <IconUpload />
-                                <span>Kailangan ang Malinaw na Kopya:</span>
+                                <span>{isEn ? "Clear Copy Required:" : "Kailangan ang Malinaw na Kopya:"}</span>
                               </div>
                               <div className="at-reupload-actions">
                                 <label className="at-reupload-file-btn">
-                                  <span>Pumili ng File at I-upload</span>
+                                  <span>{isEn ? "Select File & Upload" : "Pumili ng File at I-upload"}</span>
                                   <input
                                     type="file"
                                     accept="image/*,application/pdf"
@@ -1401,7 +1440,7 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
                           {rem.attachedFile && (
                             <div style={{ marginTop: 4, fontSize: 11, color: "#38bdf8", display: "flex", alignItems: "center", gap: 5 }}>
                               <IconCheck size={12} color="#38bdf8" />
-                              <span>Nai-kalakip: <strong>{rem.attachedFile}</strong></span>
+                              <span>{isEn ? "Attached:" : "Nai-kalakip:"} <strong>{rem.attachedFile}</strong></span>
                             </div>
                           )}
                         </div>
@@ -1410,9 +1449,11 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
                   ) : (
                     <div style={{ textAlign: "center", padding: "36px 18px", color: "rgba(255,255,255,0.45)", fontSize: 13, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
                       <IconMessage />
-                      <strong style={{ color: "rgba(255,255,255,0.8)" }}>Wala pang opisyal na komento o memo</strong>
+                      <strong style={{ color: "rgba(255,255,255,0.8)" }}>{isEn ? "No official comments or memos yet" : "Wala pang opisyal na komento o memo"}</strong>
                       <span style={{ fontSize: 11.5, maxWidth: 320, lineHeight: 1.45, opacity: 0.75 }}>
-                        Dito makikita ang mga opisyal na pagsusuri, tagubilin, at kahilingan mula sa MPDC at Municipal Engineering Office kapag may mensahe sila para sa iyong aplikasyon.
+                        {isEn
+                          ? "Official evaluations, instructions, and inquiries from MPDC and the Municipal Engineering Office will appear here."
+                          : "Dito makikita ang mga opisyal na pagsusuri, tagubilin, at kahilingan mula sa MPDC at Municipal Engineering Office kapag may mensahe sila para sa iyong aplikasyon."}
                       </span>
                     </div>
                   )}
@@ -1423,7 +1464,7 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
                   <input
                     type="text"
                     className="at-reply-input"
-                    placeholder="Mag-iwan ng tanong o mensahe sa tanggapan…"
+                    placeholder={isEn ? "Leave an inquiry or note for the office…" : "Mag-iwan ng tanong o mensahe sa tanggapan…"}
                     value={newRemarkText}
                     onChange={(e) => setNewRemarkText(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && handlePostApplicantRemark()}
@@ -1434,7 +1475,7 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
                     disabled={submittingRemark || !newRemarkText.trim()}
                     onClick={handlePostApplicantRemark}
                   >
-                    {submittingRemark ? "…" : "Ipadala"}
+                    {submittingRemark ? "…" : (isEn ? "Send" : "Ipadala")}
                   </button>
                 </div>
               </div>
@@ -1447,36 +1488,36 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
               const inspProgress = app.progress ?? app.latestInspection?.progress ?? 0;
               const inspStage = app.inspectionStage || app.latestInspection?.stage || (inspProgress >= 100 ? "after" : inspProgress >= 50 ? "during" : "before");
               let badgeColor = "#ef4444";
-              let badgeTitle = "🔴 0% - Before Construction";
-              let badgeSubtitle = "Bago Simulan · Bakanteng Lote / Pre-Excavation Inspection";
+              let badgeTitle = isEn ? "0% - Before Construction" : "0% - Bago Simulan ang Konstruksyon";
+              let badgeSubtitle = isEn ? "Vacant Lot / Pre-Excavation Inspection" : "Bago Simulan · Bakanteng Lote / Pre-Excavation Inspection";
               if (inspProgress >= 100 || inspStage === "after" || inspStage === "completed") {
                 badgeColor = "#22c55e";
-                badgeTitle = "🟢 100% - After Construction / Completed";
-                badgeSubtitle = "Tapos Na ang Gusali · Handa sa Certificate of Occupancy";
+                badgeTitle = isEn ? "100% - After Construction / Completed" : "100% - Tapos Na ang Gusali / Kumpleto";
+                badgeSubtitle = isEn ? "Structure Completed · Ready for Certificate of Occupancy" : "Tapos Na ang Gusali · Handa sa Certificate of Occupancy";
               } else if (inspProgress >= 50 || inspStage === "during") {
                 badgeColor = "#eab308";
-                badgeTitle = "🟡 50% - During Construction";
-                badgeSubtitle = "Kasalukuyang Ginagawa · Nakatayo ang Pundasyon at mga Poste";
+                badgeTitle = isEn ? "50% - During Construction" : "50% - Kasalukuyang Ginagawa";
+                badgeSubtitle = isEn ? "Under Construction · Foundation & Structural Columns Erected" : "Kasalukuyang Ginagawa · Nakatayo ang Pundasyon at mga Poste";
               }
 
               const latestPhoto = app.latestInspection?.photoUrl || (app.inspectionPhotos && app.inspectionPhotos.length > 0 ? app.inspectionPhotos[app.inspectionPhotos.length - 1]?.url : null);
               const inspectedAt = app.latestInspection?.inspectedAt || (app.inspectionPhotos && app.inspectionPhotos.length > 0 ? app.inspectionPhotos[app.inspectionPhotos.length - 1]?.uploadedAt : null);
               const formattedInspectionDate = inspectedAt
-                ? new Date(inspectedAt).toLocaleDateString("fil-PH", {
+                ? new Date(inspectedAt).toLocaleDateString(isEn ? "en-PH" : "fil-PH", {
                     year: "numeric",
                     month: "long",
                     day: "numeric",
                     hour: "2-digit",
                     minute: "2-digit",
                   })
-                : "Nakatakda para sa Unang Site Visit";
+                : (isEn ? "Scheduled for Initial Site Visit" : "Nakatakda para sa Unang Site Visit");
 
               return (
                 <div className="at-site-progress-panel">
                   <div className="at-site-progress-header">
-                    <div className="at-site-progress-title">
-                      <span style={{ fontSize: 20 }}>📷</span>
-                      <span>Aktwal na Katayuan sa Site (Engineering Inspection)</span>
+                    <div className="at-site-progress-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <IconCamera size={20} color="var(--apple-accent, #38bdf8)" />
+                      <span>{isEn ? "Actual Site Status (Engineering Inspection)" : "Aktwal na Katayuan sa Site (Engineering Inspection)"}</span>
                     </div>
                     <span
                       style={{
@@ -1500,7 +1541,7 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
                         <>
                           <img
                             src={backendUrl(latestPhoto)}
-                            alt="Aktwal na Litrato mula sa Site"
+                            alt={isEn ? "Actual Photo from Site" : "Aktwal na Litrato mula sa Site"}
                             className="at-site-photo-img"
                           />
                           <div
@@ -1509,14 +1550,18 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
                               bottom: 8,
                               left: 8,
                               background: "rgba(0,0,0,0.75)",
-                              padding: "2px 8px",
+                              padding: "3px 8px",
                               borderRadius: 4,
                               fontSize: 10,
                               fontWeight: 600,
                               color: "#fff",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 5,
                             }}
                           >
-                            📷 Aktwal na kuha mula sa site
+                            <IconCamera size={12} color="#fff" />
+                            <span>{isEn ? "Actual photo from site" : "Aktwal na kuha mula sa site"}</span>
                           </div>
                         </>
                       ) : (
@@ -1525,7 +1570,7 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
                             <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
                             <circle cx="12" cy="13" r="4" />
                           </svg>
-                          <span>Mag-a-upload ang Municipal Engineer ng litrato matapos ang site visit</span>
+                          <span>{isEn ? "Municipal Engineer will upload photo after site visit" : "Mag-a-upload ang Municipal Engineer ng litrato matapos ang site visit"}</span>
                         </div>
                       )}
                     </div>
@@ -1533,7 +1578,7 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
                     {/* Right: Inspection details */}
                     <div className="at-site-info-col">
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <span style={{ fontSize: 13, color: "#94a3b8" }}>Progreso ng Konstruksyon:</span>
+                        <span style={{ fontSize: 13, color: "#94a3b8" }}>{isEn ? "Construction Progress:" : "Progreso ng Konstruksyon:"}</span>
                         <strong style={{ fontSize: 16, color: badgeColor }}>{inspProgress}%</strong>
                       </div>
                       <div
@@ -1558,7 +1603,10 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
                         {badgeSubtitle}
                       </div>
                       <div style={{ fontSize: 12, color: "#94a3b8", display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
-                        <span>📅 Huling Inspeksyon:</span>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                          <IconCalendar size={13} color="#94a3b8" />
+                          <span>{isEn ? "Latest Inspection:" : "Huling Inspeksyon:"}</span>
+                        </span>
                         <strong style={{ color: "#f1f5f9" }}>{formattedInspectionDate}</strong>
                       </div>
                       {app.latestInspection?.remarks && (
@@ -1588,6 +1636,153 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
               );
             })()}
 
+            {/* ══════════════════════════════════════════════════════════════
+               STAGE 5: OCCUPANCY PERMIT & POST-CONSTRUCTION TAX DECLARATION
+               ══════════════════════════════════════════════════════════════ */}
+            {(app.occupancyReady || (Number(app.progress) >= 100) || currentStageIndex === 4 || Boolean(app.occupancyPermitNo)) && (
+              <div
+                style={{
+                  background: "linear-gradient(135deg, rgba(22, 163, 74, 0.12) 0%, rgba(5, 150, 105, 0.18) 100%)",
+                  border: "1.5px solid rgba(34, 197, 94, 0.5)",
+                  borderRadius: "14px",
+                  padding: "22px 24px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "16px",
+                  boxShadow: "0 8px 30px rgba(34, 197, 94, 0.18)",
+                  marginTop: "8px",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "12px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    <div
+                      style={{
+                        width: "42px",
+                        height: "42px",
+                        borderRadius: "10px",
+                        background: "rgba(34, 197, 94, 0.25)",
+                        border: "1px solid #22c55e",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                        color: "#22c55e",
+                      }}
+                    >
+                      <IconAward size={22} color="#22c55e" />
+                    </div>
+                    <div>
+                      <div
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          padding: "3px 10px",
+                          borderRadius: "9999px",
+                          fontSize: "0.75rem",
+                          fontWeight: 800,
+                          letterSpacing: "0.04em",
+                          textTransform: "uppercase",
+                          background: "#dcfce7",
+                          color: "#15803d",
+                          border: "1px solid #22c55e",
+                        }}
+                      >
+                        {isEn ? "✓ Stage 5: Final Permit Phase" : "✓ Yugto 5: Pinal na Yugto ng Permiso"}
+                      </div>
+                      <h2 style={{ fontSize: "1.25rem", fontWeight: 800, color: "#fff", margin: "6px 0 0", lineHeight: 1.3 }}>
+                        {isEn
+                          ? "100% Construction Completed — Certificate of Occupancy & New Tax Dec"
+                          : "100% Tapos Na ang Konstruksyon — Certificate of Occupancy & Bagong Tax Dec"}
+                      </h2>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      background: "rgba(15, 23, 42, 0.75)",
+                      border: "1px solid rgba(255, 255, 255, 0.15)",
+                      borderRadius: "10px",
+                      padding: "8px 16px",
+                      textAlign: "right",
+                    }}
+                  >
+                    <div style={{ fontSize: "0.72rem", color: "rgba(255, 255, 255, 0.6)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                      Occupancy Permit No.
+                    </div>
+                    <div style={{ fontSize: "1.05rem", fontWeight: 800, color: "#4ade80", fontFamily: "monospace" }}>
+                      {app.occupancyPermitNo || `OCC-${new Date().getFullYear()}-${app.trackingNumber.slice(-4)}`}
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                    gap: "14px",
+                  }}
+                >
+                  <div
+                    style={{
+                      background: "rgba(15, 23, 42, 0.6)",
+                      border: "1px solid rgba(255, 255, 255, 0.08)",
+                      borderRadius: "10px",
+                      padding: "16px",
+                    }}
+                  >
+                    <div style={{ fontSize: "0.8rem", color: "rgba(255, 255, 255, 0.6)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>
+                      {isEn ? "1. Certificate of Occupancy" : "1. Sertipiko ng Paggamit (Certificate of Occupancy)"}
+                    </div>
+                    <div style={{ fontSize: "0.95rem", fontWeight: 700, color: "#f1f5f9", marginBottom: 4 }}>
+                      {isEn ? "Structure Officially Safe and Ready for Use" : "Opisyal nang Ligtas at Handa nang Gamitin ang Gusali"}
+                    </div>
+                    <p style={{ fontSize: "0.85rem", color: "rgba(255, 255, 255, 0.8)", margin: 0, lineHeight: 1.5 }}>
+                      {isEn
+                        ? "Verified by the Municipal Engineering Office at 100% inspection that the structure was built in accordance with approved building plans and the National Building Code (PD 1096)."
+                        : "Napatunayan ng Municipal Engineering Office sa 100% inspection na naitayo ang gusali alinsunod sa inaprubahang building plans at National Building Code (PD 1096)."}
+                    </p>
+                  </div>
+
+                  <div
+                    style={{
+                      background: "rgba(15, 23, 42, 0.6)",
+                      border: "1px solid rgba(255, 255, 255, 0.08)",
+                      borderRadius: "10px",
+                      padding: "16px",
+                    }}
+                  >
+                    <div style={{ fontSize: "0.8rem", color: "rgba(255, 255, 255, 0.6)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 6 }}>
+                      {isEn ? "2. Post-Construction Assessor Assessment (Real Property Tax)" : "2. Post-Construction Assessor Assessment (Amilyar)"}
+                    </div>
+                    {app.assessorPostAssessment?.newTaxDecNo || (app as any).newTaxDecNo ? (
+                      <div>
+                        <div style={{ fontSize: "0.95rem", fontWeight: 700, color: "#38bdf8", marginBottom: 4 }}>
+                          {isEn ? "New Tax Declaration:" : "Bagong Tax Declaration:"} {app.assessorPostAssessment?.newTaxDecNo || (app as any).newTaxDecNo}
+                        </div>
+                        <p style={{ fontSize: "0.85rem", color: "rgba(255, 255, 255, 0.8)", margin: 0, lineHeight: 1.5 }}>
+                          {isEn
+                            ? <>Assessed by the Municipal Assessor's Office. Ready for Real Property Tax assessment next year. PIN: <code>{app.assessorPostAssessment?.propertyIndexNo || (app as any).propertyIndexNo || "028-15-001-02"}</code></>
+                            : <>Nai-assess na ng Municipal Assessor's Office ang bagong improvement. Handa na ito para sa pagbabayad ng Amilyar sa susunod na taon. PIN: <code>{app.assessorPostAssessment?.propertyIndexNo || (app as any).propertyIndexNo || "028-15-001-02"}</code></>}
+                        </p>
+                      </div>
+                    ) : (
+                      <div>
+                        <div style={{ fontSize: "0.95rem", fontWeight: 700, color: "#fbbf24", marginBottom: 4 }}>
+                          {isEn ? "Endorsed to Municipal Assessor's Office" : "Nai-endorso sa Municipal Assessor's Office"}
+                        </div>
+                        <p style={{ fontSize: "0.85rem", color: "rgba(255, 255, 255, 0.8)", margin: 0, lineHeight: 1.5 }}>
+                          {isEn
+                            ? "Automatically entered into the Assessor Registry to generate a new Tax Declaration for the upcoming tax year (Amilyar)."
+                            : "Awtomatikong pumasok sa Talaan ng Assessor ang bagong gusali upang gawan ng bagong Tax Declaration para sa susunod na taon ng buwis (Amilyar)."}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Bottom Action Footer */}
             <div className="at-footer-actions">
               <button
@@ -1596,7 +1791,7 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
                 onClick={() => window.print()}
               >
                 <IconPrinter />
-                <span>I-print ang Application Status Sheet</span>
+                <span>{isEn ? "Print Application Status Sheet" : "I-print ang Application Status Sheet"}</span>
               </button>
               <button
                 type="button"
@@ -1604,14 +1799,14 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
                 onClick={handleCopyTracking}
               >
                 <IconCopy />
-                <span>{copied ? "Nai-kopya ang Link!" : "Kopyahin ang Tracking Link"}</span>
+                <span>{copied ? (isEn ? "Link Copied!" : "Nai-kopya ang Link!") : (isEn ? "Copy Tracking Link" : "Kopyahin ang Tracking Link")}</span>
               </button>
               <button
                 type="button"
                 className="at-action-btn at-action-btn-secondary"
                 onClick={onBack}
               >
-                ← Bumalik sa Portal
+                {isEn ? "← Back to Portal" : "← Bumalik sa Portal"}
               </button>
             </div>
           </>
@@ -1638,14 +1833,29 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
             </div>
             <div className="at-lightbox-body">
               {previewingReceipt.url.toLowerCase().endsWith(".pdf") ? (
-                <iframe
-                  src={previewingReceipt.url}
-                  className="at-lightbox-iframe"
-                  title="PDF Preview"
-                />
+                <div
+                  className="at-lightbox-canvas-wrapper"
+                  style={{
+                    width: "100%",
+                    maxWidth: 880,
+                    maxHeight: "80vh",
+                    overflow: "auto",
+                    display: "flex",
+                    justifyContent: "center",
+                    background: "rgba(0, 0, 0, 0.4)",
+                    borderRadius: 8,
+                    padding: "16px 8px",
+                  }}
+                >
+                  <PdfCanvasViewer
+                    url={backendUrl(previewingReceipt.url)}
+                    title={previewingReceipt.title || "Resibo ng Pagbabayad"}
+                    fileName={previewingReceipt.title || "Official_Receipt.pdf"}
+                  />
+                </div>
               ) : (
                 <img
-                  src={previewingReceipt.url}
+                  src={backendUrl(previewingReceipt.url)}
                   alt="Document Preview"
                   className="at-lightbox-img"
                 />

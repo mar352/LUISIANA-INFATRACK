@@ -51,7 +51,7 @@ export const STADIA_MAP_STYLES: StadiaMapStyleOption[] = [
   },
   {
     id: "alidade_smooth_dark",
-    name: "Smooth Dark",
+    name: "Stamen Dark",
     tagline: "Sleek night & dark mode",
     badge: "Dark",
     icon: "🌑",

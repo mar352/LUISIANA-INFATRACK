@@ -74,6 +74,26 @@ export function computePlanningInsights(
 ): PlanningInsights {
   const list = (Array.isArray(projects) ? projects : []).filter(Boolean);
   const safeProposals = (Array.isArray(proposals) ? proposals : []).filter(Boolean);
+
+  if (list.length === 0 && safeProposals.length === 0) {
+    return {
+      generatedAt: new Date().toISOString(),
+      outlook: {
+        ongoing: 0,
+        delayed: 0,
+        planned: 0,
+        monthsToClearOngoing: null,
+        gapsNow: 0,
+        gapsUncovered: 0,
+        barangaysStillShort: [],
+        note: "No infrastructure projects on the map yet. Add projects to generate predictive planning analytics.",
+      },
+      nextBuilds: [],
+      proposalRanks: [],
+      flags: [],
+    };
+  }
+
   const gaps = computeInfraGaps(list);
   const active = safeProposals.filter((p) => p.status !== "draft" && p.status !== "rejected");
 

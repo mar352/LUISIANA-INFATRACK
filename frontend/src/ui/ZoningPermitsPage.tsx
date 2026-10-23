@@ -12,6 +12,9 @@ import { BARANGAY_LIST } from "../types";
 import { ThemeToggle } from "./ThemeToggle";
 import ZoningReviewMapView from "./ZoningReviewMapView";
 import { getClupZone } from "../lib/clup-zones";
+import { useSystemConfig } from "../services/systemConfig";
+import SideNavbar from "./SideNavbar";
+import MpdcTopNavbar from "./MpdcTopNavbar";
 import "./ZoningPermitsPage.css";
 
 /* ── Vector SVG Icons (No Emojis) ── */
@@ -943,6 +946,7 @@ export function ZoningPermitsPage({
   onPinSite,
 }: Props) {
   const [applications, setApplications] = useState<any[]>(cachedCitizenApps);
+  const { activeBarangays } = useSystemConfig();
   const [selectedApp, setSelectedApp] = useState<any | null>(null);
   const [modalTab, setModalTab] = useState<"checklist" | "map">("checklist");
   const [loading, setLoading] = useState(!hasFetchedOnce && cachedCitizenApps.length === 0);
@@ -1289,6 +1293,10 @@ export function ZoningPermitsPage({
     appStatus === "ocular_inspection" ||
     appStatus === "for_ocular_inspection" ||
     appStatus === "inspection";
+  const isForAssessment =
+    appStatus === "for_assessment" ||
+    appStatus === "assessor_review" ||
+    appStatus === "pending_assessment";
   const isForPayment = appStatus === "for_payment" || appStatus === "approved_for_payment";
   const isForEngineering =
     appStatus === "for_engineering_inspection" ||
@@ -1436,8 +1444,8 @@ export function ZoningPermitsPage({
         let notifMsg = `Aplikasyon (${res.application.trackingNumber}) ay matagumpay na nai-set sa "${nextStatus}"`;
         if (nextStatus === "ocular_inspection") {
           notifMsg = `Naipasa na sa Hakbang 2: 1-Araw na Ocular Inspection ang aplikasyon (${res.application.trackingNumber})!`;
-        } else if (nextStatus === "for_payment") {
-          notifMsg = `Zoning Approved! Nai-isyu na ang Order of Payment para kay ${res.application.trackingNumber}. Ipakikita ito ng aplikante sa Treasury Office upang magbayad.`;
+        } else if (nextStatus === "for_assessment" || nextStatus === "for_payment" || nextStatus === "approved_for_payment") {
+          notifMsg = `Zoning Clearance Inaprubahan ng MPDC! Ang aplikasyon (${res.application.trackingNumber}) ay handa na para sa pag-upload ng Official Receipt (O.R.) ng aplikante.`;
         } else if (nextStatus === "flagged") {
           notifMsg = `Aplikasyon (${res.application.trackingNumber}) ay nai-set bilang "Flagged" (May kailangang palitang dokumento).`;
         } else if (nextStatus === "approved") {
@@ -1869,224 +1877,72 @@ export function ZoningPermitsPage({
   const isDocsCompleteAndValid =
     Boolean(selectedCompleteness?.isComplete) && !hasRejectedDocs;
 
+  const totalApprovedDocsCount = useMemo(() => {
+    let count = 0;
+    for (const a of applications) {
+      if (a.approvedDocs && typeof a.approvedDocs === "object") {
+        count += Object.keys(a.approvedDocs).length;
+      } else if (a.status === "approved" || a.status === "completed") {
+        count += 6;
+      }
+    }
+    return count;
+  }, [applications]);
+
   return (
     <div className="zp-page">
       {/* Top Header Bar */}
-      <header className="zp-header">
-        <div className="zp-header-top">
-          <div className="zp-header-left">
-            {/* Back button only for Engineer or non-MPDC roles */}
-            {session?.role !== "MPDC" && onBack && (
-              <button
-                type="button"
-                className="zp-back-btn"
-                onClick={onBack}
-                title="Bumalik sa 3D Cesium GIS Globe Map"
-              >
-                <svg
-                  width="15"
-                  height="15"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden
-                >
-                  <polyline points="15 18 9 12 15 6" />
-                </svg>
-                3D Mapa
-              </button>
-            )}
+      <MpdcTopNavbar
+        title="Talaan ng mga Natanggap na Aplikasyon"
+        subtitle="Municipal Planning & Development Office · Bayan ng Luisiana, Laguna"
+        brandPill="MPDC"
+        onBack={onBack}
+        backLabel={session?.username === "mpdc_admin" || session?.role === "MPDC Admin" ? "MPDC Admin" : "Bumalik"}
+        serviceTag="Citizen's Charter Service #2"
+        serviceSla="Hakbang 1: Paunang Pagsusuri (10 Mins SLA) · ₱0.00 Libre"
+        lastSyncedAt={lastSyncedAt}
+        unreadCount={unreadCount}
+        onOpenNotif={() => setNotifDrawerOpen((prev) => !prev)}
+        session={session}
+        userDept="IT Officer / Admin Aide"
+        onLogout={onLogout}
+      />
 
-            <img src="/logo.png" alt="Luisiana Seal" className="zp-brand-logo" />
-
-            <div className="zp-brand-wrap">
-              <div className="zp-brand-title-row">
-                <span className="zp-brand-pill">MPDC</span>
-                <h1 className="zp-title">
-                  Talaan ng mga Natanggap na Aplikasyon
-                </h1>
-              </div>
-              <div className="zp-sub">
-                Municipal Planning &amp; Development Office · Bayan ng Luisiana, Laguna
-              </div>
-            </div>
-          </div>
-
-          <div className="zp-header-right">
-            <div className="zp-header-meta">
-              <div className="zp-service-pill">
-                <span className="zp-service-tag">Citizen&apos;s Charter Service #2</span>
-                <span className="zp-service-sla">Hakbang 1: Paunang Pagsusuri (10 Mins SLA) · ₱0.00 Libre</span>
-              </div>
-              <div
-                className={`zp-live-indicator${lastSyncedAt ? " active" : ""}`}
-                title="Real-time multi-user PostgreSQL sync"
-              >
-                <span className="zp-live-dot" />
-                <span>
-                  {lastSyncedAt ? `Live · ${new Date(lastSyncedAt).toLocaleTimeString()}` : "Syncing…"}
-                </span>
-              </div>
-            </div>
-
-            <div className="zp-header-controls">
-              {/* MPDC Notification Bell */}
-              <button
-                type="button"
-                className={`zp-notif-btn${unreadCount > 0 ? " has-badge" : ""}`}
-                onClick={() => setNotifDrawerOpen((prev) => !prev)}
-                title={`Mga Notipikasyon para sa MPDC (${unreadCount} bago)`}
-                aria-label="Mga Notipikasyon"
-              >
-                <IconBell size={17} />
-                {unreadCount > 0 && (
-                  <span className="zp-notif-badge">
-                    {unreadCount > 9 ? "9+" : unreadCount}
-                  </span>
-                )}
-              </button>
-
-              {session && (
-                <div className="zp-user-badge" title={`Naka-login: ${session.label || session.role}`}>
-                  <span className="zp-user-avatar">
-                    <IconUser size={15} />
-                  </span>
-                  <div className="zp-user-meta">
-                    <span className="zp-user-role">{session.label || session.role}</span>
-                    <span className="zp-user-dept">IT Officer / Admin Aide</span>
-                  </div>
-                </div>
-              )}
-
-              {onLogout && (
-                <button
-                  type="button"
-                  className="zp-logout-btn"
-                  onClick={onLogout}
-                  title="Mag-sign out sa sistema"
-                >
-                  Sign Out
-                </button>
-              )}
-              <ThemeToggle iconOnly />
-            </div>
-          </div>
-        </div>
-
-        {/* Dedicated Navigation Bar */}
+      <div className="app-page-body-with-side-nav">
         {onNavigate && (
-          <nav className="zp-nav-bar" aria-label="Pangunahing Navigasyon">
-            <div className="zp-nav-pill-group">
-              <button
-                type="button"
-                className="zp-nav-pill-btn active"
-                title="Kasalukuyang view: Talaan ng mga Aplikasyon"
+          <SideNavbar
+            currentScreen="permits"
+            onNavigate={onNavigate}
+            approvedDocsCount={totalApprovedDocsCount}
+            currentRole={session?.role || "MPDC"}
+          />
+        )}
+        <div className="app-page-main-with-side-nav">
+          {notification && (
+            <div className="zp-notification" role="status">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
               >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 6 }}>
-                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                  <line x1="3" y1="9" x2="21" y2="9" />
-                  <line x1="9" y1="21" x2="9" y2="9" />
-                </svg>
-                Talaan ng Aplikasyon
-              </button>
-              <button
-                type="button"
-                className="zp-nav-pill-btn"
-                onClick={() => onNavigate("planning")}
-                title="Pumunta sa Municipal Planning & Development Proposals"
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 6 }}>
-                  <polygon points="12 2 2 7 12 12 22 7 12 2" />
-                  <polyline points="2 17 12 22 22 17" />
-                  <polyline points="2 12 12 17 22 12" />
-                </svg>
-                Planning
-              </button>
-              <button
-                type="button"
-                className="zp-nav-pill-btn"
-                onClick={() => onNavigate("documents")}
-                title="Pumunta sa Document Archive"
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 6 }}>
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                  <polyline points="14 2 14 8 20 8" />
-                  <line x1="16" y1="13" x2="8" y2="13" />
-                  <line x1="16" y1="17" x2="8" y2="17" />
-                </svg>
-                Documents
-              </button>
-              <button
-                type="button"
-                className="zp-nav-pill-btn"
-                onClick={() => onNavigate("analytics")}
-                title="Pumunta sa Siting & Zoning Analytics"
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 6 }}>
-                  <line x1="18" y1="20" x2="18" y2="10" />
-                  <line x1="12" y1="20" x2="12" y2="4" />
-                  <line x1="6" y1="20" x2="6" y2="14" />
-                </svg>
-                Analytics
-              </button>
-              <button
-                type="button"
-                className="zp-nav-pill-btn"
-                onClick={() => onNavigate("audit")}
-                title="Pumunta sa Activity Log & Audit Trail"
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 6 }}>
-                  <circle cx="12" cy="12" r="10" />
-                  <polyline points="12 6 12 12 16 14" />
-                </svg>
-                Activity Log
-              </button>
-              <button
-                type="button"
-                className="zp-nav-pill-btn zp-nav-pill-map"
-                onClick={() => onNavigate("app")}
-                title="Buksan ang 3D Cesium GIS Mapa at Situation Dashboard"
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 6 }}>
-                  <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6" />
-                  <line x1="8" y1="2" x2="8" y2="18" />
-                  <line x1="16" y1="6" x2="16" y2="22" />
-                </svg>
-                3D Mapa
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                <polyline points="22 4 12 14.01 9 11.01" />
+              </svg>
+              <span>{notification}</span>
+              <button type="button" onClick={() => setNotification(null)}>
+                ✕
               </button>
             </div>
-          </nav>
-        )}
-      </header>
+          )}
 
-      {notification && (
-        <div className="zp-notification" role="status">
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden
-          >
-            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-            <polyline points="22 4 12 14.01 9 11.01" />
-          </svg>
-          <span>{notification}</span>
-          <button type="button" onClick={() => setNotification(null)}>
-            ✕
-          </button>
-        </div>
-      )}
-
-      {/* Main Container */}
-      <main className="zp-main">
+          {/* Main Container */}
+          <main className="zp-main">
         {/* KPI Metrics */}
         <section className="zp-kpi-grid">
           <div className="zp-kpi-card">
@@ -2143,8 +1999,8 @@ export function ZoningPermitsPage({
               value={filterBarangay}
               onChange={(e) => setFilterBarangay(e.target.value)}
             >
-              <option value="">Lahat ng Barangay (23)</option>
-              {BARANGAY_LIST.map((b) => (
+              <option value="">Lahat ng Barangay ({activeBarangays.length})</option>
+              {activeBarangays.map((b) => (
                 <option key={b} value={b}>
                   {b}
                 </option>
@@ -2373,6 +2229,8 @@ export function ZoningPermitsPage({
           )}
         </section>
       </main>
+        </div>
+      </div>
 
       {/* Review & Issuance Modal */}
       {selectedApp && selectedCompleteness && (
@@ -2634,6 +2492,26 @@ export function ZoningPermitsPage({
                         ? "Lahat Na-aprubahan ✓"
                         : `${approvedDocsCount} Na-aprubahan`}
                     </span>
+                    {approvedDocsCount > 0 && onNavigate && (
+                      <button
+                        type="button"
+                        style={{
+                          marginTop: 6,
+                          fontSize: 11,
+                          padding: "3px 8px",
+                          borderRadius: 6,
+                          border: "1px solid rgba(16, 185, 129, 0.4)",
+                          background: "rgba(16, 185, 129, 0.15)",
+                          color: "#10b981",
+                          cursor: "pointer",
+                          fontWeight: 700,
+                        }}
+                        onClick={() => onNavigate("documents")}
+                        title="Tingnan ang mga aprubadong dokumento sa Documents page"
+                      >
+                        📑 Tingnan sa Documents Page →
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -3003,25 +2881,24 @@ export function ZoningPermitsPage({
                       </div>
                     </div>
                   )}
-
-                {isForPayment && (
-                  <div className="zp-action-final-status is-for-payment">
-                    <div className="zp-action-status-head">
-                      <div className="zp-action-status-left">
-                        <IconCheckCircle size={20} className="zp-action-status-icon" />
-                        <strong className="zp-action-status-title">
-                          Zoning Approved · Nai-isyu na ang Order of Payment ({selectedApp.payment?.orderOfPaymentNo || "OP-2026"})
-                        </strong>
+                  {(isForAssessment || isForPayment) && (
+                    <div className="zp-action-final-status is-for-payment">
+                      <div className="zp-action-status-head">
+                        <div className="zp-action-status-left">
+                          <IconCheckCircle size={20} className="zp-action-status-icon" />
+                          <strong className="zp-action-status-title">
+                            Zoning Clearance Inaprubahan ng MPDC · Handa Para sa Pagbayad (O.R.)
+                          </strong>
+                        </div>
+                        <span className="zp-action-status-tag" style={{ background: "rgba(16, 185, 129, 0.2)", color: "#10b981", borderColor: "rgba(16, 185, 129, 0.35)" }}>
+                          Naghihintay ng Resibo mula sa Assessor
+                        </span>
                       </div>
-                      <span className="zp-action-status-tag">
-                        Kabuuang Halaga: ₱{Number(selectedApp.payment?.amount || 280).toFixed(2)}
-                      </span>
+                      <p className="zp-action-status-desc">
+                        Inaprubahan ng MPDC ang zoning clearance at mga dokumento. I-uupload ng aplikante ang Official Receipt (O.R.) mula sa Assessor sa Public Applicant Portal upang dumiretso ang aplikasyon sa Tanggapan ng Inhinyero para sa site inspection.
+                      </p>
                     </div>
-                    <p className="zp-action-status-desc">
-                      Nasa estado na ito ng pagbabayad sa Municipal Treasury Office. Kapag nakapagbayad na ang aplikante sa Physical Cashier, iu-upload niya ang kanyang Official Receipt (O.R.) sa Client Tracker at awtomatikong papasok sa Engineering dashboard para sa &quot;Before&quot; Inspection.
-                    </p>
-                  </div>
-                )}
+                  )}
 
                 {isForEngineering && (
                   <div className="zp-action-final-status is-for-engineering">
@@ -3032,10 +2909,14 @@ export function ZoningPermitsPage({
                         </div>
                         <div>
                           <strong className="zp-action-status-title">
-                            Bayad Na sa Treasury · Para sa Engineering &quot;Before&quot; Inspection
+                            Resibo mula sa Assessor Nai-upload · Para sa Engineering &quot;Before&quot; Inspection
                           </strong>
                           <span className="zp-action-status-sub">
-                            Official Receipt No: <strong className="zp-action-mono-tag">{selectedApp.payment?.orNumber || "OR-VERIFIED"}</strong> · Halaga: <strong>₱{Number(selectedApp.payment?.amount || 280).toFixed(2)}</strong> · Petsa: <strong>{selectedApp.payment?.paymentDate || "—"}</strong>
+                            Official Receipt No: <strong className="zp-action-mono-tag">{selectedApp.payment?.orNumber || "OR-VERIFIED"}</strong>
+                            {selectedApp.payment?.paidAmount || selectedApp.payment?.amount ? (
+                              <> · Halaga sa Resibo: <strong>₱{Number(selectedApp.payment.paidAmount || selectedApp.payment.amount).toFixed(2)}</strong></>
+                            ) : null}
+                            {" "}· Petsa: <strong>{selectedApp.payment?.paidAt ? new Date(selectedApp.payment.paidAt).toLocaleDateString("tl-PH") : (selectedApp.payment?.paymentDate || "—")}</strong>
                           </span>
                         </div>
                       </div>
@@ -3127,7 +3008,7 @@ export function ZoningPermitsPage({
                     setTimeout(() => setNotification(null), 4000);
                   }}
                   onEndorseInspection={handleEndorseInspectionFromMap}
-                  onApprove={(appId) => handleUpdateStatus(appId, "for_payment")}
+                  onApprove={(appId) => handleUpdateStatus(appId, "approved_for_payment")}
                   onDeny={(appId) => handleUpdateStatus(appId, "denied")}
                   onSendNotes={handleSendNotes}
                   reviewerNotes={reviewerNotes}

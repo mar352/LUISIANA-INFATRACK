@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useTranslation } from "./LanguageToggle";
 import "./ApplicationTermsModal.css";
 
 interface ApplicationTermsModalProps {
@@ -16,6 +17,8 @@ export default function ApplicationTermsModal({
   onDecline,
   isAlreadyAccepted = false,
 }: ApplicationTermsModalProps) {
+  const { language } = useTranslation();
+  const isEn = language === "en";
   const [activeTab, setActiveTab] = useState<TabType>("all");
 
   // Granular consent checkboxes
@@ -48,10 +51,10 @@ export default function ApplicationTermsModal({
             <img src="/logo.png" alt="Bayan ng Luisiana" className="app-terms-logo" />
             <div>
               <h2 id="app-terms-title" className="app-terms-title">
-                Mga Tuntunin, Kundisyon at Patakaran sa Privacy ng Datos
+                {isEn ? "Terms, Conditions & Data Privacy Policy" : "Mga Tuntunin, Kundisyon at Patakaran sa Privacy ng Datos"}
               </h2>
               <p className="app-terms-subtitle">
-                Bayan ng Luisiana · MPDC, MEO &amp; Citizen Infrastructure Intake Portal
+                {isEn ? "Municipality of Luisiana · MPDC, MEO & Citizen Infrastructure Intake Portal" : "Bayan ng Luisiana · MPDC, MEO & Citizen Infrastructure Intake Portal"}
               </p>
             </div>
           </div>
@@ -60,8 +63,8 @@ export default function ApplicationTermsModal({
               type="button"
               className="new-app-modal-close"
               onClick={onAccept}
-              aria-label="Isara ang Terms and Conditions"
-              title="Isara"
+              aria-label={isEn ? "Close Terms and Conditions" : "Isara ang Terms and Conditions"}
+              title={isEn ? "Close" : "Isara"}
             >
               ✕
             </button>
@@ -103,7 +106,7 @@ export default function ApplicationTermsModal({
         </div>
 
         {/* Segmented Navigation Tabs */}
-        <div className="app-terms-tabs-bar" role="tablist" aria-label="Mga Seksyon ng Patakaran">
+        <div className="app-terms-tabs-bar" role="tablist" aria-label={isEn ? "Policy Sections" : "Mga Seksyon ng Patakaran"}>
           <button
             type="button"
             role="tab"
@@ -111,7 +114,7 @@ export default function ApplicationTermsModal({
             className={`app-terms-tab-btn ${activeTab === "all" ? "active" : ""}`}
             onClick={() => setActiveTab("all")}
           >
-            <span>Lahat ng Patakaran</span>
+            <span>{isEn ? "All Policies" : "Lahat ng Patakaran"}</span>
             <span className="app-terms-tab-badge">13</span>
           </button>
           <button
@@ -121,7 +124,7 @@ export default function ApplicationTermsModal({
             className={`app-terms-tab-btn ${activeTab === "terms" ? "active" : ""}`}
             onClick={() => setActiveTab("terms")}
           >
-            <span>1. Mga Tuntunin sa Pag-aaplay</span>
+            <span>{isEn ? "1. Application Terms" : "1. Mga Tuntunin sa Pag-aaplay"}</span>
             <span className="app-terms-tab-badge">4</span>
           </button>
           <button
@@ -131,7 +134,7 @@ export default function ApplicationTermsModal({
             className={`app-terms-tab-btn ${activeTab === "privacy" ? "active" : ""}`}
             onClick={() => setActiveTab("privacy")}
           >
-            <span>2. Data Privacy Policy (RA 10173)</span>
+            <span>{isEn ? "2. Data Privacy Policy (RA 10173)" : "2. Data Privacy Policy (RA 10173)"}</span>
             <span className="app-terms-tab-badge">6</span>
           </button>
           <button
@@ -141,7 +144,7 @@ export default function ApplicationTermsModal({
             className={`app-terms-tab-btn ${activeTab === "consent" ? "active" : ""}`}
             onClick={() => setActiveTab("consent")}
           >
-            <span>3. Mga Pahintulot at Cookies</span>
+            <span>{isEn ? "3. Consents & Cookies" : "3. Mga Pahintulot at Cookies"}</span>
             <span className="app-terms-tab-badge">3</span>
           </button>
         </div>
@@ -158,7 +161,7 @@ export default function ApplicationTermsModal({
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                   <polyline points="14 2 14 8 20 8" />
                 </svg>
-                <span>Bahagi I: Mga Tuntunin at Kundisyon sa Pag-aaplay (Terms of Service)</span>
+                <span>{isEn ? "Part I: Application Terms and Conditions (Terms of Service)" : "Bahagi I: Mga Tuntunin at Kundisyon sa Pag-aaplay (Terms of Service)"}</span>
               </div>
 
               {/* Clause 1 */}
@@ -251,7 +254,7 @@ export default function ApplicationTermsModal({
                   <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
                   <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                 </svg>
-                <span>Bahagi II: Patakaran sa Privacy ng Datos (Data Privacy Policy - R.A. 10173)</span>
+                <span>{isEn ? "Part II: Data Privacy Policy (Data Privacy Policy - R.A. 10173)" : "Bahagi II: Patakaran sa Privacy ng Datos (Data Privacy Policy - R.A. 10173)"}</span>
               </div>
 
               {/* Clause 5 */}
@@ -385,7 +388,7 @@ export default function ApplicationTermsModal({
                   <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
                   <polyline points="22 4 12 14.01 9 11.01" />
                 </svg>
-                <span>Bahagi III: Mga Pahintulot at Teknolohiya (Consent &amp; Technology Policies)</span>
+                <span>{isEn ? "Part III: Consents & Technology Policies" : "Bahagi III: Mga Pahintulot at Teknolohiya (Consent & Technology Policies)"}</span>
               </div>
 
               {/* Clause 11 */}
@@ -462,15 +465,15 @@ export default function ApplicationTermsModal({
           <div className="app-terms-consent-box">
             <div className="app-terms-select-all-row">
               <span style={{ fontSize: "0.83rem", fontWeight: 700, color: "var(--apple-text, #1d1d1f)" }}>
-                Kumpirmasyon at Pahintulot ng Aplikante (Citizen Consent):
+                {isEn ? "Applicant Confirmation & Consent:" : "Kumpirmasyon at Pahintulot ng Aplikante (Citizen Consent):"}
               </span>
               <button
                 type="button"
                 className="app-terms-select-all-btn"
                 onClick={handleToggleAll}
-                title="Piliin o alisin ang tsek sa lahat ng kahon"
+                title={isEn ? "Select or deselect all boxes" : "Piliin o alisin ang tsek sa lahat ng kahon"}
               >
-                {allAgreed ? "Alisin ang Tsek sa Lahat" : "Piliin Lahat (Check All)"}
+                {allAgreed ? (isEn ? "Deselect All" : "Alisin ang Tsek sa Lahat") : (isEn ? "Select All (Check All)" : "Piliin Lahat (Check All)")}
               </button>
             </div>
 
@@ -485,10 +488,10 @@ export default function ApplicationTermsModal({
                 />
                 <div className="app-terms-check-content">
                   <span className="app-terms-check-title">
-                    1. Mga Tuntunin at Pagsunod sa CLUP 2018–2027 &amp; Building Code (PD 1096)
+                    {isEn ? "1. Terms & Compliance with CLUP 2018–2027 & Building Code (PD 1096)" : "1. Mga Tuntunin at Pagsunod sa CLUP 2018–2027 & Building Code (PD 1096)"}
                   </span>
                   <span className="app-terms-check-desc">
-                    Pinatutunayan ko na totoo ang aking mga isinumiteng dokumento at sumasang-ayon ako sa ocular site inspection ng MPDC/MEO.
+                    {isEn ? "I certify that all submitted documents are true and authentic, and I agree to the ocular site inspection by MPDC/MEO." : "Pinatutunayan ko na totoo ang aking mga isinumiteng dokumento at sumasang-ayon ako sa ocular site inspection ng MPDC/MEO."}
                   </span>
                 </div>
               </label>
@@ -503,10 +506,10 @@ export default function ApplicationTermsModal({
                 />
                 <div className="app-terms-check-content">
                   <span className="app-terms-check-title">
-                    2. Patakaran sa Privacy ng Datos alinsunod sa Data Privacy Act (R.A. 10173)
+                    {isEn ? "2. Data Privacy Policy pursuant to Data Privacy Act (R.A. 10173)" : "2. Patakaran sa Privacy ng Datos alinsunod sa Data Privacy Act (R.A. 10173)"}
                   </span>
                   <span className="app-terms-check-desc">
-                    Pinahihintulutan ko ang Pamahalaang Bayan ng Luisiana na iproseso ang aking personal at sensitibong datos para sa opisyal na zoning evaluation.
+                    {isEn ? "I authorize the Municipal Government of Luisiana to process my personal and sensitive data for official zoning evaluation." : "Pinahihintulutan ko ang Pamahalaang Bayan ng Luisiana na iproseso ang aking personal at sensitibong datos para sa opisyal na zoning evaluation."}
                   </span>
                 </div>
               </label>
@@ -521,10 +524,10 @@ export default function ApplicationTermsModal({
                 />
                 <div className="app-terms-check-content">
                   <span className="app-terms-check-title">
-                    3. Pahintulot sa GIS Geohazard Screening, Document Verification, at Cookies
+                    {isEn ? "3. Consent for GIS Geohazard Screening, Document Verification & Cookies" : "3. Pahintulot sa GIS Geohazard Screening, Document Verification, at Cookies"}
                   </span>
                   <span className="app-terms-check-desc">
-                    Sumasang-ayon ako sa automated spatial screening (PHIVOLCS/MGB) at paggamit ng secure cookies para hindi na muling lumabas ang kasunduang ito.
+                    {isEn ? "I agree to automated spatial screening (PHIVOLCS/MGB) and the use of secure cookies to remember this consent." : "Sumasang-ayon ako sa automated spatial screening (PHIVOLCS/MGB) at paggamit ng secure cookies para hindi na muling lumabas ang kasunduang ito."}
                   </span>
                 </div>
               </label>
@@ -536,12 +539,12 @@ export default function ApplicationTermsModal({
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
                 <span>
-                  Naka-save na ang inyong pagsang-ayon sa browser cookies at database ng pamahalaan.
+                  {isEn ? "Your consent has been securely recorded in browser cookies and government registry." : "Naka-save na ang inyong pagsang-ayon sa browser cookies at database ng pamahalaan."}
                 </span>
               </div>
             ) : (
               <div className="app-terms-cookie-note">
-                ✓ Tandaan: Sa pag-click ng "Sumasang-ayon at Magpatuloy", mai-save ang cookie consent at hindi na ito muling hihingin sa susunod mong pag-aaplay.
+                {isEn ? "✓ Note: Clicking \"Agree & Proceed\" saves your consent cookie and will not prompt you again on subsequent applications." : "✓ Tandaan: Sa pag-click ng \"Sumasang-ayon at Magpatuloy\", mai-save ang cookie consent at hindi na ito muling hihingin sa susunod mong pag-aaplay."}
               </div>
             )}
           </div>
@@ -555,16 +558,16 @@ export default function ApplicationTermsModal({
                 type="button"
                 className="app-terms-btn app-terms-btn-decline"
                 onClick={onDecline}
-                title="Bawiin o i-reset ang naunang pagsang-ayon"
+                title={isEn ? "Revoke or reset previously given consent" : "Bawiin o i-reset ang naunang pagsang-ayon"}
               >
-                Kanselahin ang Pagsang-ayon
+                {isEn ? "Revoke Consent" : "Kanselahin ang Pagsang-ayon"}
               </button>
               <button
                 type="button"
                 className="app-terms-btn app-terms-btn-accept"
                 onClick={onAccept}
               >
-                <span>Naka-save na ang Pagsang-ayon (Isara)</span>
+                <span>{isEn ? "Consent Saved (Close)" : "Naka-save na ang Pagsang-ayon (Isara)"}</span>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
@@ -576,18 +579,18 @@ export default function ApplicationTermsModal({
                 type="button"
                 className="app-terms-btn app-terms-btn-decline"
                 onClick={onDecline}
-                title="Bumalik sa dashboard kung hindi sumasang-ayon"
+                title={isEn ? "Return to dashboard if you do not agree" : "Bumalik sa dashboard kung hindi sumasang-ayon"}
               >
-                <span>← Tanggihan at Bumalik</span>
+                <span>{isEn ? "← Decline & Return" : "← Tanggihan at Bumalik"}</span>
               </button>
               <button
                 type="button"
                 className="app-terms-btn app-terms-btn-accept"
                 disabled={!allAgreed}
                 onClick={onAccept}
-                title={!allAgreed ? "Kailangang lagyan ng tsek ang lahat ng tatlong (3) kahon upang magpatuloy" : "Tanggapin ang mga patakaran at magpatuloy sa aplikasyon"}
+                title={!allAgreed ? (isEn ? "You must check all three (3) boxes to proceed" : "Kailangang lagyan ng tsek ang lahat ng tatlong (3) kahon upang magpatuloy") : (isEn ? "Accept policies and proceed to application" : "Tanggapin ang mga patakaran at magpatuloy sa aplikasyon")}
               >
-                <span>Sumasang-ayon at Magpatuloy</span>
+                <span>{isEn ? "Agree & Proceed" : "Sumasang-ayon at Magpatuloy"}</span>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <polyline points="20 6 9 17 4 12" />
                 </svg>

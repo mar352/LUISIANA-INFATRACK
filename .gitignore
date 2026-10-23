@@ -60,4 +60,7 @@ frontend/public/models/municipal-office.glb
 # Backups and temporary optimization outputs
 *.bak
 *.opt.bin
+*.traineddata
+frontend/scratch/
+frontend/test-parse.mjs
 

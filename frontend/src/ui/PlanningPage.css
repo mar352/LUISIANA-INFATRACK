@@ -10,7 +10,7 @@
   color: var(--ink, #1a1a1a);
   display: flex;
   flex-direction: column;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .planning-top {
@@ -22,6 +22,7 @@
   border-bottom: 1px solid var(--stroke, rgba(0, 0, 0, 0.12));
   background: rgba(255, 255, 255, 0.55);
   backdrop-filter: blur(8px);
+  flex-shrink: 0;
 }
 
 .planning-top-left {

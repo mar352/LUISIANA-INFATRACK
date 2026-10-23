@@ -46,6 +46,7 @@ import {
   patchCitizenApplication,
 } from "../lib/api";
 import { MPDC_CHARTER_SERVICES, getCharterService } from "../lib/mpdc-charter";
+import { InSystemDocModal, type PreviewMedia, isPdfFile, isImageFile } from "./InSystemDocViewer";
 import {
   allowedStatusTransitions,
   departmentForRole,
@@ -65,6 +66,8 @@ import {
 } from "../lib/planning-recommend";
 import { connectRealtime } from "../lib/realtime";
 import { ThemeToggle } from "./ThemeToggle";
+import SideNavbar from "./SideNavbar";
+import MpdcTopNavbar from "./MpdcTopNavbar";
 import "./PlanningPage.css";
 
 type Tab = "board" | "calendar" | "meetings";
@@ -76,6 +79,8 @@ type Props = {
   onPinSite?: (proposal: PlanningProposal) => void;
   /** Live map projects — used to boost scores that fill a barangay gap. */
   projects?: Project[];
+  onNavigate?: (screen: string) => void;
+  onLogout?: () => void;
 };
 
 type AnchorKind = "none" | "section" | "map";
@@ -192,7 +197,7 @@ function buildMonthGrid(monthStart: Date) {
   return cells;
 }
 
-function PlanningPage({ onBack, session, onPinSite, projects = [] }: Props) {
+function PlanningPage({ onBack, session, onPinSite, projects = [], onNavigate, onLogout }: Props) {
   const role = session?.role ?? null;
   const perms = getPlanningPermissions(role);
   const barangayOnly = isBarangayOfficial(role);
@@ -208,6 +213,21 @@ function PlanningPage({ onBack, session, onPinSite, projects = [] }: Props) {
   const [filterBarangay, setFilterBarangay] = useState("");
   const [filterKind, setFilterKind] = useState<PlanningRequestKind | "">("");
   const [search, setSearch] = useState("");
+
+  const [previewMedia, setPreviewMedia] = useState<PreviewMedia | null>(null);
+
+  const openDocPreview = (url: string, fileName?: string, title?: string, size?: number) => {
+    const href = attachmentHref(url);
+    const cleanName = fileName || (url ? url.split("/").pop() || "dokumento" : "dokumento");
+    setPreviewMedia({
+      url: href,
+      title: title ? `${title} — ${cleanName}` : cleanName,
+      fileName: cleanName,
+      isPdf: isPdfFile(href, cleanName),
+      isImg: isImageFile(href, cleanName),
+      size,
+    });
+  };
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [confirmCloseDetail, setConfirmCloseDetail] = useState(false);
@@ -730,12 +750,12 @@ function PlanningPage({ onBack, session, onPinSite, projects = [] }: Props) {
         approvals: [...(proposal.approvals || []), approval],
       });
       setDecisionNote("");
-      if (onPinSite) {
+      if (onPinSite && session?.role === "Engineer") {
         setMessage("Approved — opening map to pin the building site…");
         window.setTimeout(() => onPinSite({ ...proposal, status: "approved" }), 50);
       } else {
         setMessage(
-          "Approved. Next: pin the building site on the live map (MPDC).",
+          "Approved — naaprubahan ang panukalang proyekto para sa Annual Investment Program.",
         );
       }
     } catch (err) {
@@ -902,37 +922,29 @@ function PlanningPage({ onBack, session, onPinSite, projects = [] }: Props) {
 
   return (
     <div className="planning-page">
-      <header className="planning-top">
-        <div className="planning-top-left">
-          <button type="button" className="planning-back" onClick={onBack}>
-            ← Map
-          </button>
-          <div>
-            <div className="planning-brand">
-              {barangayOnly ? "Infrastructure Requests" : "Collaborative Planning"}
-            </div>
-            <div className="planning-sub">
-              {session
-                ? `${session.username} · ${session.role}`
-                : "Sign in required"}
-            </div>
-          </div>
-        </div>
-        <div className="planning-top-right">
-          <div
-            className={`planning-live-pill${lastSyncedAt ? " is-live" : ""}`}
-            title="Auto-refreshes every 5 seconds for multi-user sync"
-          >
-            <span className="planning-live-dot" aria-hidden />
-            {lastSyncedAt
-              ? `Live · ${new Date(lastSyncedAt).toLocaleTimeString()}`
-              : "Polling…"}
-          </div>
-          <ThemeToggle iconOnly />
-        </div>
-      </header>
+      <MpdcTopNavbar
+        title={barangayOnly ? "Infrastructure Requests" : "Opisyal na Pagpaplano at Proyekto"}
+        subtitle={
+          barangayOnly
+            ? "Tanggapan ng Barangay · Bayan ng Luisiana, Laguna"
+            : "Municipal Planning & Development Office · Bayan ng Luisiana, Laguna"
+        }
+        brandPill={barangayOnly ? "BARANGAY" : "MPDC"}
+        accentClass={barangayOnly ? "topnav-accent-barangay" : "topnav-accent-mpdc"}
+        onBack={onBack}
+        backLabel="Bumalik"
+        serviceTag={barangayOnly ? "Barangay Planning" : "Comprehensive Land Use (CLUP)"}
+        serviceSla={barangayOnly ? "Priority Endorsements" : "Executive Planning Board · 23 Barangays"}
+        lastSyncedAt={lastSyncedAt}
+        session={session}
+        userDept={barangayOnly ? "Barangay Official" : "Planning & Zoning"}
+        onLogout={onLogout}
+      />
 
-      <nav className="planning-tabs">
+      <div className="app-page-body-with-side-nav">
+        <SideNavbar currentScreen="planning" onNavigate={onNavigate} currentRole={session?.role} />
+        <div className="app-page-main-with-side-nav">
+          <nav className="planning-tabs">
         {(
           (barangayOnly ? (["board"] as Tab[]) : (["board", "calendar", "meetings"] as Tab[]))
         ).map((t) => (
@@ -1347,26 +1359,27 @@ function PlanningPage({ onBack, session, onPinSite, projects = [] }: Props) {
                             </div>
                             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                               {(files as any[]).map((f: any, fIdx: number) => (
-                                <a
+                                <button
                                   key={f.url || fIdx}
-                                  href={backendUrl(f.url)}
-                                  target="_blank"
-                                  rel="noreferrer"
+                                  type="button"
+                                  onClick={() => openDocPreview(f.url, f.originalName, label, f.size)}
                                   style={{
                                     display: "inline-flex",
                                     alignItems: "center",
                                     gap: 6,
                                     fontSize: 12,
-                                    padding: "4px 10px",
+                                    padding: "5px 12px",
                                     background: "rgba(37, 99, 235, 0.2)",
                                     border: "1px solid rgba(37, 99, 235, 0.4)",
                                     color: "#93c5fd",
                                     borderRadius: 6,
-                                    textDecoration: "none",
+                                    cursor: "pointer",
+                                    fontFamily: "inherit",
                                   }}
+                                  title={`Suriin sa viewer: ${f.originalName || "Dokumento"}`}
                                 >
-                                  📄 {f.originalName || `Document ${fIdx + 1}`} (Tingnan / I-download)
-                                </a>
+                                  📄 {f.originalName || `Document ${fIdx + 1}`} (Suriin sa Viewer)
+                                </button>
                               ))}
                             </div>
                           </div>
@@ -1399,8 +1412,7 @@ function PlanningPage({ onBack, session, onPinSite, projects = [] }: Props) {
                   !selected.linkedProjectId && (
                     <div className="planning-site-cta">
                       <p>
-                        As <strong>MPDC</strong>, approve then pin where the building will stand on
-                        the live map.
+                        As <strong>MPDC</strong>, aprubahan ang panukalang proyekto para sa Annual Investment Program (AIP).
                       </p>
                       <button
                         type="button"
@@ -1412,7 +1424,7 @@ function PlanningPage({ onBack, session, onPinSite, projects = [] }: Props) {
                           void handleApprove(selected);
                         }}
                       >
-                        Approve &amp; pin site on map
+                        Aprubahan ang Panukala (Approve Proposal)
                       </button>
                     </div>
                   )}
@@ -1420,23 +1432,10 @@ function PlanningPage({ onBack, session, onPinSite, projects = [] }: Props) {
                 {session?.role === "MPDC" &&
                   selected.status === "approved" &&
                   !selected.linkedProjectId && (
-                    <div className="planning-site-cta">
+                    <div className="planning-site-cta is-done">
                       <p>
-                        Proposal is approved. Click below, then click the map to place the building.
+                        Naaprubahan na ang panukala. Ang 3D structural model at site engineering ay isinasagawa ng Tanggapan ng Inhinyero.
                       </p>
-                      <button
-                        type="button"
-                        className="planning-btn primary planning-site-cta-btn"
-                        disabled={busy || !onPinSite}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          if (onPinSite) onPinSite(selected);
-                          else window.alert("Pin mode is only available for MPDC on the live map.");
-                        }}
-                      >
-                        Pin site on map
-                      </button>
                     </div>
                   )}
 
@@ -1687,9 +1686,23 @@ function PlanningPage({ onBack, session, onPinSite, projects = [] }: Props) {
                     <ul className="planning-attach-list">
                       {selected.attachments!.map((url) => (
                         <li key={url}>
-                          <a href={attachmentHref(url)} target="_blank" rel="noreferrer">
+                          <button
+                            type="button"
+                            onClick={() => openDocPreview(url, attachmentLabel(url), "Supporting Document")}
+                            style={{
+                              background: "none",
+                              border: "none",
+                              padding: 0,
+                              color: "var(--accent, #3b82f6)",
+                              textDecoration: "underline",
+                              cursor: "pointer",
+                              font: "inherit",
+                              textAlign: "left",
+                            }}
+                            title="Suriin sa built-in viewer"
+                          >
                             {attachmentLabel(url)}
-                          </a>
+                          </button>
                           {(perms.canComment || perms.canCreate) && (
                             <button
                               type="button"
@@ -2084,9 +2097,23 @@ function PlanningPage({ onBack, session, onPinSite, projects = [] }: Props) {
                     <ul className="planning-attach-list">
                       {m.attachments.map((url) => (
                         <li key={url}>
-                          <a href={attachmentHref(url)} target="_blank" rel="noreferrer">
+                          <button
+                            type="button"
+                            onClick={() => openDocPreview(url, attachmentLabel(url), "Meeting Attachment")}
+                            style={{
+                              background: "none",
+                              border: "none",
+                              padding: 0,
+                              color: "var(--accent, #3b82f6)",
+                              textDecoration: "underline",
+                              cursor: "pointer",
+                              font: "inherit",
+                              textAlign: "left",
+                            }}
+                            title="Suriin sa built-in viewer"
+                          >
                             {attachmentLabel(url)}
-                          </a>
+                          </button>
                         </li>
                       ))}
                     </ul>
@@ -2263,9 +2290,23 @@ function PlanningPage({ onBack, session, onPinSite, projects = [] }: Props) {
                 <ul className="planning-attach-list">
                   {draftAttachments.map((url) => (
                     <li key={url}>
-                      <a href={attachmentHref(url)} target="_blank" rel="noreferrer">
+                      <button
+                        type="button"
+                        onClick={() => openDocPreview(url, attachmentLabel(url), "Draft Document")}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          padding: 0,
+                          color: "var(--accent, #3b82f6)",
+                          textDecoration: "underline",
+                          cursor: "pointer",
+                          font: "inherit",
+                          textAlign: "left",
+                        }}
+                        title="Suriin sa built-in viewer"
+                      >
                         {attachmentLabel(url)}
-                      </a>
+                      </button>
                       <button
                         type="button"
                         className="planning-btn"
@@ -2459,9 +2500,23 @@ function PlanningPage({ onBack, session, onPinSite, projects = [] }: Props) {
                 <ul className="planning-attach-list">
                   {meetingAttachments.map((url) => (
                     <li key={url}>
-                      <a href={attachmentHref(url)} target="_blank" rel="noreferrer">
+                      <button
+                        type="button"
+                        onClick={() => openDocPreview(url, attachmentLabel(url), "Meeting Attachment")}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          padding: 0,
+                          color: "var(--accent, #3b82f6)",
+                          textDecoration: "underline",
+                          cursor: "pointer",
+                          font: "inherit",
+                          textAlign: "left",
+                        }}
+                        title="Suriin sa built-in viewer"
+                      >
                         {attachmentLabel(url)}
-                      </a>
+                      </button>
                       <button
                         type="button"
                         className="planning-btn danger"
@@ -2598,6 +2653,11 @@ function PlanningPage({ onBack, session, onPinSite, projects = [] }: Props) {
           </div>
         </div>
       )}
+        </div>
+      </div>
+
+      {/* In-System Document & Media Viewer Modal (Zero new tab redirects) */}
+      <InSystemDocModal media={previewMedia} onClose={() => setPreviewMedia(null)} />
     </div>
   );
 }

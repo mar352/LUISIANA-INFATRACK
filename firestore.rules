@@ -8,11 +8,12 @@ service cloud.firestore {
     match /sessions/{document=**} {
       allow read, write: if false;
     }
-    // Staff may append an Activity line; nobody can wipe the log from the browser.
+    // Staff may append an Activity line; deletion allowed for 24-hour retention purge.
     match /auditLogs/{document=**} {
       allow read: if true;
       allow create: if true;
-      allow update, delete: if false;
+      allow update: if false;
+      allow delete: if true;
     }
     // Map pins: public read for the citizen globe. Full writes stay on /api/projects.
     // The Android field app may only append photos (and the matching timestamps).
@@ -33,6 +34,12 @@ service cloud.firestore {
       allow read, write: if true;
     }
     match /documents/{document=**} {
+      allow read, write: if true;
+    }
+    match /systemBackups/{document=**} {
+      allow read, write: if true;
+    }
+    match /documentBackups/{document=**} {
       allow read, write: if true;
     }
   }

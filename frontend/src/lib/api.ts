@@ -218,10 +218,14 @@ export function patchEngagement(
 
 // ── Citizen Online Applications (Zoning & MPDC Certifications) ───────────
 export async function uploadCitizenDocument(
-  file: File
+  file: File,
+  fieldKey?: string
 ): Promise<{ url: string; filename: string; originalName: string; size: number; mimeType?: string }> {
   const fd = new FormData();
   fd.append("file", file);
+  if (fieldKey) {
+    fd.append("fieldKey", fieldKey);
+  }
   const res = await fetch(backendUrl("/api/citizen/applications/upload"), {
     method: "POST",
     credentials: "include",

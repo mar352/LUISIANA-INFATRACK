@@ -185,9 +185,10 @@ export function ZoningReviewMapView({
     appStatus === "for_ocular_inspection" ||
     appStatus === "inspection";
 
+  const isForAssessment = appStatus === "for_assessment" || appStatus === "assessor_review" || appStatus === "pending_assessment";
   const isForPayment = appStatus === "for_payment" || appStatus === "approved_for_payment";
   const isForEngineering = appStatus === "for_engineering_inspection";
-  const isApproved = appStatus === "approved" || appStatus === "completed" || isForPayment || isForEngineering;
+  const isApproved = appStatus === "approved" || appStatus === "completed" || isForAssessment || isForPayment || isForEngineering;
   const isDenied = appStatus === "rejected" || appStatus === "denied";
 
   return (
@@ -215,9 +216,9 @@ export function ZoningReviewMapView({
               <IconCheckCircle size={16} />
               <span>
                 {isForEngineering
-                  ? "✓ Bayad Na (Papasok sa Engineering)"
-                  : isForPayment
-                  ? "✓ Aprubado (Nai-isyu ang Order of Payment)"
+                  ? "✓ May O.R. Na (Papasok sa Engineering)"
+                  : isForPayment || isForAssessment
+                  ? "✓ Zoning Inaprubahan · Handa Para sa Resibo (O.R.)"
                   : "✓ Naaprubahan na ang Clearance"}
               </span>
             </div>
@@ -505,9 +506,9 @@ export function ZoningReviewMapView({
               <IconCheckCircle size={18} />
               <span>
                 {isForEngineering
-                  ? "Bayad na ang Kliyente sa Treasury. Papasok na sa Engineering Office para sa Before Inspection."
-                  : isForPayment
-                  ? "Zoning Approved! Nai-isyu na ang Order of Payment para sa pagbabayad sa Municipal Treasury."
+                  ? "May Resibo (O.R.) na ang Kliyente. Papasok na sa Engineering Office para sa Inspection."
+                  : isForPayment || isForAssessment
+                  ? "Zoning Clearance Inaprubahan ng MPDC · Naghihintay ng Pag-upload ng Official Receipt (O.R.) ng Aplikante."
                   : "Naaprubahan na at Nai-isyu ang Opisyal na Zoning Clearance."}
               </span>
             </div>
@@ -525,7 +526,7 @@ export function ZoningReviewMapView({
                 onClick={() => onApprove?.(application.id)}
               >
                 <IconCheckCircle size={16} />
-                <span>Aprubahan at I-isyu ang Zoning Clearance</span>
+                <span>Aprubahan ang Zoning &amp; Handa Para sa Pagbayad (O.R.) →</span>
               </button>
               <button
                 type="button"

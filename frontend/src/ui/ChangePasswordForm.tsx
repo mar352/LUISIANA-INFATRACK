@@ -1,7 +1,9 @@
 import { useState, type CSSProperties, type FormEvent } from "react";
 import { changePassword } from "../services/auth";
+import { useTranslation } from "../lib/i18n";
 
 export function ChangePasswordForm() {
+  const { isEn } = useTranslation();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -14,11 +16,11 @@ export function ChangePasswordForm() {
     setError("");
     setOk(false);
     if (newPassword.length < 8) {
-      setError("New password must be at least 8 characters.");
+      setError(isEn ? "New password must be at least 8 characters." : "Ang bagong password ay dapat may hindi bababa sa 8 karakter.");
       return;
     }
     if (newPassword !== confirmPassword) {
-      setError("New password and confirmation do not match.");
+      setError(isEn ? "New password and confirmation do not match." : "Hindi tugma ang bagong password at kumpirmasyon.");
       return;
     }
     setBusy(true);
@@ -49,7 +51,7 @@ export function ChangePasswordForm() {
   return (
     <form onSubmit={(e) => void onSubmit(e)} style={{ marginTop: 6 }}>
       <label style={{ display: "block", fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>
-        Current password
+        {isEn ? "Current password" : "Kasalukuyang password"}
       </label>
       <input
         type="password"
@@ -59,7 +61,7 @@ export function ChangePasswordForm() {
         style={{ ...field, marginBottom: 8 }}
       />
       <label style={{ display: "block", fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>
-        New password
+        {isEn ? "New password" : "Bagong password"}
       </label>
       <input
         type="password"
@@ -69,7 +71,7 @@ export function ChangePasswordForm() {
         style={{ ...field, marginBottom: 8 }}
       />
       <label style={{ display: "block", fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>
-        Confirm new password
+        {isEn ? "Confirm new password" : "Kumpirmahin ang bagong password"}
       </label>
       <input
         type="password"
@@ -85,11 +87,11 @@ export function ChangePasswordForm() {
       )}
       {ok && (
         <div className="hint" style={{ marginBottom: 8 }}>
-          Password updated. Use it the next time you sign in.
+          {isEn ? "Password updated. Use it the next time you sign in." : "Na-update ang password. Gamitin ito sa susunod na pag-log in."}
         </div>
       )}
       <button type="submit" className="side-btn is-primary" disabled={busy}>
-        {busy ? "Saving…" : "Change password"}
+        {busy ? (isEn ? "Saving…" : "Sine-save…") : (isEn ? "Change password" : "Palitan ang password")}
       </button>
     </form>
   );

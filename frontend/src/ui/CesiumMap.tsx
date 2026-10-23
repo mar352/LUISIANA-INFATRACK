@@ -38,7 +38,6 @@ import {
   sceneTargetFrameRate,
   setSceneCameraMoving,
 } from "../lib/cesium-frame-budget";
-import { attachCesiumMotionBlur, type MotionBlurHandle } from "../lib/cesium-motion-blur";
 import {
   gizmoHandleToAxis,
   pickGizmoHandle,
@@ -113,6 +112,11 @@ import {
   ringBounds,
   type LonLat,
 } from "../lib/luisiana-polygon";
+import { resolveTheme, subscribeTheme } from "../lib/theme";
+
+const BLACK_CROSSHAIR_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M12 2v7m0 6v7m-10-10h7m6 0h7' stroke='%23000000' stroke-width='2' stroke-linecap='round' filter='drop-shadow(0 0 1px %23ffffff)'/%3E%3Ccircle cx='12' cy='12' r='1.5' fill='%23000000' stroke='%23ffffff' stroke-width='0.5'/%3E%3C/svg%3E") 12 12, crosshair`;
+
+const WHITE_CROSSHAIR_CURSOR = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M12 2v7m0 6v7m-10-10h7m6 0h7' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' filter='drop-shadow(0 0 1px %23000000)'/%3E%3Ccircle cx='12' cy='12' r='1.5' fill='%23ffffff' stroke='%23000000' stroke-width='0.5'/%3E%3C/svg%3E") 12 12, crosshair`;
 
 /**
  * When pitched into local 3D and still near the ground, tighten fog / pan speed.
@@ -990,6 +994,9 @@ function extractEntityId(picked: any): string | null {
   return null;
 }
 
+const _scratchCartPos = new Cesium.Cartesian3();
+const _scratchToPoint = new Cesium.Cartesian3();
+
 function findProjectNearScreenPoint(
   viewer: Cesium.Viewer,
   screenPos: Cesium.Cartesian2,
@@ -1009,18 +1016,26 @@ function findProjectNearScreenPoint(
     const lat = p.location?.lat;
     if (lon == null || lat == null || !Number.isFinite(lon) || !Number.isFinite(lat)) continue;
 
-    const cartPos = Cesium.Cartesian3.fromDegrees(lon, lat);
+    const ent = viewer.entities.getById(entityIdFor(p.id));
+    let cartPos: Cesium.Cartesian3 | undefined;
+    if (ent?.position) {
+      cartPos = ent.position.getValue(viewer.clock.currentTime);
+    }
+    if (!cartPos) {
+      cartPos = Cesium.Cartesian3.fromDegrees(lon, lat);
+    }
 
     // Skip if behind camera
-    const toPoint = Cesium.Cartesian3.subtract(cartPos, camPos, new Cesium.Cartesian3());
-    if (Cesium.Cartesian3.dot(camDir, toPoint) <= 0) continue;
+    Cesium.Cartesian3.subtract(cartPos, camPos, _scratchToPoint);
+    if (Cesium.Cartesian3.dot(camDir, _scratchToPoint) <= 0) continue;
 
     const winPos = Cesium.SceneTransforms.wgs84ToWindowCoordinates(viewer.scene, cartPos);
     if (!winPos) continue;
 
     const isSitePin = isSitePinProject(p);
     const pinCenterX = winPos.x;
-    const pinCenterY = isSitePin ? winPos.y - 30 : winPos.y;
+    // Teardrop pin is 48px high with verticalOrigin BOTTOM; target center is y - 24
+    const pinCenterY = isSitePin ? winPos.y - 24 : winPos.y;
 
     const dist = Math.hypot(screenPos.x - pinCenterX, screenPos.y - pinCenterY);
     if (dist < closestDist) {
@@ -1046,7 +1061,7 @@ function pickProjectId(
     }
   }
   try {
-    const picks = viewer.scene.drillPick(screenPos, 10);
+    const picks = viewer.scene.drillPick(screenPos, 12);
     if (Array.isArray(picks)) {
       for (const p of picks) {
         const eid = extractEntityId(p);
@@ -1086,8 +1101,24 @@ function pickHoverHit(
       if (quakeIdx != null) return { kind: "quake", id: String(quakeIdx) };
     }
   }
+  try {
+    const picks = viewer.scene.drillPick(screenPos, 8);
+    if (Array.isArray(picks)) {
+      for (const p of picks) {
+        const eid = extractEntityId(p);
+        if (eid) {
+          const pid = projectIdFromEntity(eid);
+          if (pid) return { kind: "project", id: pid };
+          const qid = quakeIndexFromEntity(eid);
+          if (qid != null) return { kind: "quake", id: String(qid) };
+        }
+      }
+    }
+  } catch {
+    /* ignore */
+  }
   if (projects && projects.length > 0) {
-    const nearProj = findProjectNearScreenPoint(viewer, screenPos, projects, 28);
+    const nearProj = findProjectNearScreenPoint(viewer, screenPos, projects, 32);
     if (nearProj) return { kind: "project", id: nearProj.id };
   }
   return null;
@@ -1218,6 +1249,7 @@ function gizmoScreenAngle(
 const INFRA_COORDS_LABEL_HEIGHT_M = 2800;
 let activeMapSettings: MapSettings = DEFAULT_MAP_SETTINGS;
 let activeProjects: Project[] = [];
+let activeProjectsMap: Map<string, Project> = new Map();
 
 function gizmoHeightFor(p: Project, xf: LocalXform): number {
   return xf.heightM + shapeLiftM(p, xf);
@@ -1560,10 +1592,16 @@ function applySitePinChrome(
   }
   if (ent.label) {
     const label = ent.label as Cesium.LabelGraphics;
+    let lastCachedText = "";
+    let lastCachedCoords = false;
     label.text = new Cesium.CallbackProperty(
       () => {
         const showCoords = activeMapSettings?.showCoordinates ?? true;
-        return infraLabelText(displayName, lat, lon, isSitePin, showCoords);
+        if (showCoords !== lastCachedCoords || !lastCachedText) {
+          lastCachedCoords = showCoords;
+          lastCachedText = infraLabelText(displayName, lat, lon, isSitePin, showCoords);
+        }
+        return lastCachedText;
       },
       false,
     ) as any;
@@ -1578,7 +1616,7 @@ function applySitePinChrome(
     );
     label.show = new Cesium.CallbackProperty(
       () => {
-        const proj = activeProjects.find((x) => x.id === p.id) ?? p;
+        const proj = activeProjectsMap.get(p.id) ?? p;
         if (proj.hideBadge || (proj as any).isPickerPin || p.id === "pinpoint_site_pin") return false;
         const isSel = opts.isSelected(p.id);
         const isHov = opts.isHovered(p.id);
@@ -1714,6 +1752,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
   mapSettingsRef.current = mapSettings;
   activeMapSettings = mapSettings;
   activeProjects = Array.isArray(projects) ? projects : [];
+  activeProjectsMap = new Map(activeProjects.map((p) => [p.id, p]));
   const sunIsDayRef = useRef(true);
   const luisianaRingRef = useRef<LonLat[] | null>(null);
   const applyScopeRef = useRef<(() => void) | null>(null);
@@ -1735,7 +1774,6 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
   /** Original absolute GLB URL per attached project — used to retain the RAM cache. */
   const modelSourceUrlRef = useRef<Map<string, string>>(new Map());
   const cameraMovingRef = useRef(false);
-  const motionBlurRef = useRef<MotionBlurHandle | null>(null);
   const modelLoadUiDelayRef = useRef<number | null>(null);
   const modelLoadUiVisibleRef = useRef(false);
   const modelLoadUiPayloadRef = useRef<{
@@ -1795,6 +1833,10 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [transformDirty, setTransformDirty] = useState(false);
   const [transformSaving, setTransformSaving] = useState(false);
+  const [currentTheme, setCurrentTheme] = useState<"light" | "dark">(() => resolveTheme());
+  useEffect(() => {
+    return subscribeTheme((t) => setCurrentTheme(t));
+  }, []);
   const [transformMessage, setTransformMessage] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmStartBuild, setConfirmStartBuild] = useState(false);
@@ -2132,7 +2174,6 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     captureMapPng() {
       const viewer = viewerRef.current;
       if (!viewer || viewer.isDestroyed()) return Promise.resolve(null);
-      motionBlurRef.current?.suppress();
       return new Promise((resolve) => {
         const remove = viewer.scene.postRender.addEventListener(() => {
           if (typeof remove === "function") remove();
@@ -2224,11 +2265,13 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       fullscreenButton: false,
       infoBox: false,
       selectionIndicator: false,
-      shadows: true,
-      terrainShadows: Cesium.ShadowMode.RECEIVE_ONLY,
+      shadows: mapSettingsRef.current?.shadowsEnabled ?? false,
+      terrainShadows: mapSettingsRef.current?.shadowsEnabled
+        ? Cesium.ShadowMode.RECEIVE_ONLY
+        : Cesium.ShadowMode.DISABLED,
       shouldAnimate: false,
       scene3DOnly: true,
-      msaaSamples: 2,
+      msaaSamples: 1,
       useBrowserRecommendedResolution: false,
       // Stadia street basemap
       baseLayer: false,
@@ -2257,19 +2300,21 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     updateResolution();
     window.addEventListener("resize", updateResolution);
 
-    // High tile cache (1000 tiles) + fast ancestry preloading for instantaneous zoom in/out
-    viewer.scene.globe.tileCacheSize = 1000;
-    viewer.scene.globe.loadingDescendantLimit = 4;
+    // Balanced tile cache and screen-space error for smooth 60fps panning & low GPU memory
+    viewer.scene.globe.tileCacheSize = 300;
+    viewer.scene.globe.loadingDescendantLimit = 2;
     viewer.scene.globe.preloadAncestors = true;
-    viewer.scene.globe.preloadSiblings = true;
-    viewer.scene.globe.maximumScreenSpaceError = 1.25;
+    viewer.scene.globe.preloadSiblings = false;
+    viewer.scene.globe.maximumScreenSpaceError = terrainQualityToSse(
+      mapSettingsRef.current?.terrainQuality || "medium",
+    );
     if (viewer.scene.fog) {
       viewer.scene.fog.enabled = false;
     }
 
-    // High HTTP/2 request concurrency so multiple tiles load in parallel instantly
-    Cesium.RequestScheduler.maximumRequests = 32;
-    Cesium.RequestScheduler.maximumRequestsPerServer = 18;
+    // Balanced HTTP request concurrency to avoid network thread saturation
+    Cesium.RequestScheduler.maximumRequests = 16;
+    Cesium.RequestScheduler.maximumRequestsPerServer = 8;
 
     // Ours is the only click handler — default pick/fly-to fights placement.
     viewer.screenSpaceEventHandler.removeInputAction(
@@ -2538,10 +2583,6 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       noteSceneFrame();
     });
 
-    motionBlurRef.current?.destroy();
-    motionBlurRef.current = attachCesiumMotionBlur(viewer);
-    motionBlurRef.current.setStrength((mapSettingsRef.current.motionBlur ?? 30) / 100);
-
     applyCesiumShadowMap(viewer, mapSettingsRef.current.shadowQuality);
 
     // Right-drag = change camera angle (tilt). Zoom only via scroll wheel / pinch.
@@ -2802,12 +2843,6 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         } catch {
           /* ignore */
         }
-        try {
-          motionBlurRef.current?.destroy();
-        } catch {
-          /* ignore */
-        }
-        motionBlurRef.current = null;
         satelliteImageryRef.current = null;
         osmBasemapRef.current = null;
         cachedEsriLayerRef.current = null;
@@ -3127,7 +3162,6 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
 
     // Shadow map quality preset (not tied to draw distance).
     applyCesiumShadowMap(viewer, mapSettings.shadowQuality);
-    motionBlurRef.current?.setStrength((mapSettings.motionBlur ?? 30) / 100);
     viewer.targetFrameRate = mapSettings.targetFps ?? 60;
 
     viewer.scene.requestRender();
@@ -3480,32 +3514,45 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       applyHit(hit, screenPos.x, screenPos.y);
     };
 
+    let hoverTimer: number | null = null;
     handler.setInputAction((move: { endPosition: Cesium.Cartesian2 }) => {
       pendingPos = move.endPosition.clone();
-      const now = performance.now();
-      const hoverGap = sceneIsStalling()
-        ? 160
-        : sceneIsLagging()
-          ? 100
-          : HOVER_PICK_THROTTLE_MS;
-      if (now - lastPickAt < hoverGap) {
-        if (!rafId) {
-          rafId = window.requestAnimationFrame(() => {
-            rafId = 0;
-            lastPickAt = performance.now();
-            if (pendingPos) runPick(pendingPos);
-          });
-        }
-        return;
+      if (hoverTimer != null) {
+        window.clearTimeout(hoverTimer);
+        hoverTimer = null;
       }
-      lastPickAt = now;
-      runPick(move.endPosition);
+      if (rafId) {
+        window.cancelAnimationFrame(rafId);
+        rafId = 0;
+      }
+
+      // If already hovering an item and cursor moved away, clear immediately
+      if (lastId != null) {
+        const d = Math.hypot(move.endPosition.x - lastTooltipX, move.endPosition.y - lastTooltipY);
+        if (d > 45) {
+          clearAllHover();
+        }
+      }
+
+      // Debounce picking so fast mouse sweeps across the map never stall GPU pipeline
+      const delay = sceneIsStalling() ? 120 : sceneIsLagging() ? 90 : 60;
+      hoverTimer = window.setTimeout(() => {
+        hoverTimer = null;
+        if (pendingPos) runPick(pendingPos);
+      }, delay);
     }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
 
-    const onLeave = () => clearAllHover();
+    const onLeave = () => {
+      if (hoverTimer != null) {
+        window.clearTimeout(hoverTimer);
+        hoverTimer = null;
+      }
+      clearAllHover();
+    };
     canvas.addEventListener("mouseleave", onLeave);
 
     return () => {
+      if (hoverTimer != null) window.clearTimeout(hoverTimer);
       if (rafId) window.cancelAnimationFrame(rafId);
       lastKind = null;
       lastId = null;
@@ -4192,8 +4239,9 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         const height = cameraHeightM();
         const dist = cameraDistanceTo(xf.lon, xf.lat);
         const force = selectedIdRef.current === projectId;
-        // Low-Poly LOD1 only for extreme high-altitude regional overviews (height > 2000m AND dist > 1500m). Closer is ALWAYS full high-detail!
-        const wantLowPoly = !force && dist > 1500 && height > 2000;
+        // Use lightweight low-poly LOD when viewing from medium/far distances (dist > 700m or altitude > 900m).
+        // Full high-detail is loaded when inspecting close up or for the currently selected project!
+        const wantLowPoly = !force && (dist > 700 || height > 900);
         const rawUrl = absoluteAssetUrl(projectModelUrl(p));
         const abs = resolveLodGlbUrl(rawUrl, wantLowPoly);
         const preloadR = modelPreloadRadiusM(height);
@@ -4502,6 +4550,17 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     if (!viewer || viewer.isDestroyed() || !viewerReady) return;
     const remove = viewer.scene.preRender.addEventListener(() => {
       if (viewer.isDestroyed()) return;
+      let hasNonUniform = false;
+      for (const [, xf] of xformsRef.current) {
+        const sx = xf.scaleX ?? 1;
+        const sy = xf.scaleY ?? 1;
+        const sz = xf.scaleZ ?? 1;
+        if (Math.abs(sx - 1) >= 1e-4 || Math.abs(sy - 1) >= 1e-4 || Math.abs(sz - 1) >= 1e-4) {
+          hasNonUniform = true;
+          break;
+        }
+      }
+      if (!hasNonUniform) return;
       const wanted = new Map<Cesium.Entity, LocalXform>();
       for (const [id, xf] of xformsRef.current) {
         const sx = xf.scaleX ?? 1;
@@ -5159,9 +5218,15 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
             (x as any).trackingNumber === hitId ||
             (x as any).applicationId === hitId,
         );
+        const hasPhotosOrInspection =
+          Boolean((p as any)?.latestInspection) ||
+          (Array.isArray((p as any)?.inspectionPhotos) && (p as any).inspectionPhotos.length > 0) ||
+          (Array.isArray(p?.photos) && p.photos.length > 0);
         if (
           p &&
-          (p.siteMarkerOnly ||
+          (isSitePinProject(p) ||
+            p.siteMarkerOnly ||
+            hasPhotosOrInspection ||
             (p as any).isPrivateApplication ||
             (p as any).trackingNumber ||
             p.id.startsWith("app-") ||
@@ -5391,7 +5456,8 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer || viewer.isDestroyed() || !viewerReady) return;
-    viewer.canvas.style.cursor = placementMode ? "crosshair" : "";
+    const activeCrosshair = currentTheme === "dark" ? WHITE_CROSSHAIR_CURSOR : BLACK_CROSSHAIR_CURSOR;
+    viewer.canvas.style.cursor = placementMode ? activeCrosshair : "";
     if (placementMode) {
       if (hoveredProjectIdRef.current) {
         const prev = projectsRef.current.find((p) => p.id === hoveredProjectIdRef.current);
@@ -5409,7 +5475,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     return () => {
       if (viewerAlive(viewer)) viewer.canvas.style.cursor = "";
     };
-  }, [placementMode, placementTool, viewerReady]);
+  }, [placementMode, placementTool, viewerReady, currentTheme]);
 
   // Camera zoom stays on. Wheel scales a model only when the cursor is on it (see onWheel).
 
@@ -5760,11 +5826,13 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       >
         <div
           ref={containerRef}
-          className="cesium-map"
+          className={`cesium-map${placementMode ? " placement-mode" : ""}`}
           style={{
             position: "absolute",
             inset: 0,
-            cursor: placementMode ? "crosshair" : undefined,
+            cursor: placementMode
+              ? (currentTheme === "dark" ? WHITE_CROSSHAIR_CURSOR : BLACK_CROSSHAIR_CURSOR)
+              : undefined,
             opacity: mapReady ? 1 : 0,
             transition: "opacity 0.55s ease",
           }}

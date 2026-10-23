@@ -19,11 +19,6 @@ export type MapSettings = {
   shadowQuality: ShadowQuality;
   /** Horizon fog in tilted 3D (also drops far tile detail). */
   fogEnabled: boolean;
-  /**
-   * Camera motion-blur strength while panning (0 = off, 100 = current max).
-   * Default is a light streak — the original pass read as too strong.
-   */
-  motionBlur: number;
   /** Target frame rate cap (60 fps for smooth vsync, 30 fps for power saving). */
   targetFps?: TargetFps;
   /** Show floating 3D labels / badges above models on the map. */
@@ -39,7 +34,6 @@ export const DEFAULT_MAP_SETTINGS: MapSettings = {
   shadowsEnabled: false,
   shadowQuality: "low",
   fogEnabled: false,
-  motionBlur: 0,
   targetFps: 60,
   showFloatingLabels: true,
   showCoordinates: true,
@@ -47,11 +41,11 @@ export const DEFAULT_MAP_SETTINGS: MapSettings = {
 
 const STORAGE_KEY = "infatrack-map-settings-v1";
 
-/** Screen-space error: lower = sharper crisp tiles even when zooming out / panning. */
+/** Screen-space error: lower = sharper crisp tiles; higher = much faster frame rate & less tile downloads. */
 export function terrainQualityToSse(q: TerrainQuality): number {
-  if (q === "low") return 2.5;
-  if (q === "high") return 1.25;
-  return 1.8;
+  if (q === "low") return 2.8;
+  if (q === "high") return 1.5;
+  return 2.0;
 }
 
 /** Cesium shadowMap knobs for Low / Medium / High. */
@@ -86,7 +80,6 @@ export function loadMapSettings(): MapSettings {
     if (!raw) return { ...DEFAULT_MAP_SETTINGS };
     const parsed = JSON.parse(raw) as Partial<MapSettings>;
     const draw = Number(parsed.drawDistanceKm);
-    const blur = Number(parsed.motionBlur);
     const qualities = ["low", "medium", "high"] as const;
     return {
       drawDistanceKm: Number.isFinite(draw)
@@ -110,9 +103,6 @@ export function loadMapSettings(): MapSettings {
         typeof parsed.fogEnabled === "boolean"
           ? parsed.fogEnabled
           : DEFAULT_MAP_SETTINGS.fogEnabled,
-      motionBlur: Number.isFinite(blur)
-        ? Math.min(100, Math.max(0, Math.round(blur)))
-        : DEFAULT_MAP_SETTINGS.motionBlur,
       targetFps: parsed.targetFps === 30 || parsed.targetFps === 60 ? parsed.targetFps : DEFAULT_MAP_SETTINGS.targetFps,
       showFloatingLabels:
         typeof parsed.showFloatingLabels === "boolean"

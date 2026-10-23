@@ -1,0 +1,1191 @@
+/* =========================================================================
+   MPDC EXECUTIVE DASHBOARD (MpdcAdminPage.css)
+   Styled to match the Landing Page / Main Theme Apple Minimalist Design
+   Sidebar-Driven Navigation Layout
+   Light & Dark Mode Native via --apple-* design tokens
+   ========================================================================= */
+
+@import "./Landing.css";
+@import "./SideNavbar.css";
+
+/* ── Container Root ────────────────────────────────────────────────────────── */
+.mpdc-admin-container {
+  height: 100vh;
+  max-height: 100vh;
+  background-color: var(--apple-bg);
+  color: var(--apple-text);
+  font-family: var(--apple-font, "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+  display: flex;
+  flex-direction: column;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+}
+
+/* ── Body Layout with Sidebar ──────────────────────────────────────────────── */
+.mpdc-body-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+}
+
+/* ── Dedicated MPDC Sidebar ────────────────────────────────────────────────── */
+.mpdc-sidebar {
+  width: 250px;
+  min-width: 250px;
+  max-width: 250px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--apple-surface-secondary);
+  border-right: 1px solid var(--apple-border);
+  box-sizing: border-box;
+  user-select: none;
+  transition: width 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+              min-width 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+              max-width 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 95;
+  height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.mpdc-sidebar.is-collapsed {
+  width: 68px;
+  min-width: 68px;
+  max-width: 68px;
+}
+
+.mpdc-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--apple-border);
+  min-height: 52px;
+  box-sizing: border-box;
+  gap: 8px;
+}
+
+.mpdc-sidebar-header-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.mpdc-sidebar.is-collapsed .mpdc-sidebar-header-info {
+  display: none;
+}
+
+.mpdc-sidebar-kicker {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--apple-accent);
+}
+
+.mpdc-sidebar-title {
+  margin: 2px 0 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--apple-text);
+  letter-spacing: -0.01em;
+}
+
+.mpdc-sidebar-collapse-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--apple-radius-sm);
+  border: 1px solid var(--apple-border);
+  background: var(--apple-surface);
+  color: var(--apple-text-secondary);
+  cursor: pointer;
+  transition: all 0.16s ease;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.mpdc-sidebar-collapse-btn:hover {
+  background: var(--apple-surface-tertiary);
+  color: var(--apple-text);
+}
+
+.mpdc-sidebar.is-collapsed .mpdc-sidebar-collapse-btn {
+  margin: 0 auto;
+}
+
+.mpdc-sidebar-nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px 10px;
+  flex: 1;
+}
+
+.mpdc-sidebar.is-collapsed .mpdc-sidebar-nav-list {
+  padding: 12px 8px;
+  align-items: center;
+}
+
+.mpdc-sidebar-section-divider {
+  margin: 14px 0 6px;
+  padding: 0 8px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--apple-text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mpdc-sidebar.is-collapsed .mpdc-sidebar-section-divider {
+  display: none;
+}
+
+/* Sidebar Button Item */
+.mpdc-sidebar-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: var(--apple-radius-sm);
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--apple-text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.16s ease;
+  white-space: nowrap;
+  text-align: left;
+  position: relative;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+
+.mpdc-sidebar-btn:hover {
+  color: var(--apple-text);
+  background: var(--apple-surface-tertiary);
+}
+
+.mpdc-sidebar-btn.active {
+  color: var(--apple-text);
+  background: var(--apple-surface);
+  border-color: var(--apple-border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  font-weight: 600;
+}
+
+.mpdc-sidebar-btn.active .mpdc-sidebar-pip {
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  background: var(--apple-accent);
+  border-radius: 0 3px 3px 0;
+}
+
+.mpdc-sidebar-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.mpdc-sidebar-btn-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.mpdc-sidebar.is-collapsed .mpdc-sidebar-btn-label {
+  display: none;
+}
+
+.mpdc-sidebar-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: var(--apple-radius-full);
+  background: var(--apple-surface);
+  border: 1px solid var(--apple-border);
+  color: var(--apple-text-secondary);
+}
+
+.mpdc-sidebar-btn.active .mpdc-sidebar-badge {
+  background: rgba(0, 113, 227, 0.1);
+  color: var(--apple-accent);
+  border-color: rgba(0, 113, 227, 0.2);
+}
+
+.mpdc-sidebar-portal-btn {
+  color: var(--apple-accent);
+  font-weight: 500;
+}
+
+.mpdc-sidebar-portal-btn:hover {
+  background: rgba(0, 113, 227, 0.08);
+  color: var(--apple-accent-hover);
+}
+
+.mpdc-sidebar-footer {
+  padding: 12px 14px;
+  border-top: 1px solid var(--apple-border);
+  background: var(--apple-surface-secondary);
+  font-size: 0.72rem;
+  color: var(--apple-text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.mpdc-sidebar.is-collapsed .mpdc-sidebar-footer {
+  justify-content: center;
+  padding: 10px;
+}
+
+.mpdc-sidebar.is-collapsed .mpdc-sidebar-footer-text {
+  display: none;
+}
+
+/* ── Main Scrollable View Area ─────────────────────────────────────────────── */
+.mpdc-main-view {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Executive Hero Strip (Apple Minimalist) ───────────────────────────────── */
+.mpdc-hero-banner {
+  background: var(--apple-bg-secondary);
+  border-bottom: 1px solid var(--apple-border);
+  padding: 24px 28px 22px;
+  position: relative;
+  overflow: hidden;
+}
+
+.mpdc-hero-banner::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 20%;
+  right: 20%;
+  height: 120px;
+  background: radial-gradient(ellipse at center, rgba(0, 113, 227, 0.08), transparent 70%);
+  pointer-events: none;
+}
+
+.mpdc-hero-content {
+  max-width: 1560px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  position: relative;
+  z-index: 1;
+}
+
+.mpdc-hero-titles h1 {
+  font-size: clamp(1.25rem, 2.2vw, 1.7rem);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  color: var(--apple-text);
+  margin: 6px 0 4px;
+  line-height: 1.15;
+}
+
+.mpdc-hero-titles p {
+  margin: 0;
+  font-size: 0.84rem;
+  color: var(--apple-text-secondary);
+  max-width: 75ch;
+  line-height: 1.5;
+  letter-spacing: -0.005em;
+}
+
+.mpdc-hero-tags {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mpdc-hero-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px;
+  background: var(--apple-surface);
+  border: 1px solid var(--apple-border);
+  border-radius: var(--apple-radius-full);
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--apple-text-secondary);
+  letter-spacing: -0.005em;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.mpdc-hero-tag strong {
+  color: var(--apple-text);
+  font-weight: 600;
+}
+
+/* ── Main Dashboard Content ────────────────────────────────────────────────── */
+.mpdc-main-content {
+  max-width: 1560px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 24px 28px 48px;
+  flex: 1;
+  box-sizing: border-box;
+}
+
+/* ── Executive KPI Grid ────────────────────────────────────────────────────── */
+.mpdc-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.mpdc-kpi-card {
+  background: var(--apple-surface);
+  border: 1px solid var(--apple-border);
+  border-radius: var(--apple-radius-lg);
+  padding: 20px 22px;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.mpdc-kpi-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--apple-border-strong);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+.mpdc-kpi-icon-wrap {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--apple-radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: var(--apple-surface-secondary);
+  border: 1px solid var(--apple-border);
+  color: var(--apple-accent);
+}
+
+.mpdc-kpi-icon-wrap.emerald {
+  background: var(--apple-safe-bg);
+  color: var(--apple-safe);
+  border-color: rgba(22, 163, 74, 0.2);
+}
+
+.mpdc-kpi-icon-wrap.amber {
+  background: var(--apple-gold-bg);
+  color: var(--apple-gold);
+  border-color: rgba(217, 119, 6, 0.2);
+}
+
+.mpdc-kpi-icon-wrap.blue {
+  background: rgba(0, 113, 227, 0.08);
+  color: var(--apple-accent);
+  border-color: rgba(0, 113, 227, 0.2);
+}
+
+.mpdc-kpi-icon-wrap.indigo {
+  background: var(--apple-surface-tertiary);
+  color: var(--apple-text);
+  border-color: var(--apple-border-strong);
+}
+
+.mpdc-kpi-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.mpdc-kpi-label {
+  font-size: 0.74rem;
+  color: var(--apple-text-secondary);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.mpdc-kpi-val {
+  font-size: 1.85rem;
+  font-weight: 700;
+  color: var(--apple-text);
+  margin: 3px 0 2px;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+.mpdc-kpi-sub {
+  font-size: 0.75rem;
+  color: var(--apple-text-secondary);
+  margin-top: 3px;
+  letter-spacing: -0.005em;
+}
+
+.mpdc-kpi-sub strong {
+  color: var(--apple-text);
+}
+
+/* ── Content Card Container ───────────────────────────────────────────────── */
+.mpdc-card {
+  background: var(--apple-surface);
+  border: 1px solid var(--apple-border);
+  border-radius: var(--apple-radius-lg);
+  padding: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  margin-bottom: 24px;
+  transition: border-color 160ms ease;
+}
+
+.mpdc-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.mpdc-card-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mpdc-card-icon-pill {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--apple-radius-sm);
+  background: var(--apple-surface-secondary);
+  border: 1px solid var(--apple-border);
+  color: var(--apple-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.mpdc-card-title-group h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--apple-text);
+  letter-spacing: -0.015em;
+}
+
+.mpdc-card-title-group p {
+  margin: 2px 0 0;
+  font-size: 0.8rem;
+  color: var(--apple-text-secondary);
+  letter-spacing: -0.005em;
+}
+
+/* ── 4-Stage Pipeline Progress Strip ───────────────────────────────────────── */
+.mpdc-pipeline-wrap {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.mpdc-pipeline-step {
+  background: var(--apple-surface-secondary);
+  border: 1px solid var(--apple-border);
+  border-radius: var(--apple-radius-md);
+  padding: 16px 18px;
+  position: relative;
+  overflow: hidden;
+  transition: all 160ms ease;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+}
+
+.mpdc-pipeline-step:hover {
+  background: var(--apple-surface);
+  border-color: var(--apple-border-strong);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+  transform: translateY(-1px);
+}
+
+.mpdc-pipeline-step.active {
+  background: var(--apple-surface);
+  border-color: var(--apple-accent);
+  box-shadow: 0 0 0 1px var(--apple-accent);
+}
+
+.mpdc-pipeline-bar-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+}
+
+.mpdc-pipeline-step:nth-child(1) .mpdc-pipeline-bar-top { background: var(--apple-accent); }
+.mpdc-pipeline-step:nth-child(2) .mpdc-pipeline-bar-top { background: var(--apple-gold); }
+.mpdc-pipeline-step:nth-child(3) .mpdc-pipeline-bar-top { background: #8b5cf6; }
+.mpdc-pipeline-step:nth-child(4) .mpdc-pipeline-bar-top { background: var(--apple-safe); }
+
+.mpdc-pipeline-step-num {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--apple-text-secondary);
+  letter-spacing: 0.05em;
+}
+
+.mpdc-pipeline-step-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--apple-text);
+  margin: 3px 0 6px;
+  letter-spacing: -0.01em;
+}
+
+.mpdc-pipeline-step-count {
+  font-size: 1.45rem;
+  font-weight: 800;
+  color: var(--apple-text);
+  letter-spacing: -0.03em;
+  margin-top: auto;
+  line-height: 1;
+}
+
+/* ── Filter & Search Toolbar ───────────────────────────────────────────────── */
+.mpdc-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+
+.mpdc-search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--apple-surface-secondary);
+  border: 1px solid var(--apple-border);
+  border-radius: var(--apple-radius-full);
+  padding: 8px 16px;
+  min-width: 280px;
+  flex: 1;
+  max-width: 440px;
+  transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
+}
+
+.mpdc-search-box:focus-within {
+  background: var(--apple-surface);
+  border-color: var(--apple-accent);
+  box-shadow: var(--apple-focus-ring);
+}
+
+.mpdc-search-input {
+  border: none;
+  outline: none;
+  background: transparent;
+  width: 100%;
+  font-size: 0.84rem;
+  color: var(--apple-text);
+  font-family: var(--apple-font);
+}
+
+.mpdc-search-input::placeholder {
+  color: var(--apple-text-tertiary);
+}
+
+.mpdc-filters-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.mpdc-select {
+  background: var(--apple-surface-secondary);
+  border: 1px solid var(--apple-border);
+  border-radius: var(--apple-radius-sm);
+  color: var(--apple-text);
+  padding: 8px 14px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  font-family: var(--apple-font);
+  outline: none;
+  cursor: pointer;
+  transition: all 140ms ease;
+}
+
+.mpdc-select:hover {
+  background: var(--apple-surface-tertiary);
+  border-color: var(--apple-border-strong);
+}
+
+.mpdc-select:focus {
+  background: var(--apple-surface);
+  border-color: var(--apple-accent);
+  box-shadow: var(--apple-focus-ring);
+}
+
+/* ── Minimalist Apple Data Tables ──────────────────────────────────────────── */
+.mpdc-table-wrap {
+  overflow-x: auto;
+  border-radius: var(--apple-radius-md);
+  border: 1px solid var(--apple-border);
+  background: var(--apple-surface);
+}
+
+.mpdc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84rem;
+  text-align: left;
+}
+
+.mpdc-table thead th {
+  background: var(--apple-surface-secondary);
+  color: var(--apple-text-secondary);
+  padding: 12px 16px;
+  font-weight: 600;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--apple-border);
+  white-space: nowrap;
+}
+
+.mpdc-table tbody td {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--apple-border);
+  color: var(--apple-text);
+  vertical-align: middle;
+}
+
+.mpdc-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.mpdc-table tbody tr {
+  transition: background 120ms ease;
+}
+
+.mpdc-table tbody tr:hover {
+  background: var(--apple-surface-secondary);
+}
+
+.mpdc-tracking-pill {
+  font-family: "SF Mono", Menlo, Consolas, Monaco, monospace;
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: var(--apple-radius-sm);
+  background: var(--apple-surface-secondary);
+  border: 1px solid var(--apple-border);
+  color: var(--apple-text);
+  white-space: nowrap;
+}
+
+/* ── Status Badges (Apple Minimalist Flat) ─────────────────────────────────── */
+.mpdc-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: var(--apple-radius-full);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.mpdc-status-badge.submitted,
+.mpdc-status-badge.pending {
+  background: rgba(0, 113, 227, 0.08);
+  color: var(--apple-accent);
+  border: 1px solid rgba(0, 113, 227, 0.2);
+}
+
+.mpdc-status-badge.ocular,
+.mpdc-status-badge.ocular_inspection,
+.mpdc-status-badge.for_ocular_inspection {
+  background: var(--apple-gold-bg);
+  color: var(--apple-gold);
+  border: 1px solid rgba(217, 119, 6, 0.25);
+}
+
+.mpdc-status-badge.in_review {
+  background: rgba(139, 92, 246, 0.1);
+  color: #7c3aed;
+  border: 1px solid rgba(139, 92, 246, 0.25);
+}
+
+.mpdc-status-badge.approved,
+.mpdc-status-badge.completed {
+  background: var(--apple-safe-bg);
+  color: var(--apple-safe);
+  border: 1px solid rgba(22, 163, 74, 0.25);
+}
+
+.mpdc-status-badge.flagged,
+.mpdc-status-badge.urgent {
+  background: var(--apple-danger-bg);
+  color: var(--apple-danger);
+  border: 1px solid rgba(220, 38, 38, 0.25);
+}
+
+/* ── CLUP Ordinances Grid ──────────────────────────────────────────────────── */
+.mpdc-clup-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.mpdc-clup-card {
+  background: var(--apple-surface-secondary);
+  border: 1px solid var(--apple-border);
+  border-radius: var(--apple-radius-md);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.mpdc-clup-card:hover {
+  transform: translateY(-2px);
+  background: var(--apple-surface);
+  border-color: var(--apple-border-strong);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+}
+
+.mpdc-clup-badge {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 3px 10px;
+  border-radius: var(--apple-radius-full);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+
+.mpdc-clup-badge.r1 { background: rgba(59, 130, 246, 0.12); color: #2563eb; }
+.mpdc-clup-badge.r2 { background: rgba(14, 165, 233, 0.12); color: #0284c7; }
+.mpdc-clup-badge.c1 { background: rgba(245, 158, 11, 0.12); color: #b45309; }
+.mpdc-clup-badge.agri { background: rgba(34, 197, 94, 0.12); color: #15803d; }
+.mpdc-clup-badge.eco { background: rgba(16, 185, 129, 0.12); color: #047857; }
+
+.mpdc-clup-card h4 {
+  margin: 0 0 6px;
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: var(--apple-text);
+  letter-spacing: -0.015em;
+}
+
+.mpdc-clup-card p {
+  margin: 0 0 14px;
+  font-size: 0.8rem;
+  color: var(--apple-text-secondary);
+  line-height: 1.5;
+  flex: 1;
+}
+
+.mpdc-clup-rules {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--apple-text);
+  padding: 6px 10px;
+  border-radius: var(--apple-radius-sm);
+  background: var(--apple-surface);
+  border: 1px solid var(--apple-border);
+}
+
+/* ── Interactive Modal Dialog (Apple Minimalist Glass) ─────────────────────── */
+.mpdc-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: mobileNavFadeIn 180ms ease forwards;
+}
+
+.mpdc-modal-card {
+  background: var(--apple-surface);
+  border: 1px solid var(--apple-border-strong);
+  border-radius: var(--apple-radius-lg);
+  max-width: 620px;
+  width: 100%;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: mobileNavSlideDown 200ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.mpdc-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--apple-border);
+}
+
+.mpdc-modal-title h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--apple-text);
+  letter-spacing: -0.015em;
+}
+
+.mpdc-modal-title p {
+  margin: 2px 0 0;
+  font-size: 0.8rem;
+  color: var(--apple-text-secondary);
+}
+
+.mpdc-modal-close-btn {
+  background: var(--apple-surface-secondary);
+  border: 1px solid var(--apple-border);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  color: var(--apple-text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  transition: all 140ms ease;
+}
+
+.mpdc-modal-close-btn:hover {
+  background: var(--apple-surface-tertiary);
+  color: var(--apple-text);
+  border-color: var(--apple-border-strong);
+}
+
+.mpdc-modal-body {
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+  max-height: calc(85vh - 140px);
+}
+
+.mpdc-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  background: var(--apple-surface-secondary);
+  border: 1px solid var(--apple-border);
+  border-radius: var(--apple-radius-md);
+  padding: 14px 16px;
+}
+
+.mpdc-detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mpdc-detail-key {
+  font-size: 0.72rem;
+  color: var(--apple-text-secondary);
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.mpdc-detail-val {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--apple-text);
+}
+
+.mpdc-modal-footer {
+  padding: 16px 24px;
+  border-top: 1px solid var(--apple-border);
+  background: var(--apple-surface-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* User pill in nav */
+.mpdc-user-pill {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  border-radius: var(--apple-radius-full);
+  background: var(--apple-surface-secondary);
+  border: 1px solid var(--apple-border);
+  font-size: 0.78rem;
+  color: var(--apple-text);
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+}
+
+.mpdc-user-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #16a34a;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1024px) {
+  .mpdc-hero-content {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 768px) {
+  .mpdc-body-layout {
+    flex-direction: column;
+  }
+  .mpdc-sidebar {
+    width: 100%;
+    min-width: 100%;
+    max-width: 100%;
+    height: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--apple-border);
+  }
+  .mpdc-main-content {
+    padding: 16px;
+  }
+  .mpdc-detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── MPDC Personnel Directory & Add Staff Controls ────────────────────────── */
+.mpdc-staff-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  border-radius: var(--apple-radius-md);
+  background: var(--apple-surface-secondary);
+  border: 1px solid var(--apple-border);
+}
+
+.mpdc-staff-search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 220px;
+  background: var(--apple-surface);
+  border: 1px solid var(--apple-border);
+  border-radius: var(--apple-radius-sm);
+  padding: 6px 12px;
+  box-sizing: border-box;
+}
+
+.mpdc-staff-search-box input {
+  border: none;
+  background: transparent;
+  color: var(--apple-text);
+  font-size: 0.82rem;
+  width: 100%;
+  outline: none;
+}
+
+.mpdc-staff-filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.mpdc-btn-emerald {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  color: #ffffff !important;
+  font-weight: 600;
+  font-size: 0.82rem;
+  padding: 8px 16px;
+  border-radius: var(--apple-radius-sm);
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(5, 150, 105, 0.28);
+  transition: all 140ms ease;
+  white-space: nowrap;
+}
+
+.mpdc-btn-emerald:hover {
+  background: linear-gradient(135deg, #047857 0%, #065f46 100%);
+  box-shadow: 0 6px 18px rgba(5, 150, 105, 0.38);
+  transform: translateY(-1px);
+}
+
+.mpdc-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.mpdc-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.mpdc-form-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--apple-text);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.mpdc-form-input {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: var(--apple-radius-sm);
+  border: 1px solid var(--apple-border);
+  background: var(--apple-surface);
+  color: var(--apple-text);
+  font-size: 0.84rem;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+  transition: all 140ms ease;
+}
+
+.mpdc-form-input:focus {
+  border-color: #059669;
+  box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.18);
+}
+
+.mpdc-barangay-chips-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 130px;
+  overflow-y: auto;
+  padding: 8px;
+  border-radius: var(--apple-radius-sm);
+  background: var(--apple-surface-secondary);
+  border: 1px solid var(--apple-border);
+}
+
+.mpdc-brgy-chip {
+  font-size: 0.72rem;
+  padding: 4px 10px;
+  border-radius: var(--apple-radius-full);
+  border: 1px solid var(--apple-border);
+  background: var(--apple-surface);
+  color: var(--apple-text-secondary);
+  cursor: pointer;
+  transition: all 120ms ease;
+  user-select: none;
+}
+
+.mpdc-brgy-chip:hover {
+  border-color: #059669;
+  color: var(--apple-text);
+}
+
+.mpdc-brgy-chip.selected {
+  background: #059669;
+  color: #ffffff;
+  border-color: #047857;
+  font-weight: 600;
+}
+
+.mpdc-account-box {
+  padding: 12px 14px;
+  border-radius: var(--apple-radius-md);
+  background: var(--apple-surface-secondary);
+  border: 1px solid var(--apple-border);
+  margin-top: 8px;
+}
+
+.mpdc-table-btn {
+  padding: 4px 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-radius: var(--apple-radius-sm);
+  border: 1px solid var(--apple-border);
+  background: var(--apple-surface);
+  color: var(--apple-text);
+  cursor: pointer;
+  transition: all 120ms ease;
+  white-space: nowrap;
+}
+
+.mpdc-table-btn:hover {
+  background: var(--apple-surface-secondary);
+  border-color: var(--apple-border-strong);
+}
+
+.mpdc-table-btn.delete {
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.mpdc-table-btn.delete:hover {
+  background: rgba(239, 68, 68, 0.1);
+}

@@ -10,6 +10,7 @@ import DocumentsPage from "./DocumentsPage";
 import AnalyticsPage from "./AnalyticsPage";
 import CitizenPortal from "./CitizenPortal";
 import NewApplicationPage from "./NewApplicationPage";
+import InfaTrackApplicationForm from "./InfaTrackApplicationForm";
 import ApplicantTrackingPage from "./ApplicantTrackingPage";
 import EngagementPage from "./EngagementPage";
 import { addProjectToFirestore } from "../services/firestore-projects";
@@ -40,7 +41,6 @@ import { departmentForRole } from "../lib/planning-permissions";
 import { buildOpsAlerts, type OpsAlert } from "../lib/ops-alerts";
 import { assetQueryParam } from "../lib/project-link";
 import { startPhotoQueueFlusher } from "../lib/photo-queue";
-import { inspectGlbFile, type GlbTextureReport } from "../lib/inspect-glb";
 import {
   makeMapShape,
   shapeLabel,
@@ -52,12 +52,9 @@ import { NotifyOpsList } from "./NotifyOpsList";
 import { StadiaStylePicker } from "./StadiaStylePicker";
 import { buildHeatmapPoints, type BBox, type HeatmapMetric } from "../lib/heatmap";
 import {
-  DEFAULT_MAP_SETTINGS,
   loadMapSettings,
   saveMapSettings,
   type MapSettings,
-  type ShadowQuality,
-  type TerrainQuality,
 } from "../lib/map-settings";
 import {
   getTerrainSource,
@@ -93,7 +90,11 @@ import { earthquakeProneModel, type EarthquakeGridCell, type EarthquakeTrainStat
 import { classAdvice, classColor } from "../lib/earthquake-labels";
 import { ProjectMonitoringPanel } from "./ProjectMonitoringPanel";
 import { EngineerApplicationsPage } from "./EngineerApplicationsPage";
+import { EngineerDashboardPage } from "./EngineerDashboardPage";
+import { EngineeringDocumentsPage } from "./EngineeringDocumentsPage";
 import { ThemeToggle } from "./ThemeToggle";
+import { resolveTheme, subscribeTheme } from "../lib/theme";
+import type { StadiaMapStyleId } from "../lib/stadia";
 import { ProjectChat } from "./ProjectChat";
 import { ChangePasswordForm } from "./ChangePasswordForm";
 
@@ -104,9 +105,10 @@ import {
   sessionForRole,
   type SessionUser,
 } from "../services/auth";
-import TreasuryOfficePage from "./TreasuryOfficePage";
-import NegosyoCenterPage from "./NegosyoCenterPage";
 import ZoningPermitsPage from "./ZoningPermitsPage";
+import { UserManagementPage } from "./UserManagementPage";
+import { MpdcAdminPage } from "./MpdcAdminPage";
+import { ForcedPasswordResetModal } from "./ForcedPasswordResetModal";
 import { setAuditActor } from "../services/firestore-audit";
 import AuditPage from "./AuditPage";
 import PlanningPage from "./PlanningPage";
@@ -114,6 +116,9 @@ import { PrivateEngineerPortal } from "./PrivateEngineerPortal";
 import { SiteProgressPopup } from "./SiteProgressPopup";
 import { InspectionTaskQueue } from "./InspectionTaskQueue";
 import { InspectionUpdateModal } from "./InspectionUpdateModal";
+import { MaintenanceScreen } from "./MaintenanceScreen";
+import { fetchPublicConfig } from "../services/systemConfig";
+import type { MaintenanceModeStatus } from "../types";
 
 // ── Dashboard icons ────────────────────────────────────────────────────────────
 const IconClipboard = () => (
@@ -140,74 +145,7 @@ const IconWarn = () => (
   </svg>
 );
 
-// ── Model catalog SVG icons ──────────────────────────────────────────────
-const ModelIcons: Record<string, React.FC<{ size?: number; color?: string }>> = {
-  office: ({ size = 18, color = "currentColor" }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="3" width="18" height="18" rx="1" /><path d="M3 9h18" /><path d="M9 21V9" /><path d="M7 6h.01" /><path d="M12 6h.01" /><path d="M17 6h.01" />
-    </svg>
-  ),
-  school: ({ size = 18, color = "currentColor" }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M22 10v6M2 10l10-5 10 5-10 5z" /><path d="M6 12v5c3 3 9 3 12 0v-5" />
-    </svg>
-  ),
-  hospital: ({ size = 18, color = "currentColor" }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="3" width="18" height="18" rx="1" /><path d="M12 8v8" /><path d="M8 12h8" />
-    </svg>
-  ),
-  barangay_hall: ({ size = 18, color = "currentColor" }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 21h18" /><path d="M5 21V7l7-4 7 4v14" /><path d="M9 21v-4h6v4" /><path d="M9 10h.01" /><path d="M15 10h.01" />
-    </svg>
-  ),
-  municipal_hall: ({ size = 18, color = "currentColor" }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 21h18" /><path d="M4 21V10l8-6 8 6v11" /><path d="M9 21v-6h6v6" /><path d="M12 4v3" /><path d="M8 14h.01" /><path d="M16 14h.01" />
-    </svg>
-  ),
-  rhu: ({ size = 18, color = "currentColor" }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 21h18" /><path d="M5 21V9l7-5 7 5v12" /><path d="M12 11v6" /><path d="M9 14h6" />
-    </svg>
-  ),
-  evacuation_center: ({ size = 18, color = "currentColor" }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" />
-    </svg>
-  ),
-  road: ({ size = 18, color = "currentColor" }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M5 21L9 3" /><path d="M19 21L15 3" /><path d="M9 12h6" /><path d="M10 7h4" /><path d="M10 17h4" />
-    </svg>
-  ),
-  bridge: ({ size = 18, color = "currentColor" }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M2 18h20" /><path d="M2 18c0-4 4-7 10-7s10 3 10 7" /><path d="M6 18v-3" /><path d="M18 18v-3" />
-    </svg>
-  ),
-  water_tank: ({ size = 18, color = "currentColor" }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <ellipse cx="12" cy="7" rx="9" ry="4" /><path d="M3 7v10c0 2.2 4 4 9 4s9-1.8 9-4V7" /><path d="M3 12c0 2.2 4 4 9 4s9-1.8 9-4" />
-    </svg>
-  ),
-  solar_farm: ({ size = 18, color = "currentColor" }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="4" /><path d="M12 2v2" /><path d="M12 20v2" /><path d="M4.93 4.93l1.41 1.41" /><path d="M17.66 17.66l1.41 1.41" /><path d="M2 12h2" /><path d="M20 12h2" /><path d="M6.34 17.66l-1.41 1.41" /><path d="M19.07 4.93l-1.41 1.41" />
-    </svg>
-  ),
-  barn: ({ size = 18, color = "currentColor" }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 21h18" /><path d="M3 10l9-7 9 7" /><path d="M5 21V10" /><path d="M19 21V10" /><rect x="9" y="14" width="6" height="7" />
-    </svg>
-  ),
-  construction: ({ size = 18, color = "currentColor" }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M2 20h20" /><path d="M6 20V10l6-6 6 6v10" /><path d="M12 20v-6" /><path d="M9 14h6" /><path d="M3 10h18" />
-    </svg>
-  ),
-};
+
 
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined;
@@ -300,6 +238,26 @@ function levelColor(level: "LOW" | "MODERATE" | "HIGH") {
   if (level === "HIGH") return "rgba(255, 77, 79, 0.55)";
   if (level === "MODERATE") return "rgba(61, 155, 95, 0.45)";
   return "rgba(61, 155, 95, 0.30)";
+}
+
+function getRoleTopNavAccentClass(role?: string | null): string {
+  if (!role) return "";
+  switch (role) {
+    case "MPDC":
+      return "topnav-accent-mpdc";
+    case "Engineer":
+      return "topnav-accent-engineering";
+    case "Barangay Official":
+      return "topnav-accent-barangay";
+    case "Super Admin":
+      return "topnav-accent-admin";
+    case "Private Engineer":
+      return "topnav-accent-private";
+    case "Agriculture":
+      return "topnav-accent-agriculture";
+    default:
+      return "";
+  }
 }
 
 function formatRealDate(iso?: string | null): string {
@@ -526,14 +484,33 @@ export type AppScreen =
   | "engagement"
   | "citizen"
   | "services"
-  | "audit"
-  | "negosyo"
-  | "treasury"
   | "permits"
   | "new_application"
   | "applicant_tracking"
   | "pengineer"
-  | "engineer_applications";
+  | "engineer_applications"
+  | "engineer_dashboard"
+  | "engineer_documents"
+  | "admin_users"
+  | "mpdc_admin"
+  | "infa_form";
+
+export const PROTECTED_STAFF_SCREENS: Set<AppScreen> = new Set([
+  "app",
+  "permits",
+  "engineer_applications",
+  "engineer_dashboard",
+  "engineer_documents",
+  "inventory",
+  "planning",
+  "documents",
+  "analytics",
+  "engagement",
+  "audit",
+  "admin_users",
+  "mpdc_admin",
+  "pengineer",
+]);
 
 export function parseScreenFromLocation(): { screen: AppScreen; trackingRef?: string } {
   if (typeof window === "undefined") {
@@ -549,8 +526,8 @@ export function parseScreenFromLocation(): { screen: AppScreen; trackingRef?: st
     const screenParam = params.get("screen");
     if (screenParam && [
       "landing", "login", "app", "inventory", "planning", "documents", "analytics",
-      "engagement", "citizen", "services", "audit", "negosyo", "treasury", "permits",
-      "new_application", "applicant_tracking", "pengineer", "engineer_applications"
+      "engagement", "citizen", "services", "audit", "permits",
+      "new_application", "applicant_tracking", "pengineer", "engineer_applications", "engineer_dashboard", "engineer_documents", "admin_users", "mpdc_admin"
     ].includes(screenParam)) {
       return { screen: screenParam as AppScreen };
     }
@@ -573,6 +550,9 @@ export function parseScreenFromLocation(): { screen: AppScreen; trackingRef?: st
     case "/new_application":
     case "/apply":
       return { screen: "new_application" };
+    case "/infa-form":
+    case "/modern-form":
+      return { screen: "infa_form" };
     case "/track":
     case "/tracking":
     case "/applicant-tracking":
@@ -596,9 +576,18 @@ export function parseScreenFromLocation(): { screen: AppScreen; trackingRef?: st
     case "/permits":
     case "/zoning":
       return { screen: "permits" };
+    case "/engineer-dashboard":
+    case "/engineer_dashboard":
+    case "/engineering":
+      return { screen: "engineer_dashboard" };
+    case "/engineer-documents":
+    case "/engineer_documents":
+    case "/engineering-docs":
+    case "/engineering-documents":
+      return { screen: "engineer_documents" };
     case "/engineer-applications":
     case "/engineer_applications":
-      return { screen: "engineer_applications" };
+      return { screen: "engineer_dashboard" };
     case "/documents":
     case "/dms":
       return { screen: "documents" };
@@ -610,21 +599,28 @@ export function parseScreenFromLocation(): { screen: AppScreen; trackingRef?: st
       return { screen: "audit" };
     case "/pengineer":
       return { screen: "pengineer" };
-    case "/treasury":
-    case "/revenue":
-      return { screen: "treasury" };
-    case "/negosyo":
-      return { screen: "negosyo" };
+    case "/users":
+    case "/admin-users":
+    case "/admin_users":
+    case "/user-management":
+      return { screen: "admin_users" };
+    case "/mpdc-admin":
+    case "/mpdc_admin":
+    case "/mpdcadmin":
+      return { screen: "mpdc_admin" };
     default: {
       const hash = (window.location.hash || "").toLowerCase().replace(/^#\/?/, "");
       if (hash === "login") return { screen: "login" };
       if (hash === "new-application" || hash === "apply") return { screen: "new_application" };
+      if (hash === "infa-form" || hash === "modern-form") return { screen: "infa_form" };
       if (hash === "track") return { screen: "applicant_tracking" };
       if (hash === "citizen") return { screen: "citizen" };
       if (hash === "app" || hash === "map") return { screen: "app" };
       if (hash === "permits") return { screen: "permits" };
       if (hash === "inventory") return { screen: "inventory" };
       if (hash === "planning") return { screen: "planning" };
+      if (hash === "users" || hash === "admin-users") return { screen: "admin_users" };
+      if (hash === "mpdc-admin" || hash === "mpdc_admin" || hash === "mpdcadmin") return { screen: "mpdc_admin" };
       return { screen: "landing" };
     }
   }
@@ -638,6 +634,8 @@ export function getUrlForScreen(targetScreen: AppScreen, trackingRef?: string): 
       return "/login";
     case "new_application":
       return "/new-application";
+    case "infa_form":
+      return "/infa-form";
     case "applicant_tracking":
       return trackingRef ? `/track?track=${encodeURIComponent(trackingRef)}` : "/track";
     case "citizen":
@@ -654,6 +652,8 @@ export function getUrlForScreen(targetScreen: AppScreen, trackingRef?: string): 
       return "/permits";
     case "engineer_applications":
       return "/engineer-applications";
+    case "engineer_documents":
+      return "/engineer-documents";
     case "documents":
       return "/documents";
     case "analytics":
@@ -664,10 +664,10 @@ export function getUrlForScreen(targetScreen: AppScreen, trackingRef?: string): 
       return "/audit";
     case "pengineer":
       return "/pengineer";
-    case "treasury":
-      return "/treasury";
-    case "negosyo":
-      return "/negosyo";
+    case "admin_users":
+      return "/users";
+    case "mpdc_admin":
+      return "/mpdc-admin";
     default:
       return "/";
   }
@@ -680,34 +680,35 @@ export function getPageTitleForScreen(targetScreen: AppScreen): string {
     case "login":
       return "Sign In | INFA-TRACK Luisiana";
     case "new_application":
-      return "Project Application Intake | INFA-TRACK Luisiana";
+      return "Online Application | INFA-TRACK Luisiana";
     case "applicant_tracking":
       return "Permit Tracking | INFA-TRACK Luisiana";
     case "citizen":
-      return "Bantay-Bayan Citizen Portal | INFA-TRACK Luisiana";
+      return "Citizen Portal | INFA-TRACK Luisiana";
+    case "services":
+      return "Online Services | INFA-TRACK Luisiana";
     case "app":
-      return "3D GIS Map | INFA-TRACK Luisiana";
+      return "INFA-TRACK Luisiana | Infrastructure GIS & Siting";
     case "inventory":
-      return "Infrastructure Inventory | INFA-TRACK Luisiana";
+      return "Asset Inventory | INFA-TRACK Luisiana";
     case "planning":
-      return "Comprehensive Planning | INFA-TRACK Luisiana";
+      return "Planning & Proposals | INFA-TRACK Luisiana";
     case "permits":
-      return "Zoning & Land Use Permits | INFA-TRACK Luisiana";
+      return "Zoning & Permitting | INFA-TRACK Luisiana";
     case "engineer_applications":
-      return "Engineer Applications | INFA-TRACK Luisiana";
+      return "Engineering Clearance & Pinning | INFA-TRACK Luisiana";
+    case "engineer_documents":
+      return "Engineering Documents Vault | INFA-TRACK Luisiana";
     case "documents":
-      return "Documents & Regulations | INFA-TRACK Luisiana";
+      return "Document Repository | INFA-TRACK Luisiana";
     case "analytics":
-      return "Executive Analytics | INFA-TRACK Luisiana";
+      return "Analytics & Insights | INFA-TRACK Luisiana";
     case "engagement":
-      return "Citizen Engagement | INFA-TRACK Luisiana";
+      return "Public Engagement | INFA-TRACK Luisiana";
     case "audit":
-      return "System Audit Logs | INFA-TRACK Luisiana";
+      return "Audit Trail | INFA-TRACK Luisiana";
     case "pengineer":
       return "Private Engineer Portal | INFA-TRACK Luisiana";
-    case "treasury":
-    case "negosyo":
-      return "Treasury & Revenue Office | INFA-TRACK Luisiana";
     default:
       return "INFA-TRACK Luisiana";
   }
@@ -724,6 +725,9 @@ export default function App() {
   const [currentSession, setCurrentSession] = useState<SessionUser | null>(null);
   const currentRole = currentSession?.role ?? null;
   const [screen, setScreen] = useState<AppScreen>(initialRoute.screen);
+  const [isAuthChecking, setIsAuthChecking] = useState<boolean>(() => {
+    return PROTECTED_STAFF_SCREENS.has(initialRoute.screen);
+  });
   const [trackingReference, setTrackingReference] = useState<string>(initialRoute.trackingRef || "");
   const isPopStateRef = useRef(false);
 
@@ -738,9 +742,37 @@ export default function App() {
     return stored === "accepted" ? "accepted" : stored === "declined" ? "declined" : "pending";
   });
 
-  const navigateBack = useCallback((fallbackScreen: AppScreen = "landing") => {
-    setScreen(fallbackScreen);
+  const [maintenanceStatus, setMaintenanceStatus] = useState<MaintenanceModeStatus | null>(null);
+
+  useEffect(() => {
+    fetchPublicConfig()
+      .then((cfg) => {
+        if (cfg?.maintenance) {
+          setMaintenanceStatus(cfg.maintenance);
+        }
+      })
+      .catch((err) => console.warn("[SystemConfig] Fetch public config error:", err));
+
+    const socket = connectRealtime(BACKEND_URL);
+    socket.on("system:maintenance" as any, (status: MaintenanceModeStatus) => {
+      setMaintenanceStatus(status);
+    });
+
+    return () => {
+      socket.off("system:maintenance" as any);
+      socket.disconnect();
+    };
   }, []);
+
+  const navigateBack = useCallback((fallbackScreen: AppScreen = "landing") => {
+    if (fallbackScreen === "app") {
+      if (currentRole === "MPDC" || currentRole === "MPDC Admin" || currentSession?.username === "mpdc_admin" || currentSession?.username === "mpdc") {
+        setScreen(currentSession?.username === "mpdc_admin" || currentSession?.role === "MPDC Admin" ? "mpdc_admin" : "permits");
+        return;
+      }
+    }
+    setScreen(fallbackScreen);
+  }, [currentRole, currentSession]);
 
   // Listen to browser Back/Forward (popstate) navigation
   useEffect(() => {
@@ -811,31 +843,68 @@ export default function App() {
   useEffect(() => {
     seedAccounts().catch((err) => console.warn("[Auth] Seed accounts failed:", err));
 
-    if (cookieConsent === "accepted") {
-      restoreSession()
-        .then((saved) => {
-          if (!saved) return;
+    restoreSession()
+      .then((saved) => {
+        setIsAuthChecking(false);
+        if (saved) {
           setAuditActor(saved);
           setCurrentSession(saved);
           setScreen((current) => {
+            // Guard: If on admin_users, must be Super Admin
+            if (current === "admin_users" && saved.role !== "Super Admin") {
+              return "landing";
+            }
+            // MPDC Admin lands on dedicated MPDC executive dashboard!
+            if (saved.username === "mpdc_admin" || saved.role === "MPDC Admin") {
+              if (current === "app" || current === "landing" || current === "login" || current === "admin_users") {
+                return "mpdc_admin";
+              }
+            }
+            // Super Admin lands on user management
+            if (saved.role === "Super Admin" && (current === "app" || current === "landing" || current === "login")) {
+              return "admin_users";
+            }
+            // MPDC staff must land on permits to review & approve citizen applicants!
+            if (saved.role === "MPDC" && saved.username !== "mpdc_admin" && (current === "app" || current === "landing" || current === "login")) {
+              return "permits";
+            }
             // Only auto-redirect to default role screen if user is on landing or login
             if (current === "landing" || current === "login") {
               return saved.role === "Barangay Official"
                 ? "planning"
-                : saved.role === "Treasury Office" || saved.role === "Negosyo Center"
-                  ? "treasury"
-                  : saved.role === "Private Engineer"
-                    ? "pengineer"
-                    : saved.role === "MPDC"
-                      ? "permits"
-                      : "app";
+                : saved.role === "Private Engineer"
+                  ? "pengineer"
+                  : saved.role === "MPDC"
+                    ? (saved.username === "mpdc_admin" || saved.role === "MPDC Admin" ? "mpdc_admin" : "permits")
+                    : "app";
             }
             return current;
           });
-        })
-        .catch((err) => console.warn("[Auth] restore session failed:", err));
-    }
+        } else {
+          // No active session on this device
+          setCurrentSession(null);
+          setScreen((current) => {
+            if (PROTECTED_STAFF_SCREENS.has(current)) {
+              return "login";
+            }
+            return current;
+          });
+        }
+      })
+      .catch((err) => {
+        console.warn("[Auth] restore session failed:", err);
+        setIsAuthChecking(false);
+        setCurrentSession(null);
+        setScreen((current) => (PROTECTED_STAFF_SCREENS.has(current) ? "login" : current));
+      });
   }, []);
+
+  // Continuous route protection: immediately eject unauthenticated users from staff screens
+  useEffect(() => {
+    if (!isAuthChecking && !currentSession && PROTECTED_STAFF_SCREENS.has(screen)) {
+      setScreen("login");
+    }
+  }, [screen, currentSession, isAuthChecking]);
 
   function handleCookieAccept() {
     localStorage.setItem("infatrack_cookie_consent", "accepted");
@@ -849,7 +918,50 @@ export default function App() {
 
   const [connected, setConnected] = useState(false);
   const [toggles, setToggles] = useState<LayerToggles>(DEFAULT_TOGGLES);
-  const [mapSettings, setMapSettings] = useState<MapSettings>(() => loadMapSettings());
+  const [mapSettings, setMapSettings] = useState<MapSettings>(() => {
+    const loaded = loadMapSettings();
+    const currentTheme = resolveTheme();
+    if (currentTheme === "dark" && (!loaded.basemapStyle || loaded.basemapStyle === "outdoors")) {
+      return { ...loaded, basemapStyle: "alidade_smooth_dark" };
+    }
+    return loaded;
+  });
+
+  const lastLightStyleRef = useRef<StadiaMapStyleId>(
+    mapSettings.basemapStyle && mapSettings.basemapStyle !== "alidade_smooth_dark"
+      ? mapSettings.basemapStyle
+      : "outdoors",
+  );
+
+  // Automatically switch map skin between Stamen Dark and light style when theme toggles
+  useEffect(() => {
+    return subscribeTheme((theme) => {
+      if (theme === "dark") {
+        setMapSettings((prev) => {
+          if (prev.basemapStyle && prev.basemapStyle !== "alidade_smooth_dark") {
+            lastLightStyleRef.current = prev.basemapStyle;
+          }
+          return {
+            ...prev,
+            basemapStyle: "alidade_smooth_dark",
+          };
+        });
+        // Turn off satellite overlay if active so Stamen Dark is visible
+        setToggles((prev) => (prev.satellite ? { ...prev, satellite: false } : prev));
+      } else {
+        setMapSettings((prev) => {
+          if (prev.basemapStyle === "alidade_smooth_dark") {
+            return {
+              ...prev,
+              basemapStyle: lastLightStyleRef.current || "outdoors",
+            };
+          }
+          return prev;
+        });
+      }
+    });
+  }, []);
+
   useEffect(() => {
     saveMapSettings(mapSettings);
   }, [mapSettings]);
@@ -881,7 +993,13 @@ export default function App() {
   useEffect(() => {
     const id = assetQueryParam();
     if (!id) return;
-    if (currentSession && screen === "landing") setScreen("app");
+    if (currentSession && screen === "landing") {
+      if (currentRole === "MPDC" || currentRole === "MPDC Admin" || currentSession?.username === "mpdc_admin" || currentSession?.username === "mpdc") {
+        setScreen(currentSession?.username === "mpdc_admin" || currentSession?.role === "MPDC Admin" ? "mpdc_admin" : "permits");
+        return;
+      }
+      setScreen("app");
+    }
     if (screen !== "app" && screen !== "citizen") return;
     let tries = 0;
     const timer = window.setInterval(() => {
@@ -899,9 +1017,6 @@ export default function App() {
   const [selectedModel, setSelectedModel] = useState<ModelType>("office");
   const [placementRotation, setPlacementRotation] = useState(0);
   const [placingName, setPlacingName] = useState("");
-  const [customModelFile, setCustomModelFile] = useState<File | null>(null);
-  const [customModelPreview, setCustomModelPreview] = useState<string | null>(null);
-  const [customModelTextureReport, setCustomModelTextureReport] = useState<GlbTextureReport | null>(null);
   /** Approved proposal waiting for MPDC to click the map and pin the site. */
   const [pinProposal, setPinProposal] = useState<PlanningProposal | null>(null);
   const pinProposalRef = useRef<PlanningProposal | null>(null);
@@ -927,16 +1042,25 @@ export default function App() {
           .filter((x: any) => !x?.siteMarkerOnly || x?.isPrivateApplication)
           .filter((x: any) => x?.modelType !== "custom" && !x?.customModelUrl);
         setProjects(list);
+        try {
+          localStorage.setItem("infatrack-projects-cache", JSON.stringify(list));
+        } catch {
+          /* quota */
+        }
       }
     } catch (err) {
       console.warn("refreshProjects error:", err);
     }
   };
 
+  useEffect(() => {
+    void refreshProjects();
+  }, []);
+
   const placementToolbarOpen =
     ((pinProposal || pinCitizenApp) && currentRole === "MPDC" && screen === "app") ||
     (placementMode && currentRole === "Engineer" && screen === "app");
-  const [sidebarTab, setSidebarTab] = useState<"notify" | "layers" | "settings" | "account" | "risk" | "projects" | "climate" | "events" | "inspection">("notify");
+  const [sidebarTab, setSidebarTab] = useState<"notify" | "layers" | "account" | "risk" | "projects" | "climate" | "events" | "inspection">("notify");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
     typeof window !== "undefined" && window.matchMedia("(max-width: 1024px)").matches
   );
@@ -1075,7 +1199,6 @@ export default function App() {
   const [heatMetric, setHeatMetric] = useState<HeatmapMetric>("combined");
   const [viewport, setViewport] = useState<{ bbox: BBox; zoom: number } | null>(null);
   const [buildingExtrusionOpacity, setBuildingExtrusionOpacity] = useState(BUILDING_EXTRUSION_OPACITY_DEFAULT);
-  const [glbModelsOpacity, setGlbModelsOpacity] = useState(1);
 
   const [barangaysVisible, setBarangaysVisible] = useState(false);
   const [barangayAreas, setBarangayAreas] = useState<BarangayArea[]>([]);
@@ -1492,7 +1615,6 @@ export default function App() {
   const selectedModelRef = useRef<ModelType>("office");
   const placementRotationRef = useRef(0);
   const placingNameRef = useRef("");
-  const customModelFileRef = useRef<File | null>(null);
   // Set to true by BuildingOverlay when a building is clicked — prevents placement
   const buildingHitRef = useRef(false);
 
@@ -1518,7 +1640,6 @@ export default function App() {
   useEffect(() => { pendingShapeKindRef.current = pendingShapeKind; }, [pendingShapeKind]);
   useEffect(() => { placementRotationRef.current = placementRotation; }, [placementRotation]);
   useEffect(() => { placingNameRef.current = placingName; }, [placingName]);
-  useEffect(() => { customModelFileRef.current = customModelFile; }, [customModelFile]);
 
   // Edit Mode: neon street overlay + pulse
   useEffect(() => {
@@ -1948,46 +2069,6 @@ export default function App() {
     };
 
     try {
-      // If custom model is selected and a file is provided, upload it first
-      let customModelUrl: string | undefined;
-      if (selectedModelRef.current === "custom" && customModelFileRef.current) {
-        const file = customModelFileRef.current;
-        const maxMb = 500;
-        if (file.size > maxMb * 1024 * 1024) {
-          alert(`Model is too large (${(file.size / (1024 * 1024)).toFixed(1)}MB). Maximum is ${maxMb}MB.`);
-          return;
-        }
-
-        const formData = new FormData();
-        formData.append("model", file);
-
-        const uploadRes = await fetch(backendUrl("/api/upload-model"), {
-          method: "POST",
-          credentials: "include",
-          body: formData,
-        });
-
-        if (uploadRes.ok) {
-          const data = await uploadRes.json();
-          customModelUrl = data.url;
-          if (data.optimized && data.savedPercent > 0) {
-            console.info(
-              `[upload-model] Auto-optimized custom model: ${(data.originalSize / (1024 * 1024)).toFixed(1)}MB -> ${(data.size / (1024 * 1024)).toFixed(1)}MB (${data.savedPercent}% saved, ${data.drawCallsBefore ?? "?"} -> ${data.drawCallsAfter ?? "?"} draw calls)`,
-            );
-          }
-        } else {
-          let detail = "";
-          try {
-            const errBody = await uploadRes.json();
-            detail = errBody?.error ? `: ${errBody.error}` : "";
-          } catch {
-            detail = ` (HTTP ${uploadRes.status})`;
-          }
-          console.error("Failed to upload custom model", uploadRes.status, detail);
-          alert(`Failed to upload custom model${detail}`);
-          return;
-        }
-      }
 
       try {
         const res = await fetch(backendUrl("/api/projects"), {
@@ -2014,7 +2095,6 @@ export default function App() {
                   : modalDepartment || "LGU Implementing Office",
             location: { lat, lon: lng },
             rotation: placementRotationRef.current,
-            customModelUrl,
             mapShape: pendingShapeKindRef.current
               ? makeMapShape(
                 pendingShapeKindRef.current,
@@ -2039,13 +2119,7 @@ export default function App() {
         });
         pendingEditIdRef.current = project.id;
       } catch (backendErr) {
-        if (selectedModelRef.current === "custom" && !pendingShapeKindRef.current) {
-          throw backendErr;
-        }
-
-        const localProject: Project = customModelUrl
-          ? { ...fallbackProject, customModelUrl }
-          : fallbackProject;
+        const localProject: Project = fallbackProject;
         await addProjectToFirestore(localProject);
         setProjects((prev) => [localProject, ...prev]);
         pendingEditIdRef.current = localProject.id;
@@ -2211,8 +2285,8 @@ export default function App() {
                 appNotices.push({
                   id: `app:${a.id}:paid:${a.payment?.orNumber || "or"}`,
                   proposalId: a.id,
-                  title: `Bayad sa Treasury: ${a.payment?.orNumber || "O.R. Issued"}`,
-                  message: `₱${Number(a.payment?.amount || 0).toLocaleString()} para kay ${a.applicantName} (${a.trackingNumber}). Nabayaran: ${formatRealDate(payDate)}.`,
+                  title: `Opisyal na Resibo (O.R.): ${a.payment?.orNumber || "Uploaded"}`,
+                  message: `₱${Number(a.payment?.amount || 0).toLocaleString()} para kay ${a.applicantName} (${a.trackingNumber}). Petsa: ${formatRealDate(payDate)}.`,
                   at: payDate || "",
                   kind: "assigned",
                 });
@@ -2376,6 +2450,13 @@ export default function App() {
       return next;
     });
   }
+
+  // RBAC route guard: Engineers cannot access MPDC modules (planning, permits, documents, analytics)
+  useEffect(() => {
+    if (currentRole === "Engineer" && (screen === "documents" || screen === "planning" || screen === "permits" || screen === "analytics")) {
+      setScreen("app");
+    }
+  }, [currentRole, screen]);
 
   // Heatmap engine (Zoom Earth feel): regenerate points from live signals + viewport.
   useEffect(() => {
@@ -2687,35 +2768,48 @@ export default function App() {
     screen === "inventory" ||
     screen === "engagement" ||
     screen === "engineer_applications" ||
+    screen === "engineer_documents" ||
     screen === "audit";
 
   /**
    * Only show the municipal 3D map shell for the Engineer role on the map view ("app") or its quick overlays.
-   * MPDC role should NEVER see or run this 3D map situation dashboard (it is strictly for Engineer).
-   * On standalone pages like Zoning Permits ("permits"), New Application ("new_application"),
-   * Negosyo ("negosyo"), Engineer Portal ("pengineer"), Landing, or Tracking:
+   * MPDC role defaults to permits, but can view 3D map situation panel when selected.
+   * On standalone pages like Zoning Permits ("permits"),
+   * New Application ("new_application"), Engineer Portal ("pengineer"), Landing, or Tracking:
    * Completely shut down the municipal map so 0% GPU is consumed and no background maps lag the browser.
    */
   const isStandalonePage =
     screen === "permits" ||
     screen === "new_application" ||
     screen === "applicant_tracking" ||
-    screen === "treasury" ||
-    screen === "negosyo" ||
     screen === "pengineer" ||
+    screen === "admin_users" ||
     screen === "landing" ||
     screen === "login";
 
-  const showMapShell = !isStandalonePage && (screen === "app" || staffOverlay || mapHold);
+  const isRoleRestrictedFromMap =
+    currentRole === "MPDC" ||
+    currentRole === "MPDC Admin" ||
+    currentSession?.username === "mpdc_admin" ||
+    currentSession?.username === "mpdc";
+
+  const showMapShell = Boolean(currentSession) && !isStandalonePage && !isRoleRestrictedFromMap && (screen === "app" || staffOverlay || mapHold);
   const parkMapShell = showMapShell && screen !== "app";
 
-  // MPDC role defaults to permits, but can view 3D map situation panel when selected
-  /* Role separation relaxed: MPDC can toggle between permits and 3D map */
+  // Hard security & UX guard: MPDC lands on executive dashboard or permits (map is for engineers).
+  useEffect(() => {
+    if (
+      (currentRole === "MPDC" || currentRole === "MPDC Admin" || currentSession?.username === "mpdc_admin" || currentSession?.username === "mpdc") &&
+      (screen === "app" || screen === "citizen")
+    ) {
+      setScreen(currentSession?.username === "mpdc_admin" || currentSession?.role === "MPDC Admin" ? "mpdc_admin" : "permits");
+    }
+  }, [screen, currentRole, currentSession]);
 
   useEffect(() => {
-    if (screen === "app" && currentRole !== "MPDC") setMapHold(true);
+    if (screen === "app" && !isRoleRestrictedFromMap) setMapHold(true);
     if (screen === "citizen") setCitizenHold(true);
-  }, [screen, currentRole]);
+  }, [screen, currentRole, isRoleRestrictedFromMap]);
 
   function goHome() {
     const leaving = currentSession;
@@ -2730,11 +2824,69 @@ export default function App() {
   const showCitizenShell = screen === "citizen" || citizenHold;
   const parkCitizenShell = showCitizenShell && screen !== "citizen";
 
+  // System Maintenance Lock Screen Guard (Bypassed ONLY for Super Admin and Login screen)
+  if (maintenanceStatus?.enabled && currentSession?.role !== "Super Admin" && screen !== "login") {
+    return (
+      <MaintenanceScreen
+        maintenance={maintenanceStatus}
+        onAdminLogin={() => setScreen("login")}
+      />
+    );
+  }
+
   return (
     <div
       className={`appShell${sidebarCollapsed || screen !== "app" ? " sidebar-collapsed" : ""
         }${screen !== "app" ? " appShell--fullpage" : ""}`}
     >
+      {/* Super Admin Maintenance Bypass Banner */}
+      {maintenanceStatus?.enabled && currentSession?.role === "Super Admin" && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            zIndex: 999999,
+            background: "linear-gradient(90deg, #d97706 0%, #b45309 100%)",
+            color: "#ffffff",
+            padding: "8px 18px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            fontSize: "0.82rem",
+            fontWeight: 700,
+            boxShadow: "0 2px 10px rgba(0,0,0,0.2)",
+            letterSpacing: "0.01em",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+              <line x1="12" y1="9" x2="12" y2="13" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+            <span>NAKA-ON ANG SYSTEM MAINTENANCE MODE: Naka-lock ang system para sa publiko at kawani (Bypass Active para sa Super Admin).</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setScreen("admin_users")}
+            style={{
+              background: "#ffffff",
+              color: "#b45309",
+              border: "none",
+              borderRadius: "999px",
+              padding: "4px 12px",
+              fontSize: "0.75rem",
+              cursor: "pointer",
+              fontWeight: 700,
+              boxShadow: "0 1px 4px rgba(0,0,0,0.1)",
+            }}
+          >
+            I-manage sa Admin Panel →
+          </button>
+        </div>
+      )}
       {/* Landing page */}
       {screen === "landing" && (
         <LandingPage
@@ -2756,15 +2908,19 @@ export default function App() {
             setAuditActor(session);
             setCurrentSession(session);
             setScreen(
-              session.role === "Barangay Official"
-                ? "planning"
-                : session.role === "Treasury Office" || session.role === "Negosyo Center"
-                  ? "treasury"
+              session.username === "mpdc_admin" || session.role === "MPDC Admin"
+                ? "mpdc_admin"
+                : session.role === "Super Admin"
+                ? "admin_users"
+                : session.role === "Barangay Official"
+                  ? "planning"
                   : session.role === "Private Engineer"
                     ? "pengineer"
-                    : session.role === "MPDC"
-                      ? "permits"
-                      : "app"
+                    : session.role === "Engineer"
+                      ? "engineer_dashboard"
+                      : session.role === "MPDC"
+                        ? (session.username === "mpdc_admin" || session.role === "MPDC Admin" ? "mpdc_admin" : "permits")
+                        : "app"
             );
           }}
           onBack={() => navigateBack("landing")}
@@ -2790,10 +2946,33 @@ export default function App() {
         </div>
       )}
 
-      {/* Dedicated Treasury Office / Cashiering & Local Revenue Page (NO MAP) */}
-      {(screen === "treasury" || screen === "negosyo") && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 10000, overflowY: "auto", background: "#080c14" }}>
-          <TreasuryOfficePage onLogout={goHome} session={currentSession} />
+      {/* Super Admin User Management Dashboard */}
+      {screen === "admin_users" && currentSession?.role === "Super Admin" && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 10000, overflowY: "auto", background: "var(--apple-bg, #ffffff)" }}>
+          <UserManagementPage
+            session={currentSession}
+            onLogout={goHome}
+            onNavigate={(tgtScreen) => setScreen(tgtScreen as any)}
+          />
+        </div>
+      )}
+
+      {/* Dedicated MPDC Executive Admin Dashboard (Completely New, MPDC-Specific Dashboard) */}
+      {screen === "mpdc_admin" && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 10000, overflowY: "auto", background: "var(--apple-bg, #f4f6f9)" }}>
+          <MpdcAdminPage
+            session={currentSession}
+            onLogout={goHome}
+            onNavigate={(tgtScreen) => setScreen(tgtScreen as any)}
+          />
+        </div>
+      )}
+
+      {/* Route Guard Loading Screen */}
+      {isAuthChecking && PROTECTED_STAFF_SCREENS.has(screen) && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 99999, display: "flex", alignItems: "center", justifyContent: "center", background: "#ffffff", flexDirection: "column", gap: "16px", fontFamily: "system-ui, -apple-system, sans-serif" }}>
+          <div style={{ width: "36px", height: "36px", border: "3px solid #e5e5e7", borderTopColor: "#0071e3", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+          <span style={{ fontSize: "0.88rem", color: "#6e6e73", fontWeight: 500 }}>Sinusuri ang sesyon at pahintulot sa pag-access...</span>
         </div>
       )}
 
@@ -2801,7 +2980,13 @@ export default function App() {
       {screen === "new_application" && (
         <div style={{ position: "fixed", inset: 0, zIndex: 10000, overflowY: "auto", background: "var(--apple-bg, #ffffff)" }}>
           <NewApplicationPage
-            onBack={() => navigateBack(currentRole === "MPDC" ? "permits" : currentSession ? "app" : "landing")}
+            onBack={() => navigateBack(
+              currentRole === "MPDC"
+                ? (currentSession?.username === "mpdc_admin" || currentSession?.role === "MPDC Admin" ? "mpdc_admin" : "planning")
+                : currentSession
+                ? "app"
+                : "landing"
+            )}
             onCreated={(payload, trackingNo) => {
               const newProj: Project = {
                 id: `proj_${Date.now()}`,
@@ -2828,19 +3013,46 @@ export default function App() {
               };
               setProjects((prev) => [newProj, ...prev]);
               addProjectToFirestore(newProj).catch(() => undefined);
+              setSelected(newProj);
+              setScreen(
+                currentRole === "MPDC" || currentRole === "MPDC Admin" || currentSession?.username === "mpdc_admin" || currentSession?.username === "mpdc"
+                  ? (currentSession?.username === "mpdc_admin" || currentSession?.role === "MPDC Admin" ? "mpdc_admin" : "permits")
+                  : "app"
+              );
             }}
             onTrackApplication={(trackingNo) => {
               setTrackingReference(trackingNo);
               setScreen("applicant_tracking");
             }}
             onViewOnMap={(lon, lat) => {
-              setScreen("app");
               if (!currentSession) {
-                setCurrentSession(sessionForRole("Admin"));
+                setScreen("login");
+                return;
               }
+              if (
+                currentRole === "MPDC" ||
+                currentRole === "MPDC Admin" ||
+                currentSession?.username === "mpdc_admin" ||
+                currentSession?.username === "mpdc"
+              ) {
+                return;
+              }
+              setScreen("app");
               setTimeout(() => {
                 cesiumMapRef.current?.flyToLonLat(lon, lat, 2200);
               }, 200);
+            }}
+          />
+        </div>
+      )}
+
+      {/* Modern INFA-TRACK Form Component */}
+      {screen === "infa_form" && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 10000, overflowY: "auto", background: "#080E1A" }}>
+          <InfaTrackApplicationForm
+            onBack={() => navigateBack("landing")}
+            onProceedToGis={() => {
+              setScreen("new_application");
             }}
           />
         </div>
@@ -2851,7 +3063,13 @@ export default function App() {
         <div style={{ position: "fixed", inset: 0, zIndex: 10000, overflow: "hidden", background: "var(--apple-bg, #ffffff)" }}>
           <ApplicantTrackingPage
             initialTrackingNo={trackingReference}
-            onBack={() => navigateBack(currentSession ? "app" : "landing")}
+            onBack={() => navigateBack(
+              currentRole === "MPDC"
+                ? "permits"
+                : currentSession
+                ? "app"
+                : "landing"
+            )}
           />
         </div>
       )}
@@ -2875,66 +3093,114 @@ export default function App() {
       )}
 
       {/* Inventory / Planning / Documents / Analytics / Zoning Permits — overlays */}
-      {screen === "inventory" && (
+      {screen === "inventory" && currentSession && (
         <InventoryPage
-          onBack={() => navigateBack(currentRole === "MPDC" ? "permits" : "app")}
+          onBack={() => navigateBack(currentSession?.username === "mpdc_admin" ? "mpdc_admin" : currentRole === "MPDC" ? "planning" : "app")}
           backendProjects={Array.isArray(projects) ? projects : []}
           currentRole={currentRole}
         />
       )}
 
-      {screen === "planning" && currentRole !== "Viewer" && (
+      {screen === "planning" && currentSession && currentRole !== "Viewer" && currentRole !== "Engineer" && (
         <PlanningPage
-          onBack={() => navigateBack(currentRole === "MPDC" ? "permits" : "app")}
+          onBack={() => navigateBack(currentSession?.username === "mpdc_admin" ? "mpdc_admin" : currentRole === "Super Admin" ? "admin_users" : currentRole === "MPDC" ? "permits" : "app")}
           session={currentSession}
           projects={Array.isArray(projects) ? projects : []}
+          onNavigate={(target) => setScreen(target as any)}
+          onLogout={goHome}
         />
       )}
 
-      {screen === "permits" && (
+      {screen === "permits" && currentSession && currentRole !== "Engineer" && (
         <ZoningPermitsPage
-          onBack={currentRole === "Engineer" || currentRole === "MPDC" ? () => navigateBack("app") : () => navigateBack("landing")}
-          session={currentSession || sessionForRole("MPDC")}
+          onBack={currentSession?.username === "mpdc_admin" || currentSession?.role === "MPDC Admin" ? () => navigateBack("mpdc_admin") : currentRole === "Super Admin" ? () => navigateBack("admin_users") : () => navigateBack("app")}
+          session={currentSession}
           onLogout={goHome}
           onNavigate={(target) => setScreen(target as any)}
         />
       )}
 
-      {screen === "engineer_applications" && (
-        <EngineerApplicationsPage
+      {(screen === "engineer_dashboard" || screen === "engineer_applications") && currentSession && (
+        <EngineerDashboardPage
           onBack={() => navigateBack("app")}
           session={currentSession}
-          onNavigateToProject={(projId) => {
+          onNavigateToMap={(projId, lat, lon) => {
             setScreen("app");
-            setTimeout(() => {
-              cesiumMapRef.current?.flyToProject(projId);
-            }, 350);
+            if (projId) {
+              setTimeout(() => {
+                cesiumMapRef.current?.flyToProject(projId);
+              }, 350);
+            } else if (lat != null && lon != null) {
+              setTimeout(() => {
+                cesiumMapRef.current?.flyToCoords(lat, lon);
+              }, 350);
+            }
           }}
+          onNavigate={(target) => setScreen(target as any)}
+          onLogout={goHome}
           onApplicationApproved={() => {
             refreshProjects();
           }}
         />
       )}
 
-      {screen === "documents" && isMunicipalStaff(currentRole) && (
-        <DocumentsPage onBack={() => navigateBack(currentRole === "MPDC" ? "permits" : "app")} session={currentSession} />
-      )}
-
-      {screen === "audit" && isMunicipalStaff(currentRole) && (
-        <AuditPage onBack={() => navigateBack(currentRole === "MPDC" ? "permits" : "app")} />
-      )}
-
-      {screen === "analytics" && isMunicipalStaff(currentRole) && (
-        <AnalyticsPage
-          onBack={() => navigateBack(currentRole === "MPDC" ? "permits" : "app")}
-          projects={Array.isArray(projects) ? projects : []}
-          captureMapPng={() => cesiumMapRef.current?.captureMapPng() ?? Promise.resolve(null)}
+      {screen === "engineer_documents" && currentSession && (currentRole === "Engineer" || currentRole === "Super Admin") && (
+        <EngineerDashboardPage
+          initialTab="documents"
+          onBack={() => navigateBack("app")}
+          session={currentSession}
+          onNavigateToMap={(projId, lat, lon) => {
+            setScreen("app");
+            if (projId) {
+              setTimeout(() => {
+                cesiumMapRef.current?.flyToProject(projId);
+              }, 350);
+            } else if (lat != null && lon != null) {
+              setTimeout(() => {
+                cesiumMapRef.current?.flyToCoords(lat, lon);
+              }, 350);
+            }
+          }}
+          onNavigate={(target) => setScreen(target as any)}
+          onLogout={goHome}
+          onApplicationApproved={() => {
+            refreshProjects();
+          }}
         />
       )}
 
-      {screen === "engagement" && roleConfig?.canSeeEngagement && (
+      {screen === "documents" && currentSession && isMunicipalStaff(currentRole) && currentRole !== "Engineer" && (
+        <DocumentsPage
+          onBack={() => navigateBack(currentSession?.username === "mpdc_admin" ? "mpdc_admin" : currentRole === "Super Admin" ? "admin_users" : currentRole === "MPDC" ? "permits" : "app")}
+          session={currentSession}
+          onNavigate={(target) => setScreen(target as any)}
+          onLogout={goHome}
+        />
+      )}
+
+      {screen === "audit" && currentSession && (currentRole === "Super Admin" || isMunicipalStaff(currentRole)) && (
+        <AuditPage
+          onBack={() => navigateBack(currentSession?.username === "mpdc_admin" ? "mpdc_admin" : currentRole === "Super Admin" ? "admin_users" : currentRole === "MPDC" ? "permits" : "app")}
+          onNavigate={(target) => setScreen(target as any)}
+          session={currentSession}
+          onLogout={goHome}
+        />
+      )}
+
+      {screen === "analytics" && currentSession && isMunicipalStaff(currentRole) && currentRole !== "Engineer" && (
+        <AnalyticsPage
+          onBack={() => navigateBack(currentSession?.username === "mpdc_admin" ? "mpdc_admin" : currentRole === "MPDC" ? "permits" : "app")}
+          projects={Array.isArray(projects) ? projects : []}
+          captureMapPng={() => cesiumMapRef.current?.captureMapPng() ?? Promise.resolve(null)}
+          onNavigate={(target) => setScreen(target as any)}
+          session={currentSession}
+          onLogout={goHome}
+        />
+      )}
+
+      {screen === "engagement" && currentSession && roleConfig?.canSeeEngagement && (
         <EngagementPage
-          onBack={() => navigateBack(currentRole === "MPDC" ? "permits" : "app")}
+          onBack={() => navigateBack(currentSession?.username === "mpdc_admin" ? "mpdc_admin" : currentRole === "MPDC" ? "planning" : "app")}
           onFlyTo={(lon, lat) => {
             window.setTimeout(() => {
               cesiumMapRef.current?.flyToLonLat(lon, lat, 2500);
@@ -2964,10 +3230,7 @@ export default function App() {
                 clusteringEnabled={infraFilter.clustering}
                 visible={!parkMapShell}
                 paused={parkMapShell}
-                placementMode={
-                  (placementMode && currentRole === "Engineer") ||
-                  (placementMode && currentRole === "MPDC" && (Boolean(pinProposal) || Boolean(pinCitizenApp)))
-                }
+                placementMode={placementMode && currentRole === "Engineer"}
                 editMode={false}
                 placementTool={placementTool}
                 placementColor={placementColor}
@@ -2981,7 +3244,7 @@ export default function App() {
                     prev.map((p) => (p.id === projectId ? { ...p, ...patch } : p)),
                   );
                 }}
-                canAddPhotos={currentRole === "MPDC" || currentRole === "Engineer"}
+                canAddPhotos={currentRole === "Engineer"}
                 onPhotosChange={(projectId, photos) => {
                   setProjects((prev) =>
                     prev.map((p) => (p.id === projectId ? { ...p, photos } : p)),
@@ -2994,7 +3257,7 @@ export default function App() {
                     (Array.isArray(p.photos) && p.photos.length > 0);
 
                   // Kung wala pang na-upload na litrato, ilabas agad ang inspection update modal!
-                  if (!hasUploadedPhoto && (currentRole === "Engineer" || currentRole === "Admin" || currentRole === "MPDC")) {
+                  if (!hasUploadedPhoto && (currentRole === "Engineer" || currentRole === "Admin")) {
                     setInspectingProject(p);
                   } else {
                     setSelectedSitePin(p);
@@ -3254,15 +3517,25 @@ export default function App() {
                 </div>
               ) : null}
 
-              <div className={`topBar${moreMenuOpen ? " is-nav-open" : ""}`}>
+              <div className={`topBar${moreMenuOpen ? " is-nav-open" : ""} ${getRoleTopNavAccentClass(currentRole)}`}>
                 <div
                   className="topBar-brand"
                   role="button"
                   tabIndex={0}
-                  onClick={() => (currentRole === "Viewer" ? setScreen("landing") : setScreen("app"))}
+                  onClick={() => (
+                    currentRole === "Viewer"
+                      ? setScreen("landing")
+                      : currentRole === "MPDC" || currentRole === "MPDC Admin" || currentSession?.username === "mpdc_admin" || currentSession?.username === "mpdc"
+                      ? setScreen(currentSession?.username === "mpdc_admin" || currentSession?.role === "MPDC Admin" ? "mpdc_admin" : "permits")
+                      : setScreen("app")
+                  )}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
-                      currentRole === "Viewer" ? setScreen("landing") : setScreen("app");
+                      currentRole === "Viewer"
+                        ? setScreen("landing")
+                        : currentRole === "MPDC" || currentRole === "MPDC Admin" || currentSession?.username === "mpdc_admin" || currentSession?.username === "mpdc"
+                        ? setScreen(currentSession?.username === "mpdc_admin" || currentSession?.role === "MPDC Admin" ? "mpdc_admin" : "permits")
+                        : setScreen("app");
                     }
                   }}
                   title="INFA-TRACK Luisiana GIS"
@@ -3287,12 +3560,12 @@ export default function App() {
                       title={roleConfig.description}
                     >
                       <span className="role-chip-dot" />
-                      {roleConfig.label}
+                      <span className="role-chip-text">{roleConfig.label}</span>
                     </div>
                   )}
                   <div className={`chip chip-live ${connected ? "is-connected" : "is-offline"}`}>
                     <span className="dot" />
-                    {connected ? "Live" : "Offline"}
+                    <span className="chip-live-text">{connected ? "Live" : "Offline"}</span>
                   </div>
                   <div className="chip chip-risk topBar-hide-sm">
                     Risk:{" "}
@@ -3304,7 +3577,22 @@ export default function App() {
                 </div>
                 <div className="topBar-actions-primary">
                   <nav id="topBar-nav" className={`topBar-nav${moreMenuOpen ? " is-open" : ""}`} aria-label="App sections">
-                    {roleConfig?.canSeePlanning && currentRole !== "Viewer" && (
+                    {roleConfig && (
+                      <div className="topBar-nav-mobile-header">
+                        <div
+                          className={`chip chip-role role-${currentRole?.toLowerCase().replace(/\s+/g, "-")}`}
+                          title={roleConfig.description}
+                        >
+                          <span className="role-chip-dot" />
+                          <span>{roleConfig.label}</span>
+                        </div>
+                        <div className={`chip chip-live ${connected ? "is-connected" : "is-offline"}`}>
+                          <span className="dot" />
+                          <span>{connected ? "Live" : "Offline"}</span>
+                        </div>
+                      </div>
+                    )}
+                    {roleConfig?.canSeePlanning && currentRole !== "Viewer" && currentRole !== "Engineer" && (
                       <button
                         type="button"
                         className={`topBar-nav-link${screen === "planning" ? " active" : ""}`}
@@ -3329,12 +3617,12 @@ export default function App() {
                     {currentRole === "Engineer" && (
                       <button
                         type="button"
-                        className={`topBar-nav-link topBar-nav-clearance${screen === "engineer_applications" ? " active" : ""}`}
+                        className={`topBar-nav-link topBar-nav-clearance${(screen === "engineer_applications" || screen === "engineer_dashboard") ? " active" : ""}`}
                         onClick={() => {
                           setMoreMenuOpen(false);
-                          setScreen("engineer_applications");
+                          setScreen("engineer_dashboard");
                         }}
-                        title="Talaan ng mga Bayad na Aplikasyon mula Treasury para sa Engineering Clearance & Pinning"
+                        title="Tanggapan ng Inhinyero (Executive Engineering Dashboard & Site Inspection Queue)"
                       >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
                           <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
@@ -3343,7 +3631,28 @@ export default function App() {
                         <span className="topBar-exit-short">Clearance</span>
                       </button>
                     )}
-                    {currentRole === "MPDC" && (
+                    {currentRole === "Engineer" && (
+                      <button
+                        type="button"
+                        className={`topBar-nav-link${screen === "engineer_documents" ? " active" : ""}`}
+                        onClick={() => {
+                          setMoreMenuOpen(false);
+                          setScreen("engineer_documents");
+                        }}
+                        title="Engineering Documents & Blueprints Vault (Opisyal na Resibo O.R., Blueprints, at Clearances)"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                          <polyline points="14 2 14 8 20 8" />
+                          <line x1="16" y1="13" x2="8" y2="13" />
+                          <line x1="16" y1="17" x2="8" y2="17" />
+                          <polyline points="10 9 9 9 8 9" />
+                        </svg>
+                        <span className="topBar-exit-full">Documents</span>
+                        <span className="topBar-exit-short">Docs</span>
+                      </button>
+                    )}
+                    {(currentSession?.username === "mpdc_admin" || currentSession?.role === "MPDC Admin" || currentRole === "Super Admin" || currentRole === "MPDC") && currentRole !== "Engineer" && (
                       <button
                         type="button"
                         className={`topBar-nav-link topBar-nav-permits${screen === "permits" ? " active" : ""}`}
@@ -3351,16 +3660,16 @@ export default function App() {
                           setMoreMenuOpen(false);
                           setScreen("permits");
                         }}
-                        title="Talaan ng mga Natanggap na Aplikasyon (Zoning Permits)"
+                        title="Talaan ng mga Natanggap na Aplikasyon at Pag-apruba (Zoning Permits)"
                       >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
                           <path d="M3 21h18M9 8h1M9 12h1M9 16h1M14 8h1M14 12h1M14 16h1M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16" />
                         </svg>
-                        <span className="topBar-exit-full">Permits / Talaan</span>
+                        <span className="topBar-exit-full">{currentSession?.username === "mpdc_admin" || currentSession?.role === "MPDC Admin" ? "Talaan ng Permits" : "Mga Aplikasyon"}</span>
                         <span className="topBar-exit-short">Permits</span>
                       </button>
                     )}
-                    {isMunicipalStaff(currentRole) && (
+                    {isMunicipalStaff(currentRole) && currentRole !== "Engineer" && (
                       <button
                         type="button"
                         className={`topBar-nav-link${screen === "documents" ? " active" : ""}`}
@@ -3380,7 +3689,7 @@ export default function App() {
                         <span className="topBar-exit-short">Docs</span>
                       </button>
                     )}
-                    {isMunicipalStaff(currentRole) && (
+                    {isMunicipalStaff(currentRole) && currentRole !== "Engineer" && (
                       <button
                         type="button"
                         className={`topBar-nav-link${screen === "analytics" ? " active" : ""}`}
@@ -3516,6 +3825,9 @@ export default function App() {
                 currentStyle={mapSettings.basemapStyle || "outdoors"}
                 onSelectStyle={(style) => {
                   setMapSettings((s) => ({ ...s, basemapStyle: style }));
+                  if (style !== "alidade_smooth_dark" && style !== "alidade_satellite") {
+                    lastLightStyleRef.current = style;
+                  }
                   if (style === "alidade_satellite") {
                     setToggles((t) => ({ ...t, satellite: true, terrain: true }));
                   } else if (toggles.satellite) {
@@ -3590,7 +3902,6 @@ export default function App() {
               >
                 <button className="map-ctrl-btn" title="Zoom In (=)" type="button" onClick={() => cesiumMapRef.current?.zoomIn()}>+</button>
                 <button className="map-ctrl-btn" title="Zoom Out (-)" type="button" onClick={() => cesiumMapRef.current?.zoomOut()}>−</button>
-                <div className="map-ctrl-divider" />
                 <button
                   className="map-ctrl-btn"
                   title="Fly to Luisiana"
@@ -3651,8 +3962,13 @@ export default function App() {
 
             <aside className={`sidePanel${sidebarCollapsed ? " is-collapsed" : ""}`} aria-hidden={sidebarCollapsed}>
               <div className="sidePanel-head">
-                <div className="sectionTitle">
-                  Live Situation Panel
+                <div className="sidePanel-headerTitle">
+                  <div className="sidePanel-live-beacon" title="Live GIS telemetry active">
+                    <span className="sidePanel-live-ping" />
+                    <span className="sidePanel-live-dot" />
+                  </div>
+                  <span className="sidePanel-titleText">Live Situation Panel</span>
+                  <span className="sidePanel-live-chip">LIVE</span>
                   {isMunicipalStaff(currentRole) && notifyBadgeCount > 0 && (
                     <span className="sidePanel-titleBadge" aria-label={`${notifyBadgeCount} notifications`}>
                       {notifyBadgeCount}
@@ -3666,7 +3982,7 @@ export default function App() {
                   title="Collapse panel"
                   onClick={() => setSidebarCollapsed(true)}
                 >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                     <polyline points="9 18 15 12 9 6" />
                   </svg>
                 </button>
@@ -3686,7 +4002,7 @@ export default function App() {
                     )}
                   </button>
                 )}
-                {(currentRole === "Engineer" || currentRole === "Admin" || currentRole === "MPDC") && (
+                {(currentRole === "Engineer" || currentRole === "Admin") && (
                   <button
                     type="button"
                     className={`sidebar-tab${sidebarTab === "inspection" ? " active" : ""}`}
@@ -3708,9 +4024,6 @@ export default function App() {
                 )}
                 {roleConfig?.canSeeProjects && (
                   <button type="button" className={`sidebar-tab${sidebarTab === "projects" ? " active" : ""}`} onClick={() => setSidebarTab("projects")}>Projects</button>
-                )}
-                {(roleConfig?.canSeeLayers || roleConfig?.canSeeRisk) && (
-                  <button type="button" className={`sidebar-tab${sidebarTab === "settings" ? " active" : ""}`} onClick={() => setSidebarTab("settings")}>Settings</button>
                 )}
                 {currentRole && currentRole !== "Viewer" && (
                   <button type="button" className={`sidebar-tab${sidebarTab === "account" ? " active" : ""}`} onClick={() => setSidebarTab("account")}>Account</button>
@@ -3972,253 +4285,9 @@ export default function App() {
                     </div>
                   )}
 
-                {/* ── Treasury Office / Negosyo: Business Permit Panel ── */}
-                {roleConfig?.canSeeBusinessPermits && (
-                  <div className="card" style={{ marginBottom: 12 }}>
-                    <div className="sectionTitle" style={{ marginBottom: 8 }}>Treasury &amp; Local Business Registry</div>
-                    <div className="grid2">
-                      <div className="stat">
-                        <div className="v" style={{ color: "var(--warn)" }}>{projects.filter(p => (p.department === "Treasury Office" || p.department === "Negosyo Center") && p.status === "Ongoing").length}</div>
-                        <div className="l">Pending Permits</div>
-                      </div>
-                      <div className="stat">
-                        <div className="v" style={{ color: "var(--safe)" }}>{projects.filter(p => (p.department === "Treasury Office" || p.department === "Negosyo Center") && p.status === "Completed").length}</div>
-                        <div className="l">Approved</div>
-                      </div>
-                      <div className="stat">
-                        <div className="v" style={{ color: "var(--muted)" }}>{projects.filter(p => (p.department === "Treasury Office" || p.department === "Negosyo Center") && p.status === "Planned").length}</div>
-                        <div className="l">For Review</div>
-                      </div>
-                      <div className="stat">
-                        <div className="v">{projects.filter(p => p.department === "Treasury Office" || p.department === "Negosyo Center").length}</div>
-                        <div className="l">Total Records</div>
-                      </div>
-                    </div>
-                    <div style={{ marginTop: 12 }}>
-                      <div style={{ fontSize: 11, color: "var(--muted2)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em" }}>Recent Applications</div>
-                      <div className="miniList">
-                        {projects.filter(p => p.department === "Treasury Office" || p.department === "Negosyo Center").slice(0, 5).map(p => (
-                          <div key={p.id} className="proj">
-                            <div className="n">{p.name}</div>
-                            <div className="s">
-                              <span style={{ color: p.status === "Completed" ? "var(--safe)" : p.status === "Ongoing" ? "var(--warn)" : "var(--muted)" }}>
-                                {p.status === "Completed"
-                                  ? <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><IconCheck /> Approved</span>
-                                  : p.status === "Ongoing"
-                                    ? <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><IconClock /> Pending</span>
-                                    : p.status === "Planned"
-                                      ? <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><IconClipboard /> For Review</span>
-                                      : <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><IconClipboard /> {p.status}</span>
-                                }
-                              </span>
-                              <span>{p.progress}%</span>
-                            </div>
-                            <div className="bar"><div style={{ width: `${p.progress}%` }} /></div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
+                
 
-                {/* ── Settings Tab ── */}
-                {sidebarTab === "settings" &&
-                  (roleConfig?.canSeeLayers || roleConfig?.canSeeRisk) && (
-                    <div className="card" style={{ marginBottom: 12 }}>
-                      <div className="sectionTitle" style={{ marginBottom: 8 }}>
-                        Settings
-                      </div>
-                      <div className="hint" style={{ marginBottom: 10 }}>
-                        Globe performance and view. Saved on this device.
-                      </div>
 
-                      <div
-                        className="extrusion-opacity-control"
-                        style={{
-                          display: "flex",
-                          gap: 10,
-                          alignItems: "center",
-                          marginBottom: 10,
-                          paddingLeft: 2,
-                        }}
-                      >
-                        <span className="pill">Draw distance</span>
-                        <input
-                          type="range"
-                          min={5}
-                          max={50}
-                          step={1}
-                          value={mapSettings.drawDistanceKm}
-                          aria-label="3D draw distance in kilometers"
-                          onChange={(e) =>
-                            setMapSettings((s) => ({ ...s, drawDistanceKm: Number(e.target.value) }))
-                          }
-                          style={{ flex: 1 }}
-                        />
-                        <span style={{ fontSize: 11, color: "var(--muted)", minWidth: 40 }}>
-                          {mapSettings.drawDistanceKm} km
-                        </span>
-                      </div>
-
-                      <div style={{ marginBottom: 10, paddingLeft: 2 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
-                          <span className="pill">Terrain quality</span>
-                          <span style={{ fontSize: 11, color: "var(--muted)" }}>
-                            {mapSettings.terrainQuality === "low"
-                              ? "Fastest"
-                              : mapSettings.terrainQuality === "high"
-                                ? "Sharpest"
-                                : "Balanced"}
-                          </span>
-                        </div>
-                        <div className="side-seg">
-                          {(["low", "medium", "high"] as TerrainQuality[]).map((q) => (
-                            <button
-                              key={q}
-                              type="button"
-                              className={`side-seg-btn${mapSettings.terrainQuality === q ? " is-on" : ""}`}
-                              onClick={() => setMapSettings((s) => ({ ...s, terrainQuality: q }))}
-                            >
-                              {q}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="toggleRow">
-                        <div>
-                          <label>Shadows</label>
-                          <div className="hint">Soft sun shadows inside Luisiana only (day, near town)</div>
-                        </div>
-                        <div
-                          className={`switch ${mapSettings.shadowsEnabled ? "on" : ""}`}
-                          role="switch"
-                          aria-checked={mapSettings.shadowsEnabled}
-                          onClick={() => setMapSettings((s) => ({ ...s, shadowsEnabled: !s.shadowsEnabled }))}
-                        />
-                      </div>
-
-                      <div style={{ marginBottom: 10, paddingLeft: 2, opacity: mapSettings.shadowsEnabled ? 1 : 0.55 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
-                          <span className="pill">Shadow quality</span>
-                          <span style={{ fontSize: 11, color: "var(--muted)" }}>
-                            {mapSettings.shadowQuality === "low"
-                              ? "700 m · hard"
-                              : mapSettings.shadowQuality === "high"
-                                ? "2.2 km · soft"
-                                : "1.6 km · soft"}
-                          </span>
-                        </div>
-                        <div className="side-seg">
-                          {(["low", "medium", "high"] as ShadowQuality[]).map((q) => (
-                            <button
-                              key={q}
-                              type="button"
-                              className={`side-seg-btn${mapSettings.shadowQuality === q ? " is-on" : ""}`}
-                              onClick={() => setMapSettings((s) => ({ ...s, shadowQuality: q }))}
-                            >
-                              {q}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="toggleRow">
-                        <div>
-                          <label>Horizon fog</label>
-                          <div className="hint">Fades far terrain in 3D tilt (helps FPS)</div>
-                        </div>
-                        <div
-                          className={`switch ${mapSettings.fogEnabled ? "on" : ""}`}
-                          role="switch"
-                          aria-checked={mapSettings.fogEnabled}
-                          onClick={() => setMapSettings((s) => ({ ...s, fogEnabled: !s.fogEnabled }))}
-                        />
-                      </div>
-
-                      <div className="toggleRow">
-                        <div>
-                          <label>Floating 3D badges</label>
-                          <div className="hint">Show floating title badges above 3D models</div>
-                        </div>
-                        <div
-                          className={`switch ${mapSettings.showFloatingLabels ?? true ? "on" : ""}`}
-                          role="switch"
-                          aria-checked={mapSettings.showFloatingLabels ?? true}
-                          onClick={() =>
-                            setMapSettings((s) => ({
-                              ...s,
-                              showFloatingLabels: !(s.showFloatingLabels ?? true),
-                            }))
-                          }
-                        />
-                      </div>
-
-                      <div className="toggleRow">
-                        <div>
-                          <label>GPS coordinates</label>
-                          <div className="hint">Show latitude/longitude in floating badges</div>
-                        </div>
-                        <div
-                          className={`switch ${mapSettings.showCoordinates ?? true ? "on" : ""}`}
-                          role="switch"
-                          aria-checked={mapSettings.showCoordinates ?? true}
-                          onClick={() =>
-                            setMapSettings((s) => ({
-                              ...s,
-                              showCoordinates: !(s.showCoordinates ?? true),
-                            }))
-                          }
-                        />
-                      </div>
-
-                      <div
-                        className="extrusion-opacity-control"
-                        style={{
-                          display: "flex",
-                          gap: 10,
-                          alignItems: "center",
-                          marginBottom: 10,
-                          paddingLeft: 2,
-                        }}
-                      >
-                        <span className="pill">Motion blur</span>
-                        <input
-                          type="range"
-                          min={0}
-                          max={100}
-                          step={5}
-                          value={mapSettings.motionBlur}
-                          aria-label="Camera motion blur strength"
-                          onChange={(e) =>
-                            setMapSettings((s) => ({ ...s, motionBlur: Number(e.target.value) }))
-                          }
-                          style={{ flex: 1 }}
-                        />
-                        <span style={{ fontSize: 11, color: "var(--muted)", minWidth: 52 }}>
-                          {mapSettings.motionBlur <= 0
-                            ? "Off"
-                            : mapSettings.motionBlur <= 30
-                              ? `${mapSettings.motionBlur}% soft`
-                              : mapSettings.motionBlur <= 70
-                                ? `${mapSettings.motionBlur}%`
-                                : `${mapSettings.motionBlur}% strong`}
-                        </span>
-                      </div>
-                      <div className="hint" style={{ marginTop: -4, marginBottom: 10, paddingLeft: 2 }}>
-                        Streak while panning the globe. 0 is off. Drag, then pan to preview.
-                      </div>
-
-                      <button
-                        type="button"
-                        className="side-btn"
-                        style={{ marginBottom: 4 }}
-                        onClick={() => setMapSettings({ ...DEFAULT_MAP_SETTINGS })}
-                      >
-                        Reset settings
-                      </button>
-                    </div>
-                  )}
 
                 {sidebarTab === "account" && currentRole && currentRole !== "Viewer" && (
                   <div className="card" style={{ marginBottom: 12 }}>
@@ -4241,12 +4310,12 @@ export default function App() {
                       Layers
                     </div>
                     <div className="hint" style={{ marginBottom: 10 }}>
-                      Show or hide map overlays. Globe performance lives in Settings.
+                      Show or hide map overlays.
                     </div>
 
                     {(
                       [
-                        { k: "projects", title: "Infrastructure Projects", hint: "GLB models on map" },
+                        { k: "projects", title: "Infrastructure Projects", hint: "Ipakita ang mga proyekto sa mapa" },
                       ] as const
                     ).map((row) => (
                       <div key={row.k} className="toggleRow">
@@ -4262,34 +4331,6 @@ export default function App() {
                         />
                       </div>
                     ))}
-
-                    <div
-                      className="extrusion-opacity-control"
-                      style={{
-                        display: "flex",
-                        gap: 10,
-                        alignItems: "center",
-                        marginBottom: 10,
-                        paddingLeft: 2,
-                      }}
-                    >
-                      <span className="pill">GLB Models</span>
-                      <input
-                        type="range"
-                        min={0}
-                        max={1}
-                        step={0.05}
-                        value={glbModelsOpacity}
-                        aria-label="Project GLB model opacity"
-                        onChange={(e) => {
-                          setGlbModelsOpacity(Number(e.target.value));
-                        }}
-                        style={{ flex: 1 }}
-                      />
-                      <span style={{ fontSize: 11, color: "var(--muted)", minWidth: 35 }}>
-                        {Math.round(glbModelsOpacity * 100)}%
-                      </span>
-                    </div>
 
                     <div className="toggleRow">
                       <div>
@@ -4323,6 +4364,9 @@ export default function App() {
                         currentStyle={mapSettings.basemapStyle || "outdoors"}
                         onSelectStyle={(style) => {
                           setMapSettings((s) => ({ ...s, basemapStyle: style }));
+                          if (style !== "alidade_smooth_dark" && style !== "alidade_satellite") {
+                            lastLightStyleRef.current = style;
+                          }
                           if (style === "alidade_satellite") {
                             setToggles((t) => ({ ...t, satellite: true, terrain: true }));
                           } else if (toggles.satellite) {
@@ -4549,252 +4593,7 @@ export default function App() {
                         Reset filters
                       </button>
                     </div>
-                    {/* ── Engineer: Place Infrastructure Models ── */}
-                    {currentRole === "Engineer" && (
-                      <div className="card" style={{ marginBottom: 12 }}>
-                        <div className="sectionTitle" style={{ marginBottom: 10 }}>
-                          Place Infrastructure
-                        </div>
 
-                        {/* Placement toggle */}
-                        <button
-                          type="button"
-                          className={`side-cta${placementMode ? " is-on" : ""}`}
-                          onClick={() => {
-                            setPlacementMode((v) => {
-                              const next = !v;
-                              if (next) {
-                                setEditMode(false);
-                              }
-                              return next;
-                            });
-                          }}
-                        >
-                          {placementMode ? (
-                            <span style={{ display: "flex", alignItems: "center", gap: 7, justifyContent: "center" }}>
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 8v4" /><path d="M12 16h.01" /></svg>
-                              Placement Mode ON — Click globe to place
-                            </span>
-                          ) : (
-                            <span style={{ display: "flex", alignItems: "center", gap: 7, justifyContent: "center" }}>
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></svg>
-                              Enable Placement Mode
-                            </span>
-                          )}
-                        </button>
-
-                        {/* Snap to Road */}
-                        <label
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                            marginBottom: 12,
-                            fontSize: 12,
-                            color: placementMode ? "var(--ink-soft)" : "var(--muted2)",
-                            cursor: placementMode ? "pointer" : "not-allowed",
-                            opacity: placementMode ? 1 : 0.55,
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={snapToRoad}
-                            disabled={!placementMode}
-                            onChange={(e) => setSnapToRoad(e.target.checked)}
-                          />
-                          Snap to Road (magnet + align yaw)
-                        </label>
-
-                        {/* Name input */}
-                        <div style={{ marginBottom: 10 }}>
-                          <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>Project Name (optional)</div>
-                          <input
-                            value={placingName}
-                            onChange={(e) => setPlacingName(e.target.value)}
-                            placeholder="e.g. Brgy. Hall Phase 2"
-                            style={{
-                              width: "100%", boxSizing: "border-box", padding: "7px 10px",
-                              borderRadius: 2, border: "1px solid var(--stroke)",
-                              background: "var(--cream-deep)", color: "var(--ink-soft)",
-                              fontSize: 12, outline: "none",
-                            }}
-                          />
-                        </div>
-
-                        {/* Rotation */}
-                        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
-                          <span style={{ fontSize: 11, color: "var(--muted)", minWidth: 52 }}>Rotation</span>
-                          <input type="range" min={0} max={360} step={15} value={placementRotation}
-                            onChange={(e) => setPlacementRotation(Number(e.target.value))}
-                            style={{ flex: 1 }} />
-                          <span style={{ fontSize: 11, color: "var(--muted2)", minWidth: 32, textAlign: "right" }}>
-                            {placementRotation}°
-                          </span>
-                        </div>
-
-                        {/* Model catalog */}
-                        {(["Building", "Infrastructure", "Agriculture", "Construction"] as const).map((cat) => (
-                          <div key={cat} style={{ marginBottom: 10 }}>
-                            <div style={{ fontSize: 10, color: "var(--muted2)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>{cat}</div>
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                              {MODEL_CATALOG.filter((m) => m.category === cat && m.type !== "shape").map((m) => (
-                                <button
-                                  key={m.type}
-                                  type="button"
-                                  className={`side-seg-btn${selectedModel === m.type ? " is-on" : ""}`}
-                                  onClick={() => {
-                                    setSelectedModel(m.type);
-                                    clearPendingShape();
-                                    if (m.type !== "custom") {
-                                      setCustomModelFile(null);
-                                      setCustomModelPreview(null);
-                                      setCustomModelTextureReport(null);
-                                    }
-                                  }}
-                                  title={m.description}
-                                  style={{ textAlign: "left", width: "100%", padding: "8px 10px" }}
-                                >
-                                  <div style={{ marginBottom: 4, display: "flex", alignItems: "center", color: selectedModel === m.type ? "var(--on-gold)" : "var(--muted)" }}>
-                                    {(() => { const Ic = ModelIcons[m.icon] ?? ModelIcons.construction; return <Ic size={18} />; })()}
-                                  </div>
-                                  <div style={{ fontSize: 11, fontWeight: 600 }}>{m.label}</div>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-
-                        {/* Custom Model Upload */}
-                        {selectedModel === "custom" && (
-                          <div style={{
-                            marginTop: 12,
-                            padding: "12px",
-                            background: "color-mix(in oklch, var(--gold-oklch) 12%, var(--cream))",
-                            border: "1px solid color-mix(in oklch, var(--gold-oklch) 40%, var(--stroke))",
-                            borderRadius: 2
-                          }}>
-                            <div style={{ fontSize: 11, color: "var(--seed)", fontWeight: 600, marginBottom: 8 }}>
-                              Upload Custom GLB Model
-                            </div>
-                            <div style={{ fontSize: 10, color: "var(--muted)", lineHeight: 1.45, marginBottom: 8 }}>
-                              Blender viewport textures do not count. Image Texture must plug into Principled BSDF
-                              Base Color, then File → External Data → Pack Resources, export glTF Binary (.glb).
-                              White mesh = maps never made it into the file. Run
-                              scripts/blender_fix_materials_for_gltf.py before export. Max 500MB.
-                            </div>
-                            <input
-                              type="file"
-                              accept=".glb,.gltf"
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) {
-                                  setCustomModelFile(file);
-                                  setCustomModelPreview(file.name);
-                                  setCustomModelTextureReport(null);
-                                  void inspectGlbFile(file).then(setCustomModelTextureReport);
-                                }
-                              }}
-                              style={{
-                                width: "100%",
-                                padding: "8px",
-                                borderRadius: 0,
-                                border: "1px solid var(--stroke)",
-                                background: "rgba(0,0,0,0.3)",
-                                color: "var(--ink-soft)",
-                                fontSize: 11,
-                                cursor: "pointer",
-                              }}
-                            />
-                            {customModelPreview && (
-                              <div style={{
-                                marginTop: 8,
-                                fontSize: 10,
-                                color: "var(--muted)",
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 6
-                              }}>
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--seed)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                  <polyline points="20 6 9 17 4 12" />
-                                </svg>
-                                {customModelPreview}
-                                {customModelTextureReport && (
-                                  <span>
-                                    · {customModelTextureReport.texturedMaterials}/{customModelTextureReport.materials} textured
-                                  </span>
-                                )}
-                              </div>
-                            )}
-                            {customModelTextureReport?.warning && (
-                              <div
-                                style={{
-                                  marginTop: 8,
-                                  fontSize: 10,
-                                  color: "var(--seed)",
-                                  background: "color-mix(in oklch, var(--warn) 12%, var(--cream))",
-                                  border: "1px solid color-mix(in oklch, var(--warn) 40%, var(--stroke))",
-                                  padding: "8px 10px",
-                                  lineHeight: 1.45,
-                                }}
-                              >
-                                {customModelTextureReport.warning}
-                              </div>
-                            )}
-                            <div style={{
-                              marginTop: 8,
-                              fontSize: 10,
-                              color: "var(--muted2)",
-                              lineHeight: 1.45,
-                              display: "flex",
-                              alignItems: "flex-start",
-                              gap: 6,
-                              padding: "6px 8px",
-                              background: "rgba(74, 222, 128, 0.08)",
-                              border: "1px solid rgba(74, 222, 128, 0.25)",
-                              borderRadius: 2,
-                            }}>
-                              <span style={{ color: "#4ade80", fontWeight: 700, fontSize: 11 }}>⚡</span>
-                              <span style={{ color: "var(--ink-soft)" }}>
-                                <strong>Auto-Optimization Enabled:</strong> Uploaded BIM/CAD geometry is automatically merged, textures compressed, and Draco-encoded on the server for instant map rendering.
-                              </span>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Placed projects list with delete */}
-                        {projects.filter((p) => p.department === "Engineering" && !p.siteMarkerOnly).length > 0 && (
-                          <div style={{ marginTop: 8 }}>
-                            <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 6 }}>Placed by Engineer</div>
-                            <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 160, overflowY: "auto" }}>
-                              {projects.filter((p) => p.department === "Engineering" && !p.siteMarkerOnly).map((p) => (
-                                <div key={p.id} style={{
-                                  display: "flex", alignItems: "center", gap: 6, padding: "6px 8px",
-                                  background: "var(--cream-ink)", borderRadius: 0,
-                                  border: "1px solid var(--stroke2)",
-                                }}>
-                                  <span style={{ display: "flex", alignItems: "center", color: "var(--muted)" }}>
-                                    {(() => { const ic = MODEL_CATALOG.find((m) => m.type === p.modelType)?.icon ?? "construction"; const Ic = ModelIcons[ic] ?? ModelIcons.construction; return <Ic size={15} />; })()}
-                                  </span>
-                                  <span style={{ flex: 1, fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                    {displayNameForProject(p)}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    className="side-btn-danger"
-                                    onClick={async () => {
-                                      await fetch(backendUrl(`/api/projects/${p.id}`), {
-                                        method: "DELETE",
-                                        credentials: "include",
-                                      });
-                                    }}
-                                  >✕</button>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
 
                     {roleConfig?.canSeeProjects && (
                       <ProjectMonitoringPanel
@@ -4935,7 +4734,6 @@ export default function App() {
                   <option value="MPDC">MPDC</option>
                   <option value="Engineering">Engineering</option>
                   <option value="Agriculture">Agriculture</option>
-                  <option value="Treasury Office">Treasury Office</option>
                 </select>
               </div>
 
@@ -5143,6 +4941,30 @@ export default function App() {
         }}
         currentInspector={currentSession?.fullName || currentSession?.username || "Municipal Engineer"}
       />
+
+      {/* Mandatory First-Time Login Password Reset Modal */}
+      {currentSession && currentSession.mustChangePassword && (
+        <ForcedPasswordResetModal
+          session={currentSession}
+          onPasswordChanged={(updatedSession) => {
+            setCurrentSession(updatedSession);
+            setScreen(
+              updatedSession.username === "mpdc_admin" || updatedSession.role === "MPDC Admin"
+                ? "mpdc_admin"
+                : updatedSession.role === "Super Admin"
+                ? "admin_users"
+                : updatedSession.role === "Barangay Official"
+                ? "planning"
+                : updatedSession.role === "Private Engineer"
+                ? "pengineer"
+                : updatedSession.role === "MPDC"
+                ? (updatedSession.username === "mpdc_admin" || updatedSession.role === "MPDC Admin" ? "mpdc_admin" : "permits")
+                : "app"
+            );
+          }}
+          onLogout={goHome}
+        />
+      )}
     </div>
   );
 }

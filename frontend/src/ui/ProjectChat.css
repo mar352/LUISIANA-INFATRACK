@@ -1,176 +1,373 @@
+/* ── INFA-TRACK AI Help Chat (Apple Frosted Glass & Minimal Theme) ── */
 .project-chat-root {
   position: absolute;
-  top: calc(var(--map-hud-top, 48px) + 8px);
+  top: calc(var(--map-hud-top, 56px) + 12px);
   right: 14px;
   left: auto;
   bottom: auto;
-  z-index: 13;
-  font-family: "Chakra Petch", system-ui, sans-serif;
-  /* Don't participate in mapWrap layout sizing */
+  z-index: 25;
+  font-family: var(--apple-font, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
   width: 0;
   height: 0;
   overflow: visible;
   pointer-events: none;
 }
 
-.project-chat-root > * {
+.project-chat-root>* {
   pointer-events: auto;
 }
 
+/* Transparent Tap-Outside Backdrop */
+.project-chat-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10040;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: none;
+  cursor: default;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Apple Capsule FAB Button */
 .project-chat-fab {
   position: absolute;
   top: 0;
   right: 0;
   left: auto;
   bottom: auto;
-  border: 2px solid var(--ink, #1a1a1a);
-  background: var(--seed);
-  color: var(--on-burnt);
-  font-weight: 700;
-  font-size: 13px;
-  padding: 12px 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 38px;
+  padding: 0 14px 0 12px;
+  border-radius: var(--apple-radius-full, 999px);
+  border: 1px solid var(--apple-border);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 0, 0, 0.04);
+  color: var(--apple-text);
+  font-family: var(--apple-font, system-ui, -apple-system, sans-serif);
+  font-weight: 600;
+  font-size: 12.5px;
+  letter-spacing: -0.01em;
   cursor: pointer;
-  box-shadow: 4px 4px 0 var(--ink, #1a1a1a);
   white-space: nowrap;
+  user-select: none;
+  transition: all 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
+}
+
+[data-theme="dark"] .project-chat-fab,
+body.dark .project-chat-fab {
+  background: rgba(20, 21, 24, 0.88);
+  border-color: var(--apple-border);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .project-chat-fab:hover {
-  filter: brightness(1.05);
+  background: var(--apple-surface-secondary);
+  border-color: var(--apple-border-strong);
+  transform: scale(1.05);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
 }
 
+.project-chat-fab:active {
+  transform: scale(0.96);
+  background: var(--apple-surface-tertiary);
+}
+
+.project-chat-fab:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--apple-accent);
+}
+
+.project-chat-fab-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--apple-accent, #0071e3);
+  line-height: 1;
+}
+
+[data-theme="dark"] .project-chat-fab-icon,
+body.dark .project-chat-fab-icon {
+  color: var(--apple-accent, #2997ff);
+}
+
+.project-chat-fab-text {
+  line-height: 1;
+}
+
+.project-chat-fab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 6px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border-radius: 999px;
+  background: rgba(0, 113, 227, 0.12);
+  color: #0071e3;
+  line-height: 1.2;
+}
+
+[data-theme="dark"] .project-chat-fab-badge,
+body.dark .project-chat-fab-badge {
+  background: rgba(41, 151, 255, 0.18);
+  color: #2997ff;
+}
+
+@keyframes projectChatFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* Chat Sheet / Window Panel */
 .project-chat-panel {
-  position: absolute;
-  top: 0;
-  right: 0;
+  position: fixed;
+  top: calc(var(--map-hud-top, 56px) + 12px);
+  right: 16px;
   left: auto;
   bottom: auto;
-  width: min(380px, calc(100vw - 28px));
-  height: min(480px, calc(100vh - 120px));
+  width: min(390px, calc(100vw - 32px));
+  height: min(520px, calc(100dvh - 100px));
   display: flex;
   flex-direction: column;
-  background: var(--cream, var(--cream));
-  color: var(--ink, #1a1a1a);
-  border: 2px solid var(--ink, #1a1a1a);
-  box-shadow: 6px 6px 0 rgba(0, 0, 0, 0.25);
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  color: var(--apple-text);
+  border: 1px solid var(--apple-border);
+  border-radius: 18px;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.16), 0 4px 12px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+  animation: projectChatFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
+  z-index: 10050;
+}
+
+[data-theme="dark"] .project-chat-panel,
+body.dark .project-chat-panel {
+  background: rgba(20, 21, 24, 0.94);
+  border-color: var(--apple-border);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6), 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.project-chat-sheet-handle {
+  display: none;
 }
 
 .project-chat-panel--full {
-  position: fixed;
-  inset: 0;
-  left: 0;
-  bottom: 0;
-  width: 100vw;
-  height: 100vh;
-  max-width: none;
-  max-height: none;
-  z-index: 70;
-  box-shadow: none;
-  border-width: 0;
-  align-items: stretch;
+  position: fixed !important;
+  inset: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  max-width: none !important;
+  max-height: none !important;
+  z-index: 10060 !important;
+  box-shadow: none !important;
+  border-width: 0 !important;
+  border-radius: 0 !important;
+  align-items: stretch !important;
+  animation: none !important;
 }
 
 .project-chat-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--stroke, rgba(0, 0, 0, 0.15));
-  background: rgba(255, 255, 255, 0.45);
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--apple-border);
+  background: var(--apple-surface-secondary);
   flex-shrink: 0;
 }
 
 .project-chat-panel--full .project-chat-header {
-  padding: 16px 20px;
-  width: 100%;
-  box-sizing: border-box;
+  padding: 16px 24px;
 }
 
 .project-chat-title {
-  font-weight: 700;
-  font-size: 14px;
+  font-weight: 600;
+  font-size: 13.5px;
+  letter-spacing: -0.01em;
+  color: var(--apple-text);
 }
 
 .project-chat-sub {
-  font-size: 11px;
-  color: var(--muted, #666);
+  font-size: 10.5px;
+  color: var(--apple-text-secondary);
   margin-top: 2px;
 }
 
 .project-chat-header-actions {
   display: flex;
+  align-items: center;
   gap: 6px;
 }
 
 .project-chat-icon-btn {
-  border: 1px solid var(--stroke, rgba(0, 0, 0, 0.2));
-  background: var(--cream-deep);
-  color: var(--ink, #1a1a1a);
-  width: 32px;
-  height: 32px;
-  font-size: 16px;
-  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--apple-border);
+  border-radius: 50%;
+  background: var(--apple-surface);
+  color: var(--apple-text-secondary);
+  width: 26px;
+  height: 26px;
   cursor: pointer;
+  padding: 0;
+  transition: all 140ms ease;
+  box-sizing: border-box;
 }
 
+.project-chat-icon-btn:hover {
+  background: var(--apple-surface-tertiary);
+  color: var(--apple-text);
+  border-color: var(--apple-border-strong);
+  transform: scale(1.06);
+}
+
+.project-chat-icon-btn:active {
+  transform: scale(0.94);
+}
+
+/* ── Chat Messages Container & Mobile Scrolling ── */
 .project-chat-messages {
   flex: 1;
-  overflow: auto;
-  padding: 12px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  padding: 14px 16px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   min-height: 0;
+  scrollbar-width: thin;
+}
+
+.project-chat-messages::-webkit-scrollbar {
+  width: 5px;
+}
+
+.project-chat-messages::-webkit-scrollbar-thumb {
+  background: var(--apple-border);
+  border-radius: 999px;
 }
 
 .project-chat-panel--full .project-chat-messages {
-  padding: 20px;
+  padding: 24px;
   width: min(820px, 100%);
   align-self: center;
   box-sizing: border-box;
 }
 
 .project-chat-empty {
-  font-size: 13px;
-  color: var(--muted, #666);
-  line-height: 1.45;
-  padding: 8px 4px;
+  font-size: 12.5px;
+  color: var(--apple-text-secondary);
+  line-height: 1.5;
+  padding: 16px 12px;
+  text-align: center;
+  background: var(--apple-surface-secondary);
+  border-radius: 12px;
+  border: 1px dashed var(--apple-border);
 }
 
+/* ── Chat Message Bubbles ── */
 .project-chat-bubble {
-  max-width: 92%;
-  padding: 8px 10px;
+  max-width: 86%;
+  padding: 10px 14px;
   font-size: 13px;
-  line-height: 1.45;
+  line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
+  overflow-wrap: anywhere;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.project-chat-bubble code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.9em;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.07);
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .project-chat-bubble--user {
   align-self: flex-end;
-  background: var(--seed);
-  color: var(--on-burnt);
-  border: 1px solid var(--ink, #1a1a1a);
+  background: var(--apple-accent, #0071e3);
+  color: #ffffff;
+  border-radius: 18px 18px 4px 18px;
+  border: none;
+  box-shadow: 0 2px 8px rgba(0, 113, 227, 0.22);
+  letter-spacing: -0.01em;
+}
+
+.project-chat-bubble--user code {
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+}
+
+[data-theme="dark"] .project-chat-bubble--user,
+body.dark .project-chat-bubble--user {
+  background: #0071e3;
 }
 
 .project-chat-bubble--assistant {
   align-self: flex-start;
-  background: rgba(255, 255, 255, 0.7);
-  border: 1px solid var(--stroke, rgba(0, 0, 0, 0.15));
+  background: var(--apple-surface, #ffffff);
+  color: var(--apple-text, #1d1d1f);
+  border: 1px solid var(--apple-border);
+  border-radius: 18px 18px 18px 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="dark"] .project-chat-bubble--assistant,
+body.dark .project-chat-bubble--assistant {
+  background: var(--apple-surface-secondary, #1c1e22);
+  border-color: var(--apple-border);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+[data-theme="dark"] .project-chat-bubble--assistant code,
+body.dark .project-chat-bubble--assistant code {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f5f5f7;
 }
 
 .project-chat-typing {
-  opacity: 0.75;
+  opacity: 0.8;
   font-style: italic;
+  color: var(--apple-text-secondary);
 }
 
 .project-chat-error {
-  margin: 0 12px 8px;
-  padding: 8px 10px;
-  font-size: 12px;
-  color: #8a1f1f;
-  background: rgba(163, 32, 32, 0.08);
-  border: 1px solid rgba(163, 32, 32, 0.25);
+  margin: 0 14px 8px;
+  padding: 8px 12px;
+  font-size: 11.5px;
+  color: #dc2626;
+  background: rgba(220, 38, 38, 0.08);
+  border: 1px solid rgba(220, 38, 38, 0.25);
+  border-radius: 10px;
   flex-shrink: 0;
 }
 
@@ -180,12 +377,14 @@
   box-sizing: border-box;
 }
 
+/* ── Composer Input & Send ── */
 .project-chat-compose {
   display: flex;
+  align-items: flex-end;
   gap: 8px;
-  padding: 12px;
-  border-top: 1px solid var(--stroke, rgba(0, 0, 0, 0.15));
-  background: rgba(255, 255, 255, 0.35);
+  padding: 10px 14px;
+  border-top: 1px solid var(--apple-border);
+  background: var(--apple-surface-secondary);
   flex-shrink: 0;
   box-sizing: border-box;
 }
@@ -193,84 +392,194 @@
 .project-chat-panel--full .project-chat-compose {
   width: min(820px, 100%);
   align-self: center;
-  padding: 16px 20px 20px;
+  padding: 16px 24px 24px;
 }
 
 .project-chat-input {
   flex: 1;
   resize: none;
-  border: 1px solid var(--stroke, rgba(0, 0, 0, 0.2));
-  background: var(--cream-deep);
-  color: var(--ink, #1a1a1a);
-  padding: 8px 10px;
-  font: inherit;
+  border: 1px solid var(--apple-border);
+  border-radius: 12px;
+  background: var(--apple-surface);
+  color: var(--apple-text);
+  padding: 8px 12px;
+  font-family: inherit;
   font-size: 13px;
   outline: none;
   min-width: 0;
+  line-height: 1.4;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+  box-sizing: border-box;
+}
+
+.project-chat-input:focus {
+  border-color: var(--apple-accent, #0071e3);
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.15);
 }
 
 .project-chat-send {
-  border: 2px solid var(--ink, #1a1a1a);
-  background: var(--seed);
-  color: var(--on-burnt);
-  font-weight: 700;
-  font-size: 12px;
-  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 10px;
+  background: var(--apple-accent, #0071e3);
+  color: #ffffff;
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 12.5px;
+  padding: 0 15px;
+  height: 36px;
   cursor: pointer;
   align-self: stretch;
+  transition: all 140ms ease;
+  box-shadow: 0 2px 6px rgba(0, 113, 227, 0.25);
+}
+
+.project-chat-send:hover:not(:disabled) {
+  background: #0077ed;
+  transform: scale(1.03);
+}
+
+.project-chat-send:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.project-chat-send:disabled {
+  background: var(--apple-surface-tertiary);
+  color: var(--apple-text-tertiary);
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* ── Mobile Sheet Drawer & Responsive Cascade ── */
+@keyframes projectChatSheetUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0.6;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 @media (max-width: 768px) {
   .project-chat-root {
-    top: calc(52px + env(safe-area-inset-top, 0px) + 8px);
-    right: max(8px, env(safe-area-inset-right, 0px));
+    top: calc(var(--map-hud-top, 56px) + 8px);
+    right: max(10px, env(safe-area-inset-right, 0px));
     left: auto;
     bottom: auto;
   }
 
+  .project-chat-backdrop {
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
+
   .project-chat-fab {
-    min-height: 44px;
-    padding: 10px 12px;
-    font-size: 12px;
+    height: 35px;
+    padding: 0 11px 0 10px;
+    font-size: 11.5px;
+    gap: 5px;
   }
 
   .project-chat-panel:not(.project-chat-panel--full) {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    width: 100vw;
-    height: min(70dvh, 520px);
-    max-width: none;
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+    position: fixed !important;
+    top: auto !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100vw !important;
+    height: min(76dvh, 600px) !important;
+    max-height: calc(100dvh - 56px) !important;
+    max-width: none !important;
+    border-radius: 22px 22px 0 0 !important;
+    border: 1px solid var(--apple-border) !important;
+    border-bottom: none !important;
+    box-shadow: 0 -12px 48px rgba(0, 0, 0, 0.35) !important;
+    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+    animation: projectChatSheetUp 0.28s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    z-index: 10050 !important;
   }
 
-  .project-chat-panel--full {
-    height: 100dvh;
+  .project-chat-sheet-handle {
+    display: block;
+    width: 38px;
+    height: 4.5px;
+    border-radius: 999px;
+    background: var(--apple-border-strong, rgba(0, 0, 0, 0.22));
+    margin: 8px auto 4px;
+    flex-shrink: 0;
+  }
+
+  [data-theme="dark"] .project-chat-sheet-handle,
+  body.dark .project-chat-sheet-handle {
+    background: rgba(255, 255, 255, 0.25);
+  }
+
+  .project-chat-header {
+    padding: 8px 16px 10px;
+  }
+
+  .project-chat-icon-btn {
+    width: 30px;
+    height: 30px;
+  }
+
+  .project-chat-messages {
+    padding: 12px 14px;
+    gap: 10px;
+  }
+
+  /* Responsive bubble sizing on mobile screens */
+  .project-chat-bubble {
+    max-width: 90%;
+    padding: 10px 14px;
+    font-size: 13.5px;
+    line-height: 1.5;
+  }
+
+  .project-chat-bubble--user {
+    max-width: 88%;
+  }
+
+  .project-chat-compose {
+    padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px)) 14px;
+    gap: 8px;
+    background: var(--apple-surface-secondary);
+  }
+
+  .project-chat-input {
+    /* 16px font-size prevents iOS Safari from auto-zooming viewport on focus */
+    font-size: 16px;
+    padding: 10px 14px;
+    border-radius: 14px;
+    min-height: 44px;
+    max-height: 84px;
+  }
+
+  .project-chat-send {
+    height: 44px;
+    padding: 0 16px;
+    border-radius: 12px;
+    font-size: 13px;
+    flex-shrink: 0;
   }
 }
 
-.project-chat-send:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
+@media (max-width: 380px) {
+  .project-chat-bubble {
+    max-width: 94%;
+    padding: 9px 12px;
+    font-size: 13px;
+  }
 
-[data-theme="dark"] .project-chat-panel,
-[data-theme="dark"] .project-chat-header,
-[data-theme="dark"] .project-chat-compose {
-  background: #151c28;
-  color: #e8e4da;
-}
-
-[data-theme="dark"] .project-chat-bubble--assistant,
-[data-theme="dark"] .project-chat-input,
-[data-theme="dark"] .project-chat-icon-btn {
-  background: rgba(0, 0, 0, 0.35);
-  color: #e8e4da;
-  border-color: rgba(255, 255, 255, 0.15);
-}
-
-[data-theme="dark"] .project-chat-sub,
-[data-theme="dark"] .project-chat-empty {
-  color: #a8a498;
+  .project-chat-messages {
+    padding: 10px 10px;
+    gap: 8px;
+  }
 }

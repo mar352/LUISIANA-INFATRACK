@@ -82,7 +82,6 @@ export const MODEL_CATALOG: {
   { type: "solar_farm",        label: "Solar Farm",          icon: "solar_farm",        category: "Infrastructure",  description: "Solar panel installation",                    glb: "building.glb",      scale: 130 },
   { type: "barn",              label: "Barn / Post-Harvest", icon: "barn",              category: "Agriculture",     description: "Agricultural barn or post-harvest facility",  glb: "building.glb",      scale: 95  },
   { type: "construction",      label: "Under Construction",  icon: "construction",      category: "Construction",    description: "Site under active construction",              glb: "construction.glb",  scale: 80  },
-  { type: "custom",            label: "Custom Model",        icon: "construction",      category: "Construction",    description: "Upload your own 3D model",                    glb: "building.glb",      scale: 80  },
   { type: "shape",             label: "Map shape",           icon: "construction",      category: "Construction",    description: "Box, cylinder, freeform, roof, or tree",      glb: "building.glb",      scale: 8   },
 ];
 
@@ -473,7 +472,20 @@ export type CitizenApplication = {
     studentIdLetter?: CitizenUploadedFile[];
   };
   notes?: string;
-  status: "submitted" | "in_review" | "ocular_inspection" | "approved" | "rejected";
+  status:
+    | "submitted"
+    | "in_review"
+    | "ocular_inspection"
+    | "for_assessment"
+    | "for_payment"
+    | "for_engineering_inspection"
+    | "approved_for_construction"
+    | "approved"
+    | "completed"
+    | "flagged"
+    | "returned"
+    | "rejected"
+    | "denied";
   stepProgress?: {
     currentStep: number;
     totalSteps: number;
@@ -486,6 +498,43 @@ export type CitizenApplication = {
     step3Completed: boolean;
     step3At?: string | null;
     step3By?: string | null;
+    step4Completed?: boolean;
+    step4At?: string | null;
+    step4By?: string | null;
+    step5Completed?: boolean;
+    step5At?: string | null;
+    step5By?: string | null;
+  };
+  payment?: {
+    status?: "unpaid" | "order_of_payment_issued" | "paid";
+    orderOfPaymentNo?: string;
+    amount?: number;
+    feeAmount?: number;
+    breakdown?: { label: string; amount: number }[];
+    issuedAt?: string;
+    issuedBy?: string;
+    assessedAt?: string;
+    assessedBy?: string;
+    orNumber?: string;
+    or_number?: string;
+    paidAmount?: number;
+    amount_paid?: number;
+    paidAt?: string;
+    payment_date?: string;
+    cashier?: string;
+    instruction?: string;
+    notes?: string;
+  };
+  occupancyReady?: boolean;
+  occupancyPermitNo?: string;
+  assessorPostAssessment?: {
+    newTaxDecNo?: string;
+    propertyIndexNo?: string;
+    assessedValue?: number;
+    marketValue?: number;
+    assessedAt?: string;
+    assessedBy?: string;
+    notes?: string;
   };
   responsibleOfficers?: { name: string; role: string }[];
   slaDays?: number;
@@ -668,11 +717,16 @@ export type ApplicationCategory =
   | "municipal_project";
 
 export type AgriculturalFarmType =
+  | "poultry_housing"
   | "poultry_broiler"
   | "poultry_layer"
   | "piggery_swine"
+  | "piggery_pen"
+  | "farm_storage"
+  | "greenhouse"
   | "livestock_cattle"
-  | "agro_processing";
+  | "agro_processing"
+  | (string & {});
 
 export type MunicipalFundingSource =
   | "20_dev_fund"
@@ -713,5 +767,72 @@ export type NewApplicationPayload = {
   zoningClassification?: string;
 };
 
+// ── Enterprise System Configuration & Masterlists ───────────────────────────
+export type ConfigItemCategory = "barangays" | "buildingTypes" | "zoningClassifications" | "permitCategories";
 
+export type ConfigItem = {
+  id: string;
+  code: string;
+  name: string;
+  desc?: string;
+  zone?: string;
+  active: boolean;
+  isDefault?: boolean;
+  createdAt?: string;
+  createdBy?: string;
+  updatedAt?: string;
+  updatedBy?: string;
+};
 
+export type MaintenanceModeStatus = {
+  enabled: boolean;
+  message?: string;
+  estimatedDuration?: string;
+  updatedAt?: string;
+  updatedBy?: string;
+};
+
+export type SystemConfigData = {
+  version: string;
+  lastUpdated: string;
+  maintenance: MaintenanceModeStatus;
+  masterlists: {
+    barangays: ConfigItem[];
+    buildingTypes: ConfigItem[];
+    zoningClassifications: ConfigItem[];
+    permitCategories: ConfigItem[];
+  };
+};
+
+export type SlaOfficeMetric = {
+  id: string;
+  name: string;
+  shortName: string;
+  targetHours: number;
+  role: string;
+  color: string;
+  avgHours: number;
+  avgDays: number;
+  activeQueue: number;
+  delayedCount: number;
+  complianceRate: number;
+  status: "normal" | "warning" | "bottleneck";
+};
+
+export type SlaBottleneck = {
+  id: string;
+  name: string;
+  shortName: string;
+  avgHours: number;
+  targetHours: number;
+  activeQueue: number;
+  recommendation: string;
+};
+
+export type SlaMonitoringData = {
+  timestamp: string;
+  offices: SlaOfficeMetric[];
+  bottleneck: SlaBottleneck;
+  overallComplianceRate: number;
+  totalActiveBacklog: number;
+};

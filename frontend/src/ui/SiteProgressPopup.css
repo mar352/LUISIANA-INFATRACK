@@ -83,46 +83,74 @@
   left: 24px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
   z-index: 10;
-  max-width: 480px;
+  max-width: min(440px, calc(100vw - 48px));
+  font-family: var(--apple-font, "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+  transition: max-width 0.22s ease, opacity 0.2s ease;
 }
 
-/* [ < Bumalik sa Mapa ] Navigation Button (Google Maps Style) */
+.streetview-overlay.is-drawer-open .streetview-top-left-group {
+  max-width: min(380px, calc(100vw - 48px));
+}
+
+/* [ < Bumalik sa Mapa ] Navigation Button (Apple Frosted Glass Capsule) */
 .streetview-back-btn {
   align-self: flex-start;
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  background: rgba(15, 23, 42, 0.88);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  color: #ffffff;
-  padding: 10px 18px;
-  border-radius: 999px;
-  font-size: 13.5px;
-  font-weight: 700;
+  gap: 9px;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(28px) saturate(190%);
+  -webkit-backdrop-filter: blur(28px) saturate(190%);
+  border: 1px solid var(--apple-border, rgba(0, 0, 0, 0.08));
+  color: var(--apple-text, #1d1d1f);
+  padding: 9px 18px;
+  border-radius: var(--apple-radius-full, 999px);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   cursor: pointer;
   box-shadow: 
-    0 8px 24px rgba(0, 0, 0, 0.45),
-    0 1px 2px rgba(255, 255, 255, 0.15) inset;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    0 12px 32px rgba(0, 0, 0, 0.12),
+    0 2px 6px rgba(0, 0, 0, 0.04);
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   font-family: inherit;
+  user-select: none;
+}
+
+[data-theme="dark"] .streetview-back-btn,
+body.dark .streetview-back-btn {
+  background: rgba(20, 22, 27, 0.88);
+  border-color: var(--apple-border, rgba(255, 255, 255, 0.14));
+  color: #f5f5f7;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .streetview-back-btn svg {
-  color: #38bdf8;
-  transition: transform 0.2s ease;
+  color: var(--apple-accent, #0071e3);
+  transition: transform 0.18s ease;
+}
+
+[data-theme="dark"] .streetview-back-btn svg,
+body.dark .streetview-back-btn svg {
+  color: #2997ff;
 }
 
 .streetview-back-btn:hover {
-  background: rgba(30, 41, 59, 0.95);
-  border-color: rgba(56, 189, 248, 0.6);
-  transform: translateX(-2px);
+  background: var(--apple-surface, #ffffff);
+  border-color: var(--apple-border-strong, rgba(0, 0, 0, 0.18));
+  transform: translateX(-3px) scale(1.02);
   box-shadow: 
-    0 12px 30px rgba(0, 0, 0, 0.55),
-    0 0 15px rgba(56, 189, 248, 0.3);
+    0 16px 36px rgba(0, 0, 0, 0.16),
+    0 0 16px rgba(0, 113, 227, 0.2);
+}
+
+[data-theme="dark"] .streetview-back-btn:hover,
+body.dark .streetview-back-btn:hover {
+  background: rgba(30, 33, 40, 0.95);
+  border-color: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.6), 0 0 20px rgba(41, 151, 255, 0.3);
 }
 
 .streetview-back-btn:hover svg {
@@ -130,149 +158,320 @@
 }
 
 .streetview-back-btn:active {
-  transform: translateX(0) scale(0.98);
+  transform: translateX(0) scale(0.97);
 }
 
-/* Overlay Information (Watermark Style Glass Box) */
+/* =========================================================
+   WATERMARK CARD: Landing Page Apple Frosted Showcase Card
+   ========================================================= */
+.streetview-watermark-card {
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(28px) saturate(190%);
+  -webkit-backdrop-filter: blur(28px) saturate(190%);
+  border: 1px solid var(--apple-border, rgba(0, 0, 0, 0.08));
+  border-radius: 20px;
+  padding: 16px 20px 18px;
+  color: var(--apple-text, #1d1d1f);
+  box-shadow: 
+    0 24px 50px -8px rgba(0, 0, 0, 0.14),
+    0 4px 16px rgba(0, 0, 0, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  font-family: inherit;
+}
+
+[data-theme="dark"] .streetview-watermark-card,
+body.dark .streetview-watermark-card {
+  background: rgba(20, 22, 27, 0.88);
+  border-color: var(--apple-border, rgba(255, 255, 255, 0.14));
+  color: #f5f5f7;
+  box-shadow: 0 28px 60px rgba(0, 0, 0, 0.65), 0 4px 18px rgba(0, 0, 0, 0.4);
+}
+
+.streetview-watermark-card.is-collapsed {
+  padding: 12px 16px;
+  gap: 8px;
+  border-radius: 16px;
+}
+
+/* Header Bar: macOS Showcase Dots + Live Beacon + Mode Tag + Tracking */
+.streetview-watermark-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid var(--apple-border, rgba(0, 0, 0, 0.07));
+  padding-bottom: 11px;
+}
+
+[data-theme="dark"] .streetview-watermark-header,
+body.dark .streetview-watermark-header {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+.streetview-header-left {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.streetview-header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* macOS Window Showcase Dots */
+.streetview-mac-dots {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-right: 3px;
+  flex-shrink: 0;
+}
+
+.mac-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  opacity: 0.85;
+}
+
+.mac-dot--red { background: #ff5f56; }
+.mac-dot--amber { background: #ffbd2e; }
+.mac-dot--green { background: #27c93f; }
+
+/* Live Beacon (Pulsing Radar Wave + Dot) */
+.streetview-live-beacon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.streetview-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #10b981;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.9);
+}
+
+.streetview-live-ping {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.45);
+  animation: liveBeaconPing 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+  pointer-events: none;
+}
+
+@keyframes liveBeaconPing {
+  0% {
+    transform: scale(0.8);
+    opacity: 0.9;
+  }
+  70% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+/* Live Chip */
+.streetview-live-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: #15803d;
+  background: rgba(22, 163, 74, 0.12);
+  border: 1px solid rgba(22, 163, 74, 0.28);
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+[data-theme="dark"] .streetview-live-chip,
+body.dark .streetview-live-chip {
+  color: #34d399;
+  background: rgba(16, 185, 129, 0.18);
+  border-color: rgba(16, 185, 129, 0.35);
+}
+
+.streetview-watermark-tag {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: var(--apple-text-secondary, #6e6e73);
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+[data-theme="dark"] .streetview-watermark-tag,
+body.dark .streetview-watermark-tag {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.streetview-tracking-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--apple-accent, #0071e3);
+  background: rgba(0, 113, 227, 0.08);
+  padding: 2.5px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 113, 227, 0.2);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1.25;
+}
+
+[data-theme="dark"] .streetview-tracking-code,
+body.dark .streetview-tracking-code {
+  color: #2997ff;
+  background: rgba(41, 151, 255, 0.18);
+  border-color: rgba(41, 151, 255, 0.35);
+}
 
 .streetview-watermark-toggle-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  color: #cbd5e1;
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
+  background: var(--apple-surface-secondary, #f5f5f7);
+  border: 1px solid var(--apple-border, rgba(0, 0, 0, 0.08));
+  color: var(--apple-text-secondary, #6e6e73);
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
   cursor: pointer;
   padding: 0;
-  margin-left: 6px;
   flex-shrink: 0;
-  transition: all 0.18s ease;
+  transition: all 0.16s ease;
+}
+
+[data-theme="dark"] .streetview-watermark-toggle-btn,
+body.dark .streetview-watermark-toggle-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.85);
 }
 
 .streetview-watermark-toggle-btn:hover {
-  background: rgba(56, 189, 248, 0.2);
-  border-color: #38bdf8;
+  background: var(--apple-surface-tertiary, #ebebed);
+  color: var(--apple-text, #1d1d1f);
+  transform: scale(1.08);
+}
+
+[data-theme="dark"] .streetview-watermark-toggle-btn:hover,
+body.dark .streetview-watermark-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
   color: #ffffff;
 }
 
-.streetview-watermark-card.is-collapsed {
-  padding: 10px 14px;
-  gap: 6px;
+.streetview-watermark-toggle-btn:active {
+  transform: scale(0.92);
 }
 
+/* Collapsed Compact Row */
 .streetview-watermark-collapsed-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
   overflow: hidden;
 }
 
 .streetview-info-value-compact {
-  font-size: 13px;
-  font-weight: 700;
-  color: #ffffff;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--apple-text, #1d1d1f);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  letter-spacing: -0.01em;
+}
+
+[data-theme="dark"] .streetview-info-value-compact,
+body.dark .streetview-info-value-compact {
+  color: #ffffff;
 }
 
 .streetview-progress-badge.is-compact {
-  font-size: 11px;
-  font-weight: 800;
-  padding: 2px 7px;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 2.5px 8px;
   border-radius: 999px;
   border: 1px solid currentColor;
   flex-shrink: 0;
 }
 
-.streetview-watermark-card {
-  background: rgba(15, 23, 42, 0.82);
-  backdrop-filter: blur(24px) saturate(1.3);
-  -webkit-backdrop-filter: blur(24px) saturate(1.3);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 16px;
-  padding: 16px 20px;
-  color: #f8fafc;
-  box-shadow: 
-    0 20px 45px -8px rgba(0, 0, 0, 0.6),
-    0 0 0 1px rgba(255, 255, 255, 0.05) inset;
-  display: flex;
-  flex-direction: column;
-  gap: 11px;
-}
-
-.streetview-watermark-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  padding-bottom: 8px;
-}
-
-.streetview-live-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #22c55e;
-  box-shadow: 0 0 10px #22c55e;
-  animation: liveDotPulse 2s infinite ease-in-out;
-}
-
-@keyframes liveDotPulse {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.25); opacity: 0.7; }
-}
-
-.streetview-watermark-tag {
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  color: #94a3b8;
-  text-transform: uppercase;
-}
-
-.streetview-tracking-code {
-  margin-left: auto;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 12px;
-  font-weight: 700;
-  color: #38bdf8;
-  background: rgba(56, 189, 248, 0.12);
-  padding: 2px 7px;
-  border-radius: 6px;
-  border: 1px solid rgba(56, 189, 248, 0.25);
-}
-
-/* Info Rows */
+/* Watermark Info Rows (Apple Typography & Contrast) */
 .streetview-info-row {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  line-height: 1.4;
+  line-height: 1.45;
 }
 
 .streetview-info-label {
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 600;
-  color: #94a3b8;
+  color: var(--apple-text-secondary, #6e6e73);
+  letter-spacing: -0.01em;
   flex-shrink: 0;
+  min-width: 52px;
+}
+
+[data-theme="dark"] .streetview-info-label,
+body.dark .streetview-info-label {
+  color: rgba(255, 255, 255, 0.6);
 }
 
 .streetview-info-value {
-  font-size: 14.5px;
-  font-weight: 700;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--apple-text, #1d1d1f);
+  letter-spacing: -0.012em;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+[data-theme="dark"] .streetview-info-value,
+body.dark .streetview-info-value {
   color: #ffffff;
-  letter-spacing: -0.01em;
 }
 
 .streetview-info-date {
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 600;
-  color: #e2e8f0;
+  color: var(--apple-text, #1d1d1f);
+}
+
+[data-theme="dark"] .streetview-info-date,
+body.dark .streetview-info-date {
+  color: #ffffff;
 }
 
 /* Progress Row & Badge */
@@ -284,33 +483,65 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 13px;
-  font-weight: 800;
-  padding: 3px 10px;
-  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3.5px 11px;
+  border-radius: var(--apple-radius-full, 999px);
   border: 1px solid currentColor;
-  letter-spacing: 0.01em;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
 }
 
 .streetview-badge-icon {
-  font-size: 14px;
+  font-size: 13px;
+  line-height: 1;
 }
 
 /* Sleek Progress Meter Track */
 .streetview-meter-track {
   width: 100%;
-  height: 6px;
-  background: rgba(255, 255, 255, 0.1);
+  height: 7px;
+  background: rgba(0, 0, 0, 0.07);
   border-radius: 999px;
   overflow: hidden;
   position: relative;
   margin-top: -2px;
 }
 
+[data-theme="dark"] .streetview-meter-track,
+body.dark .streetview-meter-track {
+  background: rgba(255, 255, 255, 0.12);
+}
+
 .streetview-meter-fill {
   height: 100%;
   border-radius: 999px;
-  transition: width 0.5s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.4s ease;
+  transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.4s ease;
+}
+
+/* Coordinates */
+.streetview-coords {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--apple-text-secondary, #6e6e73);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+[data-theme="dark"] .streetview-coords,
+body.dark .streetview-coords {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.streetview-coords svg {
+  color: var(--apple-accent, #0071e3);
+  flex-shrink: 0;
+}
+
+[data-theme="dark"] .streetview-coords svg,
+body.dark .streetview-coords svg {
+  color: #2997ff;
 }
 
 /* Watermark Footer */
@@ -318,45 +549,65 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  padding-top: 8px;
-  margin-top: 2px;
+  border-top: 1px solid var(--apple-border, rgba(0, 0, 0, 0.07));
+  padding-top: 11px;
+  gap: 10px;
 }
 
-.streetview-coords {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+[data-theme="dark"] .streetview-watermark-footer,
+body.dark .streetview-watermark-footer {
+  border-top-color: rgba(255, 255, 255, 0.1);
+}
+
+.streetview-municipality-tag {
   font-size: 11px;
-  color: #64748b;
-  font-family: var(--font-mono, monospace);
+  font-weight: 500;
+  color: var(--apple-text-secondary, #6e6e73);
 }
 
-.streetview-coords svg {
-  color: #38bdf8;
-  opacity: 0.8;
+[data-theme="dark"] .streetview-municipality-tag,
+body.dark .streetview-municipality-tag {
+  color: rgba(255, 255, 255, 0.6);
 }
 
 .streetview-photo-source-tag {
-  font-size: 10px;
+  font-size: 10.5px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: #94a3b8;
-  background: rgba(255, 255, 255, 0.06);
-  padding: 2px 7px;
-  border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  letter-spacing: 0.03em;
+  color: var(--apple-text-secondary, #6e6e73);
+  background: var(--apple-surface-secondary, rgba(0, 0, 0, 0.05));
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--apple-border, rgba(0, 0, 0, 0.08));
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+[data-theme="dark"] .streetview-photo-source-tag,
+body.dark .streetview-photo-source-tag {
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
 }
 
 .streetview-photo-source-tag.is-actual {
-  color: #22c55e;
-  background: rgba(34, 197, 94, 0.12);
-  border-color: rgba(34, 197, 94, 0.25);
+  color: #15803d;
+  background: rgba(22, 163, 74, 0.12);
+  border-color: rgba(22, 163, 74, 0.28);
+}
+
+[data-theme="dark"] .streetview-photo-source-tag.is-actual,
+body.dark .streetview-photo-source-tag.is-actual {
+  color: #34d399;
+  background: rgba(16, 185, 129, 0.18);
+  border-color: rgba(16, 185, 129, 0.35);
 }
 
 /* =========================================================
-   TOP RIGHT: Compass & Street View Orientation
+   TOP RIGHT: Compass & Action Button (Apple Capsule Style)
    ========================================================= */
 .streetview-top-right-group {
   position: absolute;
@@ -364,39 +615,59 @@
   right: 24px;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   z-index: 10;
+  font-family: var(--apple-font, "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
 }
 
 .streetview-compass-badge {
   display: flex;
   align-items: center;
-  gap: 10px;
-  background: rgba(15, 23, 42, 0.82);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 999px;
-  padding: 7px 14px;
-  color: #ffffff;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  gap: 9px;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(28px) saturate(190%);
+  -webkit-backdrop-filter: blur(28px) saturate(190%);
+  border: 1px solid var(--apple-border, rgba(0, 0, 0, 0.08));
+  border-radius: var(--apple-radius-full, 999px);
+  padding: 6px 14px 6px 8px;
+  color: var(--apple-text, #1d1d1f);
+  box-shadow: 
+    0 12px 32px rgba(0, 0, 0, 0.12),
+    0 2px 6px rgba(0, 0, 0, 0.04);
+  user-select: none;
+  transition: all 0.18s ease;
+}
+
+[data-theme="dark"] .streetview-compass-badge,
+body.dark .streetview-compass-badge {
+  background: rgba(20, 22, 27, 0.88);
+  border-color: var(--apple-border, rgba(255, 255, 255, 0.14));
+  color: #f5f5f7;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
 }
 
 .streetview-compass-needle {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  border: 1px solid rgba(0, 0, 0, 0.1);
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--apple-surface-secondary, #f5f5f7);
+}
+
+[data-theme="dark"] .streetview-compass-needle,
+body.dark .streetview-compass-needle {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .needle-n {
-  font-size: 11px;
-  font-weight: 900;
+  font-size: 10px;
+  font-weight: 800;
   color: #ef4444;
+  line-height: 1;
 }
 
 .streetview-compass-text {
@@ -405,59 +676,87 @@
 }
 
 .compass-title {
-  font-size: 10.5px;
-  font-weight: 800;
-  letter-spacing: 0.07em;
-  color: #f1f5f9;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--apple-text, #1d1d1f);
+}
+
+[data-theme="dark"] .compass-title,
+body.dark .compass-title {
+  color: #ffffff;
 }
 
 .compass-sub {
   font-size: 9.5px;
-  color: #94a3b8;
+  color: var(--apple-text-secondary, #6e6e73);
+}
+
+[data-theme="dark"] .compass-sub,
+body.dark .compass-sub {
+  color: rgba(255, 255, 255, 0.55);
 }
 
 .streetview-action-btn {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  background: linear-gradient(135deg, rgba(2, 132, 199, 0.88) 0%, rgba(3, 105, 161, 0.88) 100%);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(56, 189, 248, 0.5);
-  color: #ffffff;
-  padding: 8px 16px;
-  border-radius: 999px;
+  background: var(--apple-primary, #151c28);
+  color: var(--apple-primary-text, #ffffff);
+  border: 1px solid var(--apple-primary, #151c28);
+  padding: 9px 18px;
+  border-radius: var(--apple-radius-full, 999px);
   font-size: 12.5px;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 6px 20px rgba(2, 132, 199, 0.35);
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
   font-family: inherit;
+  user-select: none;
+}
+
+[data-theme="dark"] .streetview-action-btn,
+body.dark .streetview-action-btn {
+  background: var(--apple-accent, #0071e3);
+  color: #ffffff;
+  border-color: var(--apple-accent, #0071e3);
+  box-shadow: 0 6px 20px rgba(0, 113, 227, 0.4);
 }
 
 .streetview-action-btn:hover {
-  background: linear-gradient(135deg, rgba(3, 105, 161, 0.98) 0%, rgba(2, 132, 199, 0.98) 100%);
-  transform: translateY(-1px);
-  box-shadow: 0 8px 25px rgba(2, 132, 199, 0.5);
+  background: var(--apple-primary-hover, #222c3e);
+  transform: translateY(-1px) scale(1.02);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+}
+
+[data-theme="dark"] .streetview-action-btn:hover,
+body.dark .streetview-action-btn:hover {
+  background: #0077ed;
+  box-shadow: 0 8px 28px rgba(0, 113, 227, 0.6);
+}
+
+.streetview-action-btn:active {
+  transform: scale(0.97);
 }
 
 /* =========================================================
-   BOTTOM CENTER: Interactive Progression Simulator
+   BOTTOM CENTER: Progression Timeline Bar (Apple Capsule Style)
    ========================================================= */
 .streetview-bottom-center-panel {
   position: absolute;
   bottom: 24px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 10;
+  z-index: 100;
   width: auto;
   max-width: calc(100vw - 48px);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
+  pointer-events: auto;
+  font-family: var(--apple-font, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif);
 }
-
 
 /* Multi-photo Pager inside a stage */
 .streetview-photo-pager {
@@ -465,16 +764,23 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: rgba(15, 23, 42, 0.9);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(56, 189, 248, 0.35);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid var(--apple-border, rgba(0, 0, 0, 0.08));
   padding: 5px 14px;
   border-radius: 999px;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.12);
   pointer-events: auto;
   align-self: center;
   animation: pagerFadeIn 0.2s ease-out;
+}
+
+[data-theme="dark"] .streetview-photo-pager,
+body.dark .streetview-photo-pager {
+  background: rgba(20, 22, 27, 0.88);
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
 }
 
 @keyframes pagerFadeIn {
@@ -485,8 +791,13 @@
 .streetview-pager-count {
   font-size: 11.5px;
   font-weight: 700;
-  color: #38bdf8;
+  color: var(--apple-accent, #0071e3);
   letter-spacing: 0.02em;
+}
+
+[data-theme="dark"] .streetview-pager-count,
+body.dark .streetview-pager-count {
+  color: #38bdf8;
 }
 
 .streetview-pager-btn {
@@ -496,17 +807,24 @@
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: #f8fafc;
+  background: rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  color: var(--apple-text, #1d1d1f);
   cursor: pointer;
   transition: all 0.15s ease;
   padding: 0;
 }
 
+[data-theme="dark"] .streetview-pager-btn,
+body.dark .streetview-pager-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #f8fafc;
+}
+
 .streetview-pager-btn:hover {
-  background: rgba(56, 189, 248, 0.3);
-  border-color: #38bdf8;
+  background: var(--apple-accent, #0071e3);
+  border-color: var(--apple-accent, #0071e3);
   color: #ffffff;
   transform: scale(1.1);
 }
@@ -516,40 +834,62 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.12);
-  color: #94a3b8;
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--apple-text-secondary, #6e6e73);
   font-size: 10px;
   font-weight: 800;
-  padding: 1px 5px;
+  padding: 1px 6px;
   border-radius: 999px;
   min-width: 15px;
   height: 15px;
   line-height: 1;
-  margin-left: 2px;
+  margin-left: 3px;
+}
+
+[data-theme="dark"] .streetview-stage-upload-count,
+body.dark .streetview-stage-upload-count {
+  background: rgba(255, 255, 255, 0.12);
+  color: #94a3b8;
 }
 
 .streetview-stage-upload-count.is-actual {
-  background: rgba(34, 197, 94, 0.25);
-  color: #4ade80;
+  background: rgba(34, 197, 94, 0.18);
+  color: #16a34a;
   border: 1px solid rgba(34, 197, 94, 0.35);
 }
 
-.streetview-stage-pill.active .streetview-stage-upload-count.is-actual {
-  background: #22c55e;
-  color: #0f172a;
+[data-theme="dark"] .streetview-stage-upload-count.is-actual,
+body.dark .streetview-stage-upload-count.is-actual {
+  background: rgba(34, 197, 94, 0.25);
+  color: #4ade80;
 }
 
+.streetview-stage-pill.active .streetview-stage-upload-count.is-actual {
+  background: #16a34a;
+  color: #ffffff;
+}
+
+/* Progression Timeline Capsule Bar */
 .streetview-stages-bar {
-  background: rgba(15, 23, 42, 0.85);
-  backdrop-filter: blur(20px) saturate(1.2);
-  -webkit-backdrop-filter: blur(20px) saturate(1.2);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(28px) saturate(190%);
+  -webkit-backdrop-filter: blur(28px) saturate(190%);
+  border: 1px solid var(--apple-border, rgba(0, 0, 0, 0.08));
   border-radius: 999px;
-  padding: 8px 14px;
+  padding: 6px 12px;
   display: flex;
   align-items: center;
-  gap: 12px;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+  gap: 10px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.12);
+  user-select: none;
+}
+
+[data-theme="dark"] .streetview-stages-bar,
+body.dark .streetview-stages-bar {
+  background: rgba(20, 22, 27, 0.88);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: #f5f5f7;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.6);
 }
 
 .streetview-stages-title {
@@ -558,12 +898,22 @@
   gap: 6px;
   font-size: 12px;
   font-weight: 700;
-  color: #94a3b8;
+  color: var(--apple-text-secondary, #6e6e73);
   padding-left: 4px;
   flex-shrink: 0;
 }
 
+[data-theme="dark"] .streetview-stages-title,
+body.dark .streetview-stages-title {
+  color: #94a3b8;
+}
+
 .streetview-stages-title svg {
+  color: var(--apple-accent, #0071e3);
+}
+
+[data-theme="dark"] .streetview-stages-title svg,
+body.dark .streetview-stages-title svg {
   color: #38bdf8;
 }
 
@@ -578,38 +928,54 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #cbd5e1;
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid var(--apple-border, rgba(0, 0, 0, 0.08));
+  color: var(--apple-text, #1d1d1f);
   padding: 6px 14px;
   border-radius: 999px;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   font-family: inherit;
   white-space: nowrap;
 }
 
+[data-theme="dark"] .streetview-stage-pill,
+body.dark .streetview-stage-pill {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #cbd5e1;
+}
+
 .streetview-stage-pill:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: var(--apple-text, #000000);
+  border-color: rgba(0, 0, 0, 0.15);
+  transform: translateY(-1px);
+}
+
+[data-theme="dark"] .streetview-stage-pill:hover,
+body.dark .streetview-stage-pill:hover {
   background: rgba(255, 255, 255, 0.12);
   color: #ffffff;
   border-color: rgba(255, 255, 255, 0.25);
 }
 
 .streetview-stage-pill.active {
+  background: var(--apple-accent, #0071e3);
+  border-color: var(--apple-accent, #0071e3);
+  color: #ffffff;
+  font-weight: 700;
+  box-shadow: 0 4px 14px rgba(0, 113, 227, 0.35);
+}
+
+[data-theme="dark"] .streetview-stage-pill.active,
+body.dark .streetview-stage-pill.active {
   background: rgba(56, 189, 248, 0.2);
   border-color: #38bdf8;
   color: #38bdf8;
-  font-weight: 700;
   box-shadow: 0 0 14px rgba(56, 189, 248, 0.35);
-}
-
-.streetview-stage-pill.is-actual-btn.active {
-  background: rgba(34, 197, 94, 0.2);
-  border-color: #22c55e;
-  color: #22c55e;
-  box-shadow: 0 0 14px rgba(34, 197, 94, 0.35);
 }
 
 .streetview-toggle-remarks-btn {
@@ -618,17 +984,28 @@
   gap: 5px;
   background: transparent;
   border: none;
-  border-left: 1px solid rgba(255, 255, 255, 0.12);
-  color: #94a3b8;
+  border-left: 1px solid var(--apple-border, rgba(0, 0, 0, 0.1));
+  color: var(--apple-text-secondary, #6e6e73);
   padding: 4px 6px 4px 12px;
   font-size: 11.5px;
   font-weight: 600;
   cursor: pointer;
-  transition: color 0.15s ease;
+  transition: all 0.15s ease;
   font-family: inherit;
 }
 
+[data-theme="dark"] .streetview-toggle-remarks-btn,
+body.dark .streetview-toggle-remarks-btn {
+  border-left-color: rgba(255, 255, 255, 0.14);
+  color: #94a3b8;
+}
+
 .streetview-toggle-remarks-btn:hover {
+  color: var(--apple-accent, #0071e3);
+}
+
+[data-theme="dark"] .streetview-toggle-remarks-btn:hover,
+body.dark .streetview-toggle-remarks-btn:hover {
   color: #ffffff;
 }
 
@@ -638,32 +1015,126 @@
   bottom: 84px;
   left: 50%;
   transform: translateX(-50%);
-  width: 620px;
+  width: 600px;
   max-width: calc(100vw - 48px);
-  max-height: calc(100vh - 160px);
+  max-height: calc(100vh - 165px);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  background: rgba(15, 23, 42, 0.94);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 16px;
-  padding: 16px 22px;
-  z-index: 25;
-  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.6);
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(28px) saturate(190%);
+  -webkit-backdrop-filter: blur(28px) saturate(190%);
+  border: 1px solid var(--apple-border, rgba(0, 0, 0, 0.08));
+  border-radius: 18px;
+  padding: 16px 22px 20px;
+  z-index: 105;
+  box-shadow: 0 24px 50px rgba(0, 0, 0, 0.18);
   animation: drawerSlideUpDesktop 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+[data-theme="dark"] .streetview-details-drawer,
+body.dark .streetview-details-drawer {
+  background: rgba(20, 22, 27, 0.92);
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 24px 50px rgba(0, 0, 0, 0.6);
+}
+
+.streetview-details-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--apple-border, rgba(0, 0, 0, 0.08));
+  padding-bottom: 10px;
+  margin-bottom: 14px;
+}
+
+[data-theme="dark"] .streetview-details-drawer-header,
+body.dark .streetview-details-drawer-header {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+.streetview-details-drawer-title-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.streetview-details-drawer-tag {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--apple-accent, #0071e3);
+}
+
+[data-theme="dark"] .streetview-details-drawer-tag,
+body.dark .streetview-details-drawer-tag {
+  color: #38bdf8;
+}
+
+.streetview-details-drawer-project {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--apple-text, #1d1d1f);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+[data-theme="dark"] .streetview-details-drawer-project,
+body.dark .streetview-details-drawer-project {
+  color: #ffffff;
+}
+
+.streetview-details-drawer-close-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--apple-border, rgba(0, 0, 0, 0.08));
+  color: var(--apple-text-secondary, #6e6e73);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.16s ease;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+[data-theme="dark"] .streetview-details-drawer-close-btn,
+body.dark .streetview-details-drawer-close-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.16);
+  color: #f1f5f9;
+}
+
+.streetview-details-drawer-close-btn:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #ef4444;
+  transform: scale(1.08);
 }
 
 .streetview-details-drawer::-webkit-scrollbar {
   width: 5px;
 }
 .streetview-details-drawer::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.5);
+  background: rgba(0, 0, 0, 0.04);
   border-radius: 999px;
 }
+[data-theme="dark"] .streetview-details-drawer::-webkit-scrollbar-track,
+body.dark .streetview-details-drawer::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.5);
+}
 .streetview-details-drawer::-webkit-scrollbar-thumb {
-  background: rgba(56, 189, 248, 0.4);
+  background: rgba(0, 0, 0, 0.2);
   border-radius: 999px;
+}
+[data-theme="dark"] .streetview-details-drawer::-webkit-scrollbar-thumb,
+body.dark .streetview-details-drawer::-webkit-scrollbar-thumb {
+  background: rgba(56, 189, 248, 0.4);
 }
 
 @keyframes drawerSlideUpDesktop {
@@ -693,28 +1164,48 @@
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  color: #64748b;
+  color: var(--apple-text-secondary, #6e6e73);
   letter-spacing: 0.05em;
+}
+
+[data-theme="dark"] .streetview-detail-label,
+body.dark .streetview-detail-label {
+  color: #64748b;
 }
 
 .streetview-detail-val {
   font-size: 13px;
+  color: var(--apple-text, #1d1d1f);
+}
+
+[data-theme="dark"] .streetview-detail-val,
+body.dark .streetview-detail-val {
   color: #f1f5f9;
 }
 
 .streetview-detail-remarks {
   grid-column: 1 / -1;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--apple-border, rgba(0, 0, 0, 0.08));
   padding-top: 8px;
   margin-top: 4px;
+}
+
+[data-theme="dark"] .streetview-detail-remarks,
+body.dark .streetview-detail-remarks {
+  border-top-color: rgba(255, 255, 255, 0.08);
 }
 
 .streetview-remarks-quote {
   margin: 0;
   font-size: 12.5px;
-  color: #93c5fd;
+  color: var(--apple-accent, #0071e3);
   font-style: italic;
   line-height: 1.45;
+}
+
+[data-theme="dark"] .streetview-remarks-quote,
+body.dark .streetview-remarks-quote {
+  color: #93c5fd;
 }
 
 /* Mobile Responsiveness */
@@ -748,37 +1239,77 @@
 
   /* Watermark Card on Mobile */
   .streetview-watermark-card {
-    padding: 11px 13px;
-    gap: 7px;
-    border-radius: 13px;
+    padding: 12px 14px;
+    gap: 8px;
+    border-radius: 16px;
     max-width: 100%;
     max-height: 48vh;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.55);
+    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.55);
   }
 
   .streetview-watermark-header {
     gap: 6px;
-    padding-bottom: 6px;
+    padding-bottom: 7px;
     flex-wrap: wrap;
+  }
+
+  .streetview-live-beacon {
+    width: 12px;
+    height: 12px;
+  }
+
+  .streetview-live-dot {
+    width: 6px;
+    height: 6px;
+  }
+
+  .streetview-live-chip {
+    font-size: 8px;
+    padding: 1px 5px;
   }
 
   .streetview-watermark-tag {
     font-size: 9.5px;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.05em;
   }
 
   .streetview-tracking-code {
-    font-size: 10.5px;
-    padding: 1.5px 5px;
-    border-radius: 4px;
+    font-size: 10px;
+    padding: 1.5px 6px;
+    border-radius: 999px;
     margin-left: auto;
   }
 
   .streetview-watermark-toggle-btn {
     width: 22px;
     height: 22px;
+  }
+
+  /* Project & Title on Mobile */
+  .streetview-project-section {
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .streetview-project-title {
+    font-size: 13.5px;
+  }
+
+  .streetview-brgy-pill {
+    font-size: 10px;
+    padding: 2px 7px;
+  }
+
+  .streetview-meta-grid {
+    grid-template-columns: 1fr;
+    gap: 6px;
+    padding: 6px 8px;
+  }
+
+  .streetview-meta-value {
+    font-size: 11px;
   }
 
   /* Info Rows on Mobile */
@@ -1057,9 +1588,13 @@
   }
 
   .streetview-watermark-card {
-    padding: 9px 11px;
+    padding: 10px 12px;
     gap: 6px;
-    border-radius: 11px;
+    border-radius: 14px;
+  }
+
+  .streetview-live-chip {
+    display: none;
   }
 
   .streetview-watermark-tag {
@@ -1067,8 +1602,8 @@
   }
 
   .streetview-tracking-code {
-    font-size: 10px;
-    padding: 1px 4px;
+    font-size: 9.5px;
+    padding: 1px 5px;
   }
 
   .streetview-info-label {
@@ -1086,6 +1621,7 @@
   .streetview-stages-bar {
     padding: 4px 6px;
     gap: 4px;
+    border-radius: 999px;
   }
 
   .streetview-stage-pill {

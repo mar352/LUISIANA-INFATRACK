@@ -46,7 +46,8 @@ import {
   addApplicationSidePhoto,
   getApplicationPhotos,
 } from "./services/citizenApplications.js";
-import { initDb } from "./services/db.js";
+import { securityCheckUploadedFile, logSecurityEvent } from "./services/fileSecurity.js";
+import { initDb, isDbConnected } from "./services/db.js";
 import { recordTermsConsent, listTermsConsents, resolveRealPublicIp } from "./services/termsConsent.js";
 import { createAlertFromRisk } from "./services/alerts.js";
 import { buildSlopeCache } from "./services/dem.js";
@@ -54,14 +55,40 @@ import { chatWithOllama, getChatConfig } from "./services/chat.js";
 import { lookupPlaceName } from "./services/placeName.js";
 import { assessGeorisk } from "./services/georiskAssess.js";
 import {
+  getSystemConfig,
+  getPublicConfig,
+  addConfigItem,
+  updateConfigItem,
+  deleteConfigItem,
+  toggleConfigItemStatus,
+  resetCategoryToDefaults,
+  setMaintenanceMode,
+  getMaintenanceMode,
+} from "./services/systemConfig.js";
+import {
+  generateSqlBackup,
+  generateJsonBackup,
+  buildBackupBundle,
+} from "./services/backup.js";
+import { computeSlaMetrics } from "./services/slaMonitoring.js";
+import {
   changePassword as staffChangePassword,
   cookieHeader,
-  isGlbFile,
+  createAccount,
+  deleteAccount,
+  forcedChangePassword,
+  getLocationFromIp,
+  getOnlineUsers,
+  getRealNetworkIp,
+  listAllAccounts,
   login as staffLogin,
   logout as staffLogout,
+  parseDeviceFromUserAgent,
   requireRoles,
   requireStaff,
+  resetAccountPassword,
   sessionFromRequest,
+  toggleAccountStatus,
 } from "./services/auth.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -81,32 +108,7 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-const MODEL_UPLOAD_MAX_BYTES = 500 * 1024 * 1024; // 500MB — large textured Blender GLBs
 const PHOTO_UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
-
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    cb(null, uploadsDir);
-  },
-  filename: (_req, file, cb) => {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    const ext = path.extname(file.originalname).toLowerCase() || ".glb";
-    cb(null, "model-" + uniqueSuffix + ext);
-  },
-});
-
-const upload = multer({
-  storage,
-  limits: { fileSize: MODEL_UPLOAD_MAX_BYTES },
-  fileFilter: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    if (ext === ".glb" || ext === ".gltf") {
-      cb(null, true);
-    } else {
-      cb(new Error("Only .glb and .gltf files are allowed"));
-    }
-  },
-});
 
 const photoStorage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadsDir),
@@ -178,10 +180,8 @@ function multerErrorHandler(err, _req, res, next) {
   if (!err) return next();
   if (err instanceof multer.MulterError) {
     if (err.code === "LIMIT_FILE_SIZE") {
-      const isPhoto = err.field === "photo" || err.field === "file";
-      const maxMb = Math.round(
-        (isPhoto ? PHOTO_UPLOAD_MAX_BYTES : MODEL_UPLOAD_MAX_BYTES) / (1024 * 1024),
-      );
+      const isCitizenDoc = err.field === "file";
+      const maxMb = isCitizenDoc ? 15 : 10;
       return res.status(413).json({
         error: `File too large. Maximum upload size is ${maxMb}MB.`,
         code: err.code,
@@ -220,10 +220,41 @@ app.use((req, res, next) => {
 
 app.use(express.json({ limit: "2mb" }));
 
+// System Maintenance Mode Guard Middleware
+app.use((req, res, next) => {
+  const m = getMaintenanceMode();
+  if (!m || !m.enabled) return next();
+
+  // Paths permitted even during maintenance:
+  const isAllowedPath =
+    req.path === "/health" ||
+    req.path === "/api/config" ||
+    req.path.startsWith("/api/auth/") ||
+    req.path.startsWith("/api/admin/") ||
+    req.path.startsWith("/uploads");
+
+  if (isAllowedPath) return next();
+
+  // If user has a valid session with Super Admin role, bypass maintenance mode
+  const session = sessionFromRequest(req);
+  if (session && session.role === "Super Admin") {
+    return next();
+  }
+
+  return res.status(503).json({
+    error: "maintenance_mode",
+    message: m.message || "Pansamantalang inaayos ang LUISIANA INFA-TRACK system upang mapabuti ang serbisyo. Mangyaring bumalik mamaya.",
+    estimatedDuration: m.estimatedDuration || "2 oras",
+    updatedAt: m.updatedAt,
+  });
+});
+
 app.use(
   "/uploads",
   (req, res, next) => {
     res.removeHeader("X-Frame-Options");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox;");
     res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Content-Disposition", "inline");
@@ -231,6 +262,8 @@ app.use(
   },
   express.static(uploadsDir, {
     setHeaders: (res) => {
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox;");
       res.setHeader("Content-Disposition", "inline");
     },
   })
@@ -238,17 +271,441 @@ app.use(
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
-function clientIp(req) {
-  return (
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true);
+      if (origin === CLIENT_ORIGIN) return cb(null, true);
+      if (LOCALHOST_ORIGIN_RE.test(origin)) return cb(null, true);
+      return cb(new Error("CORS: origin not allowed"), false);
+    },
+    credentials: true,
+  },
+});
+
+export function broadcastOnlineUsers() {
+  try {
+    const onlineUsers = getOnlineUsers();
+    io.emit("admin:online-users:update", {
+      onlineUsers,
+      count: onlineUsers.length,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.warn("[Realtime] broadcastOnlineUsers error:", err);
+  }
+}
+
+// In-memory ring buffer for runtime system errors & exceptions
+export const recentSystemErrors = [];
+
+export function recordSystemError(source, message, details = null) {
+  const item = {
+    id: `ERR-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    source,
+    message: String(message || "Unknown system error"),
+    details: details ? String(details) : null,
+    at: new Date().toISOString(),
+  };
+  recentSystemErrors.unshift(item);
+  if (recentSystemErrors.length > 50) recentSystemErrors.pop();
+  try {
+    broadcastSystemHealth();
+  } catch (_err) {
+    // Ignore if server/socket not fully bound yet
+  }
+  return item;
+}
+
+/** Super Admin: Accurate live system health, telemetries, and operational alerts */
+export function computeSystemHealth() {
+  const accounts = listAllAccounts();
+  const apps = listCitizenApplications();
+  const onlineUsers = getOnlineUsers();
+  const now = Date.now();
+  const oneDayAgo = now - 24 * 3600 * 1000;
+  const startOfToday = new Date().setHours(0, 0, 0, 0);
+
+  // Application Telemetry with precise status detection
+  let appsToday = 0;
+  let appsLast24h = 0;
+  let appsPendingReview = 0;
+  let appsPendingPayment = 0;
+  let appsReturnedOrHold = 0;
+  let appsApproved = 0;
+  let latestAppAt = null;
+  let latestReturnedAt = null;
+
+  for (const app of apps) {
+    const createdAtMs = app.createdAt ? new Date(app.createdAt).getTime() : 0;
+    const updatedAtMs = app.updatedAt ? new Date(app.updatedAt).getTime() : createdAtMs;
+    if (!latestAppAt || createdAtMs > new Date(latestAppAt).getTime()) {
+      if (app.createdAt) latestAppAt = app.createdAt;
+    }
+
+    if (createdAtMs >= startOfToday) appsToday++;
+    if (createdAtMs >= oneDayAgo) appsLast24h++;
+
+    const status = String(app.status || "").toLowerCase();
+    const hasInvalidDocs = Boolean(
+      (app.notes && (app.notes.includes("HINDI WASTONG") || app.notes.includes("❌") || app.notes.includes("Maling"))) ||
+      (Array.isArray(app.remarks) && app.remarks.some((r) => r && r.message && (r.message.includes("HINDI WASTONG") || r.message.includes("❌"))))
+    );
+
+    if (
+      status === "returned_to_applicant" ||
+      status === "returned" ||
+      status === "hold" ||
+      status === "rejected" ||
+      hasInvalidDocs ||
+      app.inspection?.status === "failed"
+    ) {
+      appsReturnedOrHold++;
+      if (!latestReturnedAt || updatedAtMs > new Date(latestReturnedAt).getTime()) {
+        latestReturnedAt = app.updatedAt || app.createdAt;
+      }
+    } else if (
+      status === "pending_review" ||
+      status === "submitted" ||
+      status === "under_review" ||
+      status === "ocular_inspection"
+    ) {
+      appsPendingReview++;
+    } else if (
+      status === "order_of_payment_issued" ||
+      status === "pending_payment" ||
+      status === "for_payment"
+    ) {
+      appsPendingPayment++;
+    } else if (status === "approved" || status === "released") {
+      appsApproved++;
+    }
+  }
+
+  // Auth & Security Telemetry
+  let lockedAccounts = [];
+  let lockedSecurityDetails = [];
+  let failedSecurityDetails = [];
+  let failedAttemptsCount = 0;
+  let activeAccounts = 0;
+  let deactivatedAccounts = 0;
+  let pendingPasswordReset = 0;
+  let latestLockoutAt = null;
+  let latestFailedAt = null;
+
+  for (const acc of accounts) {
+    if (acc.isActive === false) {
+      deactivatedAccounts++;
+    } else {
+      activeAccounts++;
+      if (acc.mustChangePassword) pendingPasswordReset++;
+    }
+
+    const accountIp = acc.lastFailedIp || getRealNetworkIp();
+    const accountLocation = acc.lastFailedLocation || getLocationFromIp(accountIp);
+    const accountDevice = acc.lastFailedDevice || "Desktop Workstation";
+
+    if (acc.lockedUntil && new Date(acc.lockedUntil).getTime() > now) {
+      lockedAccounts.push(acc.username);
+      const lockoutEventTime = acc.lastFailedAt || new Date().toISOString();
+      if (!latestLockoutAt || new Date(lockoutEventTime).getTime() > new Date(latestLockoutAt).getTime()) {
+        latestLockoutAt = lockoutEventTime;
+      }
+      lockedSecurityDetails.push({
+        username: acc.username,
+        name: acc.name || acc.label || acc.username,
+        role: acc.role || "Staff",
+        department: acc.department || "LGU Luisiana",
+        ip: accountIp,
+        location: accountLocation,
+        device: accountDevice,
+        failedAttempts: acc.failedAttempts || 5,
+        lockedUntil: acc.lockedUntil,
+        lastAttemptAt: acc.lastFailedAt || acc.lockedUntil,
+      });
+    }
+    if (acc.failedAttempts > 0) {
+      failedAttemptsCount += acc.failedAttempts;
+      if (acc.lastFailedAt && (!latestFailedAt || new Date(acc.lastFailedAt).getTime() > new Date(latestFailedAt).getTime())) {
+        latestFailedAt = acc.lastFailedAt;
+      }
+      if (!acc.lockedUntil || new Date(acc.lockedUntil).getTime() <= now) {
+        failedSecurityDetails.push({
+          username: acc.username,
+          name: acc.name || acc.label || acc.username,
+          role: acc.role || "Staff",
+          department: acc.department || "LGU Luisiana",
+          ip: accountIp,
+          location: accountLocation,
+          device: accountDevice,
+          failedAttempts: acc.failedAttempts,
+          lockedUntil: null,
+          lastAttemptAt: acc.lastFailedAt || new Date().toISOString(),
+        });
+      }
+    }
+  }
+
+  // System Error Telemetry in last 1 hour
+  const oneHourAgo = now - 3600 * 1000;
+  const recentErrors = recentSystemErrors.filter((e) => new Date(e.at).getTime() >= oneHourAgo);
+  const latestErrorAt = recentErrors[0]?.at || null;
+
+  // Dynamically compute accurate real-time system alerts
+  const alerts = [];
+
+  // Alert 1: Runtime System Errors & Exceptions (Only if errors exist)
+  if (recentErrors.length > 0) {
+    alerts.push({
+      id: "ALERT-SYS-ERRORS",
+      type: "error",
+      category: "system_error",
+      title: "Naitalang Server Runtime Errors",
+      desc: `May ${recentErrors.length} runtime error sa server sa nakalipas na 1 oras. Huling mensahe: "${recentErrors[0].message}" mula sa (${recentErrors[0].source}).`,
+      metric: `${recentErrors.length} Error(s)`,
+      actionHint: "Suriin ang server terminal logs para sa agarang pag-diagnose.",
+      timestamp: latestErrorAt || new Date().toISOString(),
+      priority: 100,
+      recentErrors: recentErrors.slice(0, 3),
+    });
+  }
+
+  // Alert 2: Security & Lockout Monitoring (Only if active lockouts or failed attempts exist)
+  if (lockedAccounts.length > 0) {
+    const primaryLocked = lockedSecurityDetails[0];
+    const detailsSummary = primaryLocked
+      ? `${primaryLocked.name || "@" + primaryLocked.username} (${primaryLocked.role} • ${primaryLocked.department})`
+      : lockedAccounts.map((u) => "@" + u).join(", ");
+    alerts.push({
+      id: "ALERT-SEC-LOCKOUT",
+      type: "error",
+      category: "security",
+      title: "Security Alert: Account Lockout Detected",
+      desc: `Pansamantalang naka-lock dahil sa 5 sunod-sunod na maling password: ${detailsSummary}.`,
+      metric: `${lockedAccounts.length} Naka-lock`,
+      timestamp: latestLockoutAt || new Date().toISOString(),
+      priority: 95,
+      securityDetails: lockedSecurityDetails,
+    });
+  } else if (failedAttemptsCount > 0) {
+    const primaryFailed = failedSecurityDetails[0];
+    const detailsSummary = primaryFailed
+      ? `Huling sinubukang account: ${primaryFailed.name || "@" + primaryFailed.username} (${primaryFailed.role} • ${primaryFailed.department}) mula sa IP ${primaryFailed.ip}.`
+      : `May kabuuang ${failedAttemptsCount} failed login attempt(s) na naitala bago matagumpay na nakapasok ang mga kawani.`;
+    alerts.push({
+      id: "ALERT-SEC-FAILED",
+      type: "warn",
+      category: "security",
+      title: "May Naitalang Nabigong Pag-login",
+      desc: detailsSummary,
+      metric: `${failedAttemptsCount} Attempts`,
+      timestamp: latestFailedAt || new Date().toISOString(),
+      priority: 75,
+      securityDetails: failedSecurityDetails,
+    });
+  }
+
+  // Alert 3: Document Discrepancies & Returned Applications (Only if returned or hold items exist)
+  if (appsReturnedOrHold > 0) {
+    alerts.push({
+      id: "ALERT-DISCREPANCY",
+      type: "warn",
+      category: "discrepancy",
+      title: "Mga Aplikasyong May Discrepancy o Maling Dokumento",
+      desc: `May ${appsReturnedOrHold} aplikasyon ang minarkahan ng 'Maling Dokumento' o 'Returned' dahil sa malabong kopya o kulang na requirements.`,
+      metric: `${appsReturnedOrHold} Aplikasyon`,
+      actionHint: "Awtomatikong naka-notify ang mga aplikante sa Citizen Portal upang makapag-reupload ng tamang dokumento.",
+      timestamp: latestReturnedAt || new Date().toISOString(),
+      priority: 85,
+    });
+  }
+
+  // Alert 4: Application Volume Influx & Review Backlog (Only if volume threshold exceeded)
+  if (appsLast24h >= 5) {
+    alerts.push({
+      id: "ALERT-VOL-HIGH",
+      type: "warn",
+      category: "intake",
+      title: "Mataas na Dami ng Bagong Aplikasyon (High Intake Influx)",
+      desc: `May ${appsLast24h} bagong aplikasyon ang pumasok sa nakalipas na 24 oras (${appsToday} ngayong araw). Kabuuang ${appsPendingReview} ang nasa review queue ng MPDC at Engineering.`,
+      metric: `${appsLast24h} sa 24h`,
+      actionHint: "I-coordinate sa MPDC at Engineering para mapabilis ang review queue.",
+      timestamp: latestAppAt || new Date().toISOString(),
+      priority: 80,
+    });
+  } else if (appsPendingReview >= 5) {
+    alerts.push({
+      id: "ALERT-VOL-BACKLOG",
+      type: "warn",
+      category: "intake",
+      title: "Mataas na Nakabinbing Aplikasyon (Review Queue Backlog)",
+      desc: `May ${appsPendingReview} aplikasyon ang kasalukuyang naghihintay ng pagsusuri (submitted/ocular inspection). ${appsToday} ang pumasok ngayong araw.`,
+      metric: `${appsPendingReview} Nakabinbin`,
+      actionHint: "I-prioritize ng MPDC Zoning Officer at Engineering ang mga nakabinbing dokumento.",
+      timestamp: latestAppAt || new Date().toISOString(),
+      priority: 70,
+    });
+  }
+
+  // Alert 5: Database Persistence & Storage Engine (Only if disconnected / running on fallback)
+  const postgresOk = isDbConnected();
+  if (!postgresOk) {
+    alerts.push({
+      id: "ALERT-INFRA-STORAGE-FALLBACK",
+      type: "warn",
+      category: "database",
+      title: "Database Engine: Naka-Fallback sa Local Storage",
+      desc: "Hindi makakonekta sa PostgreSQL server sa Port 5432. Gumagana ang local encrypted JSON storage na may SHA-256 integrity hashing.",
+      metric: "JSON Engine Active",
+      actionHint: "Suriin kung tumatakbo ang PostgreSQL server.",
+      timestamp: new Date().toISOString(),
+      priority: 60,
+    });
+  }
+
+  // Alert 6: Deactivated Historical Accounts Notice
+  if (deactivatedAccounts > 0) {
+    alerts.push({
+      id: "ALERT-DEACTIVATED-PRESERVED",
+      type: "info",
+      category: "staff",
+      title: "Napanatiling Kasaysayan ng mga Nag-resign na Kawani",
+      desc: `May ${deactivatedAccounts} empleyado ang naka-deactivate. Hindi sila makakapag-login ngunit buo at hindi nabura ang kanilang pangalan sa mga nakaraang permit at tax assessments.`,
+      metric: `${deactivatedAccounts} Deactivated`,
+      actionHint: "Pwedeng i-activate muli anumang oras kung babalik ang kawani sa serbisyo.",
+      timestamp: new Date().toISOString(),
+      priority: 5,
+    });
+  }
+
+  // Strictly sort alerts so that LATEST / HIGHEST-PRIORITY active alerts are in the FIRST ROW
+  const severityTier = (type) => {
+    if (type === "error") return 3;
+    if (type === "warn") return 2;
+    if (type === "info") return 1;
+    return 0; // safe
+  };
+
+  alerts.sort((a, b) => {
+    // 1. Severity tier: errors and warnings take precedence
+    const tierDiff = severityTier(b.type) - severityTier(a.type);
+    if (tierDiff !== 0) return tierDiff;
+
+    // 2. Specific priority ranking within tier
+    const prioDiff = (b.priority || 0) - (a.priority || 0);
+    if (prioDiff !== 0) return prioDiff;
+
+    // 3. Newest timestamp first
+    const timeDiff = new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime();
+    return timeDiff;
+  });
+
+  // Mark the top card (index 0) as isLatest
+  alerts.forEach((alt, idx) => {
+    alt.isLatest = idx === 0;
+  });
+
+  return {
+    ok: true,
+    timestamp: new Date().toISOString(),
+    server: {
+      uptimeSeconds: Math.floor(process.uptime()),
+      memoryUsageMB: Math.round(process.memoryUsage().rss / (1024 * 1024)),
+      nodeVersion: process.version,
+    },
+    database: {
+      postgresConnected: postgresOk,
+      storageMode: postgresOk ? "PostgreSQL (Synchronized)" : "Local JSON Engine (Encrypted Storage)",
+    },
+    stats: {
+      totalAccounts: accounts.length,
+      activeAccounts,
+      deactivatedAccounts,
+      pendingPasswordReset,
+      usersOnlineNow: onlineUsers.length,
+      totalApplications: apps.length,
+      applicationsToday: appsToday,
+      applicationsLast24h: appsLast24h,
+      applicationsPendingReview: appsPendingReview,
+      applicationsPendingPayment: appsPendingPayment,
+      applicationsReturnedOrHold: appsReturnedOrHold,
+      applicationsApproved: appsApproved,
+      systemErrorsCount: recentErrors.length,
+    },
+    alerts,
+  };
+}
+
+export function broadcastSystemHealth() {
+  try {
+    const health = computeSystemHealth();
+    io.emit("admin:system-health:update", health);
+  } catch (err) {
+    console.warn("[Realtime] broadcastSystemHealth error:", err);
+  }
+}
+
+io.on("connection", (socket) => {
+  socket.emit("hello", {
+    system: "INFA-TRACK-Luisiana",
+    serverTime: new Date().toISOString(),
+    updateEverySeconds: 5,
+  });
+
+  // Emit current maintenance mode state to client
+  socket.emit("system:maintenance", getMaintenanceMode());
+
+  // Real-time zero-reload online presence request from Admin panel
+  socket.on("admin:online-users:request", () => {
+    socket.emit("admin:online-users:update", {
+      onlineUsers: getOnlineUsers(),
+      count: getOnlineUsers().length,
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  // Real-time zero-reload system health & alerts request from Admin panel
+  socket.on("admin:system-health:request", () => {
+    socket.emit("admin:system-health:update", computeSystemHealth());
+  });
+
+  // Track if socket belongs to an authenticated staff user
+  const staff = sessionFromRequest(socket.request);
+  if (staff) {
+    broadcastOnlineUsers();
+  }
+
+  socket.on("disconnect", () => {
+    if (staff) {
+      broadcastOnlineUsers();
+    }
+  });
+});
+
+function clientIp(req, userAgent = "") {
+  const raw =
     req.headers["x-forwarded-for"]?.toString().split(",")[0]?.trim() ||
+    req.headers["x-real-ip"]?.toString().trim() ||
+    req.headers["cf-connecting-ip"]?.toString().trim() ||
     req.socket?.remoteAddress ||
-    "anon"
-  );
+    "";
+  let ip = raw;
+  if (ip.startsWith("::ffff:")) ip = ip.replace("::ffff:", "");
+  if (!ip || ip === "::1" || ip === "127.0.0.1" || ip.startsWith("127.")) {
+    const ua = userAgent || req.headers["user-agent"] || "";
+    const parsed = parseDeviceFromUserAgent(ua);
+    ip = getRealNetworkIp(parsed.type);
+  }
+  return ip;
 }
 
 app.post("/api/auth/login", (req, res) => {
-  const result = staffLogin(req.body?.username, req.body?.password, clientIp(req));
+  const ua = req.headers["user-agent"] || "";
+  const ip = clientIp(req, ua);
+  const result = staffLogin(req.body?.username, req.body?.password, ip, ua);
   if (!result.ok) {
+    broadcastSystemHealth();
     const status = result.error === "locked" ? 423 : 401;
     return res.status(status).json({
       error: result.error,
@@ -256,6 +713,9 @@ app.post("/api/auth/login", (req, res) => {
     });
   }
   res.setHeader("Set-Cookie", cookieHeader(result.sid));
+  // Broadcast instantaneous online presence update to all connected admin dashboards
+  broadcastOnlineUsers();
+  broadcastSystemHealth();
   // sid is for the mobile field app (React Native has no httpOnly cookie jar).
   res.json({ user: result.session.user, sid: result.sid });
 });
@@ -263,6 +723,9 @@ app.post("/api/auth/login", (req, res) => {
 app.post("/api/auth/logout", (req, res) => {
   staffLogout(req);
   res.setHeader("Set-Cookie", cookieHeader("", { clear: true }));
+  // Broadcast instantaneous removal to all connected admin dashboards
+  broadcastOnlineUsers();
+  broadcastSystemHealth();
   res.json({ ok: true });
 });
 
@@ -270,8 +733,235 @@ app.get("/api/auth/me", (req, res) => {
   const s = sessionFromRequest(req);
   if (!s) return res.json({ user: null });
   res.json({
-    user: { username: s.username, role: s.role, department: s.department },
+    user: {
+      username: s.username,
+      name: s.name || s.username,
+      employeeId: s.employeeId || "",
+      role: s.role,
+      department: s.department,
+      mustChangePassword: Boolean(s.mustChangePassword),
+    },
   });
+});
+
+app.post("/api/auth/forced-reset-password", requireStaff, (req, res) => {
+  const result = forcedChangePassword(req, req.body?.newPassword);
+  if (!result.ok) {
+    const map = {
+      auth: [401, "Sign in required."],
+      short: [400, "Ang bagong password ay dapat may hindi bababa sa 8 characters."],
+      long: [400, "Masyadong mahaba ang bagong password."],
+      same_as_default: [400, "Hindi maaaring gamitin muli ang default password. Maglagay ng sariling password."],
+      invalid: [400, "Mangyaring maglagay ng bagong password."],
+    };
+    const [status, error] = map[result.error] || [400, "Nabigong palitan ang password."];
+    return res.status(status).json({ error });
+  }
+  res.json({ ok: true, user: result.user });
+});
+
+/** Super Admin: List all employee accounts */
+app.get("/api/admin/users", requireRoles("Super Admin"), (_req, res) => {
+  const users = listAllAccounts();
+  res.json({ users });
+});
+
+/** Super Admin: Create a new employee account with default password & mustChangePassword flag */
+app.post("/api/admin/users", requireRoles("Super Admin"), (req, res) => {
+  const result = createAccount(req.body || {});
+  if (!result.ok) {
+    const map = {
+      missing_fields: [400, "Kailangan punan ang Pangalan, Username, at Tanggapan/Role."],
+      invalid_role: [400, "Hindi wastong Role ang napili."],
+      username_exists: [409, "Mayroon nang empleyado na may ganitong username. Pumili ng iba."],
+      password_too_short: [400, "Ang default password ay dapat may hindi bababa sa 8 characters."],
+    };
+    const [status, error] = map[result.error] || [400, "Hindi nalikha ang account."];
+    return res.status(status).json({ error });
+  }
+  broadcastSystemHealth();
+  res.status(201).json(result);
+});
+
+/** Super Admin: Reset employee password to default and re-flag mustChangePassword */
+app.post("/api/admin/users/:username/reset", requireRoles("Super Admin"), (req, res) => {
+  const result = resetAccountPassword(req.params.username, req.body?.defaultPassword);
+  if (!result.ok) {
+    return res.status(404).json({ error: "Hindi natagpuan ang account." });
+  }
+  broadcastSystemHealth();
+  res.json(result);
+});
+
+/** Super Admin: Delete staff account */
+app.delete("/api/admin/users/:username", requireRoles("Super Admin"), (req, res) => {
+  const result = deleteAccount(req.params.username, req.staff?.username);
+  if (!result.ok) {
+    const map = {
+      cannot_delete_root_admin: [403, "Hindi maaaring tanggalin ang root Super Admin account."],
+      cannot_delete_self: [400, "Hindi mo maaaring tanggalin ang sarili mong account."],
+      not_found: [404, "Hindi natagpuan ang account."],
+    };
+    const [status, error] = map[result.error] || [400, "Hindi natanggal ang account."];
+    return res.status(status).json({ error });
+  }
+  broadcastOnlineUsers();
+  broadcastSystemHealth();
+  res.json({ ok: true });
+});
+
+/** Super Admin: Deactivate or Activate employee account */
+app.patch("/api/admin/users/:username/status", requireRoles("Super Admin"), (req, res) => {
+  const { active } = req.body || {};
+  const result = toggleAccountStatus(req.params.username, active, req.staff?.username);
+  if (!result.ok) {
+    const map = {
+      cannot_deactivate_root_admin: [403, "Hindi maaaring i-deactivate ang root Super Admin account."],
+      cannot_deactivate_self: [400, "Hindi mo maaaring i-deactivate ang sarili mong account."],
+      not_found: [404, "Hindi natagpuan ang account."],
+    };
+    const [status, error] = map[result.error] || [400, "Hindi nabago ang status ng account."];
+    return res.status(status).json({ error });
+  }
+  broadcastOnlineUsers();
+  broadcastSystemHealth();
+  res.json(result);
+});
+
+/** Super Admin: List all currently active logged-in users */
+app.get("/api/admin/online-users", requireRoles("Super Admin"), (_req, res) => {
+  const onlineUsers = getOnlineUsers();
+  res.json({ onlineUsers, count: onlineUsers.length });
+});
+
+// Global exception safety listeners
+process.on("unhandledRejection", (reason) => {
+  console.error("[INFA-TRACK System Error] unhandledRejection:", reason);
+  recordSystemError("unhandledRejection", reason?.message || String(reason), reason?.stack);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("[INFA-TRACK System Error] uncaughtException:", err);
+  recordSystemError("uncaughtException", err?.message || String(err), err?.stack);
+});
+
+/** Super Admin: Accurate live system health, telemetries, and operational alerts */
+app.get("/api/admin/system-health", requireRoles("Super Admin"), (_req, res) => {
+  res.json(computeSystemHealth());
+});
+
+/** Super Admin: Diagnostic tool to simulate a system error for alert testing */
+app.post("/api/admin/system-health/test-error", requireRoles("Super Admin"), (req, res) => {
+  const msg = req.body?.message || "Simulated test runtime exception for Super Admin alert testing";
+  const err = recordSystemError("AdminDiagnostics", msg, `Triggered by @${req.staffUser?.username || "admin"}`);
+  broadcastSystemHealth();
+  res.json({ ok: true, simulatedError: err });
+});
+
+/** Super Admin: Clear recorded system errors */
+app.delete("/api/admin/system-health/clear-errors", requireRoles("Super Admin"), (_req, res) => {
+  recentSystemErrors.length = 0;
+  broadcastSystemHealth();
+  res.json({ ok: true, cleared: true });
+});
+
+/** Public / Staff cached configuration for dropdown masterlists and maintenance info */
+app.get("/api/config", (_req, res) => {
+  res.json(getPublicConfig());
+});
+
+/** Super Admin: Full System Configuration & Masterlist Management */
+app.get("/api/admin/config", requireRoles("Super Admin"), (_req, res) => {
+  res.json(getSystemConfig());
+});
+
+app.post("/api/admin/config/:category/items", requireRoles("Super Admin"), (req, res) => {
+  const result = addConfigItem(req.params.category, req.body || {}, req.staffUser?.username || "Super Admin");
+  if (!result.ok) {
+    return res.status(400).json(result);
+  }
+  res.status(201).json(result);
+});
+
+app.put("/api/admin/config/:category/items/:id", requireRoles("Super Admin"), (req, res) => {
+  const result = updateConfigItem(req.params.category, req.params.id, req.body || {}, req.staffUser?.username || "Super Admin");
+  if (!result.ok) {
+    return res.status(400).json(result);
+  }
+  res.json(result);
+});
+
+app.patch("/api/admin/config/:category/items/:id/toggle", requireRoles("Super Admin"), (req, res) => {
+  const result = toggleConfigItemStatus(req.params.category, req.params.id, req.staffUser?.username || "Super Admin");
+  if (!result.ok) {
+    return res.status(400).json(result);
+  }
+  res.json(result);
+});
+
+app.delete("/api/admin/config/:category/items/:id", requireRoles("Super Admin"), (req, res) => {
+  const result = deleteConfigItem(req.params.category, req.params.id);
+  if (!result.ok) {
+    return res.status(400).json(result);
+  }
+  res.json(result);
+});
+
+app.post("/api/admin/config/reset/:category", requireRoles("Super Admin"), (req, res) => {
+  const result = resetCategoryToDefaults(req.params.category, req.staffUser?.username || "Super Admin");
+  if (!result.ok) {
+    return res.status(400).json(result);
+  }
+  res.json(result);
+});
+
+/** Super Admin: System Maintenance Mode toggle */
+app.post("/api/admin/maintenance", requireRoles("Super Admin"), (req, res) => {
+  const { enabled, message, estimatedDuration } = req.body || {};
+  const result = setMaintenanceMode(enabled, message, estimatedDuration, req.staffUser?.username || "Super Admin");
+  io.emit("system:maintenance", result.maintenance);
+  broadcastSystemHealth();
+  res.json(result);
+});
+
+app.get("/api/admin/maintenance", requireRoles("Super Admin"), (_req, res) => {
+  res.json(getMaintenanceMode());
+});
+
+/** Super Admin: 1-Click Database Disaster Recovery Backup (.sql / .json) */
+app.get("/api/admin/backup/download", requireRoles("Super Admin"), (req, res) => {
+  const format = (req.query.format || "sql").toLowerCase();
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const author = req.staff?.username || req.staffUser?.username || "Super Admin";
+
+  if (format === "json") {
+    const jsonBackup = generateJsonBackup(author);
+    res.setHeader("Content-Disposition", `attachment; filename="luisiana-infatrack-backup-${dateStr}.json"`);
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    return res.send(jsonBackup);
+  }
+
+  const sqlBackup = generateSqlBackup(author);
+  res.setHeader("Content-Disposition", `attachment; filename="luisiana-infatrack-backup-${dateStr}.sql"`);
+  res.setHeader("Content-Type", "application/sql; charset=utf-8");
+  return res.send(sqlBackup);
+});
+
+/** Super Admin: Get backup payload bundle for Cloud Storage / Firebase upload */
+app.get("/api/admin/backup/bundle", requireRoles("Super Admin"), (req, res) => {
+  const author = req.staff?.username || req.staffUser?.username || "Super Admin";
+  const bundle = buildBackupBundle(author);
+  const sqlDump = generateSqlBackup(author);
+  res.json({
+    ok: true,
+    bundle,
+    sqlDump,
+  });
+});
+
+/** Super Admin: SLA & Bottleneck Monitoring */
+app.get("/api/admin/sla-monitoring", requireRoles("Super Admin"), (_req, res) => {
+  res.json(computeSlaMetrics());
 });
 
 app.post("/api/auth/password", requireStaff, (req, res) => {
@@ -524,6 +1214,25 @@ app.post("/api/projects/:id/photos", requireRoles("Engineer", "MPDC"), (req, res
     if (!req.file) {
       return res.status(400).json({ error: "No photo uploaded" });
     }
+
+    const uploadedFilePath = path.join(uploadsDir, req.file.filename);
+    const secCheck = securityCheckUploadedFile(
+      uploadedFilePath,
+      req.file.originalname,
+      req.file.mimetype,
+      [".jpg", ".jpeg", ".png", ".webp"]
+    );
+    if (!secCheck.ok) {
+      logSecurityEvent({
+        ip: req.ip || req.headers["x-forwarded-for"] || req.socket.remoteAddress,
+        filename: req.file.originalname,
+        reason: secCheck.error,
+        code: secCheck.code,
+        userAgent: req.headers["user-agent"],
+      });
+      return res.status(400).json({ error: secCheck.error, code: secCheck.code });
+    }
+
     const url = `/uploads/${req.file.filename}`;
     const photo = addProjectPhoto(req.params.id, {
       url,
@@ -546,111 +1255,7 @@ app.delete("/api/projects/:id/photos/:photoId", requireRoles("Engineer", "MPDC")
   res.json({ ok: true });
 });
 
-function optimizeUploadedGlb(filePath) {
-  return new Promise((resolve) => {
-    const scriptPath = path.resolve(__dirname, "../../scripts/optimize-single-glb.mjs");
-    if (!fs.existsSync(scriptPath)) {
-      console.warn("[upload-model] Optimizer script not found at", scriptPath);
-      return resolve({ ok: false, error: "Optimizer script not found" });
-    }
 
-    const child = spawn(process.execPath, [scriptPath, filePath], {
-      windowsHide: true,
-      timeout: 120000, // 2 minutes max
-    });
-
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (d) => {
-      stdout += d.toString();
-    });
-    child.stderr.on("data", (d) => {
-      stderr += d.toString();
-    });
-
-    child.on("close", (code) => {
-      if (code === 0) {
-        try {
-          const res = JSON.parse(stdout.trim());
-          console.info(
-            `[upload-model] Auto-optimized ${path.basename(filePath)}: ${(res.beforeBytes / 1024).toFixed(1)}KB -> ${(res.afterBytes / 1024).toFixed(1)}KB (${res.savedPercent}% saved)`,
-          );
-          resolve(res);
-        } catch {
-          resolve({ ok: true });
-        }
-      } else {
-        console.warn(`[upload-model] Optimizer warning (code ${code}):`, stderr || stdout);
-        resolve({ ok: false, error: stderr || stdout });
-      }
-    });
-
-    child.on("error", (err) => {
-      console.warn("[upload-model] Optimizer spawn error:", err.message);
-      resolve({ ok: false, error: err.message });
-    });
-  });
-}
-
-app.post("/api/upload-model", requireRoles("Engineer"), (req, res, next) => {
-  upload.single("model")(req, res, async (err) => {
-    if (err) return multerErrorHandler(err, req, res, next);
-    if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded" });
-    }
-    if (!isGlbFile(req.file.path)) {
-      try {
-        fs.unlinkSync(req.file.path);
-      } catch {
-        /* ignore */
-      }
-      return res.status(400).json({ error: "File is not a valid GLB/GLTF model." });
-    }
-
-    const originalSize = req.file.size;
-
-    // Automatically optimize custom uploaded GLB (merge draw calls, compress textures, Draco)
-    const optResult = await optimizeUploadedGlb(req.file.path);
-    let finalSize = originalSize;
-    try {
-      finalSize = fs.statSync(req.file.path).size;
-    } catch {
-      /* ignore */
-    }
-
-    // Also mirror into frontend/dist/uploads when present (vite preview / static builds).
-    try {
-      const distUploads = path.join(__dirname, "../../frontend/dist/uploads");
-      if (fs.existsSync(path.dirname(distUploads))) {
-        fs.mkdirSync(distUploads, { recursive: true });
-        fs.copyFileSync(
-          path.join(uploadsDir, req.file.filename),
-          path.join(distUploads, req.file.filename),
-        );
-        const lodFilename = req.file.filename.replace(/\.glb$/i, ".lod.glb");
-        const srcLod = path.join(uploadsDir, lodFilename);
-        if (fs.existsSync(srcLod)) {
-          fs.copyFileSync(srcLod, path.join(distUploads, lodFilename));
-        }
-      }
-    } catch (copyErr) {
-      console.warn("[upload-model] dist mirror skipped:", copyErr?.message || copyErr);
-    }
-
-    const url = `/uploads/${req.file.filename}`;
-    res.json({
-      url,
-      filename: req.file.filename,
-      originalName: req.file.originalname,
-      size: finalSize,
-      originalSize,
-      optimized: Boolean(optResult?.ok),
-      savedPercent: optResult?.savedPercent ?? 0,
-      drawCallsBefore: optResult?.beforeStats?.prims ?? null,
-      drawCallsAfter: optResult?.afterStats?.prims ?? null,
-    });
-  });
-});
 
 app.delete("/api/projects/:id", requireRoles("Engineer"), (req, res) => {
   const removed = removeProject(req.params.id);
@@ -673,6 +1278,25 @@ app.post("/api/planning/attachments", requireStaff, (req, res, next) => {
     if (!req.file) {
       return res.status(400).json({ error: "No file uploaded" });
     }
+
+    const uploadedFilePath = path.join(uploadsDir, req.file.filename);
+    const secCheck = securityCheckUploadedFile(
+      uploadedFilePath,
+      req.file.originalname,
+      req.file.mimetype,
+      [".jpg", ".jpeg", ".png", ".webp", ".pdf", ".doc", ".docx"]
+    );
+    if (!secCheck.ok) {
+      logSecurityEvent({
+        ip: req.ip || req.headers["x-forwarded-for"] || req.socket.remoteAddress,
+        filename: req.file.originalname,
+        reason: secCheck.error,
+        code: secCheck.code,
+        userAgent: req.headers["user-agent"],
+      });
+      return res.status(400).json({ error: secCheck.error, code: secCheck.code });
+    }
+
     const url = `/uploads/${req.file.filename}`;
     res.json({
       url,
@@ -689,6 +1313,33 @@ app.post("/api/citizen/applications/upload", (req, res, next) => {
     if (err) return multerErrorHandler(err, req, res, next);
     if (!req.file) {
       return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    const uploadedFilePath = path.join(uploadsDir, req.file.filename);
+    const fieldKey = String(req.body?.fieldKey || req.query?.fieldKey || "").trim();
+    const allowedExtensions =
+      fieldKey === "photoDocs" || fieldKey === "photo_doc"
+        ? [".jpg", ".jpeg", ".png", ".webp"]
+        : [".jpg", ".jpeg", ".png", ".webp", ".pdf"];
+
+    const secCheck = securityCheckUploadedFile(
+      uploadedFilePath,
+      req.file.originalname,
+      req.file.mimetype,
+      allowedExtensions
+    );
+    if (!secCheck.ok) {
+      logSecurityEvent({
+        ip: req.ip || req.headers["x-forwarded-for"] || req.socket.remoteAddress,
+        filename: req.file.originalname,
+        reason: secCheck.error,
+        code: secCheck.code,
+        userAgent: req.headers["user-agent"],
+      });
+      return res.status(400).json({
+        error: secCheck.error,
+        code: secCheck.code || "FILE_SECURITY_VIOLATION",
+      });
     }
 
     // Mirror to dist/uploads if folder exists
@@ -746,6 +1397,7 @@ app.post("/api/citizen/applications", async (req, res) => {
       barangay: created.applicant.barangay,
       at: created.createdAt,
     });
+    broadcastSystemHealth();
     res.json({ ok: true, application: created });
   } catch (err) {
     res.status(500).json({ error: err?.message || "Failed to submit application" });
@@ -819,6 +1471,15 @@ app.patch("/api/citizen/applications/:id", requireStaff, (req, res) => {
     application: updated,
     at: updated.updatedAt,
   });
+  if (updated.payment?.status === "order_of_payment_issued" || updated.status === "for_payment") {
+    io.emit("assessor:order_of_payment_issued", {
+      trackingNumber: updated.trackingNumber,
+      orderOfPaymentNo: updated.payment?.orderOfPaymentNo,
+      amount: updated.payment?.amount || updated.payment?.feeAmount,
+      status: updated.status,
+      at: updated.updatedAt,
+    });
+  }
   if (updated.payment?.status === "paid" || updated.or_number) {
     io.emit("treasury:payment_confirmed", {
       trackingNumber: updated.trackingNumber,
@@ -828,6 +1489,7 @@ app.patch("/api/citizen/applications/:id", requireStaff, (req, res) => {
       at: updated.updatedAt,
     });
   }
+  broadcastSystemHealth();
   res.json({ ok: true, application: updated });
 });
 
@@ -840,6 +1502,7 @@ app.post("/api/citizen/applications/:trackingNumber/remarks", (req, res) => {
     trackingNumber: req.params.trackingNumber,
     remark,
   });
+  broadcastSystemHealth();
   res.json({ ok: true, remark });
 });
 
@@ -854,6 +1517,28 @@ app.post(
       let size = Number(req.body?.receiptSize) || 0;
 
       if (req.file) {
+        const uploadedFilePath = path.join(uploadsDir, req.file.filename);
+        const secCheck = securityCheckUploadedFile(
+          uploadedFilePath,
+          req.file.originalname,
+          req.file.mimetype,
+          [".jpg", ".jpeg", ".png", ".webp", ".pdf"]
+        );
+        if (!secCheck.ok) {
+          logSecurityEvent({
+            ip: req.ip || req.headers["x-forwarded-for"] || req.socket.remoteAddress,
+            filename: req.file.originalname,
+            trackingNumber,
+            reason: secCheck.error,
+            code: secCheck.code,
+            userAgent: req.headers["user-agent"],
+          });
+          return res.status(400).json({
+            error: secCheck.error,
+            code: secCheck.code || "FILE_SECURITY_VIOLATION",
+          });
+        }
+
         receiptUrl = `/uploads/${req.file.filename}`;
         originalName = req.file.originalname;
         size = req.file.size;
@@ -924,6 +1609,28 @@ app.post(
         return res.status(400).json({ error: "Kinakailangang mag-upload ng file." });
       }
 
+      const uploadedFilePath = path.join(uploadsDir, req.file.filename);
+      const secCheck = securityCheckUploadedFile(
+        uploadedFilePath,
+        req.file.originalname,
+        req.file.mimetype,
+        [".jpg", ".jpeg", ".png", ".webp", ".pdf"]
+      );
+      if (!secCheck.ok) {
+        logSecurityEvent({
+          ip: req.ip || req.headers["x-forwarded-for"] || req.socket.remoteAddress,
+          filename: req.file.originalname,
+          trackingNumber,
+          reason: secCheck.error,
+          code: secCheck.code,
+          userAgent: req.headers["user-agent"],
+        });
+        return res.status(400).json({
+          error: secCheck.error,
+          code: secCheck.code || "FILE_SECURITY_VIOLATION",
+        });
+      }
+
       // Mirror to dist/uploads if folder exists
       try {
         const distUploads = path.join(__dirname, "../../frontend/dist/uploads");
@@ -985,6 +1692,14 @@ const inspectionStorage = multer.diskStorage({
 const uploadInspectionPhoto = multer({
   storage: inspectionStorage,
   limits: { fileSize: 25 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if ([".jpg", ".jpeg", ".png", ".webp"].includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Allowed formats: JPG, JPEG, PNG, WEBP (Max 25MB)"));
+    }
+  },
 });
 
 app.post(
@@ -1000,6 +1715,24 @@ app.post(
 
       let photoUrl = "";
       if (req.file) {
+        const uploadedFilePath = path.join(uploadsDir, req.file.filename);
+        const secCheck = securityCheckUploadedFile(
+          uploadedFilePath,
+          req.file.originalname,
+          req.file.mimetype,
+          [".jpg", ".jpeg", ".png", ".webp"]
+        );
+        if (!secCheck.ok) {
+          logSecurityEvent({
+            ip: req.ip || req.headers["x-forwarded-for"] || req.socket.remoteAddress,
+            filename: req.file.originalname,
+            reason: secCheck.error,
+            code: secCheck.code,
+            userAgent: req.headers["user-agent"],
+          });
+          return res.status(400).json({ error: secCheck.error, code: secCheck.code });
+        }
+
         photoUrl = `/uploads/${req.file.filename}`;
         try {
           const distUploads = path.join(__dirname, "../../frontend/dist/uploads");
@@ -1086,6 +1819,24 @@ app.post(
         return res.status(400).json({ error: "Walang na-upload na litrato." });
       }
 
+      const uploadedFilePath = path.join(uploadsDir, req.file.filename);
+      const secCheck = securityCheckUploadedFile(
+        uploadedFilePath,
+        req.file.originalname,
+        req.file.mimetype,
+        [".jpg", ".jpeg", ".png", ".webp"]
+      );
+      if (!secCheck.ok) {
+        logSecurityEvent({
+          ip: req.ip || req.headers["x-forwarded-for"] || req.socket.remoteAddress,
+          filename: req.file.originalname,
+          reason: secCheck.error,
+          code: secCheck.code,
+          userAgent: req.headers["user-agent"],
+        });
+        return res.status(400).json({ error: secCheck.error, code: secCheck.code });
+      }
+
       const photoUrl = `/uploads/${req.file.filename}`;
       try {
         const distUploads = path.join(__dirname, "../../frontend/dist/uploads");
@@ -1140,6 +1891,25 @@ app.post("/api/documents/upload", requireStaff, (req, res, next) => {
     if (!req.file) {
       return res.status(400).json({ error: "No file uploaded" });
     }
+
+    const uploadedFilePath = path.join(uploadsDir, req.file.filename);
+    const secCheck = securityCheckUploadedFile(
+      uploadedFilePath,
+      req.file.originalname,
+      req.file.mimetype,
+      [".jpg", ".jpeg", ".png", ".webp", ".pdf", ".doc", ".docx"]
+    );
+    if (!secCheck.ok) {
+      logSecurityEvent({
+        ip: req.ip || req.headers["x-forwarded-for"] || req.socket.remoteAddress,
+        filename: req.file.originalname,
+        reason: secCheck.error,
+        code: secCheck.code,
+        userAgent: req.headers["user-agent"],
+      });
+      return res.status(400).json({ error: secCheck.error, code: secCheck.code });
+    }
+
     const url = `/uploads/${req.file.filename}`;
     res.json({
       url,
@@ -1149,6 +1919,157 @@ app.post("/api/documents/upload", requireStaff, (req, res, next) => {
       size: req.file.size,
     });
   });
+});
+
+// ── MPDC Personnel Directory ────────────────────────────────────────────────
+const MPDC_PERSONNEL_FILE = path.join(__dirname, "data/mpdc-personnel.json");
+
+const SEED_MPDC_PERSONNEL = [
+  {
+    id: "MPDC-001",
+    name: "Engr. Mario S. Baldovino",
+    position: "Municipal Planning & Development Coordinator (MPDC Head)",
+    role: "Department Administrator",
+    phone: "(049) 555-0101",
+    status: "In Office",
+    assignedBarangays: ["All 23 Barangays"],
+    createdAt: "2026-01-01T00:00:00.000Z",
+  },
+  {
+    id: "MPDC-002",
+    name: "Arch. Jose Marie C. Alcantara",
+    position: "Zoning Administrator & Senior Urban Planner",
+    role: "CLUP Compliance Officer",
+    phone: "(049) 555-0102",
+    status: "In Office",
+    assignedBarangays: ["Zone I - VIII (Poblacion)", "San Buenaventura"],
+    createdAt: "2026-01-01T00:00:00.000Z",
+  },
+  {
+    id: "MPDC-003",
+    name: "Engr. Clarissa V. Ramos",
+    position: "Municipal Planning Officer / Siting Specialist",
+    role: "Geotechnical Siting Evaluator",
+    phone: "(049) 555-0103",
+    status: "On Field",
+    assignedBarangays: ["San Isidro", "San Diego", "San Salvador", "De La Paz"],
+    createdAt: "2026-01-01T00:00:00.000Z",
+  },
+  {
+    id: "MPDC-004",
+    name: "Ronaldo T. Estrellado",
+    position: "Chief Ocular Site Inspector",
+    role: "Zoning & Setback Verification",
+    phone: "(049) 555-0104",
+    status: "On Field",
+    assignedBarangays: ["Sto. Tomas", "Sto. Domingo", "San Pedro", "San Roque"],
+    createdAt: "2026-01-01T00:00:00.000Z",
+  },
+  {
+    id: "MPDC-005",
+    name: "Maria Theresa N. Gomez",
+    position: "GIS Analyst & DMS Blueprint Custodian",
+    role: "GIS Telemetry & Records",
+    phone: "(049) 555-0105",
+    status: "In Office",
+    assignedBarangays: ["All 23 Barangays"],
+    createdAt: "2026-01-01T00:00:00.000Z",
+  },
+];
+
+function loadMpdcPersonnel() {
+  try {
+    if (fs.existsSync(MPDC_PERSONNEL_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(MPDC_PERSONNEL_FILE, "utf8"));
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (err) {
+    console.warn("[MPDC Personnel] Error loading file:", err);
+  }
+  return [...SEED_MPDC_PERSONNEL];
+}
+
+function saveMpdcPersonnel(list) {
+  try {
+    const dir = path.dirname(MPDC_PERSONNEL_FILE);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(MPDC_PERSONNEL_FILE, JSON.stringify(list, null, 2), "utf8");
+  } catch (err) {
+    console.warn("[MPDC Personnel] Error saving file:", err);
+  }
+}
+
+app.get("/api/mpdc/personnel", (_req, res) => {
+  res.json({ ok: true, personnel: loadMpdcPersonnel() });
+});
+
+app.post("/api/mpdc/personnel", (req, res) => {
+  const { name, position, role, phone, status, assignedBarangays, id, createAccount: shouldCreateAccount, username, defaultPassword } = req.body || {};
+  if (!name || !name.trim()) {
+    return res.status(400).json({ error: "Pangalan ng kawani ay kailangan." });
+  }
+
+  const list = loadMpdcPersonnel();
+  const newId = id?.trim() || `MPDC-${String(list.length + 1).padStart(3, "0")}`;
+  const newPersonnel = {
+    id: newId,
+    name: name.trim(),
+    position: (position || "Planning & Zoning Officer").trim(),
+    role: (role || "Ocular Inspector").trim(),
+    phone: (phone || "").trim() || "(049) 555-0100",
+    status: status || "In Office",
+    assignedBarangays: Array.isArray(assignedBarangays) && assignedBarangays.length > 0 ? assignedBarangays : ["All 23 Barangays"],
+    createdAt: new Date().toISOString(),
+  };
+
+  list.push(newPersonnel);
+  saveMpdcPersonnel(list);
+
+  let accountCreated = null;
+  if (shouldCreateAccount) {
+    const userKey = (username || name.toLowerCase().replace(/[^a-z0-9]/g, "")).trim();
+    const accResult = createAccount({
+      name: newPersonnel.name,
+      employeeId: newPersonnel.id,
+      username: userKey,
+      role: "MPDC",
+      department: "Municipal Planning & Development Coordinator",
+      defaultPassword: defaultPassword || "InfaTrack2026",
+    });
+    if (accResult.ok) {
+      accountCreated = accResult.user;
+    }
+  }
+
+  io.emit("mpdc:personnel_updated", { list });
+  res.status(201).json({ ok: true, personnel: newPersonnel, list, accountCreated });
+});
+
+app.patch("/api/mpdc/personnel/:id/status", (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body || {};
+  const list = loadMpdcPersonnel();
+  const item = list.find((p) => p.id === id);
+  if (!item) {
+    return res.status(404).json({ error: "Personnel not found." });
+  }
+  item.status = status || (item.status === "In Office" ? "On Field" : "In Office");
+  saveMpdcPersonnel(list);
+  io.emit("mpdc:personnel_updated", { list });
+  res.json({ ok: true, personnel: item, list });
+});
+
+app.delete("/api/mpdc/personnel/:id", (req, res) => {
+  const { id } = req.params;
+  let list = loadMpdcPersonnel();
+  const exists = list.some((p) => p.id === id);
+  if (!exists) {
+    return res.status(404).json({ error: "Personnel not found." });
+  }
+  list = list.filter((p) => p.id !== id);
+  saveMpdcPersonnel(list);
+  io.emit("mpdc:personnel_updated", { list });
+  res.json({ ok: true, list });
 });
 
 app.get("/api/chat/health", (_req, res) => {
@@ -1173,27 +2094,6 @@ app.post("/api/chat", requireStaff, async (req, res) => {
   }
 });
 
-const server = http.createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: (origin, cb) => {
-      if (!origin) return cb(null, true);
-      if (origin === CLIENT_ORIGIN) return cb(null, true);
-      if (LOCALHOST_ORIGIN_RE.test(origin)) return cb(null, true);
-      return cb(new Error("CORS: origin not allowed"), false);
-    },
-    credentials: true,
-  },
-});
-
-io.on("connection", (socket) => {
-  socket.emit("hello", {
-    system: "INFA-TRACK-Luisiana",
-    serverTime: new Date().toISOString(),
-    updateEverySeconds: 5,
-  });
-});
-
 /**
  * Real-time loop (simulation fallback)
  * - emits heatmap points
@@ -1202,6 +2102,7 @@ io.on("connection", (socket) => {
  * - emits alerts on high-risk triggers
  */
 let lastAlertKey = "";
+let healthTickCount = 0;
 setInterval(async () => {
   const bbox = {
     // Luisiana, Laguna viewport (approx)
@@ -1231,6 +2132,12 @@ setInterval(async () => {
       lastAlertKey = key;
       io.emit("alerts:new", alert);
     }
+  }
+
+  // Live telemetry broadcast to Super Admin dashboard every 10s
+  healthTickCount = (healthTickCount + 1) % 2;
+  if (healthTickCount === 0) {
+    broadcastSystemHealth();
   }
 }, 5000);
 
