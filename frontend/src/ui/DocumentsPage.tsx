@@ -18,7 +18,7 @@ import MpdcTopNavbar from "./MpdcTopNavbar";
 import "./DocumentsPage.css";
 
 type Props = {
-  onBack: () => void;
+  onBack?: () => void;
   session: SessionUser | null;
   onNavigate?: (screen: string) => void;
   onLogout?: () => void;
@@ -709,8 +709,6 @@ export default function DocumentsPage({ onBack, session, onNavigate, onLogout }:
         subtitle="Naka-grupo ayon sa bawat aplikante ang lahat ng opisyal na aprubadong dokumento at kalakip"
         brandPill="MPDC"
         accentClass="topnav-accent-mpdc"
-        onBack={onBack}
-        backLabel="Bumalik"
         serviceTag="Document Repository Vault"
         serviceSla={`${folders.length} Aplikante · ${totalApprovedDocsCount} Naaprubahang Dokumento`}
         session={session}

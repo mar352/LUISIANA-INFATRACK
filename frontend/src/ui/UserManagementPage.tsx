@@ -79,7 +79,6 @@ const RBAC_MODULES = [
   { id: "map", label: "3D GIS Mapa & Siting (/app)", desc: "3D Cesium terrain, drone models, at coordinate placement" },
   { id: "hazard", label: "Geohazard Assessment (PEIS/Flood)", desc: "Pagsusuri sa fault line, baha, at landslide risk bago magpatayo" },
   { id: "permits", label: "Zoning & Siting Clearance (/permits)", desc: "MPDC review, CLUP compliance, at permit issuance" },
-  { id: "planning", label: "Barangay Planning Requests (/planning)", desc: "Pagsumite ng proyekto ng mga kapitan para sa zoning review" },
   { id: "documents", label: "DMS & Blueprint Archival (/documents)", desc: "Opisyal na lagakan ng building blueprints at legal affidavits" },
   { id: "engagement", label: "Citizen Transparency (/engagement)", desc: "Pampublikong konsultasyon at feedback ng mga mamamayan" },
   { id: "admin", label: "Super Admin & User Control (/admin-users)", desc: "Pamamahala sa kawani, security policies, at audit trails" },
@@ -87,11 +86,11 @@ const RBAC_MODULES = [
 
 // RBAC Matrix definitions: which roles have access to which modules
 const RBAC_MATRIX: Record<UserRole, string[]> = {
-  "Super Admin": ["map", "hazard", "permits", "planning", "documents", "engagement", "admin"],
-  MPDC: ["map", "hazard", "permits", "planning", "documents", "engagement"],
-  Engineer: ["map", "hazard", "permits", "planning", "documents"],
-  Agriculture: ["map", "hazard", "planning"],
-  "Barangay Official": ["map", "hazard", "planning"],
+  "Super Admin": ["map", "hazard", "permits", "documents", "engagement", "admin"],
+  MPDC: ["map", "hazard", "permits", "documents", "engagement"],
+  Engineer: ["map", "hazard", "permits", "documents"],
+  Agriculture: ["map", "hazard"],
+  "Barangay Official": ["map", "hazard"],
   "Private Engineer": ["map", "hazard", "documents"],
   Viewer: ["map", "hazard"],
 };

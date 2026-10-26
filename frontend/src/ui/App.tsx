@@ -111,7 +111,6 @@ import { MpdcAdminPage } from "./MpdcAdminPage";
 import { ForcedPasswordResetModal } from "./ForcedPasswordResetModal";
 import { setAuditActor } from "../services/firestore-audit";
 import AuditPage from "./AuditPage";
-import PlanningPage from "./PlanningPage";
 import { PrivateEngineerPortal } from "./PrivateEngineerPortal";
 import { SiteProgressPopup } from "./SiteProgressPopup";
 import { InspectionTaskQueue } from "./InspectionTaskQueue";
@@ -478,7 +477,6 @@ export type AppScreen =
   | "login"
   | "app"
   | "inventory"
-  | "planning"
   | "documents"
   | "analytics"
   | "engagement"
@@ -502,7 +500,6 @@ export const PROTECTED_STAFF_SCREENS: Set<AppScreen> = new Set([
   "engineer_dashboard",
   "engineer_documents",
   "inventory",
-  "planning",
   "documents",
   "analytics",
   "engagement",
@@ -525,7 +522,7 @@ export function parseScreenFromLocation(): { screen: AppScreen; trackingRef?: st
     }
     const screenParam = params.get("screen");
     if (screenParam && [
-      "landing", "login", "app", "inventory", "planning", "documents", "analytics",
+      "landing", "login", "app", "inventory", "documents", "analytics",
       "engagement", "citizen", "services", "audit", "permits",
       "new_application", "applicant_tracking", "pengineer", "engineer_applications", "engineer_dashboard", "engineer_documents", "admin_users", "mpdc_admin"
     ].includes(screenParam)) {
@@ -572,7 +569,7 @@ export function parseScreenFromLocation(): { screen: AppScreen; trackingRef?: st
     case "/inventory":
       return { screen: "inventory" };
     case "/planning":
-      return { screen: "planning" };
+      return { screen: "permits" };
     case "/permits":
     case "/zoning":
       return { screen: "permits" };
@@ -618,7 +615,7 @@ export function parseScreenFromLocation(): { screen: AppScreen; trackingRef?: st
       if (hash === "app" || hash === "map") return { screen: "app" };
       if (hash === "permits") return { screen: "permits" };
       if (hash === "inventory") return { screen: "inventory" };
-      if (hash === "planning") return { screen: "planning" };
+      if (hash === "planning") return { screen: "permits" };
       if (hash === "users" || hash === "admin-users") return { screen: "admin_users" };
       if (hash === "mpdc-admin" || hash === "mpdc_admin" || hash === "mpdcadmin") return { screen: "mpdc_admin" };
       return { screen: "landing" };
@@ -646,8 +643,6 @@ export function getUrlForScreen(targetScreen: AppScreen, trackingRef?: string): 
       return "/app";
     case "inventory":
       return "/inventory";
-    case "planning":
-      return "/planning";
     case "permits":
       return "/permits";
     case "engineer_applications":
@@ -691,8 +686,6 @@ export function getPageTitleForScreen(targetScreen: AppScreen): string {
       return "INFA-TRACK Luisiana | Infrastructure GIS & Siting";
     case "inventory":
       return "Asset Inventory | INFA-TRACK Luisiana";
-    case "planning":
-      return "Planning & Proposals | INFA-TRACK Luisiana";
     case "permits":
       return "Zoning & Permitting | INFA-TRACK Luisiana";
     case "engineer_applications":
@@ -871,7 +864,7 @@ export default function App() {
             // Only auto-redirect to default role screen if user is on landing or login
             if (current === "landing" || current === "login") {
               return saved.role === "Barangay Official"
-                ? "planning"
+                ? "app"
                 : saved.role === "Private Engineer"
                   ? "pengineer"
                   : saved.role === "MPDC"
@@ -2432,11 +2425,8 @@ export default function App() {
 
   function openOpsAlert(alert: OpsAlert) {
     dismissOpsAlert(alert.id);
-    if (alert.open === "planning") setScreen("planning");
-    else {
-      setSidebarTab("projects");
-      setScreen("app");
-    }
+    setSidebarTab("projects");
+    setScreen("app");
   }
 
   function dismissAllMpdcNotices() {
@@ -2451,9 +2441,9 @@ export default function App() {
     });
   }
 
-  // RBAC route guard: Engineers cannot access MPDC modules (planning, permits, documents, analytics)
+  // RBAC route guard: Engineers cannot access MPDC modules (permits, documents, analytics)
   useEffect(() => {
-    if (currentRole === "Engineer" && (screen === "documents" || screen === "planning" || screen === "permits" || screen === "analytics")) {
+    if (currentRole === "Engineer" && (screen === "documents" || screen === "permits" || screen === "analytics")) {
       setScreen("app");
     }
   }, [currentRole, screen]);
@@ -2982,7 +2972,7 @@ export default function App() {
           <NewApplicationPage
             onBack={() => navigateBack(
               currentRole === "MPDC"
-                ? (currentSession?.username === "mpdc_admin" || currentSession?.role === "MPDC Admin" ? "mpdc_admin" : "planning")
+                ? (currentSession?.username === "mpdc_admin" || currentSession?.role === "MPDC Admin" ? "mpdc_admin" : "permits")
                 : currentSession
                 ? "app"
                 : "landing"
@@ -3095,25 +3085,14 @@ export default function App() {
       {/* Inventory / Planning / Documents / Analytics / Zoning Permits — overlays */}
       {screen === "inventory" && currentSession && (
         <InventoryPage
-          onBack={() => navigateBack(currentSession?.username === "mpdc_admin" ? "mpdc_admin" : currentRole === "MPDC" ? "planning" : "app")}
+          onBack={() => navigateBack(currentSession?.username === "mpdc_admin" ? "mpdc_admin" : currentRole === "MPDC" ? "permits" : "app")}
           backendProjects={Array.isArray(projects) ? projects : []}
           currentRole={currentRole}
         />
       )}
 
-      {screen === "planning" && currentSession && currentRole !== "Viewer" && currentRole !== "Engineer" && (
-        <PlanningPage
-          onBack={() => navigateBack(currentSession?.username === "mpdc_admin" ? "mpdc_admin" : currentRole === "Super Admin" ? "admin_users" : currentRole === "MPDC" ? "permits" : "app")}
-          session={currentSession}
-          projects={Array.isArray(projects) ? projects : []}
-          onNavigate={(target) => setScreen(target as any)}
-          onLogout={goHome}
-        />
-      )}
-
       {screen === "permits" && currentSession && currentRole !== "Engineer" && (
         <ZoningPermitsPage
-          onBack={currentSession?.username === "mpdc_admin" || currentSession?.role === "MPDC Admin" ? () => navigateBack("mpdc_admin") : currentRole === "Super Admin" ? () => navigateBack("admin_users") : () => navigateBack("app")}
           session={currentSession}
           onLogout={goHome}
           onNavigate={(target) => setScreen(target as any)}
@@ -3171,7 +3150,6 @@ export default function App() {
 
       {screen === "documents" && currentSession && isMunicipalStaff(currentRole) && currentRole !== "Engineer" && (
         <DocumentsPage
-          onBack={() => navigateBack(currentSession?.username === "mpdc_admin" ? "mpdc_admin" : currentRole === "Super Admin" ? "admin_users" : currentRole === "MPDC" ? "permits" : "app")}
           session={currentSession}
           onNavigate={(target) => setScreen(target as any)}
           onLogout={goHome}
@@ -3180,7 +3158,6 @@ export default function App() {
 
       {screen === "audit" && currentSession && (currentRole === "Super Admin" || isMunicipalStaff(currentRole)) && (
         <AuditPage
-          onBack={() => navigateBack(currentSession?.username === "mpdc_admin" ? "mpdc_admin" : currentRole === "Super Admin" ? "admin_users" : currentRole === "MPDC" ? "permits" : "app")}
           onNavigate={(target) => setScreen(target as any)}
           session={currentSession}
           onLogout={goHome}
@@ -3189,7 +3166,6 @@ export default function App() {
 
       {screen === "analytics" && currentSession && isMunicipalStaff(currentRole) && currentRole !== "Engineer" && (
         <AnalyticsPage
-          onBack={() => navigateBack(currentSession?.username === "mpdc_admin" ? "mpdc_admin" : currentRole === "MPDC" ? "permits" : "app")}
           projects={Array.isArray(projects) ? projects : []}
           captureMapPng={() => cesiumMapRef.current?.captureMapPng() ?? Promise.resolve(null)}
           onNavigate={(target) => setScreen(target as any)}
@@ -3200,7 +3176,7 @@ export default function App() {
 
       {screen === "engagement" && currentSession && roleConfig?.canSeeEngagement && (
         <EngagementPage
-          onBack={() => navigateBack(currentSession?.username === "mpdc_admin" ? "mpdc_admin" : currentRole === "MPDC" ? "planning" : "app")}
+          onBack={() => navigateBack(currentSession?.username === "mpdc_admin" ? "mpdc_admin" : currentRole === "MPDC" ? "permits" : "app")}
           onFlyTo={(lon, lat) => {
             window.setTimeout(() => {
               cesiumMapRef.current?.flyToLonLat(lon, lat, 2500);
@@ -3592,28 +3568,7 @@ export default function App() {
                         </div>
                       </div>
                     )}
-                    {roleConfig?.canSeePlanning && currentRole !== "Viewer" && currentRole !== "Engineer" && (
-                      <button
-                        type="button"
-                        className={`topBar-nav-link${screen === "planning" ? " active" : ""}`}
-                        onClick={() => {
-                          setMoreMenuOpen(false);
-                          setScreen("planning");
-                        }}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
-                          <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
-                          <rect x="8" y="2" width="8" height="4" rx="1" />
-                          <path d="M9 12h6M9 16h4" />
-                        </svg>
-                        <span className="topBar-exit-full">
-                          {isBarangayOfficial(currentRole) ? "Requests" : "Planning"}
-                        </span>
-                        <span className="topBar-exit-short">
-                          {isBarangayOfficial(currentRole) ? "Req" : "Plan"}
-                        </span>
-                      </button>
-                    )}
+
                     {currentRole === "Engineer" && (
                       <button
                         type="button"
@@ -4080,13 +4035,13 @@ export default function App() {
                             tabIndex={0}
                             onClick={() => {
                               dismissNotice(n.id);
-                              setScreen("planning");
+                              setScreen("permits");
                             }}
                             onKeyDown={(e) => {
                               if (e.key === "Enter" || e.key === " ") {
                                 e.preventDefault();
                                 dismissNotice(n.id);
-                                setScreen("planning");
+                                setScreen("permits");
                               }
                             }}
                           >
@@ -4199,21 +4154,13 @@ export default function App() {
                             tabIndex={0}
                             onClick={() => {
                               dismissMpdcNotice(n.id);
-                              if (n.id.startsWith("app:")) {
-                                setScreen("permits");
-                              } else {
-                                setScreen("planning");
-                              }
+                              setScreen("permits");
                             }}
                             onKeyDown={(e) => {
                               if (e.key === "Enter" || e.key === " ") {
                                 e.preventDefault();
                                 dismissMpdcNotice(n.id);
-                                if (n.id.startsWith("app:")) {
-                                  setScreen("permits");
-                                } else {
-                                  setScreen("planning");
-                                }
+                                setScreen("permits");
                               }
                             }}
                           >

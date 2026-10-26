@@ -51,7 +51,7 @@ export function NotifyOpsList({ alerts, onOpen, onDismiss, onClearAll }: Props) 
               <div className="t">{n.title}</div>
               <div className="m">{n.message}</div>
               <div className="meta">
-                {formatAlertWhen(n.at)} · Open {n.open === "planning" ? "Planning" : "Projects"}
+                {formatAlertWhen(n.at)} · Open Projects
                 <button
                   type="button"
                   className="notice-dismiss"

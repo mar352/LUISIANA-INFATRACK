@@ -373,7 +373,7 @@ type Props = {
   session: SessionUser | null;
   onLogout?: () => void;
   onNewApplication?: () => void;
-  onNavigate?: (screen: "planning" | "documents" | "analytics" | "audit" | "app") => void;
+  onNavigate?: (screen: "documents" | "analytics" | "audit" | "app" | "permits") => void;
   onPinSite?: (app: any) => void;
 };
 
@@ -1223,10 +1223,6 @@ export function ZoningPermitsPage({
       if (found) {
         openAppModal(found, notice.kind === "inspection" ? "map" : "checklist");
       }
-    } else if (notice.source === "planning") {
-      if (onNavigate) {
-        onNavigate("planning");
-      }
     }
   };
 
@@ -1896,8 +1892,6 @@ export function ZoningPermitsPage({
         title="Talaan ng mga Natanggap na Aplikasyon"
         subtitle="Municipal Planning & Development Office · Bayan ng Luisiana, Laguna"
         brandPill="MPDC"
-        onBack={onBack}
-        backLabel={session?.username === "mpdc_admin" || session?.role === "MPDC Admin" ? "MPDC Admin" : "Bumalik"}
         serviceTag="Citizen's Charter Service #2"
         serviceSla="Hakbang 1: Paunang Pagsusuri (10 Mins SLA) · ₱0.00 Libre"
         lastSyncedAt={lastSyncedAt}

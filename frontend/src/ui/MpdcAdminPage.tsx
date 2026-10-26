@@ -564,8 +564,6 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
         subtitle="Municipal Planning & Development Office · Bayan ng Luisiana, Laguna"
         brandPill="MPDC ADMIN"
         accentClass="topnav-accent-mpdc"
-        onBack={() => onNavigate("permits")}
-        backLabel="Talaan ng Permits"
         serviceTag="Office of the Coordinator"
         serviceSla="Comprehensive Siting & Staff Operations"
         session={session}
@@ -714,24 +712,6 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
               </span>
               <div className="mpdc-sidebar-btn-label">
                 <span>Talaan ng Permits (Portal)</span>
-              </div>
-            </button>
-
-            <button
-              type="button"
-              className="mpdc-sidebar-btn mpdc-sidebar-portal-btn"
-              onClick={() => onNavigate("planning")}
-              title="Buksan ang Barangay Planning Proposals Board"
-            >
-              <span className="mpdc-sidebar-btn-icon">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polygon points="12 2 2 7 12 12 22 7 12 2" />
-                  <polyline points="2 17 12 22 22 17" />
-                  <polyline points="2 12 12 17 22 12" />
-                </svg>
-              </span>
-              <div className="mpdc-sidebar-btn-label">
-                <span>Barangay Planning</span>
               </div>
             </button>
 
@@ -1282,14 +1262,6 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
                   <p>Mga panukalang proyekto mula sa 23 Punong Barangay na sinusuri ng MPDC para sa Annual Investment Program.</p>
                 </div>
               </div>
-
-              <button
-                type="button"
-                className="landing-btn landing-btn-secondary"
-                onClick={() => onNavigate("planning")}
-              >
-                Buksan ang Buong Planning Board →
-              </button>
             </div>
 
             <div className="mpdc-table-wrap">

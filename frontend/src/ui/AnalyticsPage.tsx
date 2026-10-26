@@ -1,200 +1,431 @@
-import { useEffect, useMemo, useState } from "react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import type { PlanningProposal, Project } from "../types";
-import {
-  computeBarangayCompare,
-  computeBudgetRollup,
-  computeInfraAnalytics,
-  computeInfraGaps,
-  formatPesoCompact,
-} from "../lib/infra-analytics";
-import { downloadCsv, downloadExcel, reportStamp } from "../lib/report-export";
-import {
-  buildMunicipalSheets,
-  printMapSheet,
-  printMunicipalReport,
-  projectRows,
-} from "../lib/municipal-report";
-import { computePlanningInsights } from "../lib/planning-insights";
-import {
-  CRITICAL_GROUPS,
-  criticalTypeLabel,
-  listCriticalProjects,
-  loadCriticalHazards,
-} from "../lib/critical-infra";
-import type { CompactHazard } from "../lib/hazard-report";
-import { fetchProposalsOnce } from "../services/firestore-planning";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
+import type { Project } from "../types";
 import type { SessionUser } from "../services/auth";
-import { ThemeToggle } from "./ThemeToggle";
 import SideNavbar from "./SideNavbar";
 import MpdcTopNavbar from "./MpdcTopNavbar";
+import { fetchCitizenApplications, fetchPublicProjects } from "../lib/api";
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+  LineChart,
+  Line,
+  FunnelChart,
+  Funnel,
+  LabelList,
+} from "recharts";
+import {
+  FileText,
+  Building2,
+  Tractor,
+  Landmark,
+  Clock,
+  Wrench,
+  CheckCircle2,
+  XCircle,
+  BarChart3,
+  PieChart as PieIcon,
+  FolderArchive,
+  RefreshCw,
+  Database,
+  TrendingUp,
+  Filter,
+  LayoutGrid,
+} from "lucide-react";
 import "./AnalyticsPage.css";
 
-type Props = {
-  onBack: () => void;
+export type Props = {
+  onBack?: () => void;
   /** Live projects from the map / backend — no sample or seeded filler data. */
-  projects: Project[];
+  projects?: Project[];
   captureMapPng?: () => Promise<string | null>;
   onNavigate?: (screen: string) => void;
   session?: SessionUser | null;
   onLogout?: () => void;
 };
 
-const CHART_FALLBACK = [
-  "#151c28",
-  "#0071e3",
-  "#d97706",
-  "#16a34a",
-  "#6366f1",
-  "#0284c7",
-  "#64748b",
-  "#7c3aed",
-];
+export type AnalyticsSubTab =
+  | "all"
+  | "kpis"
+  | "pipeline"
+  | "zoning"
+  | "trends"
+  | "transparency";
 
-const TOOLTIP_STYLE = {
-  backgroundColor: "var(--apple-surface, #ffffff)",
-  border: "1px solid var(--apple-border, rgba(0, 0, 0, 0.1))",
-  borderRadius: "8px",
-  boxShadow: "0 4px 16px rgba(0, 0, 0, 0.08)",
-  color: "var(--apple-text, #1d1d1f)",
-  fontSize: "12px",
-};
+// Interface for Municipal Public Works Projects (LGU Transparency)
+interface MunicipalProjectItem {
+  id?: string;
+  projectName: string;
+  barangay: string;
+  contractor: string;
+  budget: number;
+}
+
+interface BarangayDistributionItem {
+  barangay: string;
+  count: number;
+  percentage: number;
+}
+
+interface SafeBufferStats {
+  safeCount: number;
+  bufferCount: number;
+  unassessedCount: number;
+  safePercent: number;
+  bufferPercent: number;
+  unassessedPercent: number;
+}
 
 export default function AnalyticsPage({
-  onBack,
-  projects,
+  projects = [],
   captureMapPng,
   onNavigate,
   session,
   onLogout,
 }: Props) {
-  const stats = useMemo(() => computeInfraAnalytics(projects), [projects]);
-  const barangays = useMemo(() => computeBarangayCompare(projects), [projects]);
-  const budget = useMemo(() => computeBudgetRollup(projects), [projects]);
-  const gaps = useMemo(() => computeInfraGaps(projects), [projects]);
-  const gapWorst = useMemo(() => gaps.filter((g) => g.missing.length > 0), [gaps]);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [proposals, setProposals] = useState<PlanningProposal[]>([]);
-  const [ciGroup, setCiGroup] = useState("all");
-  const [ciBarangay, setCiBarangay] = useState("all");
-  const [ciHazards, setCiHazards] = useState<Record<string, CompactHazard>>({});
-  const [ciHazBusy, setCiHazBusy] = useState(false);
-  const stamp = reportStamp();
-  const insights = useMemo(() => {
-    try {
-      return computePlanningInsights(projects, proposals);
-    } catch (err) {
-      console.warn("[Analytics] insights failed", err);
-      return computePlanningInsights([], []);
-    }
-  }, [projects, proposals]);
+  // ── Sub-Navigation Active Tab (Separates the Analytics into dedicated views) ─
+  const [activeNavTab, setActiveNavTab] = useState<AnalyticsSubTab>("all");
 
-  const criticalAll = useMemo(() => listCriticalProjects(projects), [projects]);
-  const criticalFiltered = useMemo(() => {
-    const group = CRITICAL_GROUPS.find((g) => g.id === ciGroup) ?? CRITICAL_GROUPS[0];
-    return criticalAll.filter((p) => {
-      if (!group.types.includes(p.modelType as (typeof group.types)[number])) return false;
-      if (ciBarangay !== "all" && (p.barangay || "") !== ciBarangay) return false;
-      return true;
+  // ── Raw Fetched Data States ────────────────────────────────────────────────
+  const [rawApplications, setRawApplications] = useState<any[]>([]);
+  const [rawProjects, setRawProjects] = useState<any[]>([]);
+  const [isFetchingAll, setIsFetchingAll] = useState<boolean>(false);
+  const [fetchingSection, setFetchingSection] = useState<Record<string, boolean>>({});
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+
+  // View toggle for Pipeline Chart (Funnel vs Horizontal Stacked Bar)
+  const [pipelineChartMode, setPipelineChartMode] = useState<"funnel" | "stacked">("funnel");
+
+  // ── 1. AT-A-GLANCE METRICS (Initialized to 0 / Empty) ────────────────────────
+  // TODO: Fetch from backend (e.g. GET /api/analytics/metrics or live count query)
+  const [totalApplications, setTotalApplications] = useState<number>(0);
+  // TODO: Fetch from backend (e.g. GET /api/analytics/metrics/private-infra)
+  const [privateInfrastructure, setPrivateInfrastructure] = useState<number>(0);
+  // TODO: Fetch from backend (e.g. GET /api/analytics/metrics/agricultural-zone)
+  const [agriculturalZone, setAgriculturalZone] = useState<number>(0);
+  // TODO: Fetch from backend (e.g. GET /api/analytics/metrics/municipal-projects)
+  const [municipalProjects, setMunicipalProjects] = useState<number>(0);
+
+  // ── 2. APPLICATION STATUS PIPELINE (Initialized to 0 / Empty) ────────────────
+  // TODO: Fetch from backend (e.g. GET /api/analytics/status-pipeline)
+  const [pipelineStatus, setPipelineStatus] = useState<{
+    pendingMpdc: number;
+    withEngineering: number;
+    approved: number;
+    rejectedReturned: number;
+  }>({
+    pendingMpdc: 0,
+    withEngineering: 0,
+    approved: 0,
+    rejectedReturned: 0,
+  });
+
+  // ── 3. ZONING & LOCATION METRICS (Initialized to Empty Arrays) ───────────────
+  // TODO: Fetch from backend (e.g. GET /api/analytics/zoning-distribution)
+  const [distributionPerBarangay, setDistributionPerBarangay] = useState<BarangayDistributionItem[]>([]);
+  // TODO: Fetch from backend (e.g. GET /api/analytics/safe-vs-buffer)
+  const [safeVsBufferStats, setSafeVsBufferStats] = useState<SafeBufferStats | null>(null);
+
+  // ── 4. LGU TRANSPARENCY (Municipal Projects Table - Initialized to Empty Array)
+  // TODO: Fetch from backend (e.g. GET /api/projects/municipal-transparency)
+  const [municipalProjectsList, setMunicipalProjectsList] = useState<MunicipalProjectItem[]>([]);
+
+  // ── Process Applications Data Into Metrics ─────────────────────────────────
+  const processApplicationsData = useCallback((apps: any[], projs: any[] = []) => {
+    if (!Array.isArray(apps)) return;
+
+    // 1. At-a-Glance Metrics
+    const total = apps.length;
+    let privCount = 0;
+    let agriCount = 0;
+    let muniCount = 0;
+
+    for (const a of apps) {
+      const cat = (a.category || "").toLowerCase();
+      const zoning = (a.zoningClassification || "").toLowerCase();
+      const isAgri =
+        zoning.includes("rural") ||
+        zoning.includes("agri") ||
+        Boolean(a.agriculturalDetails?.farmType);
+
+      if (isAgri) {
+        agriCount++;
+      }
+
+      if (cat === "municipal" || cat === "municipal_project" || a.municipalDetails?.implementingDepartment) {
+        muniCount++;
+      } else {
+        privCount++;
+      }
+    }
+
+    const totalMuni = muniCount + (Array.isArray(projs) ? projs.length : 0);
+
+    setTotalApplications(total);
+    setPrivateInfrastructure(privCount);
+    setAgriculturalZone(agriCount);
+    setMunicipalProjects(totalMuni);
+
+    // 2. Application Status Pipeline
+    let pending = 0;
+    let engineering = 0;
+    let apprv = 0;
+    let rejected = 0;
+
+    for (const a of apps) {
+      const st = String(a.status || "").toLowerCase();
+      if (st === "submitted" || st === "for_payment" || st === "in_review" || st === "intake") {
+        pending++;
+      } else if (st === "ocular_inspection" || st === "for_engineering_review" || st === "engineering") {
+        engineering++;
+      } else if (st === "approved" || st === "approved_for_construction" || st === "completed") {
+        apprv++;
+      } else if (st === "returned" || st === "rejected") {
+        rejected++;
+      } else {
+        pending++;
+      }
+    }
+
+    setPipelineStatus({
+      pendingMpdc: pending,
+      withEngineering: engineering,
+      approved: apprv,
+      rejectedReturned: rejected,
     });
-  }, [criticalAll, ciGroup, ciBarangay]);
-  const ciBarangays = useMemo(() => {
-    const set = new Set(criticalAll.map((p) => p.barangay).filter(Boolean) as string[]);
-    return [...set].sort();
-  }, [criticalAll]);
-  const ciHigh = useMemo(
-    () => Object.values(ciHazards).filter((h) => /avoid|extra geotechnical/i.test(h.advice)).length,
-    [ciHazards],
-  );
 
-  useEffect(() => {
-    const ctrl = new AbortController();
-    if (criticalAll.length === 0) {
-      setCiHazards({});
-      return;
+    // 3. Zoning & Location Metrics - Distribution per Barangay
+    const brgyMap = new Map<string, number>();
+    for (const a of apps) {
+      const rawBrgy =
+        a.applicant?.barangay ||
+        a.barangay ||
+        a.lotDetails?.barangay ||
+        "Poblacion";
+      const cleanBrgy = rawBrgy.trim();
+      brgyMap.set(cleanBrgy, (brgyMap.get(cleanBrgy) || 0) + 1);
     }
-    setCiHazBusy(true);
-    void loadCriticalHazards(criticalAll, ctrl.signal)
-      .then((map) => {
-        if (!ctrl.signal.aborted) setCiHazards(map);
-      })
-      .finally(() => {
-        if (!ctrl.signal.aborted) setCiHazBusy(false);
-      });
-    return () => ctrl.abort();
-  }, [criticalAll]);
 
-  useEffect(() => {
-    let cancelled = false;
-    void fetchProposalsOnce()
-      .then((list) => {
-        if (!cancelled) setProposals(list);
-      })
-      .catch(() => {
-        if (!cancelled) setProposals([]);
+    const brgyList: BarangayDistributionItem[] = [];
+    brgyMap.forEach((cnt, brgyName) => {
+      brgyList.push({
+        barangay: brgyName,
+        count: cnt,
+        percentage: total > 0 ? Math.round((cnt / total) * 100) : 0,
       });
-    return () => {
-      cancelled = true;
-    };
+    });
+
+    brgyList.sort((a, b) => b.count - a.count);
+    setDistributionPerBarangay(brgyList);
+
+    // 3. Safe Zone vs Buffer Zone Analysis
+    let safe = 0;
+    let buffer = 0;
+    let unassessed = 0;
+
+    for (const a of apps) {
+      const flood = a.geoRisk?.flood?.value;
+      const landslide = a.geoRisk?.landslide?.value;
+
+      if (!flood && !landslide) {
+        unassessed++;
+      } else {
+        const isHazardous =
+          (landslide && String(landslide).toLowerCase().includes("moderate")) ||
+          (landslide && String(landslide).toLowerCase().includes("high")) ||
+          (flood && String(flood).toLowerCase().includes("moderate")) ||
+          (flood && String(flood).toLowerCase().includes("high"));
+
+        if (isHazardous) {
+          buffer++;
+        } else {
+          safe++;
+        }
+      }
+    }
+
+    if (total > 0) {
+      setSafeVsBufferStats({
+        safeCount: safe,
+        bufferCount: buffer,
+        unassessedCount: unassessed,
+        safePercent: Math.round((safe / total) * 100),
+        bufferPercent: Math.round((buffer / total) * 100),
+        unassessedPercent: Math.round((unassessed / total) * 100),
+      });
+    } else {
+      setSafeVsBufferStats(null);
+    }
+
+    // 4. LGU Transparency - Municipal Projects Table
+    const formattedPublicProjects: MunicipalProjectItem[] = [];
+    if (Array.isArray(projs) && projs.length > 0) {
+      for (const p of projs) {
+        formattedPublicProjects.push({
+          id: p.id,
+          projectName: p.name || "Municipal Project",
+          barangay: p.barangay || "Municipal Wide",
+          contractor: p.contractor || "LGU Luisiana / Direct Execution",
+          budget: Number(p.budgetTotal || p.budgetSpent || 0),
+        });
+      }
+    }
+    setMunicipalProjectsList(formattedPublicProjects);
   }, []);
 
-  function exportProjectsCsv() {
-    const sheet = projectRows(projects);
-    downloadCsv(`infatrack-projects-${stamp}.csv`, sheet.headers, sheet.rows);
-  }
-
-  function exportBarangayCsv() {
-    downloadCsv(
-      `infatrack-barangay-${stamp}.csv`,
-      ["Barangay", "Projects", "Completed", "Ongoing", "Planned", "Delayed", "Avg %", "Budget total", "Budget spent"],
-      barangays.map((b) => [
-        b.name,
-        b.count,
-        b.completed,
-        b.ongoing,
-        b.planned,
-        b.delayed,
-        b.avgProgress,
-        b.budgetTotal,
-        b.budgetSpent,
-      ]),
-    );
-  }
-
-  function exportBudgetCsv() {
-    downloadCsv(
-      `infatrack-budget-${stamp}.csv`,
-      ["Group", "Name", "Programmed", "Spent"],
-      [
-        ...budget.byDepartment.map((r) => ["Office", r.name, r.total, r.spent]),
-        ...budget.byBarangay.map((r) => ["Barangay", r.name, r.total, r.spent]),
-      ],
-    );
-  }
-
-  function exportExcel() {
-    downloadExcel(`infatrack-municipal-${stamp}.xls`, buildMunicipalSheets(projects));
-  }
-
-  async function withMap(kind: "pdf" | "map") {
-    setBusy(kind);
+  // ── Section-Specific and Global Fetch Handlers ─────────────────────────────
+  const handleFetchAll = useCallback(async () => {
+    setIsFetchingAll(true);
     try {
-      const png = captureMapPng ? await captureMapPng() : null;
-      if (kind === "pdf") printMunicipalReport(projects, png);
-      else printMapSheet({ mapPng: png, projects });
+      const [apps, pubProjs] = await Promise.all([
+        fetchCitizenApplications().catch(() => []),
+        fetchPublicProjects().then((r) => r.projects || []).catch(() => []),
+      ]);
+
+      const combinedProjects = [...(Array.isArray(projects) ? projects : []), ...pubProjs];
+      setRawApplications(apps);
+      setRawProjects(combinedProjects);
+      processApplicationsData(apps, combinedProjects);
+      setLastSyncedAt(new Date().toLocaleTimeString());
+    } catch (err) {
+      console.warn("[AnalyticsPage] Error fetching telemetry:", err);
     } finally {
-      setBusy(null);
+      setIsFetchingAll(false);
     }
-  }
+  }, [projects, processApplicationsData]);
+
+  const handleFetchSection = async (
+    sectionKey: "metrics" | "pipeline" | "zoning" | "trends" | "transparency"
+  ) => {
+    setFetchingSection((prev) => ({ ...prev, [sectionKey]: true }));
+    try {
+      if (sectionKey === "transparency") {
+        const pub = await fetchPublicProjects().then((r) => r.projects || []).catch(() => []);
+        const combined = [...(Array.isArray(projects) ? projects : []), ...pub];
+        setRawProjects(combined);
+        const formatted = combined.map((p) => ({
+          id: p.id,
+          projectName: p.name || "Municipal Project",
+          barangay: p.barangay || "Municipal Wide",
+          contractor: p.contractor || "LGU Luisiana / Direct Execution",
+          budget: Number(p.budgetTotal || p.budgetSpent || 0),
+        }));
+        setMunicipalProjectsList(formatted);
+      } else {
+        const apps = await fetchCitizenApplications().catch(() => []);
+        setRawApplications(apps);
+        processApplicationsData(apps, rawProjects);
+      }
+      setLastSyncedAt(new Date().toLocaleTimeString());
+    } catch (err) {
+      console.warn(`[AnalyticsPage] Error fetching section ${sectionKey}:`, err);
+    } finally {
+      setFetchingSection((prev) => ({ ...prev, [sectionKey]: false }));
+    }
+  };
+
+  useEffect(() => {
+    void handleFetchAll();
+  }, [handleFetchAll]);
+
+  // Compute Total and Percentages for Pipeline
+  const totalInPipeline = useMemo(() => {
+    return (
+      pipelineStatus.pendingMpdc +
+      pipelineStatus.withEngineering +
+      pipelineStatus.approved +
+      pipelineStatus.rejectedReturned
+    );
+  }, [pipelineStatus]);
+
+  // ── Specific Chart Datasets ────────────────────────────────────────────────
+
+  // 1. Pipeline Funnel Chart Dataset
+  const funnelData = useMemo(() => {
+    return [
+      { name: "Pending with MPDC", value: pipelineStatus.pendingMpdc, fill: "#f59e0b" },
+      { name: "With Engineering", value: pipelineStatus.withEngineering, fill: "#0ea5e9" },
+      { name: "Approved", value: pipelineStatus.approved, fill: "#10b981" },
+      { name: "Rejected / Returned", value: pipelineStatus.rejectedReturned, fill: "#ef4444" },
+    ];
+  }, [pipelineStatus]);
+
+  // 2. Pipeline Horizontal Stacked Bar Dataset
+  const horizontalStackedPipelineData = useMemo(() => {
+    return [
+      {
+        name: "Applications",
+        "Pending with MPDC": pipelineStatus.pendingMpdc,
+        "With Engineering": pipelineStatus.withEngineering,
+        Approved: pipelineStatus.approved,
+        "Rejected / Returned": pipelineStatus.rejectedReturned,
+      },
+    ];
+  }, [pipelineStatus]);
+
+  // 3. Horizontal Bar Chart Dataset for "Distribution per Barangay"
+  const horizontalBarangayData = useMemo(() => {
+    return distributionPerBarangay.map((item) => ({
+      name: item.barangay,
+      applications: item.count,
+      percentage: item.percentage,
+    }));
+  }, [distributionPerBarangay]);
+
+  // 4. Donut Chart Dataset for "Safe Zone vs Buffer Zone"
+  const donutHazardData = useMemo(() => {
+    if (!safeVsBufferStats) return [];
+    const list = [];
+    if (safeVsBufferStats.safeCount > 0) {
+      list.push({ name: "Safe Development Zone", value: safeVsBufferStats.safeCount, fill: "#10b981" });
+    }
+    if (safeVsBufferStats.bufferCount > 0) {
+      list.push({ name: "Buffer / Hazard Zone", value: safeVsBufferStats.bufferCount, fill: "#f59e0b" });
+    }
+    if (safeVsBufferStats.unassessedCount > 0) {
+      list.push({ name: "Awaiting Geodetic Pin", value: safeVsBufferStats.unassessedCount, fill: "#94a3b8" });
+    }
+    return list;
+  }, [safeVsBufferStats]);
+
+  // 5. Line Chart Dataset for "Applications Over Time" (Monthly Application Trends)
+  const monthlyTrendsData = useMemo(() => {
+    if (!Array.isArray(rawApplications) || rawApplications.length === 0) return [];
+
+    const map = new Map<string, number>();
+    for (const a of rawApplications) {
+      const dateStr = a.createdAt || a.remarks?.[0]?.createdAt;
+      if (!dateStr) continue;
+      try {
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) continue;
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const key = `${y}-${m}`;
+        map.set(key, (map.get(key) || 0) + 1);
+      } catch {}
+    }
+
+    const sortedKeys = Array.from(map.keys()).sort();
+    return sortedKeys.map((key) => {
+      const [y, m] = key.split("-");
+      const dateObj = new Date(Number(y), Number(m) - 1, 1);
+      const monthLabel = dateObj.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+      return {
+        monthKey: key,
+        monthLabel,
+        applications: map.get(key) || 0,
+      };
+    });
+  }, [rawApplications]);
 
   return (
     <div className="an-page">
@@ -203,565 +434,852 @@ export default function AnalyticsPage({
         subtitle="Real-time telemetry, municipal budget tracking & hazard exposure"
         brandPill="MPDC"
         accentClass="topnav-accent-mpdc"
-        onBack={onBack}
-        backLabel="Bumalik"
         serviceTag="Executive GIS Telemetry"
         serviceSla="23 Barangays · Multi-Spectral Siting"
         session={session}
         userDept="GIS & Urban Planning"
         onLogout={onLogout}
-        extraControls={
-          <div className="an-export">
-            <button
-              type="button"
-              className="an-btn"
-              onClick={exportProjectsCsv}
-              disabled={!stats.total}
-              title="Export projects to CSV"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
-              CSV · Projects
-            </button>
-            <button
-              type="button"
-              className="an-btn"
-              onClick={exportBarangayCsv}
-              disabled={!stats.total}
-              title="Export barangay summary to CSV"
-            >
-              CSV · Barangay
-            </button>
-            <button
-              type="button"
-              className="an-btn"
-              onClick={exportBudgetCsv}
-              disabled={!stats.total}
-              title="Export budget summary to CSV"
-            >
-              CSV · Budget
-            </button>
-            <button
-              type="button"
-              className="an-btn"
-              onClick={exportExcel}
-              disabled={!stats.total}
-              title="Export municipal Excel workbook"
-            >
-              Excel (.xls)
-            </button>
-            <button
-              type="button"
-              className="an-btn an-btn-primary"
-              onClick={() => void withMap("pdf")}
-              disabled={busy != null}
-              title="Generate official municipal PDF report"
-            >
-              {busy === "pdf" ? "Preparing…" : "Municipal PDF"}
-            </button>
-            <button
-              type="button"
-              className="an-btn"
-              onClick={() => void withMap("map")}
-              disabled={busy != null}
-              title="Print current map viewport with legend"
-            >
-              {busy === "map" ? "Capturing…" : "Print Map"}
-            </button>
-          </div>
-        }
       />
 
       <div className="app-page-body-with-side-nav">
-        <SideNavbar currentScreen="analytics" onNavigate={onNavigate} currentRole={session?.role || "MPDC"} />
+        <SideNavbar
+          currentScreen="analytics"
+          onNavigate={onNavigate}
+          currentRole={session?.role || "MPDC"}
+        />
         <div className="app-page-main-with-side-nav">
           <div className="an-body">
-        <div className="an-container">
-          <section className="an-kpis" aria-label="Key indicators">
-            <div className="an-kpi">
-              <div className="an-kpi-head">
-                <span className="an-kpi-label">Total Projects</span>
+            <div className="an-container">
+              {/* Dashboard Section Header */}
+              <div className="an-dashboard-header">
+                <div className="an-dashboard-header-text">
+                  <div className="an-dashboard-eyebrow">
+                    <span>MUNICIPAL PLANNING & DEVELOPMENT COORDINATOR</span>
+                    <span className="an-dot-separator">•</span>
+                    <span className="an-telemetry-badge">
+                      <span className="an-pulse-dot" /> Live Telemetry Mode
+                    </span>
+                  </div>
+                  <h1 className="an-dashboard-title">Infrastructure Analytics Dashboard</h1>
+                  <p className="an-dashboard-subtitle">
+                    Executive overview of municipal infrastructure applications, CLUP zoning compliance, and public capital works.
+                  </p>
+                </div>
+                <div className="an-dashboard-header-actions">
+                  <button
+                    type="button"
+                    className="an-refresh-btn"
+                    onClick={handleFetchAll}
+                    disabled={isFetchingAll}
+                    title="Fetch and sync live data from database"
+                  >
+                    <RefreshCw size={14} className={isFetchingAll ? "an-spin" : ""} />
+                    <span>{isFetchingAll ? "Syncing Live Data..." : "Sync All Sections"}</span>
+                  </button>
+                </div>
               </div>
-              <div className="an-kpi-value">{stats.total}</div>
-              <span className="an-kpi-sub">On Luisiana 3D map</span>
-            </div>
-            <div className="an-kpi">
-              <div className="an-kpi-head">
-                <span className="an-kpi-label">Ongoing</span>
-              </div>
-              <div className="an-kpi-value accent">{stats.ongoing}</div>
-              <span className="an-kpi-sub">Active in flight</span>
-            </div>
-            <div className="an-kpi">
-              <div className="an-kpi-head">
-                <span className="an-kpi-label">Completed</span>
-              </div>
-              <div className="an-kpi-value safe">{stats.completed}</div>
-              <span className="an-kpi-sub">Finished / turned over</span>
-            </div>
-            <div className="an-kpi">
-              <div className="an-kpi-head">
-                <span className="an-kpi-label">Delayed</span>
-              </div>
-              <div className="an-kpi-value warn">{stats.delayed}</div>
-              <span className="an-kpi-sub">Flagged or past target</span>
-            </div>
-            <div className="an-kpi">
-              <div className="an-kpi-head">
-                <span className="an-kpi-label">Avg Progress</span>
-              </div>
-              <div className="an-kpi-value">{stats.avgProgress}%</div>
-              <span className="an-kpi-sub">Across all projects</span>
-            </div>
-            <div className="an-kpi">
-              <div className="an-kpi-head">
-                <span className="an-kpi-label">Programmed</span>
-              </div>
-              <div className="an-kpi-value">{formatPesoCompact(budget.total)}</div>
-              <span className="an-kpi-sub">Allocated budget</span>
-            </div>
-            <div className="an-kpi">
-              <div className="an-kpi-head">
-                <span className="an-kpi-label">Utilized</span>
-              </div>
-              <div className={`an-kpi-value${budget.utilPct > 90 ? " warn" : ""}`}>{budget.utilPct}%</div>
-              <span className="an-kpi-sub">Expenditure rate</span>
-            </div>
-          </section>
 
-          {stats.total === 0 ? (
-            <div className="an-empty-container">
-              <div className="an-empty-icon-wrap">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-                  <polygon points="12 2 2 7 12 12 22 7 12 2" />
-                  <polyline points="2 17 12 22 22 17" />
-                  <polyline points="2 12 12 17 22 12" />
-                </svg>
-              </div>
-              <h3 className="an-empty-title">No Infrastructure Projects on Map</h3>
-              <p className="an-empty-desc">
-                When infrastructure projects or private building applications are pinned to the Luisiana GIS globe, their completion metrics, budget utilization, hazard exposure, and gap analytics will appear here in real time.
-              </p>
-              <button type="button" className="an-btn an-btn-primary" onClick={onBack}>
-                ← Return to 3D Map
-              </button>
-            </div>
-          ) : (
-            <>
-              <section className="an-insights" aria-label="Planning insights and recommendations">
-                <article className="an-card">
-                  <div className="an-card-header">
-                    <div>
-                      <h2>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-                        </svg>
-                        Predictive Planning Outlook
-                      </h2>
-                      <p className="an-card-hint">
-                        Linear completion estimate from live progress and target milestone dates.
-                      </p>
-                    </div>
+              {/* ── Global Telemetry Control Bar ──────────────────────────────── */}
+              <div className="an-global-control-bar">
+                <div className="an-global-status-info">
+                  <div className="an-db-pill">
+                    <Database size={14} />
+                    <span>Database Status:</span>
+                    <b className="an-db-count">
+                      {rawApplications.length > 0
+                        ? `${rawApplications.length} Live Applications Loaded`
+                        : "Ready to Query"}
+                    </b>
                   </div>
-                  <div className="an-insight-kpis">
-                    <div className="an-insight-metric">
-                      <b>{insights.outlook.gapsNow}</b>
-                      <span>Baseline Gaps</span>
-                    </div>
-                    <div className="an-insight-metric">
-                      <b>{insights.outlook.gapsUncovered}</b>
-                      <span>Uncovered Gaps</span>
-                    </div>
-                    <div className="an-insight-metric">
-                      <b>{insights.outlook.monthsToClearOngoing ?? "—"}</b>
-                      <span>Months Horizon</span>
-                    </div>
-                    <div className="an-insight-metric">
-                      <b>{insights.outlook.delayed}</b>
-                      <span>Delayed / Alert</span>
-                    </div>
-                  </div>
-                  <p className="an-insight-note">{insights.outlook.note}</p>
-                  {insights.flags.length > 0 && (
-                    <ul className="an-insight-flags">
-                      {insights.flags.map((f) => (
-                        <li key={f.title} className={f.tone === "warn" ? "is-warn" : ""}>
-                          <strong>{f.title}:</strong> {f.detail}
-                        </li>
-                      ))}
-                    </ul>
+                  {lastSyncedAt && (
+                    <span className="an-last-synced-text">
+                      Last queried: <b>{lastSyncedAt}</b>
+                    </span>
                   )}
-                </article>
+                </div>
 
-                <article className="an-card">
-                  <div className="an-card-header">
-                    <div>
-                      <h2>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                        </svg>
-                        Data-Driven Recommendations
+                <div className="an-global-bar-actions">
+                  <button
+                    type="button"
+                    className="an-bar-action-btn"
+                    onClick={handleFetchAll}
+                    disabled={isFetchingAll}
+                  >
+                    <RefreshCw size={13} className={isFetchingAll ? "an-spin" : ""} />
+                    <span>Fetch All Live Records</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* ── SUB-NAVIGATION BUTTONS (Separating Analytics Sections) ──────── */}
+              <div className="an-subnav-container">
+                <div className="an-subnav-label">Analytics Modules:</div>
+                <nav className="an-subnav-list" role="tablist" aria-label="Analytics sub-navigation">
+                  {/* NavButton 1: All Sections */}
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activeNavTab === "all"}
+                    className={`an-subnav-btn ${activeNavTab === "all" ? "active" : ""}`}
+                    onClick={() => setActiveNavTab("all")}
+                  >
+                    <LayoutGrid size={15} />
+                    <span className="an-subnav-btn-text">All Telemetry</span>
+                    <span className="an-subnav-badge">Overview</span>
+                  </button>
+
+                  {/* NavButton 2: KPI Metrics */}
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activeNavTab === "kpis"}
+                    className={`an-subnav-btn ${activeNavTab === "kpis" ? "active" : ""}`}
+                    onClick={() => setActiveNavTab("kpis")}
+                  >
+                    <FileText size={15} />
+                    <span className="an-subnav-btn-text">KPI Metrics</span>
+                    <span className="an-subnav-badge">{totalApplications}</span>
+                  </button>
+
+                  {/* NavButton 3: Status Pipeline */}
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activeNavTab === "pipeline"}
+                    className={`an-subnav-btn ${activeNavTab === "pipeline" ? "active" : ""}`}
+                    onClick={() => setActiveNavTab("pipeline")}
+                  >
+                    <Filter size={15} />
+                    <span className="an-subnav-btn-text">Status Pipeline</span>
+                    <span className="an-subnav-badge">{totalInPipeline}</span>
+                  </button>
+
+                  {/* NavButton 4: Zoning & Hazard */}
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activeNavTab === "zoning"}
+                    className={`an-subnav-btn ${activeNavTab === "zoning" ? "active" : ""}`}
+                    onClick={() => setActiveNavTab("zoning")}
+                  >
+                    <PieIcon size={15} />
+                    <span className="an-subnav-btn-text">Zoning &amp; Hazard</span>
+                    <span className="an-subnav-badge">{distributionPerBarangay.length} Brgys</span>
+                  </button>
+
+                  {/* NavButton 5: Trends Over Time */}
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activeNavTab === "trends"}
+                    className={`an-subnav-btn ${activeNavTab === "trends" ? "active" : ""}`}
+                    onClick={() => setActiveNavTab("trends")}
+                  >
+                    <TrendingUp size={15} />
+                    <span className="an-subnav-btn-text">Applications Over Time</span>
+                    <span className="an-subnav-badge">{monthlyTrendsData.length} Mos</span>
+                  </button>
+
+                  {/* NavButton 6: LGU Transparency */}
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activeNavTab === "transparency"}
+                    className={`an-subnav-btn ${activeNavTab === "transparency" ? "active" : ""}`}
+                    onClick={() => setActiveNavTab("transparency")}
+                  >
+                    <Landmark size={15} />
+                    <span className="an-subnav-btn-text">LGU Transparency</span>
+                    <span className="an-subnav-badge">{municipalProjectsList.length} Projs</span>
+                  </button>
+                </nav>
+              </div>
+
+              {/* ── SECTION 1: AT-A-GLANCE METRICS (Large KPI Stat Cards) ──────── */}
+              {(activeNavTab === "all" || activeNavTab === "kpis") && (
+                <section className="an-section an-tab-pane" aria-labelledby="section-metrics-title">
+                  <div className="an-section-header">
+                    <div className="an-section-title-wrap">
+                      <h2 id="section-metrics-title" className="an-section-title">
+                        At-a-Glance Metrics
                       </h2>
-                      <p className="an-card-hint">
-                        Ranked municipal builds inferred from barangay facility gap matrix.
-                      </p>
+                      <span className="an-section-badge">Large KPI Stat Cards</span>
+                    </div>
+                    <div className="an-section-actions">
+                      <button
+                        type="button"
+                        className="an-section-fetch-btn"
+                        onClick={() => handleFetchSection("metrics")}
+                        disabled={fetchingSection.metrics}
+                        title="Fetch latest metrics counters from database"
+                      >
+                        <RefreshCw size={12} className={fetchingSection.metrics ? "an-spin" : ""} />
+                        <span>{fetchingSection.metrics ? "Fetching..." : "Fetch Metrics"}</span>
+                      </button>
                     </div>
                   </div>
-                  {insights.nextBuilds.length === 0 ? (
-                    <p className="an-card-hint">No uncovered baseline gaps from current map infrastructure tags.</p>
-                  ) : (
-                    <ol className="an-rec-list">
-                      {insights.nextBuilds.slice(0, 5).map((r) => (
-                        <li key={`${r.barangay}-${r.facility}`}>
-                          <div className="an-rec-head">
-                            <span>
-                              Build <strong>{r.facility}</strong> in <strong>{r.barangay}</strong>
-                            </span>
-                            <span className="an-rec-score">{r.needScore} pts</span>
+
+                  <div className="an-kpi-grid">
+                    {/* Card 1: Total Applications */}
+                    <div className="an-metric-card an-metric-card-applications">
+                      <div className="an-metric-card-top">
+                        <span className="an-metric-label">Total Applications</span>
+                        <div className="an-metric-icon-wrap" aria-hidden="true">
+                          <FileText size={18} />
+                        </div>
+                      </div>
+                      <div className="an-metric-value">{totalApplications}</div>
+                      <div className="an-metric-footer">
+                        <span className="an-metric-status-pill">Active Intake</span>
+                        <span className="an-metric-subtext">
+                          {totalApplications > 0
+                            ? `${totalApplications} recorded submissions`
+                            : "0 recorded submissions"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Card 2: Private Infrastructure */}
+                    <div className="an-metric-card an-metric-card-private">
+                      <div className="an-metric-card-top">
+                        <span className="an-metric-label">Private Infrastructure</span>
+                        <div className="an-metric-icon-wrap" aria-hidden="true">
+                          <Building2 size={18} />
+                        </div>
+                      </div>
+                      <div className="an-metric-value">{privateInfrastructure}</div>
+                      <div className="an-metric-footer">
+                        <span className="an-metric-status-pill">Residential / Commercial</span>
+                        <span className="an-metric-subtext">
+                          {privateInfrastructure > 0
+                            ? `${privateInfrastructure} registered structures`
+                            : "0 registered structures"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Card 3: Agricultural Zone */}
+                    <div className="an-metric-card an-metric-card-agricultural">
+                      <div className="an-metric-card-top">
+                        <span className="an-metric-label">Agricultural Zone</span>
+                        <div className="an-metric-icon-wrap" aria-hidden="true">
+                          <Tractor size={18} />
+                        </div>
+                      </div>
+                      <div className="an-metric-value">{agriculturalZone}</div>
+                      <div className="an-metric-footer">
+                        <span className="an-metric-status-pill">Agri & Rural Siting</span>
+                        <span className="an-metric-subtext">
+                          {agriculturalZone > 0
+                            ? `${agriculturalZone} agri permits logged`
+                            : "0 agri permits logged"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Card 4: Municipal Projects */}
+                    <div className="an-metric-card an-metric-card-municipal">
+                      <div className="an-metric-card-top">
+                        <span className="an-metric-label">Municipal Projects</span>
+                        <div className="an-metric-icon-wrap" aria-hidden="true">
+                          <Landmark size={18} />
+                        </div>
+                      </div>
+                      <div className="an-metric-value">{municipalProjects}</div>
+                      <div className="an-metric-footer">
+                        <span className="an-metric-status-pill">Public Works & Capital</span>
+                        <span className="an-metric-subtext">
+                          {municipalProjects > 0
+                            ? `${municipalProjects} government initiatives`
+                            : "0 government initiatives"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              )}
+
+              {/* ── SECTION 2: APPLICATION STATUS PIPELINE (Funnel or Stacked Bar) ─ */}
+              {(activeNavTab === "all" || activeNavTab === "pipeline") && (
+                <section className="an-section an-tab-pane" aria-labelledby="section-pipeline-title">
+                  <div className="an-card an-pipeline-card">
+                    <div className="an-card-header">
+                      <div>
+                        <h2 id="section-pipeline-title" className="an-card-title">
+                          Application Status Pipeline
+                        </h2>
+                        <p className="an-card-description">
+                          Lifecycle flow of applications across municipal intake, engineering review, and final approval stages.
+                        </p>
+                      </div>
+                      <div className="an-pipeline-header-controls">
+                        {/* Segmented Mode Selector: Funnel Chart vs Horizontal Stacked Bar */}
+                        <div className="an-segmented-control" role="group" aria-label="Pipeline view selector">
+                          <button
+                            type="button"
+                            className={`an-segment-btn ${pipelineChartMode === "funnel" ? "active" : ""}`}
+                            onClick={() => setPipelineChartMode("funnel")}
+                          >
+                            Funnel Chart
+                          </button>
+                          <button
+                            type="button"
+                            className={`an-segment-btn ${pipelineChartMode === "stacked" ? "active" : ""}`}
+                            onClick={() => setPipelineChartMode("stacked")}
+                          >
+                            Horizontal Stacked Bar
+                          </button>
+                        </div>
+
+                        <span className="an-pipeline-total-chip">
+                          Total in Pipeline: <b>{totalInPipeline}</b>
+                        </span>
+                        <button
+                          type="button"
+                          className="an-section-fetch-btn"
+                          onClick={() => handleFetchSection("pipeline")}
+                          disabled={fetchingSection.pipeline}
+                          title="Fetch and recalculate pipeline status distribution"
+                        >
+                          <RefreshCw size={12} className={fetchingSection.pipeline ? "an-spin" : ""} />
+                          <span>{fetchingSection.pipeline ? "Syncing..." : "Fetch Pipeline"}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {totalInPipeline > 0 ? (
+                      <div className="an-pipeline-chart-wrapper">
+                        {pipelineChartMode === "funnel" ? (
+                          /* Funnel Chart View */
+                          <div className="an-funnel-container">
+                            <ResponsiveContainer width="100%" height={260}>
+                              <FunnelChart>
+                                <Tooltip
+                                  content={({ active, payload }) => {
+                                    if (active && payload && payload.length) {
+                                      const d = payload[0].payload;
+                                      const pct =
+                                        totalInPipeline > 0
+                                          ? Math.round((Number(d.value) / totalInPipeline) * 100)
+                                          : 0;
+                                      return (
+                                        <div className="an-custom-tooltip">
+                                          <div className="an-tooltip-title">{d.name}</div>
+                                          <div className="an-tooltip-value">
+                                            {d.value} {d.value === 1 ? "application" : "applications"} ({pct}%)
+                                          </div>
+                                        </div>
+                                      );
+                                    }
+                                    return null;
+                                  }}
+                                />
+                                <Funnel dataKey="value" data={funnelData} isAnimationActive>
+                                  <LabelList
+                                    position="right"
+                                    fill="var(--apple-text, #1d1d1f)"
+                                    stroke="none"
+                                    dataKey="name"
+                                    formatter={(val: string) => val}
+                                    style={{ fontSize: 12, fontWeight: 600 }}
+                                  />
+                                </Funnel>
+                              </FunnelChart>
+                            </ResponsiveContainer>
                           </div>
-                          <div className="an-rec-why">{r.reasons.slice(0, 3).join(" · ")}</div>
-                          {r.matchingProposalTitle && (
-                            <div className="an-rec-link">
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-                                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-                              </svg>
-                              Matches request: {r.matchingProposalTitle}
-                            </div>
-                          )}
-                        </li>
-                      ))}
-                    </ol>
-                  )}
-                  {insights.proposalRanks.length > 0 && (
-                    <>
-                      <h3 className="an-rec-sub">Planning Requests to Prioritize</h3>
-                      <ol className="an-rec-list an-rec-list-compact">
-                        {insights.proposalRanks.slice(0, 4).map((p) => (
-                          <li key={p.id}>
-                            <div className="an-rec-head">
-                              <span>
-                                {p.title}
-                                {p.barangay ? ` · ${p.barangay}` : ""}
-                              </span>
-                              <span className="an-rec-score">{p.score}</span>
-                            </div>
-                            <div className="an-rec-why">{p.reasons.slice(0, 2).join(" · ")}</div>
-                          </li>
-                        ))}
-                      </ol>
-                    </>
-                  )}
-                </article>
-              </section>
+                        ) : (
+                          /* Horizontal Stacked Bar Chart View */
+                          <div className="an-stacked-bar-container">
+                            <ResponsiveContainer width="100%" height={160}>
+                              <BarChart
+                                layout="vertical"
+                                data={horizontalStackedPipelineData}
+                                margin={{ top: 20, right: 30, left: 30, bottom: 20 }}
+                              >
+                                <CartesianGrid strokeDasharray="3 3" horizontal={false} opacity={0.15} />
+                                <XAxis type="number" allowDecimals={false} />
+                                <YAxis type="category" dataKey="name" hide />
+                                <Tooltip
+                                  content={({ active, payload }) => {
+                                    if (active && payload && payload.length) {
+                                      return (
+                                        <div className="an-custom-tooltip">
+                                          <div className="an-tooltip-title">Pipeline Breakdown</div>
+                                          {payload.map((entry: any) => (
+                                            <div key={entry.name} className="an-tooltip-row">
+                                              <span style={{ color: entry.color }}>●</span>
+                                              <span>{entry.name}:</span>
+                                              <b>{entry.value}</b>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      );
+                                    }
+                                    return null;
+                                  }}
+                                />
+                                <Legend
+                                  verticalAlign="top"
+                                  height={36}
+                                  formatter={(val) => (
+                                    <span style={{ fontSize: 12, color: "var(--apple-text, #1d1d1f)", fontWeight: 500 }}>
+                                      {val}
+                                    </span>
+                                  )}
+                                />
+                                <Bar dataKey="Pending with MPDC" stackId="pipeline" fill="#f59e0b" radius={[4, 0, 0, 4]} />
+                                <Bar dataKey="With Engineering" stackId="pipeline" fill="#0ea5e9" />
+                                <Bar dataKey="Approved" stackId="pipeline" fill="#10b981" />
+                                <Bar dataKey="Rejected / Returned" stackId="pipeline" fill="#ef4444" radius={[0, 4, 4, 0]} />
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        )}
 
-              <section className="an-insights" aria-label="Critical infrastructure identification">
-                <article className="an-card an-card-wide">
-                  <div className="an-card-header">
-                    <div>
-                      <h2>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                        </svg>
-                        Critical Infrastructure Identification & Hazard Siting
+                        {/* Stage Summary Cards Beneath Chart */}
+                        <div className="an-pipeline-summary-cards">
+                          <div className="an-stage-summary-chip chip-pending">
+                            <div className="an-stage-chip-top">
+                              <Clock size={14} />
+                              <span>Stage 1: Pending MPDC</span>
+                            </div>
+                            <b>{pipelineStatus.pendingMpdc}</b>
+                          </div>
+
+                          <div className="an-stage-summary-chip chip-engineering">
+                            <div className="an-stage-chip-top">
+                              <Wrench size={14} />
+                              <span>Stage 2: Engineering</span>
+                            </div>
+                            <b>{pipelineStatus.withEngineering}</b>
+                          </div>
+
+                          <div className="an-stage-summary-chip chip-approved">
+                            <div className="an-stage-chip-top">
+                              <CheckCircle2 size={14} />
+                              <span>Stage 3: Approved</span>
+                            </div>
+                            <b>{pipelineStatus.approved}</b>
+                          </div>
+
+                          <div className="an-stage-summary-chip chip-rejected">
+                            <div className="an-stage-chip-top">
+                              <XCircle size={14} />
+                              <span>Stage 4: Rejected / Returned</span>
+                            </div>
+                            <b>{pipelineStatus.rejectedReturned}</b>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="an-chart-placeholder-box">
+                        <div className="an-placeholder-center">
+                          <div className="an-placeholder-icon-wrap" aria-hidden="true">
+                            <Filter size={26} />
+                          </div>
+                          <p className="an-placeholder-primary-text">No applications currently in pipeline.</p>
+                          <p className="an-placeholder-subtext">Click &ldquo;Fetch Pipeline&rdquo; to load telemetry from database.</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </section>
+              )}
+
+              {/* ── SECTION 3: ZONING & LOCATION METRICS ─────────────────────────── */}
+              {(activeNavTab === "all" || activeNavTab === "zoning") && (
+                <section className="an-section an-tab-pane" aria-labelledby="section-zoning-title">
+                  <div className="an-section-header">
+                    <div className="an-section-title-wrap">
+                      <h2 id="section-zoning-title" className="an-section-title">
+                        Zoning & Location Metrics
                       </h2>
-                      <p className="an-card-hint">
-                        Civic halls, health facilities, schools, water utilities, and evacuation centers tagged on the globe with live MGB flood/landslide exposure.
-                      </p>
+                      <span className="an-section-badge">Horizontal Bar & Donut Visualization</span>
+                    </div>
+                    <div className="an-section-actions">
+                      <button
+                        type="button"
+                        className="an-section-fetch-btn"
+                        onClick={() => handleFetchSection("zoning")}
+                        disabled={fetchingSection.zoning}
+                        title="Fetch live barangay distribution and hazard risk overlay"
+                      >
+                        <RefreshCw size={12} className={fetchingSection.zoning ? "an-spin" : ""} />
+                        <span>{fetchingSection.zoning ? "Querying..." : "Fetch Zoning Data"}</span>
+                      </button>
                     </div>
                   </div>
-                  <div className="an-ci-filters">
-                    <label>
-                      Type
-                      <select value={ciGroup} onChange={(e) => setCiGroup(e.target.value)}>
-                        {CRITICAL_GROUPS.map((g) => (
-                          <option key={g.id} value={g.id}>
-                            {g.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      Barangay
-                      <select value={ciBarangay} onChange={(e) => setCiBarangay(e.target.value)}>
-                        <option value="all">All barangays</option>
-                        {ciBarangays.map((b) => (
-                          <option key={b} value={b}>
-                            {b}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <div className="an-ci-kpis">
-                      <span className="an-ci-kpi-chip">
-                        <b>{criticalFiltered.length}</b> listed
-                      </span>
-                      <span className="an-ci-kpi-chip">
-                        <b style={{ color: ciHigh > 0 ? "var(--apple-danger)" : "inherit" }}>{ciHigh}</b> need review
-                      </span>
-                      {ciHazBusy && <span className="an-ci-kpi-chip">Checking hazards…</span>}
+
+                  <div className="an-charts-grid">
+                    {/* Chart 1: Distribution per Barangay (Horizontal Bar Chart) */}
+                    <div className="an-card an-chart-card">
+                      <div className="an-card-header">
+                        <div>
+                          <h3 className="an-card-title">Distribution per Barangay</h3>
+                          <p className="an-card-description">
+                            Infrastructure application volume across the 23 barangays of Luisiana.
+                          </p>
+                        </div>
+                        <span className="an-chart-badge">Horizontal Bar Chart</span>
+                      </div>
+
+                      {horizontalBarangayData.length > 0 ? (
+                        <div className="an-recharts-bar-wrap">
+                          <ResponsiveContainer
+                            width="100%"
+                            height={Math.max(280, horizontalBarangayData.length * 28)}
+                          >
+                            <BarChart
+                              layout="vertical"
+                              data={horizontalBarangayData}
+                              margin={{ top: 8, right: 30, left: 140, bottom: 8 }}
+                            >
+                              <CartesianGrid strokeDasharray="3 3" horizontal={false} opacity={0.12} />
+                              <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
+                              <YAxis
+                                type="category"
+                                dataKey="name"
+                                width={135}
+                                tick={{
+                                  fontSize: 11,
+                                  fill: "var(--apple-text, #1d1d1f)",
+                                  fontWeight: 500,
+                                }}
+                              />
+                              <Tooltip
+                                content={({ active, payload }) => {
+                                  if (active && payload && payload.length) {
+                                    const d = payload[0].payload;
+                                    return (
+                                      <div className="an-custom-tooltip">
+                                        <div className="an-tooltip-title">{d.name}</div>
+                                        <div className="an-tooltip-value">
+                                          <b>{d.applications}</b> applications ({d.percentage}%)
+                                        </div>
+                                      </div>
+                                    );
+                                  }
+                                  return null;
+                                }}
+                              />
+                              <Bar
+                                dataKey="applications"
+                                fill="#0071e3"
+                                radius={[0, 4, 4, 0]}
+                                barSize={14}
+                              />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      ) : (
+                        <div className="an-chart-placeholder-box">
+                          <div className="an-placeholder-center">
+                            <div className="an-placeholder-icon-wrap" aria-hidden="true">
+                              <BarChart3 size={28} />
+                            </div>
+                            <p className="an-placeholder-primary-text">Awaiting data from database.</p>
+                            <p className="an-placeholder-subtext">Click &ldquo;Fetch Zoning Data&rdquo; above to query live records.</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Chart 2: Safe Zone vs Buffer Zone (Donut Chart) */}
+                    <div className="an-card an-chart-card">
+                      <div className="an-card-header">
+                        <div>
+                          <h3 className="an-card-title">Safe Zone vs Buffer Zone</h3>
+                          <p className="an-card-description">
+                            Environmental hazard overlay balancing buildable safe zones against geological and flood buffer corridors.
+                          </p>
+                        </div>
+                        <span className="an-chart-badge">Donut Chart</span>
+                      </div>
+
+                      {donutHazardData.length > 0 ? (
+                        <div className="an-recharts-donut-wrap">
+                          <div className="an-donut-canvas-relative">
+                            <ResponsiveContainer width="100%" height={260}>
+                              <PieChart>
+                                <Pie
+                                  data={donutHazardData}
+                                  innerRadius={65}
+                                  outerRadius={95}
+                                  paddingAngle={4}
+                                  dataKey="value"
+                                  nameKey="name"
+                                >
+                                  {donutHazardData.map((entry) => (
+                                    <Cell key={entry.name} fill={entry.fill} />
+                                  ))}
+                                </Pie>
+                                <Tooltip
+                                  content={({ active, payload }) => {
+                                    if (active && payload && payload.length) {
+                                      const d = payload[0].payload;
+                                      const totalAssessed = (safeVsBufferStats?.safeCount || 0) + (safeVsBufferStats?.bufferCount || 0) + (safeVsBufferStats?.unassessedCount || 0);
+                                      const pct = totalAssessed > 0 ? Math.round((d.value / totalAssessed) * 100) : 0;
+                                      return (
+                                        <div className="an-custom-tooltip">
+                                          <div className="an-tooltip-title">{d.name}</div>
+                                          <div className="an-tooltip-value">
+                                            <b>{d.value}</b> sites ({pct}%)
+                                          </div>
+                                        </div>
+                                      );
+                                    }
+                                    return null;
+                                  }}
+                                />
+                                <Legend
+                                  verticalAlign="bottom"
+                                  height={36}
+                                  formatter={(value) => (
+                                    <span style={{ fontSize: 11.5, color: "var(--apple-text, #1d1d1f)", fontWeight: 500 }}>
+                                      {value}
+                                    </span>
+                                  )}
+                                />
+                              </PieChart>
+                            </ResponsiveContainer>
+                            {/* Centered Statistic inside Donut */}
+                            <div className="an-donut-center-stat" aria-hidden="true">
+                              <span className="an-donut-center-pct">
+                                {safeVsBufferStats?.safePercent || 0}%
+                              </span>
+                              <span className="an-donut-center-label">Safe Siting</span>
+                            </div>
+                          </div>
+
+                          {/* Donut Quick Summary Chips */}
+                          <div className="an-donut-summary-row">
+                            <div className="an-donut-chip chip-safe">
+                              <span>Safe Zones</span>
+                              <b>{safeVsBufferStats?.safeCount || 0} Sites</b>
+                            </div>
+                            <div className="an-donut-chip chip-buffer">
+                              <span>Buffer Zones</span>
+                              <b>{safeVsBufferStats?.bufferCount || 0} Sites</b>
+                            </div>
+                            <div className="an-donut-chip chip-unassessed">
+                              <span>Awaiting Pin</span>
+                              <b>{safeVsBufferStats?.unassessedCount || 0} Sites</b>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="an-chart-placeholder-box">
+                          <div className="an-placeholder-center">
+                            <div className="an-placeholder-icon-wrap" aria-hidden="true">
+                              <PieIcon size={28} />
+                            </div>
+                            <p className="an-placeholder-primary-text">Insufficient data.</p>
+                            <p className="an-placeholder-subtext">Click &ldquo;Fetch Zoning Data&rdquo; above to query live records.</p>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
-                  {criticalFiltered.length === 0 ? (
-                    <p className="an-card-hint">
-                      No critical facilities match this filter. Tag municipal hall, RHU, school, water tank, or evacuation models on the 3D globe.
-                    </p>
-                  ) : (
-                    <div className="an-table-wrap">
-                      <table className="an-table">
+                </section>
+              )}
+
+              {/* ── SECTION 4: APPLICATIONS OVER TIME (Line Chart) ─────────────── */}
+              {(activeNavTab === "all" || activeNavTab === "trends") && (
+                <section className="an-section an-tab-pane" aria-labelledby="section-trends-title">
+                  <div className="an-card an-trends-card">
+                    <div className="an-card-header">
+                      <div>
+                        <h2 id="section-trends-title" className="an-card-title">
+                          Applications Over Time
+                        </h2>
+                        <p className="an-card-description">
+                          Monthly application trends tracking submission trajectory, seasonal surges, and intake velocity.
+                        </p>
+                      </div>
+                      <div className="an-trends-meta-header">
+                        <span className="an-chart-badge">Line Chart View</span>
+                        <button
+                          type="button"
+                          className="an-section-fetch-btn"
+                          onClick={() => handleFetchSection("trends")}
+                          disabled={fetchingSection.trends}
+                          title="Refresh monthly application trajectory"
+                        >
+                          <RefreshCw size={12} className={fetchingSection.trends ? "an-spin" : ""} />
+                          <span>{fetchingSection.trends ? "Syncing..." : "Fetch Trends"}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {monthlyTrendsData.length > 0 ? (
+                      <div className="an-line-chart-wrapper">
+                        <div className="an-trends-stats-banner">
+                          <div className="an-trend-metric">
+                            <span className="an-trend-metric-label">Tracked Timeframe</span>
+                            <span className="an-trend-metric-value">
+                              {monthlyTrendsData[0]?.monthLabel} — {monthlyTrendsData[monthlyTrendsData.length - 1]?.monthLabel}
+                            </span>
+                          </div>
+                          <div className="an-trend-metric">
+                            <span className="an-trend-metric-label">Peak Submission Period</span>
+                            <span className="an-trend-metric-value">
+                              {(() => {
+                                const peak = [...monthlyTrendsData].sort((a, b) => b.applications - a.applications)[0];
+                                return peak ? `${peak.monthLabel} (${peak.applications} apps)` : "N/A";
+                              })()}
+                            </span>
+                          </div>
+                          <div className="an-trend-metric">
+                            <span className="an-trend-metric-label">Total Submissions Logged</span>
+                            <span className="an-trend-metric-value">{totalApplications} Applications</span>
+                          </div>
+                        </div>
+
+                        <ResponsiveContainer width="100%" height={280}>
+                          <LineChart
+                            data={monthlyTrendsData}
+                            margin={{ top: 15, right: 30, left: 10, bottom: 10 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" opacity={0.12} />
+                            <XAxis
+                              dataKey="monthLabel"
+                              tick={{ fontSize: 12, fill: "var(--apple-text-secondary, #6e6e73)" }}
+                            />
+                            <YAxis
+                              allowDecimals={false}
+                              tick={{ fontSize: 12, fill: "var(--apple-text-secondary, #6e6e73)" }}
+                            />
+                            <Tooltip
+                              content={({ active, payload }) => {
+                                if (active && payload && payload.length) {
+                                  const d = payload[0].payload;
+                                  return (
+                                    <div className="an-custom-tooltip">
+                                      <div className="an-tooltip-title">{d.monthLabel}</div>
+                                      <div className="an-tooltip-value">
+                                        <b>{d.applications}</b> applications submitted
+                                      </div>
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              }}
+                            />
+                            <Line
+                              type="monotone"
+                              dataKey="applications"
+                              name="Applications"
+                              stroke="#0071e3"
+                              strokeWidth={3}
+                              dot={{ r: 5, fill: "#0071e3", strokeWidth: 2, stroke: "#ffffff" }}
+                              activeDot={{ r: 7, fill: "#0071e3" }}
+                            />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    ) : (
+                      <div className="an-chart-placeholder-box">
+                        <div className="an-placeholder-center">
+                          <div className="an-placeholder-icon-wrap" aria-hidden="true">
+                            <TrendingUp size={28} />
+                          </div>
+                          <p className="an-placeholder-primary-text">No monthly application records found.</p>
+                          <p className="an-placeholder-subtext">Click &ldquo;Fetch Trends&rdquo; to load historical timeline from database.</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </section>
+              )}
+
+              {/* ── SECTION 5: LGU TRANSPARENCY (Municipal Projects Table) ──────── */}
+              {(activeNavTab === "all" || activeNavTab === "transparency") && (
+                <section className="an-section an-tab-pane" aria-labelledby="section-transparency-title">
+                  <div className="an-card an-transparency-card">
+                    <div className="an-card-header">
+                      <div>
+                        <h2 id="section-transparency-title" className="an-card-title">
+                          LGU Transparency
+                        </h2>
+                        <p className="an-card-description">
+                          Municipal capital projects, public infrastructure tenders, and general contractor disclosure records.
+                        </p>
+                      </div>
+                      <div className="an-transparency-meta">
+                        <span className="an-badge-count">
+                          {municipalProjectsList.length} Encoded Projects
+                        </span>
+                        <button
+                          type="button"
+                          className="an-section-fetch-btn"
+                          onClick={() => handleFetchSection("transparency")}
+                          disabled={fetchingSection.transparency}
+                          title="Query public works registry"
+                        >
+                          <RefreshCw size={12} className={fetchingSection.transparency ? "an-spin" : ""} />
+                          <span>{fetchingSection.transparency ? "Querying..." : "Fetch Municipal Projects"}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Table with Headers and Live Data / Empty State */}
+                    <div className="an-table-wrapper">
+                      <table className="an-transparency-table">
                         <thead>
                           <tr>
-                            <th>Facility</th>
-                            <th>Type</th>
-                            <th>Barangay</th>
-                            <th>Coordinates</th>
-                            <th>Status</th>
-                            <th>Flood</th>
-                            <th>Landslide</th>
-                            <th>Shaking</th>
-                            <th>Siting Advice</th>
+                            <th scope="col" className="col-project">Project Name</th>
+                            <th scope="col" className="col-barangay">Barangay</th>
+                            <th scope="col" className="col-contractor">Contractor</th>
+                            <th scope="col" className="col-budget text-right">Budget (₱)</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {criticalFiltered.map((p) => {
-                            const h = ciHazards[p.id];
-                            const statusChipClass =
-                              p.status === "Completed"
-                                ? "an-chip-safe"
-                                : p.status === "Delayed"
-                                ? "an-chip-danger"
-                                : p.status === "Ongoing"
-                                ? "an-chip-warn"
-                                : "an-chip-neutral";
-                            const floodClass = /high|critical/i.test(h?.flood || "")
-                              ? "an-chip-danger"
-                              : /moderate|medium/i.test(h?.flood || "")
-                              ? "an-chip-warn"
-                              : /low|safe|none/i.test(h?.flood || "")
-                              ? "an-chip-safe"
-                              : "an-chip-neutral";
-                            const landClass = /high|critical/i.test(h?.landslide || "")
-                              ? "an-chip-danger"
-                              : /moderate|medium/i.test(h?.landslide || "")
-                              ? "an-chip-warn"
-                              : /low|safe|none/i.test(h?.landslide || "")
-                              ? "an-chip-safe"
-                              : "an-chip-neutral";
-                            return (
-                              <tr key={p.id}>
-                                <td>
-                                  <strong>{p.name}</strong>
-                                </td>
-                                <td>{criticalTypeLabel(p.modelType)}</td>
-                                <td>{p.barangay || "—"}</td>
-                                <td className="an-coords">
-                                  {formatLonLat(p.location.lat, p.location.lon) || "—"}
-                                </td>
-                                <td>
-                                  <span className={`an-chip ${statusChipClass}`}>{p.status}</span>
-                                </td>
-                                <td>
-                                  <span className={`an-chip ${floodClass}`}>
-                                    {h?.flood ?? (ciHazBusy ? "…" : "—")}
+                          {municipalProjectsList.length === 0 ? (
+                            <tr>
+                              <td colSpan={4} className="an-table-empty-row">
+                                <div className="an-table-empty-content">
+                                  <div className="an-table-empty-icon" aria-hidden="true">
+                                    <FolderArchive size={26} />
+                                  </div>
+                                  <span className="an-table-empty-title">
+                                    No public projects encoded.
                                   </span>
-                                </td>
-                                <td>
-                                  <span className={`an-chip ${landClass}`}>
-                                    {h?.landslide ?? (ciHazBusy ? "…" : "—")}
+                                  <span className="an-table-empty-desc">
+                                    Public infrastructure expenditures will be displayed here once registered in the municipal registry.
                                   </span>
-                                </td>
-                                <td>
-                                  <span className="an-chip an-chip-neutral">
-                                    {h?.shaking ?? (ciHazBusy ? "…" : "—")}
-                                  </span>
-                                </td>
-                                <td className={h && /avoid/i.test(h.advice) ? "an-gap" : ""}>
-                                  {h?.advice ?? (ciHazBusy ? "Checking…" : "—")}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </article>
-              </section>
-
-              <div className="an-charts">
-                <article className="an-card">
-                  <h2>Projects by Status</h2>
-                  <p className="an-card-hint">Active and completed status distribution</p>
-                  <div className="an-chart-wrap">
-                    <ResponsiveContainer width="100%" height={260}>
-                      <BarChart data={stats.byStatus} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(128,128,128,0.12)" />
-                        <XAxis dataKey="name" tick={{ fontSize: 11, fill: "var(--apple-text-secondary, #6e6e73)" }} />
-                        <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "var(--apple-text-secondary, #6e6e73)" }} width={36} />
-                        <Tooltip cursor={{ fill: "rgba(0, 113, 227, 0.05)" }} contentStyle={TOOLTIP_STYLE} />
-                        <Bar dataKey="count" name="Projects" radius={[4, 4, 0, 0]}>
-                          {stats.byStatus.map((row) => (
-                            <Cell key={row.name} fill={row.fill || CHART_FALLBACK[0]} />
-                          ))}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </article>
-
-                <article className="an-card">
-                  <h2>Projects by Implementing Office</h2>
-                  <p className="an-card-hint">Departmental workload across municipal offices</p>
-                  <div className="an-chart-wrap">
-                    <ResponsiveContainer width="100%" height={260}>
-                      <BarChart data={stats.byDepartment} layout="vertical" margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(128,128,128,0.12)" />
-                        <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: "var(--apple-text-secondary, #6e6e73)" }} />
-                        <YAxis type="category" dataKey="name" width={110} tick={{ fontSize: 11, fill: "var(--apple-text-secondary, #6e6e73)" }} />
-                        <Tooltip cursor={{ fill: "rgba(0, 113, 227, 0.05)" }} contentStyle={TOOLTIP_STYLE} />
-                        <Bar dataKey="count" name="Projects" radius={[0, 4, 4, 0]}>
-                          {stats.byDepartment.map((row, i) => (
-                            <Cell key={row.name} fill={row.fill || CHART_FALLBACK[i % CHART_FALLBACK.length]} />
-                          ))}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </article>
-
-                <article className="an-card an-card-wide">
-                  <h2>Barangay Project Comparison</h2>
-                  <p className="an-card-hint">Spatial allocation of ongoing and completed builds by barangay</p>
-                  <div className="an-chart-wrap an-chart-tall">
-                    <ResponsiveContainer width="100%" height={Math.max(280, barangays.length * 28)}>
-                      <BarChart data={barangays} layout="vertical" margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(128,128,128,0.12)" />
-                        <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: "var(--apple-text-secondary, #6e6e73)" }} />
-                        <YAxis type="category" dataKey="name" width={150} tick={{ fontSize: 10, fill: "var(--apple-text-secondary, #6e6e73)" }} />
-                        <Tooltip
-                          cursor={{ fill: "rgba(0, 113, 227, 0.05)" }}
-                          contentStyle={TOOLTIP_STYLE}
-                          formatter={(value: number, name: string) => [value, name]}
-                        />
-                        <Bar dataKey="completed" name="Completed" stackId="a" fill="#16a34a" />
-                        <Bar dataKey="ongoing" name="Ongoing" stackId="a" fill="#d97706" />
-                        <Bar dataKey="planned" name="Planned" stackId="a" fill="#0071e3" />
-                        <Bar dataKey="delayed" name="Delayed" stackId="a" fill="#dc2626" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </article>
-
-                <article className="an-card">
-                  <h2>Programmed Budget by Office</h2>
-                  <p className="an-card-hint">
-                    {budget.withBudget} project{budget.withBudget === 1 ? "" : "s"} with budget · spent{" "}
-                    {formatPesoCompact(budget.spent)} of {formatPesoCompact(budget.total)}
-                  </p>
-                  <div className="an-chart-wrap">
-                    <ResponsiveContainer width="100%" height={260}>
-                      <BarChart data={budget.byDepartment} layout="vertical" margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(128,128,128,0.12)" />
-                        <XAxis type="number" tick={{ fontSize: 11, fill: "var(--apple-text-secondary, #6e6e73)" }} tickFormatter={(v) => formatPesoCompact(Number(v))} />
-                        <YAxis type="category" dataKey="name" width={110} tick={{ fontSize: 11, fill: "var(--apple-text-secondary, #6e6e73)" }} />
-                        <Tooltip
-                          cursor={{ fill: "rgba(0, 113, 227, 0.05)" }}
-                          contentStyle={TOOLTIP_STYLE}
-                          formatter={(value: number) => formatPesoCompact(Number(value))}
-                        />
-                        <Bar dataKey="total" name="Programmed" fill="#0071e3" radius={[0, 4, 4, 0]} />
-                        <Bar dataKey="spent" name="Spent" fill="#151c28" radius={[0, 4, 4, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </article>
-
-                <article className="an-card">
-                  <h2>Programmed Budget by Barangay</h2>
-                  <p className="an-card-hint">Where municipal development funds are committed</p>
-                  <div className="an-chart-wrap an-chart-tall">
-                    <ResponsiveContainer width="100%" height={Math.max(260, budget.byBarangay.length * 28)}>
-                      <BarChart data={budget.byBarangay} layout="vertical" margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(128,128,128,0.12)" />
-                        <XAxis type="number" tick={{ fontSize: 11, fill: "var(--apple-text-secondary, #6e6e73)" }} tickFormatter={(v) => formatPesoCompact(Number(v))} />
-                        <YAxis type="category" dataKey="name" width={140} tick={{ fontSize: 10, fill: "var(--apple-text-secondary, #6e6e73)" }} />
-                        <Tooltip
-                          cursor={{ fill: "rgba(0, 113, 227, 0.05)" }}
-                          contentStyle={TOOLTIP_STYLE}
-                          formatter={(value: number) => formatPesoCompact(Number(value))}
-                        />
-                        <Bar dataKey="total" name="Programmed" fill="#d97706" radius={[0, 4, 4, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </article>
-
-                <article className="an-card an-card-wide">
-                  <h2>Infrastructure Gap Analysis</h2>
-                  <p className="an-card-hint">
-                    Baseline civic requirements for each Luisiana barangay: Barangay Hall, health facility, school, and water system.
-                  </p>
-                  {gapWorst.length === 0 ? (
-                    <p className="an-card-hint">Every tagged barangay meets the baseline facility requirements.</p>
-                  ) : (
-                    <div className="an-table-wrap">
-                      <table className="an-table">
-                        <thead>
-                          <tr>
-                            <th>Barangay</th>
-                            <th>Projects</th>
-                            <th>Present Facilities</th>
-                            <th>Missing Baseline</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {gaps.map((g) => (
-                            <tr key={g.barangay}>
-                              <td>
-                                <strong>{g.barangay}</strong>
-                              </td>
-                              <td className="an-num">{g.projectCount}</td>
-                              <td>{g.present.length ? g.present.join(", ") : "—"}</td>
-                              <td className={g.missing.length ? "an-gap" : ""}>
-                                {g.missing.length ? g.missing.join(", ") : "None"}
+                                  <button
+                                    type="button"
+                                    className="an-table-query-btn"
+                                    onClick={() => handleFetchSection("transparency")}
+                                  >
+                                    <RefreshCw size={12} />
+                                    <span>Re-check Public Registry</span>
+                                  </button>
+                                </div>
                               </td>
                             </tr>
-                          ))}
+                          ) : (
+                            municipalProjectsList.map((project, idx) => (
+                              <tr key={project.id || idx}>
+                                <td className="font-medium">{project.projectName}</td>
+                                <td>{project.barangay}</td>
+                                <td>{project.contractor}</td>
+                                <td className="text-right">
+                                  ₱{Number(project.budget || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                                </td>
+                              </tr>
+                            ))
+                          )}
                         </tbody>
                       </table>
                     </div>
-                  )}
-                </article>
-
-                <article className="an-card an-card-wide">
-                  <h2>Projects by Infrastructure Type</h2>
-                  <p className="an-card-hint">Classification across cataloged 3D facility models</p>
-                  <div className="an-chart-wrap an-chart-tall">
-                    <ResponsiveContainer width="100%" height={Math.max(280, stats.byType.length * 36)}>
-                      <BarChart data={stats.byType} layout="vertical" margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(128,128,128,0.12)" />
-                        <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: "var(--apple-text-secondary, #6e6e73)" }} />
-                        <YAxis type="category" dataKey="name" width={140} tick={{ fontSize: 11, fill: "var(--apple-text-secondary, #6e6e73)" }} />
-                        <Tooltip cursor={{ fill: "rgba(0, 113, 227, 0.05)" }} contentStyle={TOOLTIP_STYLE} />
-                        <Bar dataKey="count" name="Projects" fill="#0071e3" radius={[0, 4, 4, 0]}>
-                          {stats.byType.map((row, i) => (
-                            <Cell key={row.name} fill={CHART_FALLBACK[i % CHART_FALLBACK.length]} />
-                          ))}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
                   </div>
-                </article>
-              </div>
-            </>
-          )}
+                </section>
+              )}
+            </div>
           </div>
         </div>
       </div>
     </div>
-  </div>
   );
 }

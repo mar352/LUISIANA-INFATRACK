@@ -11,7 +11,7 @@ import MpdcTopNavbar from "./MpdcTopNavbar";
 import "./AuditPage.css";
 
 type Props = {
-  onBack: () => void;
+  onBack?: () => void;
   onNavigate?: (screen: string) => void;
   session?: SessionUser | null;
   onLogout?: () => void;
@@ -100,8 +100,6 @@ export default function AuditPage({ onBack, onNavigate, session, onLogout }: Pro
         subtitle="Audit trail ng mga sign-in at mga pagbabago sa talaan ng munisipyo · 24 Oras na Retensyon"
         brandPill="MPDC"
         accentClass="topnav-accent-mpdc"
-        onBack={onBack}
-        backLabel="Bumalik"
         serviceTag="Security & Audit Trail"
         serviceSla="24-Hour Real-Time Tamper-Proof Trail"
         session={session}
