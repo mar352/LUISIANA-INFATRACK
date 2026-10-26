@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { fetchCitizenApplications } from "../lib/api";
 import { restoreSession } from "../services/auth";
 import { useTranslation, LanguageToggle } from "./LanguageToggle";
+import { AddLguProjectModal } from "./AddLguProjectModal";
 import "./SideNavbar.css";
 
 export type NavScreenId =
@@ -52,6 +53,7 @@ export const SideNavbar: React.FC<SideNavbarProps> = ({
   const [pendingAppsCount, setPendingAppsCount] = useState<number>(0);
   const [isAdmin, setIsAdmin] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [isAddLguModalOpen, setIsAddLguModalOpen] = useState(false);
 
   useEffect(() => {
     restoreSession()
@@ -110,10 +112,31 @@ export const SideNavbar: React.FC<SideNavbarProps> = ({
     });
   };
 
-  const userRole = currentRole || currentUser?.role;
+  const userRole = currentUser?.role || currentRole;
   const isMpdc = userRole === "MPDC" || currentUser?.username === "mpdc" || currentUser?.username === "mpdc_admin" || userRole === "MPDC Admin";
   const isMpdcAdmin = isAdmin || currentUser?.username === "mpdc_admin" || userRole === "MPDC Admin";
   const isEngineer = userRole === "Engineer" || userRole === "Private Engineer" || currentUser?.username === "engineer" || currentUser?.username === "pengineer";
+
+  const canAddLguProject = Boolean(
+    currentUser &&
+    (currentUser.role === "MPDC" ||
+     currentUser.role === "MPDC Admin" ||
+     currentUser.role === "Engineer" ||
+     currentUser.role === "Super Admin" ||
+     currentUser.username === "mpdc" ||
+     currentUser.username === "mpdc_admin" ||
+     currentUser.username === "engineer")
+  );
+
+  useEffect(() => {
+    const handleOpen = () => {
+      if (canAddLguProject) {
+        setIsAddLguModalOpen(true);
+      }
+    };
+    window.addEventListener("open-add-lgu-project", handleOpen);
+    return () => window.removeEventListener("open-add-lgu-project", handleOpen);
+  }, [canAddLguProject]);
 
   const navItems: NavItemDef[] = [
     // MPDC-Only Modules (Strictly forbidden for Engineering Office per RBAC)
@@ -331,7 +354,8 @@ export const SideNavbar: React.FC<SideNavbarProps> = ({
   };
 
   return (
-    <aside
+    <>
+      <aside
       className={`app-side-navbar ${isCollapsed ? "is-collapsed" : "is-expanded"} ${className}`}
       aria-label="Pangunahing Navigasyon sa Gilid"
       data-testid="app-side-navbar"
@@ -371,6 +395,38 @@ export const SideNavbar: React.FC<SideNavbarProps> = ({
 
       {/* Button List */}
       <nav className="side-nav-list" role="navigation">
+        {/* Quick Action: Encode LGU Project (Strictly MPDC and Engineering Staff Only) */}
+        {canAddLguProject && (
+          <button
+            type="button"
+            id="nav-side-add-lgu-project"
+            className="side-nav-item side-nav-item-action"
+            onClick={() => setIsAddLguModalOpen(true)}
+            title={language === "en" ? "Add LGU Project" : "Mag-encode ng Proyekto"}
+            aria-label={language === "en" ? "Add LGU Project" : "Mag-encode ng Proyekto"}
+          >
+            <span className="side-nav-icon">
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+            </span>
+            <span className="side-nav-label">
+              <span>{language === "en" ? "Add LGU Project" : "Mag-encode ng Proyekto"}</span>
+            </span>
+          </button>
+        )}
+
         {navItems.map((item) => {
           const isActive = currentScreen === item.id;
           return (
@@ -411,6 +467,19 @@ export const SideNavbar: React.FC<SideNavbarProps> = ({
         </div>
       </div>
     </aside>
+
+    {/* ── Internal Add LGU Project Form Modal ── */}
+    <AddLguProjectModal
+      isOpen={isAddLguModalOpen}
+      onClose={() => setIsAddLguModalOpen(false)}
+      currentSession={currentUser}
+      currentRole={userRole}
+      onSuccess={(newProject) => {
+        setIsAddLguModalOpen(false);
+        window.dispatchEvent(new CustomEvent("lgu-project-added", { detail: newProject }));
+      }}
+    />
+  </>
   );
 };
 

@@ -286,6 +286,17 @@ export type Project = {
   officialUrl?: string;
   lifecyclePhase?: LifecyclePhase;
   archivedAt?: string | null;
+  /** Transparency & Procurement document attachments */
+  noticeOfAwardUrl?: string;
+  noticeOfAwardName?: string;
+  programOfWorksUrl?: string;
+  programOfWorksName?: string;
+  /** Staff audit information */
+  encodedBy?: string;
+  biddingResults?: {
+    winningContractor?: string;
+    approvedBudget?: number;
+  };
   milestones: ProjectMilestone[];
   issues: ProjectIssue[];
   photos: ProjectPhoto[];

@@ -113,6 +113,7 @@ import { setAuditActor } from "../services/firestore-audit";
 import AuditPage from "./AuditPage";
 import { PrivateEngineerPortal } from "./PrivateEngineerPortal";
 import { SiteProgressPopup } from "./SiteProgressPopup";
+import { AddLguProjectModal } from "./AddLguProjectModal";
 import { InspectionTaskQueue } from "./InspectionTaskQueue";
 import { InspectionUpdateModal } from "./InspectionUpdateModal";
 import { MaintenanceScreen } from "./MaintenanceScreen";
@@ -718,6 +719,23 @@ export default function App() {
   const [currentSession, setCurrentSession] = useState<SessionUser | null>(null);
   const currentRole = currentSession?.role ?? null;
   const [screen, setScreen] = useState<AppScreen>(initialRoute.screen);
+  const [isGlobalAddProjectModalOpen, setIsGlobalAddProjectModalOpen] = useState(false);
+
+  useEffect(() => {
+    const handleOpen = () => setIsGlobalAddProjectModalOpen(true);
+    const handleProjectAdded = (e: any) => {
+      if (e?.detail) {
+        setProjects((prev) => [e.detail, ...prev]);
+        setSelected(e.detail);
+      }
+    };
+    window.addEventListener("open-add-lgu-project", handleOpen);
+    window.addEventListener("lgu-project-added", handleProjectAdded);
+    return () => {
+      window.removeEventListener("open-add-lgu-project", handleOpen);
+      window.removeEventListener("lgu-project-added", handleProjectAdded);
+    };
+  }, []);
   const [isAuthChecking, setIsAuthChecking] = useState<boolean>(() => {
     return PROTECTED_STAFF_SCREENS.has(initialRoute.screen);
   });
@@ -4546,6 +4564,7 @@ export default function App() {
                       <ProjectMonitoringPanel
                         projects={filteredProjects}
                         currentRole={currentRole}
+                        currentSession={currentSession}
                         mapRef={mapRef}
                         cesiumMapRef={cesiumMapRef}
                         readOnly={currentRole === "Viewer" || isBarangayOfficial(currentRole)}
@@ -4912,6 +4931,18 @@ export default function App() {
           onLogout={goHome}
         />
       )}
+
+      {/* ── GLOBAL ADD LGU PROJECT MODAL ── */}
+      <AddLguProjectModal
+        isOpen={isGlobalAddProjectModalOpen}
+        onClose={() => setIsGlobalAddProjectModalOpen(false)}
+        onSuccess={(newProject) => {
+          setProjects((prev) => [newProject, ...prev]);
+          setSelected(newProject);
+        }}
+        currentSession={currentSession}
+        currentRole={currentRole}
+      />
     </div>
   );
 }

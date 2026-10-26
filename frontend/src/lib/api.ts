@@ -47,6 +47,10 @@ async function sendJson<T>(path: string, method: string, body?: unknown): Promis
   return (await res.json()) as T;
 }
 
+export function createProject(body: Partial<Project>) {
+  return sendJson<{ project: Project }>("/api/projects", "POST", body);
+}
+
 export function patchProject(id: string, body: Partial<Project>) {
   return sendJson<{ project: Project }>(`/api/projects/${id}`, "PATCH", body);
 }
