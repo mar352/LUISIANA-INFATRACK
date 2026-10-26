@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import type { Project } from "../types";
 import { backendUrl } from "../lib/api";
 import { useTranslation } from "../lib/i18n";
+import { updateProjectInFirestore } from "../services/firestore-projects";
 import "./InspectionUpdateModal.css";
 
 
@@ -234,19 +235,94 @@ export const InspectionUpdateModal: React.FC<InspectionUpdateModalProps> = ({
         formData.append("photo", file);
       }
 
-      const res = await fetch(backendUrl(`/api/citizen/applications/${appId}/inspection`), {
-        method: "POST",
-        credentials: "include",
-        body: formData,
-      });
-
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        throw new Error(data.message || data.error || "Nabigong i-save ang inspection report");
+      let res: Response | null = null;
+      let data: any = null;
+      try {
+        res = await fetch(backendUrl(`/api/citizen/applications/${appId}/inspection`), {
+          method: "POST",
+          credentials: "include",
+          body: formData,
+        });
+        if (res.ok) {
+          data = await res.json();
+        } else {
+          const errData = await res.json().catch(() => null);
+          if (errData?.error && !project?.isLguProject && !project?.id?.startsWith("lgu-proj-")) {
+            throw new Error(errData.error || errData.message || "Nabigong i-save ang inspection report");
+          }
+        }
+      } catch (fetchErr: any) {
+        if (!project?.isLguProject && !project?.id?.startsWith("lgu-proj-")) {
+          throw fetchErr;
+        }
+        console.warn("[InspectionUpdateModal] Backend notice:", fetchErr?.message);
       }
 
+      const nextStatus = progress >= 100 ? "Completed" : progress >= 50 ? "Ongoing" : "Planned";
+      const nextColor = progress >= 100 ? "#10b981" : progress >= 50 ? "#f5a623" : "#3b82f6";
+      const now = new Date().toISOString();
+      const newPhotoUrl = data?.application?.latestInspection?.photoUrl || data?.project?.latestInspection?.photoUrl || previewUrl || "";
+
+      const updatedRecord = {
+        id: `insp-${Date.now()}`,
+        stage,
+        progress,
+        photoUrl: newPhotoUrl,
+        remarks,
+        inspector,
+        timestamp: now,
+        inspectedAt: now,
+      };
+
+      // Also persist to Firestore if it's an LGU project or has an ID
+      if (project?.id) {
+        try {
+          await updateProjectInFirestore(project.id, {
+            progress,
+            inspectionStage: stage,
+            status: nextStatus as any,
+            markerColor: nextColor,
+            latestInspection: updatedRecord as any,
+          });
+        } catch (e) {
+          console.warn("[InspectionUpdateModal] Firestore update notice:", e);
+        }
+
+        // Also update local storage cache immediately
+        try {
+          const cachedRaw = localStorage.getItem("infatrack-projects-cache");
+          const cached = cachedRaw ? JSON.parse(cachedRaw) : [];
+          const list = Array.isArray(cached) ? cached : [];
+          const updatedList = list.map((p: any) =>
+            p.id === project.id
+              ? {
+                  ...p,
+                  progress,
+                  inspectionStage: stage,
+                  status: nextStatus,
+                  markerColor: nextColor,
+                  latestInspection: updatedRecord,
+                }
+              : p
+          );
+          localStorage.setItem("infatrack-projects-cache", JSON.stringify(updatedList));
+        } catch {
+          /* quota */
+        }
+      }
+
+      const resultPayload = data?.application || data?.project || {
+        id: project.id,
+        progress,
+        inspectionStage: stage,
+        stage,
+        status: nextStatus,
+        latestInspection: updatedRecord,
+        inspectionPhotos: [updatedRecord],
+      };
+
       setShowCompletionConfirm(false);
-      onSuccess(data.application || data);
+      onSuccess(resultPayload);
       onClose();
     } catch (err: any) {
       console.error("Inspection submit error:", err);

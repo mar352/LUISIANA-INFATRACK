@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { io } from "socket.io-client";
 import { fetchCitizenApplications, patchCitizenApplication, backendUrl } from "../lib/api";
-import { subscribeToProjects } from "../services/firestore-projects";
+import { subscribeToProjects, updateProjectInFirestore } from "../services/firestore-projects";
+import { lookupBarangayCoords } from "../lib/barangay-overlay";
 import { getClupZone } from "../lib/clup-zones";
 import { InSystemDocModal } from "./InSystemDocViewer";
 import { ThemeToggle } from "./ThemeToggle";
@@ -15,7 +16,7 @@ interface EngineerDashboardPageProps {
   initialTab?: EngineerDashboardTab;
   onBack?: () => void;
   session?: SessionUser | null;
-  onNavigateToMap: (projectId?: string, lat?: number, lon?: number) => void;
+  onNavigateToMap: (projectId?: string, lat?: number, lon?: number, project?: Project) => void;
   onNavigate?: (screen: string) => void;
   onLogout?: () => void;
   onApplicationApproved?: () => void;
@@ -225,6 +226,11 @@ export const EngineerDashboardPage: React.FC<EngineerDashboardPageProps> = ({
   const [approvalNotes, setApprovalNotes] = useState("");
   const [isSubmittingApproval, setIsSubmittingApproval] = useState(false);
 
+  // LGU Project Approval Modal State
+  const [approvingLguProj, setApprovingLguProj] = useState<Project | null>(null);
+  const [lguApprovalNotes, setLguApprovalNotes] = useState("");
+  const [isSubmittingLguApproval, setIsSubmittingLguApproval] = useState(false);
+
   // Hold Modal State
   const [holdingApp, setHoldingApp] = useState<any | null>(null);
   const [holdReason, setHoldReason] = useState("");
@@ -379,12 +385,17 @@ export const EngineerDashboardPage: React.FC<EngineerDashboardPageProps> = ({
 
     const activeInfra = projects.filter((p) => p.lifecyclePhase === "Ongoing" || p.lifecyclePhase === "Implementation").length;
 
+    const pendingLguCount = projects.filter(
+      (p) => p.isLguProject && p.engineerApproved === false
+    ).length;
+
     return {
       pendingInspection,
       approvedAndPinned,
       onHold,
       totalReceipts,
       activeInfra,
+      pendingLguCount,
       totalQueue: paidApplications.length,
     };
   }, [paidApplications, projects]);
@@ -523,6 +534,94 @@ export const EngineerDashboardPage: React.FC<EngineerDashboardPageProps> = ({
       alert(err?.message || "Nabigong i-hold ang aplikasyon.");
     } finally {
       setIsSubmittingHold(false);
+    }
+  };
+
+  // Handle Confirm LGU Project Approval & Pinning to 3D Globe
+  const handleConfirmLguApproval = async () => {
+    if (!approvingLguProj) return;
+    setIsSubmittingLguApproval(true);
+    try {
+      const now = new Date().toISOString();
+      const engineerName = session?.name || "Engr. Mario S. Baldovino (Municipal Engineer)";
+      const patchData = {
+        engineerApproved: true,
+        engineerApprovedAt: now,
+        engineerApprovedBy: engineerName,
+        isPinned: true,
+        engineerNotes: lguApprovalNotes.trim() || "Approved and validated by Municipal Engineer for GIS 3D Map Pinning.",
+      };
+
+      // 1. Update in Firestore
+      try {
+        await updateProjectInFirestore(approvingLguProj.id, patchData);
+      } catch (fErr) {
+        console.warn("[EngineerDashboard] Firestore update note:", fErr);
+      }
+
+      // 2. Update via Backend API
+      try {
+        const url = `${backendUrl()}/api/projects/${approvingLguProj.id}`;
+        await fetch(url, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(patchData),
+        });
+      } catch (bErr) {
+        console.warn("[EngineerDashboard] Backend patch note:", bErr);
+      }
+
+      // 3. Update local state
+      const confirmedProj: Project = {
+        ...approvingLguProj,
+        ...patchData,
+      };
+
+      setProjects((prev) =>
+        prev.map((p) => (p.id === approvingLguProj.id ? { ...p, ...patchData } : p))
+      );
+
+      // 4. Update localStorage cache
+      try {
+        const cachedRaw = localStorage.getItem("infatrack-projects-cache");
+        const cached = cachedRaw ? JSON.parse(cachedRaw) : [];
+        const list = Array.isArray(cached) ? cached : [];
+        const updated = list.map((p: any) =>
+          p.id === approvingLguProj.id ? { ...p, ...patchData } : p
+        );
+        localStorage.setItem("infatrack-projects-cache", JSON.stringify(updated));
+      } catch {}
+
+      showToast(`Matagumpay na nakumpirma at nai-pin sa 3D Mapa ang "${approvingLguProj.name}".`);
+
+      const coords = lookupBarangayCoords(approvingLguProj.barangay);
+      const targetLat = approvingLguProj.location?.lat ?? coords?.lat ?? 14.1811622;
+      const targetLon = approvingLguProj.location?.lon ?? coords?.lon ?? 121.510284;
+
+      const fullProj: Project = {
+        ...confirmedProj,
+        location: { lat: targetLat, lon: targetLon },
+        isLguProject: true,
+        type: "Municipal Project",
+        siteMarkerOnly: true,
+        markerColor: confirmedProj.markerColor || (confirmedProj.status === "Completed" ? "#10b981" : confirmedProj.status === "Ongoing" ? "#f5a623" : "#3b82f6"),
+        mapSketch: confirmedProj.mapSketch || {
+          kind: "pin",
+          color: confirmedProj.markerColor || (confirmedProj.status === "Completed" ? "#10b981" : confirmedProj.status === "Ongoing" ? "#f5a623" : "#3b82f6"),
+          coordinates: [{ lon: targetLon, lat: targetLat }],
+        },
+      };
+
+      setApprovingLguProj(null);
+      setLguApprovalNotes("");
+
+      if (onApplicationApproved) onApplicationApproved();
+      onNavigateToMap(fullProj.id, targetLat, targetLon, fullProj);
+    } catch (err: any) {
+      console.error("Failed to approve LGU project:", err);
+      alert(err?.message || "Nabigong kumpirmahin ang LGU project.");
+    } finally {
+      setIsSubmittingLguApproval(false);
     }
   };
 
@@ -729,7 +828,10 @@ export const EngineerDashboardPage: React.FC<EngineerDashboardPageProps> = ({
               </span>
               <div className="eng-sidebar-btn-label">
                 <span>{t("nav.projects")}</span>
-                <span className="eng-sidebar-badge">{projects.length}</span>
+                <span className={`eng-sidebar-badge ${metrics.pendingLguCount > 0 ? "alert" : ""}`}>
+                  {projects.length}
+                  {metrics.pendingLguCount > 0 ? ` (${metrics.pendingLguCount} ⏳)` : ""}
+                </span>
               </div>
             </button>
 
@@ -1368,19 +1470,49 @@ export const EngineerDashboardPage: React.FC<EngineerDashboardPageProps> = ({
                 </div>
               </div>
 
+              {metrics.pendingLguCount > 0 && (
+                <div className="eng-lgu-pending-banner">
+                  <span className="eng-lgu-pending-icon">⏳</span>
+                  <div>
+                    <strong>
+                      {language === "en"
+                        ? `${metrics.pendingLguCount} LGU Project${metrics.pendingLguCount > 1 ? "s" : ""} awaiting technical confirmation and 3D map pinning.`
+                        : `May ${metrics.pendingLguCount} LGU Proyekto na naghihintay ng iyong kumpirmasyon bago mai-pin sa 3D Mapa.`}
+                    </strong>
+                    <p>
+                      {language === "en"
+                        ? "Review the project coordinates, budget, and contractor details below, then click \"Confirm & Pin to 3D Map\"."
+                        : "Suriin ang mga mohon/coordinates, badyet, at kontratista sa ibaba, at i-click ang \"Kumpirmahin at I-pin sa 3D Mapa\"."}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <div className="eng-projects-grid">
                 {projects.map((proj) => {
                   const progress = proj.progress != null ? Number(proj.progress) : 0;
+                  const isPendingConfirm = proj.engineerApproved === false;
                   return (
-                    <div key={proj.id} className="eng-project-card">
+                    <div key={proj.id} className={`eng-project-card ${isPendingConfirm ? "pending-approval" : ""}`}>
                       <div className="eng-project-card-head">
                         <div>
                           <span className="eng-proj-code">{proj.code || proj.id}</span>
                           <h4 className="eng-proj-name">{proj.name}</h4>
                         </div>
-                        <span className={`eng-proj-status-badge ${(proj.lifecyclePhase || "Planning").toLowerCase()}`}>
-                          {proj.lifecyclePhase || "Planning"}
-                        </span>
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
+                          <span className={`eng-proj-status-badge ${(proj.lifecyclePhase || "Planning").toLowerCase()}`}>
+                            {proj.lifecyclePhase || "Planning"}
+                          </span>
+                          {isPendingConfirm ? (
+                            <span className="eng-lgu-confirm-badge pending">
+                              ⏳ {language === "en" ? "For Engineer Confirmation" : "Naghihintay ng Kumpirmasyon"}
+                            </span>
+                          ) : (
+                            <span className="eng-lgu-confirm-badge confirmed">
+                              ✓ {language === "en" ? "Confirmed & Pinned" : "Kinumpirma at Na-pin"}
+                            </span>
+                          )}
+                        </div>
                       </div>
 
                       <p className="eng-proj-desc">{proj.description || (language === "en" ? "Public infrastructure project of the Municipality of Luisiana." : "Pampublikong imprastraktura ng Bayan ng Luisiana.")}</p>
@@ -1398,6 +1530,14 @@ export const EngineerDashboardPage: React.FC<EngineerDashboardPageProps> = ({
                           <span className="eng-proj-meta-label">{language === "en" ? "Engineer / Contractor" : "Inhinyero / Kontratista"}</span>
                           <strong>{proj.contractor || "Engineering Office"}</strong>
                         </div>
+                        {proj.location && (
+                          <div>
+                            <span className="eng-proj-meta-label">Coordinates</span>
+                            <strong style={{ fontFamily: "monospace", fontSize: "0.74rem" }}>
+                              {Number(proj.location.lat).toFixed(4)}, {Number(proj.location.lon).toFixed(4)}
+                            </strong>
+                          </div>
+                        )}
                       </div>
 
                       <div className="eng-proj-progress-wrap">
@@ -1417,13 +1557,45 @@ export const EngineerDashboardPage: React.FC<EngineerDashboardPageProps> = ({
                       </div>
 
                       <div className="eng-proj-footer">
-                        <button
-                          type="button"
-                          className="eng-proj-fly-btn"
-                          onClick={() => onNavigateToMap(proj.id)}
-                        >
-                          🗺️ {language === "en" ? "Fly in 3D Map" : "I-fly sa 3D Mapa"}
-                        </button>
+                        {isPendingConfirm ? (
+                          <button
+                            type="button"
+                            className="eng-btn-confirm-lgu"
+                            onClick={() => {
+                              setApprovingLguProj(proj);
+                              setLguApprovalNotes("");
+                            }}
+                          >
+                            <span>✓</span>
+                            <span>{language === "en" ? "Confirm & Pin to 3D Map" : "Kumpirmahin at I-pin sa 3D Mapa"}</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="eng-proj-fly-btn"
+                            onClick={() => {
+                              const coords = lookupBarangayCoords(proj.barangay);
+                              const targetLat = proj.location?.lat ?? coords?.lat ?? 14.1811622;
+                              const targetLon = proj.location?.lon ?? coords?.lon ?? 121.510284;
+                              const fullProj: Project = {
+                                ...proj,
+                                location: { lat: targetLat, lon: targetLon },
+                                isLguProject: true,
+                                type: "Municipal Project",
+                                siteMarkerOnly: true,
+                                markerColor: proj.markerColor || (proj.status === "Completed" ? "#10b981" : proj.status === "Ongoing" ? "#f5a623" : "#3b82f6"),
+                                mapSketch: proj.mapSketch || {
+                                  kind: "pin",
+                                  color: proj.markerColor || (proj.status === "Completed" ? "#10b981" : proj.status === "Ongoing" ? "#f5a623" : "#3b82f6"),
+                                  coordinates: [{ lon: targetLon, lat: targetLat }],
+                                },
+                              };
+                              onNavigateToMap(proj.id, targetLat, targetLon, fullProj);
+                            }}
+                          >
+                            🗺️ {language === "en" ? "Fly in 3D Map" : "I-fly sa 3D Mapa"}
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -1615,6 +1787,97 @@ export const EngineerDashboardPage: React.FC<EngineerDashboardPageProps> = ({
                 disabled={isSubmittingApproval}
               >
                 {isSubmittingApproval ? (language === "en" ? "Approving..." : "Ina-aprubahan...") : t("eng.approve_confirm_btn")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── LGU PROJECT APPROVAL & PINNING MODAL ───────────────────────── */}
+      {approvingLguProj && (
+        <div className="eng-modal-backdrop" onClick={() => { if (!isSubmittingLguApproval) setApprovingLguProj(null); }}>
+          <div className="eng-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="eng-modal-header">
+              <div className="eng-modal-seal-badge" style={{ background: "rgba(16, 185, 129, 0.14)", color: "#10b981" }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                  <polyline points="22 4 12 14.01 9 11.01" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="eng-modal-title">
+                  {language === "en" ? "Confirm & Pin LGU Project to 3D Map" : "Kumpirmahin at I-pin ang LGU Proyekto sa 3D Mapa"}
+                </h3>
+                <span className="eng-modal-sub">
+                  {approvingLguProj.code || approvingLguProj.id} · {language === "en" ? "Engineering Office Technical Siting & GIS Verification" : "Pagsusuri at Pag-apruba ng Tanggapan ng Inhinyero"}
+                </span>
+              </div>
+            </div>
+
+            <div className="eng-modal-body">
+              <div className="eng-modal-app-summary">
+                <div><strong>{language === "en" ? "Project Name:" : "Pangalan ng Proyekto:"}</strong> {approvingLguProj.name}</div>
+                <div><strong>{language === "en" ? "Barangay Location:" : "Lokasyon ng Barangay:"}</strong> Brgy. {approvingLguProj.barangay || "Luisiana"}</div>
+                <div>
+                  <strong>{language === "en" ? "Approved Budget:" : "Inaprubahang Badyet:"}</strong> {approvingLguProj.budgetTotal ? formatCurrency(approvingLguProj.budgetTotal) : "Nakatakda"}
+                </div>
+                <div>
+                  <strong>{language === "en" ? "Contractor / Implementing Office:" : "Kontratista / Tanggapan:"}</strong> {approvingLguProj.contractor || "Municipal Engineering Office"}
+                </div>
+                {approvingLguProj.location && (
+                  <div>
+                    <strong>{language === "en" ? "Coordinates (WGS84):" : "Mga Coordinate (WGS84):"}</strong> {Number(approvingLguProj.location.lat).toFixed(6)}°N, {Number(approvingLguProj.location.lon).toFixed(6)}°E
+                  </div>
+                )}
+                {approvingLguProj.encodedBy && (
+                  <div>
+                    <strong>{language === "en" ? "Encoded By:" : "Nagtala:"}</strong> {approvingLguProj.encodedBy}
+                  </div>
+                )}
+              </div>
+
+              <div className="eng-modal-field">
+                <label className="eng-modal-label">
+                  {language === "en" ? "Official Technical Validation Notes / Siting Clearance:" : "Opisyal na Tala ng Municipal Engineer / Technical Clearance:"}
+                </label>
+                <textarea
+                  className="eng-modal-textarea"
+                  rows={3}
+                  placeholder={
+                    language === "en"
+                      ? "Enter engineering verification notes (e.g. coordinates verified, compliant with setback and drainage, approved for 3D map transparency)..."
+                      : "Maglagay ng tala ng inspeksyon (hal. nasuri ang mga mohon/coordinates, sumusunod sa setback at drainage, aprubado para sa 3D GIS mapa)..."
+                  }
+                  value={lguApprovalNotes}
+                  onChange={(e) => setLguApprovalNotes(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="eng-modal-footer">
+              <button
+                type="button"
+                className="eng-btn eng-btn-outline"
+                onClick={() => setApprovingLguProj(null)}
+                disabled={isSubmittingLguApproval}
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                type="button"
+                className="eng-btn"
+                style={{
+                  background: "linear-gradient(135deg, #059669 0%, #10b981 100%)",
+                  color: "#ffffff",
+                  border: "none",
+                  boxShadow: "0 2px 10px rgba(16, 185, 129, 0.35)",
+                }}
+                onClick={handleConfirmLguApproval}
+                disabled={isSubmittingLguApproval}
+              >
+                {isSubmittingLguApproval
+                  ? (language === "en" ? "Confirming & Pinning..." : "Kinukumpirma at Inipit...")
+                  : (language === "en" ? "✓ Confirm & Pin to 3D Map" : "✓ Kumpirmahin at I-pin sa 3D Mapa")}
               </button>
             </div>
           </div>

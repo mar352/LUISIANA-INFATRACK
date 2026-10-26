@@ -110,6 +110,8 @@ import { UserManagementPage } from "./UserManagementPage";
 import { MpdcAdminPage } from "./MpdcAdminPage";
 import { ForcedPasswordResetModal } from "./ForcedPasswordResetModal";
 import { setAuditActor } from "../services/firestore-audit";
+import { subscribeToProjects } from "../services/firestore-projects";
+import { lookupBarangayCoords } from "../lib/barangay-overlay";
 import AuditPage from "./AuditPage";
 import { PrivateEngineerPortal } from "./PrivateEngineerPortal";
 import { SiteProgressPopup } from "./SiteProgressPopup";
@@ -996,7 +998,7 @@ export default function App() {
       const parsed = raw ? JSON.parse(raw) : [];
       const list = Array.isArray(parsed) ? parsed : [];
       return list
-        .filter((p: any) => !p?.siteMarkerOnly || p?.isPrivateApplication || p?.isLguProject || p?.id?.startsWith("lgu-proj-"))
+        .filter((p: any) => !p?.siteMarkerOnly || p?.isPrivateApplication || p?.isLguProject || p?.type === "Municipal Project" || p?.id?.startsWith("lgu-proj-") || p?.id?.startsWith("P"))
         .filter((p: any) => p?.modelType !== "custom" && !p?.customModelUrl);
     } catch {
       return [];
@@ -1012,10 +1014,6 @@ export default function App() {
     const id = assetQueryParam();
     if (!id) return;
     if (currentSession && screen === "landing") {
-      if (currentRole === "MPDC" || currentRole === "MPDC Admin" || currentSession?.username === "mpdc_admin" || currentSession?.username === "mpdc") {
-        setScreen(currentSession?.username === "mpdc_admin" || currentSession?.role === "MPDC Admin" ? "mpdc_admin" : "permits");
-        return;
-      }
       setScreen("app");
     }
     if (screen !== "app" && screen !== "citizen") return;
@@ -1057,14 +1055,27 @@ export default function App() {
         const data = await res.json();
         const rawList = Array.isArray(data) ? data : (Array.isArray(data?.projects) ? data.projects : []);
         const list = rawList
-          .filter((x: any) => !x?.siteMarkerOnly || x?.isPrivateApplication || x?.isLguProject || x?.id?.startsWith("lgu-proj-"))
+          .filter((x: any) => !x?.siteMarkerOnly || x?.isPrivateApplication || x?.isLguProject || x?.type === "Municipal Project" || x?.id?.startsWith("lgu-proj-") || x?.id?.startsWith("P"))
           .filter((x: any) => x?.modelType !== "custom" && !x?.customModelUrl);
-        setProjects(list);
-        try {
-          localStorage.setItem("infatrack-projects-cache", JSON.stringify(list));
-        } catch {
-          /* quota */
-        }
+        setProjects((prev) => {
+          const map = new Map<string, Project>();
+          for (const p of prev) {
+            if (p?.id) map.set(p.id, p);
+          }
+          for (const item of list) {
+            if (item?.id) {
+              const existing = map.get(item.id);
+              map.set(item.id, { ...existing, ...item });
+            }
+          }
+          const merged = Array.from(map.values());
+          try {
+            localStorage.setItem("infatrack-projects-cache", JSON.stringify(merged));
+          } catch {
+            /* quota */
+          }
+          return merged;
+        });
       }
     } catch (err) {
       console.warn("refreshProjects error:", err);
@@ -1073,6 +1084,45 @@ export default function App() {
 
   useEffect(() => {
     void refreshProjects();
+  }, []);
+
+  // Live Firestore subscription so LGU projects encoded by MPDC/Engineers automatically sync and pin on the 3D globe!
+  useEffect(() => {
+    const unsub = subscribeToProjects((firestoreProjects) => {
+      if (!Array.isArray(firestoreProjects) || firestoreProjects.length === 0) return;
+      setProjects((prev) => {
+        const map = new Map<string, Project>();
+        for (const p of prev) {
+          if (p?.id) map.set(p.id, p);
+        }
+        for (const fp of firestoreProjects) {
+          if (fp?.id) {
+            const existing = map.get(fp.id);
+            let loc = fp.location;
+            if (!loc?.lat || !loc?.lon) {
+              const coords = lookupBarangayCoords(fp.barangay);
+              if (coords) loc = { lat: coords.lat, lon: coords.lon };
+            }
+            map.set(fp.id, {
+              ...existing,
+              ...fp,
+              location: loc || fp.location,
+              isLguProject: fp.isLguProject !== undefined ? fp.isLguProject : true,
+              type: fp.type || "Municipal Project",
+              siteMarkerOnly: fp.siteMarkerOnly !== undefined ? fp.siteMarkerOnly : true,
+            });
+          }
+        }
+        const updated = Array.from(map.values());
+        try {
+          localStorage.setItem("infatrack-projects-cache", JSON.stringify(updated));
+        } catch {
+          /* quota */
+        }
+        return updated;
+      });
+    });
+    return () => unsub();
   }, []);
 
   const placementToolbarOpen =
@@ -2215,14 +2265,27 @@ export default function App() {
     socket.on("projects:update", (p) => {
       const rawList = Array.isArray(p?.projects) ? p.projects : [];
       const list = rawList
-        .filter((x: any) => !x?.siteMarkerOnly || x?.isPrivateApplication || x?.isLguProject || x?.id?.startsWith("lgu-proj-"))
+        .filter((x: any) => !x?.siteMarkerOnly || x?.isPrivateApplication || x?.isLguProject || x?.type === "Municipal Project" || x?.id?.startsWith("lgu-proj-") || x?.id?.startsWith("P"))
         .filter((x: any) => x?.modelType !== "custom" && !x?.customModelUrl);
-      setProjects(list);
-      try {
-        localStorage.setItem("infatrack-projects-cache", JSON.stringify(list));
-      } catch {
-        /* quota */
-      }
+      setProjects((prev) => {
+        const map = new Map<string, Project>();
+        for (const pr of prev) {
+          if (pr?.id) map.set(pr.id, pr);
+        }
+        for (const item of list) {
+          if (item?.id) {
+            const existing = map.get(item.id);
+            map.set(item.id, { ...existing, ...item });
+          }
+        }
+        const merged = Array.from(map.values());
+        try {
+          localStorage.setItem("infatrack-projects-cache", JSON.stringify(merged));
+        } catch {
+          /* quota */
+        }
+        return merged;
+      });
     });
     socket.on("alerts:new", (a) => setAlerts((prev) => [a, ...prev].slice(0, 8)));
     socket.on("planning:update", () => {
@@ -2802,29 +2865,15 @@ export default function App() {
     screen === "landing" ||
     screen === "login";
 
-  const isRoleRestrictedFromMap =
-    currentRole === "MPDC" ||
-    currentRole === "MPDC Admin" ||
-    currentSession?.username === "mpdc_admin" ||
-    currentSession?.username === "mpdc";
+  const isRoleRestrictedFromMap = false;
 
-  const showMapShell = Boolean(currentSession) && !isStandalonePage && !isRoleRestrictedFromMap && (screen === "app" || staffOverlay || mapHold);
+  const showMapShell = Boolean(currentSession) && !isStandalonePage && (screen === "app" || staffOverlay || mapHold);
   const parkMapShell = showMapShell && screen !== "app";
 
-  // Hard security & UX guard: MPDC lands on executive dashboard or permits (map is for engineers).
   useEffect(() => {
-    if (
-      (currentRole === "MPDC" || currentRole === "MPDC Admin" || currentSession?.username === "mpdc_admin" || currentSession?.username === "mpdc") &&
-      (screen === "app" || screen === "citizen")
-    ) {
-      setScreen(currentSession?.username === "mpdc_admin" || currentSession?.role === "MPDC Admin" ? "mpdc_admin" : "permits");
-    }
-  }, [screen, currentRole, currentSession]);
-
-  useEffect(() => {
-    if (screen === "app" && !isRoleRestrictedFromMap) setMapHold(true);
+    if (screen === "app") setMapHold(true);
     if (screen === "citizen") setCitizenHold(true);
-  }, [screen, currentRole, isRoleRestrictedFromMap]);
+  }, [screen, currentRole]);
 
   function goHome() {
     const leaving = currentSession;
@@ -3128,17 +3177,48 @@ export default function App() {
         <EngineerDashboardPage
           onBack={() => navigateBack("app")}
           session={currentSession}
-          onNavigateToMap={(projId, lat, lon) => {
+          onNavigateToMap={(projId, lat, lon, projectObj) => {
+            setMapHold(true);
             setScreen("app");
-            if (projId) {
-              setTimeout(() => {
-                cesiumMapRef.current?.flyToProject(projId);
-              }, 350);
-            } else if (lat != null && lon != null) {
-              setTimeout(() => {
-                cesiumMapRef.current?.flyToCoords(lat, lon);
-              }, 350);
+            if (projectObj) {
+              setProjects((prev) => {
+                const map = new Map<string, Project>();
+                for (const p of prev) {
+                  if (p?.id) map.set(p.id, p);
+                }
+                map.set(projectObj.id, projectObj);
+                const merged = Array.from(map.values());
+                try {
+                  localStorage.setItem("infatrack-projects-cache", JSON.stringify(merged));
+                } catch {
+                  /* quota */
+                }
+                return merged;
+              });
+              setSelected(projectObj);
+              setSelectedSitePin(projectObj);
+            } else if (projId) {
+              const target = projects.find((p) => p.id === projId);
+              if (target) {
+                setSelected(target);
+                setSelectedSitePin(target);
+              }
             }
+
+            const targetLat = lat ?? projectObj?.location?.lat;
+            const targetLon = lon ?? projectObj?.location?.lon;
+
+            let tries = 0;
+            const timer = setInterval(() => {
+              tries++;
+              const ok = projId ? cesiumMapRef.current?.flyToProject(projId) : false;
+              if (ok || tries > 25) {
+                clearInterval(timer);
+                if (!ok && targetLat != null && targetLon != null) {
+                  cesiumMapRef.current?.flyToLonLat(targetLon, targetLat, 250);
+                }
+              }
+            }, 150);
           }}
           onNavigate={(target) => setScreen(target as any)}
           onLogout={goHome}
@@ -3153,17 +3233,48 @@ export default function App() {
           initialTab="documents"
           onBack={() => navigateBack("app")}
           session={currentSession}
-          onNavigateToMap={(projId, lat, lon) => {
+          onNavigateToMap={(projId, lat, lon, projectObj) => {
+            setMapHold(true);
             setScreen("app");
-            if (projId) {
-              setTimeout(() => {
-                cesiumMapRef.current?.flyToProject(projId);
-              }, 350);
-            } else if (lat != null && lon != null) {
-              setTimeout(() => {
-                cesiumMapRef.current?.flyToCoords(lat, lon);
-              }, 350);
+            if (projectObj) {
+              setProjects((prev) => {
+                const map = new Map<string, Project>();
+                for (const p of prev) {
+                  if (p?.id) map.set(p.id, p);
+                }
+                map.set(projectObj.id, projectObj);
+                const merged = Array.from(map.values());
+                try {
+                  localStorage.setItem("infatrack-projects-cache", JSON.stringify(merged));
+                } catch {
+                  /* quota */
+                }
+                return merged;
+              });
+              setSelected(projectObj);
+              setSelectedSitePin(projectObj);
+            } else if (projId) {
+              const target = projects.find((p) => p.id === projId);
+              if (target) {
+                setSelected(target);
+                setSelectedSitePin(target);
+              }
             }
+
+            const targetLat = lat ?? projectObj?.location?.lat;
+            const targetLon = lon ?? projectObj?.location?.lon;
+
+            let tries = 0;
+            const timer = setInterval(() => {
+              tries++;
+              const ok = projId ? cesiumMapRef.current?.flyToProject(projId) : false;
+              if (ok || tries > 25) {
+                clearInterval(timer);
+                if (!ok && targetLat != null && targetLon != null) {
+                  cesiumMapRef.current?.flyToLonLat(targetLon, targetLat, 250);
+                }
+              }
+            }, 150);
           }}
           onNavigate={(target) => setScreen(target as any)}
           onLogout={goHome}
@@ -4898,17 +5009,23 @@ export default function App() {
         onSuccess={(_updated) => {
           refreshProjects();
           if (inspectingProject) {
-            setSelectedSitePin((prev) =>
-              prev?.id === inspectingProject.id
-                ? {
-                    ...prev,
-                    numericProgress: _updated.progress,
-                    progress: _updated.progress,
-                    stage: _updated.inspectionStage || _updated.stage,
-                    latestInspection: _updated.latestInspection,
-                    inspectionPhotos: _updated.inspectionPhotos,
-                  }
-                : prev,
+            const nextProgress = _updated.progress ?? inspectingProject.progress ?? 0;
+            const nextStage = _updated.inspectionStage || _updated.stage || inspectingProject.inspectionStage || "before";
+            const nextStatus = nextProgress >= 100 ? "Completed" : nextProgress >= 50 ? "Ongoing" : "Planned";
+            const nextColor = nextProgress >= 100 ? "#10b981" : nextProgress >= 50 ? "#f5a623" : "#3b82f6";
+            const updatedProj: Project = {
+              ...inspectingProject,
+              numericProgress: nextProgress,
+              progress: nextProgress,
+              stage: nextStage,
+              status: nextStatus as any,
+              markerColor: nextColor,
+              latestInspection: _updated.latestInspection || inspectingProject.latestInspection,
+              inspectionPhotos: _updated.inspectionPhotos || inspectingProject.inspectionPhotos,
+            };
+            setSelectedSitePin(updatedProj);
+            setProjects((prev) =>
+              prev.map((p) => (p.id === inspectingProject.id ? { ...p, ...updatedProj } : p)),
             );
           }
         }}
@@ -4944,8 +5061,18 @@ export default function App() {
         isOpen={isGlobalAddProjectModalOpen}
         onClose={() => setIsGlobalAddProjectModalOpen(false)}
         onSuccess={(newProject) => {
-          setProjects((prev) => [newProject, ...prev]);
+          setProjects((prev) => {
+            const filtered = prev.filter((p) => p.id !== newProject.id);
+            return [newProject, ...filtered];
+          });
           setSelected(newProject);
+          setSelectedSitePin(newProject);
+          setMapHold(true);
+          setScreen("app");
+          // Smoothly fly camera to the newly pinned project location so the user sees it immediately!
+          window.setTimeout(() => {
+            cesiumMapRef.current?.flyToProject(newProject.id);
+          }, 450);
         }}
         currentSession={currentSession}
         currentRole={currentRole}

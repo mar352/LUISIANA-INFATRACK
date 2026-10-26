@@ -304,6 +304,10 @@ export type Project = {
   updatedAt: string;
   isPrivateApplication?: boolean;
   isLguProject?: boolean;
+  engineerApproved?: boolean;
+  engineerApprovedAt?: string | null;
+  engineerApprovedBy?: string | null;
+  isPinned?: boolean;
   trackingNumber?: string;
   applicantName?: string;
   applicationId?: string;

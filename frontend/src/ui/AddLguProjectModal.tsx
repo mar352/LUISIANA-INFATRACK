@@ -25,6 +25,7 @@ import { BARANGAY_LIST, type Project, type ProjectPhoto, type ProjectStatus } fr
 import type { SessionUser } from "../services/auth";
 import { extractGeotagCoordinates, type GeotagExtractionResult } from "../lib/geotag";
 import { uploadDocumentFile, createProject } from "../lib/api";
+import { loadBarangayAreas, type BarangayArea } from "../lib/barangay-overlay";
 import { addProjectToFirestore } from "../services/firestore-projects";
 import { writeAudit } from "../services/firestore-audit";
 import "./AddLguProjectModal.css";
@@ -83,6 +84,11 @@ export const AddLguProjectModal: React.FC<AddLguProjectModalProps> = ({
   const [lat, setLat] = useState<string>("");
   const [lon, setLon] = useState<string>("");
   const [isManualCoords, setIsManualCoords] = useState<boolean>(false);
+  const [barangayAreas, setBarangayAreas] = useState<BarangayArea[]>([]);
+
+  useEffect(() => {
+    void loadBarangayAreas().then((areas) => setBarangayAreas(areas)).catch(() => {});
+  }, []);
 
   // Documents
   const [noticeOfAwardFile, setNoticeOfAwardFile] = useState<File | null>(null);
@@ -312,16 +318,25 @@ export const AddLguProjectModal: React.FC<AddLguProjectModalProps> = ({
         });
       }
 
+      const isEngineer = currentRole === "Engineer";
+      const engineerName = isEngineer
+        ? (currentSession?.fullName || currentSession?.username || "Engr. Mario S. Baldovino (Municipal Engineer)")
+        : null;
+
       const newProject: Project = {
         id: generatedId,
         name: name.trim(),
         modelType: "office",
         type: "Municipal Project",
         isLguProject: true,
-        department: currentRole === "Engineer" ? "Engineering" : "MPDC",
+        department: isEngineer ? "Engineering" : "MPDC",
         status: projectStatus,
         lifecyclePhase: lifecyclePhase as any,
         progress: numericProgress,
+        engineerApproved: isEngineer ? true : false,
+        engineerApprovedAt: isEngineer ? now : null,
+        engineerApprovedBy: engineerName,
+        isPinned: isEngineer ? true : false,
         location: {
           lat: numLat,
           lon: numLon,
@@ -372,7 +387,7 @@ export const AddLguProjectModal: React.FC<AddLguProjectModalProps> = ({
         activityLog: [
           {
             at: now,
-            message: `Project encoded by ${encodedByDisplay.username} (${encodedByDisplay.dept}) with approved budget ₱${numBudget.toLocaleString()}.`,
+            message: `Project encoded by ${encodedByDisplay.username} (${encodedByDisplay.dept}) with approved budget ₱${numBudget.toLocaleString()}.${!isEngineer ? " Queued for Municipal Engineer confirmation and pinning." : ""}`,
           },
         ],
         updatedAt: now,
@@ -397,11 +412,23 @@ export const AddLguProjectModal: React.FC<AddLguProjectModalProps> = ({
         entityName: newProject.name,
       });
 
+      // 5. Update local cache immediately
+      try {
+        const cachedRaw = localStorage.getItem("infatrack-projects-cache");
+        const cached = cachedRaw ? JSON.parse(cachedRaw) : [];
+        const list = Array.isArray(cached) ? cached : [];
+        const updated = [newProject, ...list.filter((p: any) => p.id !== newProject.id)];
+        localStorage.setItem("infatrack-projects-cache", JSON.stringify(updated));
+      } catch {
+        /* ignore */
+      }
+
       setSubmitSuccess(true);
       setTimeout(() => {
+        window.dispatchEvent(new CustomEvent("lgu-project-added", { detail: newProject }));
         onSuccess?.(newProject);
         onClose();
-      }, 1200);
+      }, isEngineer ? 1200 : 1800);
     } catch (err: any) {
       console.error("[AddLguProjectModal] Save failed:", err);
       setSubmitError(err.message || "Failed to save LGU project. Please verify inputs and network connection.");
@@ -458,7 +485,11 @@ export const AddLguProjectModal: React.FC<AddLguProjectModalProps> = ({
             <CheckCircle2 size={18} className="lgu-banner-icon" />
             <div>
               <strong>LGU Project Encoded Successfully!</strong>
-              <p>The project record has been registered and synced with GIS map pinning.</p>
+              <p>
+                {currentRole === "Engineer"
+                  ? "The project has been confirmed and pinned to the 3D GIS Map."
+                  : "Naisumite ang proyekto. Nakapila ito ngayon para sa kumpirmasyon at pag-pin ng Municipal Engineer bago lumitaw sa mapa."}
+              </p>
             </div>
           </div>
         )}
@@ -532,9 +563,22 @@ export const AddLguProjectModal: React.FC<AddLguProjectModalProps> = ({
                       className={`lgu-select ${validationErrors.barangay ? "has-error" : ""}`}
                       value={barangay}
                       onChange={(e) => {
-                        setBarangay(e.target.value);
+                        const val = e.target.value;
+                        setBarangay(val);
                         if (validationErrors.barangay) {
                           setValidationErrors((prev) => ({ ...prev, barangay: "" }));
+                        }
+                        if (!lat && !lon && !isManualCoords && val) {
+                          const found = barangayAreas.find(
+                            (b) => b.name.toLowerCase().includes(val.toLowerCase()) || val.toLowerCase().includes(b.name.toLowerCase())
+                          );
+                          if (found) {
+                            setLat(found.lat.toFixed(6));
+                            setLon(found.lon.toFixed(6));
+                            setGpsExtracted(true);
+                            setGpsExtractionSource("exif");
+                            setGpsExtractionMessage(`Auto-filled coordinates for ${found.name}.`);
+                          }
                         }
                       }}
                       disabled={isSubmitting}
@@ -812,6 +856,37 @@ export const AddLguProjectModal: React.FC<AddLguProjectModalProps> = ({
                       >
                         {isManualCoords ? <Lock size={12} /> : <Unlock size={12} />}
                         <span>{isManualCoords ? "Lock Inputs" : "Override manually"}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="lgu-toggle-manual-btn"
+                        onClick={() => {
+                          const targetBrgy = barangay || "Poblacion Zone I";
+                          const found = barangayAreas.find(
+                            (b) => b.name.toLowerCase().includes(targetBrgy.toLowerCase()) || targetBrgy.toLowerCase().includes(b.name.toLowerCase())
+                          );
+                          if (found) {
+                            setLat(found.lat.toFixed(6));
+                            setLon(found.lon.toFixed(6));
+                            setGpsExtracted(true);
+                            setGpsExtractionSource("exif");
+                            setGpsExtractionMessage(`Set to center coordinates of ${found.name}.`);
+                          } else {
+                            setLat("14.185435");
+                            setLon("121.509513");
+                            setGpsExtracted(true);
+                            setGpsExtractionSource("exif");
+                            setGpsExtractionMessage("Set to Luisiana Municipal Hall coordinates.");
+                          }
+                          if (!barangay) setBarangay("Poblacion Zone I");
+                          if (validationErrors.coordinates) {
+                            setValidationErrors((prev) => ({ ...prev, coordinates: "" }));
+                          }
+                        }}
+                        title="Auto-fill with Barangay coordinates"
+                      >
+                        <MapPin size={12} />
+                        <span>Use Brgy. Coords</span>
                       </button>
                     </div>
                   </div>

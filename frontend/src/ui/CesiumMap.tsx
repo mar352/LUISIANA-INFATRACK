@@ -96,6 +96,7 @@ import {
   flyToBarangay as flyCameraToBarangay,
   highlightBarangay,
   loadBarangayAreas,
+  lookupBarangayCoords,
   removeBarangayOverlay,
   type BarangayArea,
 } from "../lib/barangay-overlay";
@@ -1326,9 +1327,13 @@ export function isSitePinProject(p: Project | any): boolean {
   return Boolean(
     p.siteMarkerOnly ||
     p.isPrivateApplication ||
+    p.isLguProject ||
+    p.type === "Municipal Project" ||
     p.isPickerPin ||
     p.id === "pinpoint_site_pin" ||
     (typeof p.id === "string" && (
+      p.id.startsWith("lgu-proj-") ||
+      p.id.startsWith("P") ||
       p.id.includes("pinpoint") ||
       p.id.includes("picker") ||
       p.id.startsWith("app-") ||
@@ -1348,11 +1353,64 @@ const pinImageCache = new Map<string, string>();
  * round head with a white target circle, crisp outline and ground shadow).
  * Rendered at 2x resolution via Canvas for razor-sharp rendering in Cesium.
  */
-export type PinCenterIcon = "house" | "none";
+export type PinCenterIcon = "house" | "lgu" | "none";
+
+let luisianaLogoImg: HTMLImageElement | null = null;
+let onLogoLoadedCallbacks: Array<() => void> = [];
+
+export function onLuisianaLogoLoaded(cb: () => void): () => void {
+  if (luisianaLogoImg?.complete && luisianaLogoImg.naturalWidth > 0) {
+    cb();
+    return () => {};
+  }
+  onLogoLoadedCallbacks.push(cb);
+  return () => {
+    onLogoLoadedCallbacks = onLogoLoadedCallbacks.filter((c) => c !== cb);
+  };
+}
+
+if (typeof window !== "undefined") {
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  img.src = "/logo.png";
+  const handleLoad = () => {
+    luisianaLogoImg = img;
+    for (const key of Array.from(pinImageCache.keys())) {
+      if (key.includes("_lgu")) {
+        pinImageCache.delete(key);
+      }
+    }
+    const cbs = [...onLogoLoadedCallbacks];
+    cbs.forEach((cb) => {
+      try { cb(); } catch {}
+    });
+  };
+  img.onload = handleLoad;
+  if (img.complete && img.naturalWidth > 0) {
+    handleLoad();
+  }
+}
+
+export function isLguInfrastructureProject(p: Project | any): boolean {
+  if (!p) return false;
+  if (p.isPrivateApplication || p.type === "Private Building") return false;
+  return Boolean(
+    p.isLguProject ||
+    p.type === "Municipal Project" ||
+    (typeof p.id === "string" && (
+      p.id.startsWith("lgu-proj-") ||
+      p.id.startsWith("P") ||
+      p.id.startsWith("municipal-") ||
+      p.id.startsWith("muni-")
+    )) ||
+    (p.department && !p.trackingNumber && !p.isPrivateApplication)
+  );
+}
 
 /**
- * Creates a classic, high-visibility teardrop map pin icon with an optional
- * Private Infrastructure icon (🏠 House / Private Property) inside the center circle.
+ * Creates a classic, high-visibility teardrop map pin icon with:
+ * - 🏛️ Official Seal of Luisiana in center for Municipal / LGU Infrastructure projects
+ * - 🏠 Private House Icon in center for Private Applications
  * Rendered at 2x resolution via Canvas for razor-sharp rendering in Cesium.
  */
 export function makeClassicMapPinIcon(
@@ -1407,8 +1465,8 @@ export function makeClassicMapPinIcon(
         ctx.lineJoin = "round";
         ctx.stroke();
 
-        // Inner circular target badge (enlarged to 11.5px radius to cleanly frame the private house icon)
-        const innerRadius = centerIcon === "house" ? 11.5 : 9;
+        // Inner circular target badge (enlarged to 15.5px for LGU logo, 11.5px for house, 9px for default)
+        const innerRadius = centerIcon === "lgu" ? 15.5 : centerIcon === "house" ? 11.5 : 9;
         ctx.beginPath();
         ctx.arc(36, 32, innerRadius, 0, Math.PI * 2);
         ctx.fillStyle = "#ffffff";
@@ -1419,8 +1477,63 @@ export function makeClassicMapPinIcon(
         ctx.strokeStyle = "rgba(0, 0, 0, 0.16)";
         ctx.stroke();
 
-        // 🏠 Private Infrastructure House Icon inside the center circle
-        if (centerIcon === "house") {
+        // 🏛️ LGU MUNICIPAL INFRASTRUCTURE PIN: Official Seal of Luisiana in center
+        if (centerIcon === "lgu") {
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(36, 32, innerRadius - 0.4, 0, Math.PI * 2);
+          ctx.clip();
+
+          if (luisianaLogoImg && luisianaLogoImg.complete && luisianaLogoImg.naturalWidth > 0) {
+            const size = (innerRadius - 0.4) * 2;
+            ctx.drawImage(
+              luisianaLogoImg,
+              36 - (innerRadius - 0.4),
+              32 - (innerRadius - 0.4),
+              size,
+              size
+            );
+          } else {
+            // Crisp vector fallback: Seal of Luisiana (Green circular ring, blue/red split, white central crest)
+            const cx = 36;
+            const cy = 32;
+            const r = innerRadius - 0.4;
+            // Blue left half
+            ctx.fillStyle = "#0038a8";
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, Math.PI * 0.5, Math.PI * 1.5);
+            ctx.closePath();
+            ctx.fill();
+            // Red right half
+            ctx.fillStyle = "#ce1126";
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, Math.PI * 1.5, Math.PI * 0.5);
+            ctx.closePath();
+            ctx.fill();
+            // Center white shield
+            ctx.fillStyle = "#ffffff";
+            ctx.beginPath();
+            ctx.moveTo(cx, cy - 8);
+            ctx.lineTo(cx + 6.5, cy - 4);
+            ctx.lineTo(cx + 4.5, cy + 6);
+            ctx.lineTo(cx, cy + 9);
+            ctx.lineTo(cx - 4.5, cy + 6);
+            ctx.lineTo(cx - 6.5, cy - 4);
+            ctx.closePath();
+            ctx.fill();
+            ctx.lineWidth = 0.8;
+            ctx.strokeStyle = "#1b4d3e";
+            ctx.stroke();
+            // Center monument icon
+            ctx.fillStyle = "#1b4d3e";
+            ctx.fillRect(cx - 1.5, cy - 2, 3, 7);
+            ctx.beginPath();
+            ctx.arc(cx, cy - 4, 2, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.restore();
+        } else if (centerIcon === "house") {
+          // 🏠 Private Infrastructure House Icon inside the center circle
           const isYellowish =
             fillColor.toLowerCase().includes("fbb") ||
             fillColor.toLowerCase().includes("ffc") ||
@@ -1470,18 +1583,21 @@ export function makeClassicMapPinIcon(
     fillColor.toLowerCase().includes("ffc") ||
     fillColor.toLowerCase().includes("eab308");
   const iconColor = isYellowish ? "#b45309" : fillColor;
-  const innerRadius = centerIcon === "house" ? 5.8 : 4.5;
-  const houseSvg =
+  const innerRadius = centerIcon === "lgu" ? 7.8 : centerIcon === "house" ? 5.8 : 4.5;
+  const centerContentSvg =
     centerIcon === "house"
       ? `<rect x="19.9" y="12.2" width="1.1" height="2" fill="${iconColor}"/>
   <path d="M18 11.8 L13.8 15.3 H14.8 V19.5 H21.2 V15.3 H22.2 L18 11.8 Z M17 19.5 V17 H19 V19.5 Z" fill="${iconColor}"/>`
+      : centerIcon === "lgu"
+      ? `<defs><clipPath id="lgu-clip"><circle cx="18" cy="16" r="${innerRadius}"/></clipPath></defs>
+  <image href="/logo.png" x="${18 - innerRadius}" y="${16 - innerRadius}" width="${innerRadius * 2}" height="${innerRadius * 2}" preserveAspectRatio="xMidYMid meet" clip-path="url(#lgu-clip)"/>`
       : "";
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 46" width="36" height="46">
   <ellipse cx="18" cy="43" rx="8" ry="2.5" fill="rgba(0,0,0,0.3)"/>
   <path d="M18 41 C13.5 31 5.5 24 5.5 16 A12.5 12.5 0 1 1 30.5 16 C30.5 24 22.5 31 18 41 Z" fill="${fillColor}" stroke="${strokeColor}" stroke-width="2" stroke-linejoin="round"/>
   <circle cx="18" cy="16" r="${innerRadius}" fill="#ffffff" stroke="rgba(0,0,0,0.15)" stroke-width="0.5"/>
-  ${houseSvg}
+  ${centerContentSvg}
 </svg>`;
   const dataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
   pinImageCache.set(cacheKey, dataUrl);
@@ -1497,33 +1613,54 @@ export const YELLOW_PIN_SVG_DATA_URL = makeClassicMapPinIcon("#fbbc04"); // 🟡
 export const GREEN_PIN_SVG_DATA_URL = makeClassicMapPinIcon("#34a853"); // 🟢 100% Completed
 
 export function getPinSvgForProject(p: Project): string {
-  if (isSitePinProject(p)) {
-    return makeClassicMapPinIcon(p.markerColor || "#ea4335");
-  }
+  const isLgu = isLguInfrastructureProject(p);
+  const isPicker = (p as any).isPickerPin || p.id === "pinpoint_site_pin";
+  const centerIcon: PinCenterIcon = isPicker ? "none" : isLgu ? "lgu" : "house";
+
   const prog = (p as any).numericProgress ?? p.progress ?? 0;
   const stage = (p as any).stage || (p as any).inspectionStage || (p as any).latestInspection?.stage;
-  if (prog >= 100 || stage === "completed" || stage === "after" || stage === "after_construction") {
-    return GREEN_PIN_SVG_DATA_URL;
+  const defaultLguColor =
+    prog >= 100 || stage === "completed" || stage === "after" || stage === "after_construction" || p.status === "Completed"
+      ? "#10b981"
+      : prog >= 50 || stage === "during" || stage === "during_construction" || p.status === "Ongoing"
+      ? "#f5a623"
+      : "#3b82f6";
+
+  if (isSitePinProject(p)) {
+    return makeClassicMapPinIcon(p.markerColor || (isLgu ? defaultLguColor : "#ea4335"), "#ffffff", centerIcon);
   }
-  if (prog >= 50 || stage === "during" || stage === "during_construction") {
-    return YELLOW_PIN_SVG_DATA_URL;
-  }
-  return RED_PIN_SVG_DATA_URL;
+
+  const color =
+    prog >= 100 || stage === "completed" || stage === "after" || stage === "after_construction"
+      ? "#34a853"
+      : prog >= 50 || stage === "during" || stage === "during_construction"
+      ? "#fbbc04"
+      : (isLgu ? defaultLguColor : "#ea4335");
+
+  return makeClassicMapPinIcon(color, "#ffffff", centerIcon);
 }
 
 export function getPinColorForProject(p: Project): string {
-  if (isSitePinProject(p)) {
-    return p.markerColor || "#ea4335";
-  }
+  const isLgu = isLguInfrastructureProject(p);
   const prog = (p as any).numericProgress ?? p.progress ?? 0;
   const stage = (p as any).stage || (p as any).inspectionStage || (p as any).latestInspection?.stage;
+  const defaultLguColor =
+    prog >= 100 || stage === "completed" || stage === "after" || stage === "after_construction" || p.status === "Completed"
+      ? "#10b981"
+      : prog >= 50 || stage === "during" || stage === "during_construction" || p.status === "Ongoing"
+      ? "#f5a623"
+      : "#3b82f6";
+
+  if (isSitePinProject(p)) {
+    return p.markerColor || (isLgu ? defaultLguColor : "#ea4335");
+  }
   if (prog >= 100 || stage === "completed" || stage === "after" || stage === "after_construction") {
     return "#34a853";
   }
   if (prog >= 50 || stage === "during" || stage === "during_construction") {
     return "#fbbc04";
   }
-  return "#ea4335";
+  return isLgu ? defaultLguColor : "#ea4335";
 }
 
 /** Refresh pin vs label chrome after a site pin is promoted to a 3D model. */
@@ -2110,11 +2247,20 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
       const viewer = viewerRef.current;
       if (!viewer || viewer.isDestroyed()) return false;
       const p = projectsRef.current.find((x) => x.id === projectId);
-      if (!p?.location) return false;
+      if (!p) return false;
       const xf = xformsRef.current.get(projectId);
-      const lon = xf?.lon ?? p.location.lon;
-      const lat = xf?.lat ?? p.location.lat;
-      if (!Number.isFinite(lon) || !Number.isFinite(lat)) return false;
+      let lon = xf?.lon ?? p.location?.lon;
+      let lat = xf?.lat ?? p.location?.lat;
+      if (!Number.isFinite(lon) || !Number.isFinite(lat)) {
+        const fb = lookupBarangayCoords(p.barangay);
+        if (fb) {
+          lon = fb.lon;
+          lat = fb.lat;
+        } else {
+          lon = 121.509513;
+          lat = 14.185435;
+        }
+      }
       setSelectedId(projectId);
       const ent = viewer.entities.getById(entityIdFor(projectId));
       if (ent) ent.show = true;
@@ -2219,9 +2365,21 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     }
 
     const stretch = stretchFromProject(p);
+    let lon = p.location?.lon;
+    let lat = p.location?.lat;
+    if (!Number.isFinite(lon) || !Number.isFinite(lat)) {
+      const fb = lookupBarangayCoords(p.barangay);
+      if (fb) {
+        lon = fb.lon;
+        lat = fb.lat;
+      } else {
+        lon = 121.509513;
+        lat = 14.185435;
+      }
+    }
     const next: LocalXform = {
-      lon: p.location.lon,
-      lat: p.location.lat,
+      lon,
+      lat,
       heightM: p.modelHeight ?? 0,
       rotationDeg: p.rotation ?? 0,
       pitchDeg: p.rotationPitch ?? 0,
@@ -2865,6 +3023,24 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         viewerRef.current = null;
       }
     };
+  }, []);
+
+  // ── Auto-refresh LGU billboards with crisp Luisiana logo once loaded ─────
+  useEffect(() => {
+    return onLuisianaLogoLoaded(() => {
+      const viewer = viewerRef.current;
+      if (!viewer || viewer.isDestroyed()) return;
+      for (const p of projectsRef.current) {
+        if (isLguInfrastructureProject(p)) {
+          const eid = entityIdFor(p.id);
+          const ent = viewer.entities.getById(eid);
+          if (ent?.billboard) {
+            ent.billboard.image = new Cesium.ConstantProperty(getPinSvgForProject(p));
+          }
+        }
+      }
+      viewer.scene.requestRender();
+    });
   }, []);
 
   // ── Pause / resume WebGL render loop when parked offscreen ─────────────
@@ -3636,8 +3812,17 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     }
     let cancelled = false;
     const isAllowedProject = (proj: any) => {
-      if (!proj?.location?.lon || !proj?.location?.lat) return false;
+      if (!proj?.location?.lon || !proj?.location?.lat) {
+        const fb = lookupBarangayCoords(proj?.barangay);
+        if (fb) {
+          proj.location = { ...proj.location, lat: fb.lat, lon: fb.lon };
+        } else {
+          return false;
+        }
+      }
       if (proj.modelType === "custom" || proj.customModelUrl) return false;
+      // Do not pin to map until confirmed by Municipal Engineer
+      if (proj.engineerApproved === false) return false;
       if (proj.siteMarkerOnly) {
         if (
           proj.id === "pinpoint_site_pin" ||
@@ -3656,7 +3841,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
           proj.isLguProject ||
           proj.type === "Municipal Project" ||
           proj.trackingNumber ||
-          (typeof proj.id === "string" && (proj.id.startsWith("app-") || proj.id.startsWith("infra-app-") || proj.id.startsWith("lgu-proj-"))) ||
+          (typeof proj.id === "string" && (proj.id.startsWith("app-") || proj.id.startsWith("infra-app-") || proj.id.startsWith("lgu-proj-") || proj.id.startsWith("P"))) ||
           proj.type === "Private Building" ||
           proj.fundingSource?.includes("Private") ||
           proj.contractor?.includes("Private")
@@ -3684,8 +3869,17 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
     if (!viewer || viewer.isDestroyed() || !viewerReady) return;
 
     const isAllowedProject = (proj: any) => {
-      if (!proj?.location?.lon || !proj?.location?.lat) return false;
+      if (!proj?.location?.lon || !proj?.location?.lat) {
+        const fb = lookupBarangayCoords(proj?.barangay);
+        if (fb) {
+          proj.location = { ...proj.location, lat: fb.lat, lon: fb.lon };
+        } else {
+          return false;
+        }
+      }
       if (proj.modelType === "custom" || proj.customModelUrl) return false;
+      // Do not pin to map until confirmed by Municipal Engineer
+      if (proj.engineerApproved === false) return false;
       if (proj.siteMarkerOnly) {
         if (
           proj.id === "pinpoint_site_pin" ||
@@ -3704,7 +3898,7 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
           proj.isLguProject ||
           proj.type === "Municipal Project" ||
           proj.trackingNumber ||
-          (typeof proj.id === "string" && (proj.id.startsWith("app-") || proj.id.startsWith("infra-app-") || proj.id.startsWith("lgu-proj-"))) ||
+          (typeof proj.id === "string" && (proj.id.startsWith("app-") || proj.id.startsWith("infra-app-") || proj.id.startsWith("lgu-proj-") || proj.id.startsWith("P"))) ||
           proj.type === "Private Building" ||
           proj.fundingSource?.includes("Private") ||
           proj.contractor?.includes("Private")

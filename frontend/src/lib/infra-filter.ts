@@ -51,7 +51,14 @@ export function categoryForModel(type: ModelType | undefined): InfraCategory {
 export function filterInfrastructure(projects: Project[], f: InfraFilter): Project[] {
   const q = f.query.trim().toLowerCase();
   return projects.filter((p) => {
-    if ((p as any).isPrivateApplication || (p as any).isLguProject || (p as any).trackingNumber || p.id === "pinpoint_site_pin" || (typeof p.id === "string" && p.id.startsWith("lgu-proj-"))) {
+    if (
+      (p as any).isPrivateApplication ||
+      (p as any).isLguProject ||
+      p.type === "Municipal Project" ||
+      (p as any).trackingNumber ||
+      p.id === "pinpoint_site_pin" ||
+      (typeof p.id === "string" && (p.id.startsWith("lgu-proj-") || p.id.startsWith("P")))
+    ) {
       if (f.barangay && (p.barangay || "") !== f.barangay) return false;
       if (q) {
         const hay = `${p.name} ${p.barangay || ""} ${p.status || ""}`.toLowerCase();

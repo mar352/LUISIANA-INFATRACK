@@ -74,6 +74,11 @@ function ensureProjectShape(p) {
     modelHeight: Number.isFinite(Number(p.modelHeight)) ? Number(p.modelHeight) : 0,
     modelLocked: Boolean(p.modelLocked),
     siteMarkerOnly: Boolean(p.siteMarkerOnly),
+    isLguProject: p.isLguProject !== undefined ? Boolean(p.isLguProject) : Boolean(p.type === "Municipal Project" || (typeof p.id === "string" && p.id.startsWith("lgu-proj-"))),
+    engineerApproved: p.engineerApproved !== undefined ? Boolean(p.engineerApproved) : true,
+    engineerApprovedAt: p.engineerApprovedAt || null,
+    engineerApprovedBy: p.engineerApprovedBy || null,
+    isPinned: p.isPinned !== undefined ? Boolean(p.isPinned) : true,
     markerColor: p.markerColor ? String(p.markerColor) : "",
     mapSketch: normalizeMapSketch(p.mapSketch),
     mapShape: normalizeMapShape(p.mapShape),
@@ -143,7 +148,7 @@ function hasRecentActivity(project, prefix) {
 function saveState() {
   const dir = path.dirname(DATA_PATH);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  const toSave = (state || []).filter((p) => !p.isPrivateApplication && !p.siteMarkerOnly);
+  const toSave = (state || []).filter((p) => !p.isPrivateApplication);
   fs.writeFileSync(
     DATA_PATH,
     JSON.stringify({ projects: toSave, nextId }, null, 2),
@@ -241,7 +246,7 @@ function loadFromDisk() {
     const now = new Date().toISOString();
     let repaired = false;
     const projects = (raw.projects || [])
-      .filter((p) => !p.siteMarkerOnly && !p.isPrivateApplication && p.modelType !== "custom" && !p.customModelUrl)
+      .filter((p) => !p.isPrivateApplication && p.modelType !== "custom" && !p.customModelUrl)
       .map((p) => {
         const shaped = ensureProjectShape(p);
         if (repairSitePinSimulation(shaped, now)) repaired = true;
@@ -263,14 +268,14 @@ export function projectsSeed() {
   if (!state) {
     const loaded = loadFromDisk();
     if (loaded) {
-      state = loaded.filter((p) => !p.siteMarkerOnly && !p.isPrivateApplication && p.modelType !== "custom" && !p.customModelUrl);
+      state = loaded.filter((p) => !p.isPrivateApplication && p.modelType !== "custom" && !p.customModelUrl);
     } else {
       state = [];
       nextId = 1;
       saveState();
     }
-  } else if (state.some((p) => (p.siteMarkerOnly && !p.isPrivateApplication) || p.modelType === "custom" || p.customModelUrl)) {
-    state = state.filter((p) => (!p.siteMarkerOnly || p.isPrivateApplication) && p.modelType !== "custom" && !p.customModelUrl);
+  } else if (state.some((p) => p.modelType === "custom" || p.customModelUrl)) {
+    state = state.filter((p) => p.modelType !== "custom" && !p.customModelUrl);
     saveState();
   }
 
@@ -460,6 +465,8 @@ export function tickProjects() {
 }
 
 export function addProject({
+  id,
+  isLguProject = true,
   name,
   modelType,
   type,
@@ -482,16 +489,26 @@ export function addProject({
   mapSketch,
   markerColor,
   mapShape,
+  biddingResults,
+  noticeOfAwardUrl,
+  noticeOfAwardName,
+  programOfWorksUrl,
+  programOfWorksName,
+  photos,
+  milestones,
+  activityLog,
+  encodedBy,
 }) {
   const projects = projectsSeed();
-  const id = `P${nextId++}`;
+  const finalId = id || `lgu-proj-${Date.now()}-${nextId++}`;
   const normalizedStatus = normalizeStatus(status || "Planned");
   const sketch = normalizeMapSketch(mapSketch);
   const project = ensureProjectShape({
-    id,
+    id: finalId,
+    isLguProject: Boolean(isLguProject),
     name: name || `New ${modelType}`,
     modelType: modelType || "office",
-    type: type || modelTypeToLegacyType(modelType),
+    type: type || (isLguProject ? "Municipal Project" : modelTypeToLegacyType(modelType)),
     department: department || "Engineering",
     status: normalizedStatus,
     progress: Math.max(0, Math.min(100, Number(progress) || 0)),
@@ -512,10 +529,16 @@ export function addProject({
     fundingSource: fundingSource || "LGU",
     contractor: contractor || "",
     lifecyclePhase: lifecyclePhase || "Planning",
-    milestones: [],
+    biddingResults: biddingResults || null,
+    noticeOfAwardUrl: noticeOfAwardUrl || null,
+    noticeOfAwardName: noticeOfAwardName || null,
+    programOfWorksUrl: programOfWorksUrl || null,
+    programOfWorksName: programOfWorksName || null,
+    encodedBy: encodedBy || "",
+    milestones: Array.isArray(milestones) ? milestones : [],
     issues: [],
-    photos: [],
-    activityLog: [],
+    photos: Array.isArray(photos) ? photos : [],
+    activityLog: Array.isArray(activityLog) ? activityLog : [],
     updatedAt: new Date().toISOString(),
   });
   logActivity(
@@ -690,6 +713,19 @@ export function updateProject(id, patch) {
       project.modelHeight = Math.max(-50, Math.min(500, h));
     }
   }
+  if (patch.engineerApproved !== undefined) {
+    project.engineerApproved = Boolean(patch.engineerApproved);
+    if (patch.engineerApproved) {
+      project.isPinned = true;
+      project.engineerApprovedAt = patch.engineerApprovedAt || new Date().toISOString();
+      project.engineerApprovedBy = patch.engineerApprovedBy || "Municipal Engineer";
+      logActivity(project, `Project confirmed and pinned to 3D map by ${project.engineerApprovedBy}.`);
+    }
+  }
+  if (patch.isPinned !== undefined) {
+    project.isPinned = Boolean(patch.isPinned);
+  }
+
   if (
     patch.location !== undefined ||
     patch.rotation !== undefined ||
@@ -705,6 +741,87 @@ export function updateProject(id, patch) {
   project.updatedAt = new Date().toISOString();
   saveState();
   return project;
+}
+
+export function updateProjectInspection(idOrTracking, { stage, progress, photoUrl, remarks, inspector }) {
+  const norm = String(idOrTracking || "").trim().toLowerCase();
+  let proj = projectsSeed().find((p) => p.id === idOrTracking || String(p.id).toLowerCase() === norm);
+
+  const numericProgress = Number(progress) != null && !isNaN(Number(progress))
+    ? Number(progress)
+    : (stage === "after" || stage === "after_construction")
+    ? 100
+    : (stage === "during" || stage === "during_construction")
+    ? 50
+    : 0;
+
+  const now = new Date().toISOString();
+  const stageLabel =
+    (stage === "after" || stage === "after_construction" || numericProgress >= 100)
+      ? "After Construction (100% - Occupancy Ready)"
+      : (stage === "during" || stage === "during_construction" || numericProgress >= 50)
+      ? "During Construction (50% - Structure In-Progress)"
+      : "Before Construction (0% - Vacant Lot Pre-Excavation)";
+
+  const inspectionRecord = {
+    id: `insp-${Date.now()}`,
+    stage: stage || (numericProgress >= 100 ? "after" : numericProgress >= 50 ? "during" : "before"),
+    stageLabel,
+    progress: numericProgress,
+    photoUrl: photoUrl || proj?.latestInspection?.photoUrl || "",
+    timestamp: now,
+    inspectedAt: now,
+    remarks: remarks || "",
+    inspector: inspector || "Engr. Mario S. Baldovino (Municipal Engineering Office)",
+  };
+
+  if (proj) {
+    proj.progress = numericProgress;
+    proj.inspectionStage = inspectionRecord.stage;
+    proj.status = numericProgress >= 100 ? "Completed" : numericProgress >= 50 ? "Ongoing" : "Planned";
+    proj.markerColor = numericProgress >= 100 ? "#10b981" : numericProgress >= 50 ? "#f5a623" : "#3b82f6";
+    proj.latestInspection = inspectionRecord;
+    if (!Array.isArray(proj.inspectionPhotos)) proj.inspectionPhotos = [];
+    if (photoUrl) {
+      proj.inspectionPhotos.unshift(inspectionRecord);
+      if (!Array.isArray(proj.photos)) proj.photos = [];
+      proj.photos.unshift({
+        id: inspectionRecord.id,
+        url: photoUrl,
+        caption: `Site Inspection (${stageLabel}): ${remarks || "Progress verified"}`,
+        uploadedAt: now,
+        kind: "progress",
+      });
+    }
+    proj.updatedAt = now;
+    logActivity(proj, `Site inspection recorded by ${inspector}: ${stageLabel} (${numericProgress}%).`);
+    saveState();
+    return proj;
+  }
+
+  // Synthesize for in-memory or Firestore projects so client never 404s
+  const synthesized = {
+    id: idOrTracking,
+    progress: numericProgress,
+    inspectionStage: inspectionRecord.stage,
+    status: numericProgress >= 100 ? "Completed" : numericProgress >= 50 ? "Ongoing" : "Planned",
+    markerColor: numericProgress >= 100 ? "#10b981" : numericProgress >= 50 ? "#f5a623" : "#3b82f6",
+    latestInspection: inspectionRecord,
+    inspectionPhotos: [inspectionRecord],
+    photos: photoUrl ? [{
+      id: inspectionRecord.id,
+      url: photoUrl,
+      caption: `Site Inspection (${stageLabel}): ${remarks || "Progress verified"}`,
+      uploadedAt: now,
+      kind: "progress",
+    }] : [],
+    updatedAt: now,
+  };
+  if (state && Array.isArray(state)) {
+    state.push(synthesized);
+    saveState();
+  }
+  return synthesized;
 }
 
 export function addMilestone(projectId, { title, targetDate }) {

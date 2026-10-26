@@ -201,3 +201,47 @@ export function getNearestBarangay(
   }
   return best;
 }
+
+export const LUISIANA_BARANGAY_COORDS: Record<string, { lat: number; lon: number }> = {
+  "Zone I": { lat: 14.1839084, lon: 121.509387 },
+  "Zone II": { lat: 14.1839873, lon: 121.5103674 },
+  "Zone III": { lat: 14.1837591, lon: 121.5113341 },
+  "Zone IV": { lat: 14.1837933, lon: 121.5125314 },
+  "Zone V": { lat: 14.1854236, lon: 121.513583 },
+  "Zone VI": { lat: 14.185504, lon: 121.5121485 },
+  "Zone VII": { lat: 14.1854541, lon: 121.5112004 },
+  "Zone VIII": { lat: 14.1856137, lon: 121.5102021 },
+  "Poblacion": { lat: 14.185435, lon: 121.509513 },
+  "De La Paz": { lat: 14.188082, lon: 121.5375131 },
+  "San Antonio": { lat: 14.1873079, lon: 121.5061572 },
+  "San Buenaventura": { lat: 14.1951736, lon: 121.5547896 },
+  "San Diego": { lat: 14.1844996, lon: 121.5072126 },
+  "San Isidro": { lat: 14.1811622, lon: 121.510284 },
+  "San Jose": { lat: 14.1908359, lon: 121.5130008 },
+  "San Juan": { lat: 14.1894542, lon: 121.5192551 },
+  "San Luis": { lat: 14.1705015, lon: 121.5077204 },
+  "San Pablo": { lat: 14.1870998, lon: 121.5291478 },
+  "San Pedro": { lat: 14.17426, lon: 121.5254577 },
+  "San Rafael": { lat: 14.1616657, lon: 121.5185067 },
+  "San Roque": { lat: 14.1603499, lon: 121.5079647 },
+  "San Salvador": { lat: 14.2162959, lon: 121.4903596 },
+  "Santo Domingo": { lat: 14.1979935, lon: 121.5461878 },
+  "Santo Tomas": { lat: 14.1869878, lon: 121.5167568 },
+};
+
+export function lookupBarangayCoords(barangayName?: string): { lat: number; lon: number } | null {
+  if (!barangayName) return null;
+  const clean = String(barangayName)
+    .replace(/^Brgy\.?\s*/i, "")
+    .replace(/^Barangay\s*/i, "")
+    .trim()
+    .toLowerCase();
+  for (const [key, coords] of Object.entries(LUISIANA_BARANGAY_COORDS)) {
+    const k = key.toLowerCase();
+    if (k === clean || clean.includes(k) || k.includes(clean)) {
+      return coords;
+    }
+  }
+  return null;
+}
+

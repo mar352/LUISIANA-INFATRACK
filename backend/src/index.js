@@ -26,6 +26,7 @@ import {
   emitProjectsPayload,
   listPublicProjects,
   getPublicProject,
+  updateProjectInspection,
 } from "./services/projects.js";
 import {
   listEngagement,
@@ -1140,9 +1141,11 @@ app.post("/api/projects", requireRoles("Engineer", "MPDC"), (req, res) => {
     return res.status(400).json({ error: "Missing required fields: name, modelType, location" });
   }
   const project = addProject({
+    id: req.body?.id,
+    isLguProject: req.body?.isLguProject !== undefined ? Boolean(req.body.isLguProject) : true,
     name,
-    modelType,
-    type,
+    modelType: modelType || "office",
+    type: type || (req.body?.isLguProject ? "Municipal Project" : undefined),
     department,
     location,
     rotation,
@@ -1162,6 +1165,19 @@ app.post("/api/projects", requireRoles("Engineer", "MPDC"), (req, res) => {
     mapSketch: req.body?.mapSketch ?? null,
     markerColor: req.body?.markerColor || "",
     mapShape: req.body?.mapShape ?? null,
+    biddingResults: req.body?.biddingResults || null,
+    noticeOfAwardUrl: req.body?.noticeOfAwardUrl || null,
+    noticeOfAwardName: req.body?.noticeOfAwardName || null,
+    programOfWorksUrl: req.body?.programOfWorksUrl || null,
+    programOfWorksName: req.body?.programOfWorksName || null,
+    photos: req.body?.photos || [],
+    milestones: req.body?.milestones || [],
+    activityLog: req.body?.activityLog || [],
+    encodedBy: req.body?.encodedBy || "",
+    engineerApproved: req.body?.engineerApproved !== undefined ? Boolean(req.body.engineerApproved) : undefined,
+    engineerApprovedAt: req.body?.engineerApprovedAt || null,
+    engineerApprovedBy: req.body?.engineerApprovedBy || null,
+    isPinned: req.body?.isPinned !== undefined ? Boolean(req.body.isPinned) : undefined,
   });
   io.emit("projects:update", emitProjectsPayload());
   res.json({ project });
@@ -1748,7 +1764,7 @@ app.post(
         }
       }
 
-      const updated = updateSiteInspection(idOrTracking, {
+      let updated = updateSiteInspection(idOrTracking, {
         stage,
         progress,
         photoUrl,
@@ -1757,13 +1773,24 @@ app.post(
       });
 
       if (!updated) {
-        return res.status(404).json({ error: "Hindi natagpuan ang aplikasyon." });
+        // Fallback for LGU / Municipal Infrastructure projects
+        updated = updateProjectInspection(idOrTracking, {
+          stage,
+          progress,
+          photoUrl,
+          remarks,
+          inspector,
+        });
+      }
+
+      if (!updated) {
+        return res.status(404).json({ error: "Hindi natagpuan ang aplikasyon o proyekto." });
       }
 
       // Real-time broadcast to map and tracker
       io.emit("projects:update", emitProjectsPayload());
       io.emit("planning:application_updated", {
-        trackingNumber: updated.trackingNumber,
+        trackingNumber: updated.trackingNumber || updated.id,
         status: updated.status,
         progress: updated.progress,
         inspectionStage: updated.inspectionStage,
@@ -1773,6 +1800,7 @@ app.post(
       res.json({
         ok: true,
         application: updated,
+        project: updated,
         message: "Matagumpay na na-update ang site inspection progress.",
       });
     } catch (err) {

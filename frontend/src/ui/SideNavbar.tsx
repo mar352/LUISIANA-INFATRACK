@@ -236,7 +236,7 @@ export const SideNavbar: React.FC<SideNavbarProps> = ({
         </svg>
       ),
     },
-    // Engineering Dashboard & 3D Mapa for Engineers and Admins.
+    // Engineering Dashboard & Documents for Engineers and Admins.
     ...(!isMpdc && (isEngineer || isAdmin)
       ? [
           {
@@ -284,10 +284,15 @@ export const SideNavbar: React.FC<SideNavbarProps> = ({
               </svg>
             ),
           },
+        ]
+      : []),
+    // 3D Mapa GIS situation globe for MPDC, Engineers, and Admins
+    ...(isMpdc || isEngineer || isAdmin
+      ? [
           {
             id: "app",
             label: t("nav.map_3d"),
-            tooltip: language === "en" ? "Open 3D Cesium GIS Globe Map & Situation Dashboard" : "Buksan ang 3D Cesium GIS Globe Mapa & Situation Dashboard (Pang-Engineer Lamang)",
+            tooltip: language === "en" ? "Open 3D Cesium GIS Globe Map & Situation Dashboard" : "Buksan ang 3D Cesium GIS Globe Mapa & Situation Dashboard",
             isMap: true,
             icon: (active: boolean) => (
               <svg
@@ -337,10 +342,6 @@ export const SideNavbar: React.FC<SideNavbarProps> = ({
 
   const handleItemClick = (item: NavItemDef) => {
     if (onNavigate) {
-      if (item.id === "app" && isMpdc) {
-        // Hard security block: MPDC has ZERO access to 3D map
-        return;
-      }
       if ((item.id === "permits" || item.id === "documents" || item.id === "analytics") && isEngineer) {
         // Hard security block: Engineering has ZERO access to MPDC modules per RBAC
         return;
