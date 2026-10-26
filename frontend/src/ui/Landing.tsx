@@ -52,7 +52,7 @@ export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
     canSeeProjects: true,
     canSeeAlerts: true,
     canSeeBusinessPermits: true,
-    canSeePlanning: true,
+    canSeePlanning: false,
     canSeeEngagement: true,
   },
   MPDC: {
@@ -64,7 +64,7 @@ export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
     canSeeProjects: true,
     canSeeAlerts: true,
     canSeeBusinessPermits: false,
-    canSeePlanning: true,
+    canSeePlanning: false,
     canSeeEngagement: true,
   },
   Engineer: {
@@ -88,7 +88,7 @@ export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
     canSeeProjects: false,
     canSeeAlerts: true,
     canSeeBusinessPermits: false,
-    canSeePlanning: true,
+    canSeePlanning: false,
     canSeeEngagement: false,
   },
   "Barangay Official": {
@@ -100,7 +100,7 @@ export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
     canSeeProjects: true,
     canSeeAlerts: false,
     canSeeBusinessPermits: false,
-    canSeePlanning: true,
+    canSeePlanning: false,
     canSeeEngagement: false,
   },
   "Private Engineer": {
@@ -501,7 +501,6 @@ const PageDepartments = ({ onEnter, onPublicPortal }: { onEnter: () => void; onP
               cfg.canSeeRisk && "Risk Assessment",
               cfg.canSeeProjects && "Infrastructure",
               cfg.canSeeAlerts && "Alerts Feed",
-              cfg.canSeePlanning && "Planning Board",
             ].filter(Boolean).map((item) => (
               <span key={item as string} className="dept-tag-chip">{item}</span>
             ))}

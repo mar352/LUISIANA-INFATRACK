@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import type { SessionUser } from "../services/auth";
 import { ThemeToggle } from "./ThemeToggle";
-import { LanguageToggle } from "./LanguageToggle";
 import { fetchCitizenApplications } from "../lib/api";
 import { fetchProposalsOnce } from "../services/firestore-planning";
 import "./MpdcTopNavbar.css";
@@ -504,7 +503,6 @@ export const MpdcTopNavbar: React.FC<MpdcTopNavbarProps> = ({
                 </button>
               )}
 
-              <LanguageToggle />
               <ThemeToggle iconOnly />
             </div>
           </div>

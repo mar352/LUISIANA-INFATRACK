@@ -6,7 +6,6 @@ import "./SideNavbar.css";
 
 export type NavScreenId =
   | "permits"
-  | "planning"
   | "documents"
   | "engineer_documents"
   | "analytics"
@@ -142,28 +141,6 @@ export const SideNavbar: React.FC<SideNavbarProps> = ({
                 <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
                 <line x1="3" y1="9" x2="21" y2="9" />
                 <line x1="9" y1="21" x2="9" y2="9" />
-              </svg>
-            ),
-          },
-          {
-            id: "planning",
-            label: t("nav.planning"),
-            tooltip: t("nav.planning_tooltip"),
-            icon: (active: boolean) => (
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={active ? "2.3" : "2"}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <polygon points="12 2 2 7 12 12 22 7 12 2" />
-                <polyline points="2 17 12 22 22 17" />
-                <polyline points="2 12 12 17 22 12" />
               </svg>
             ),
           },
@@ -341,7 +318,7 @@ export const SideNavbar: React.FC<SideNavbarProps> = ({
         // Hard security block: MPDC has ZERO access to 3D map
         return;
       }
-      if ((item.id === "permits" || item.id === "planning" || item.id === "documents" || item.id === "analytics") && isEngineer) {
+      if ((item.id === "permits" || item.id === "documents" || item.id === "analytics") && isEngineer) {
         // Hard security block: Engineering has ZERO access to MPDC modules per RBAC
         return;
       }
