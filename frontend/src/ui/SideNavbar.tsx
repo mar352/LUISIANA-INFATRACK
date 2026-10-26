@@ -477,6 +477,9 @@ export const SideNavbar: React.FC<SideNavbarProps> = ({
       onSuccess={(newProject) => {
         setIsAddLguModalOpen(false);
         window.dispatchEvent(new CustomEvent("lgu-project-added", { detail: newProject }));
+        if (onNavigate) {
+          onNavigate("app");
+        }
       }}
     />
   </>

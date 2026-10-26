@@ -725,8 +725,15 @@ export default function App() {
     const handleOpen = () => setIsGlobalAddProjectModalOpen(true);
     const handleProjectAdded = (e: any) => {
       if (e?.detail) {
-        setProjects((prev) => [e.detail, ...prev]);
-        setSelected(e.detail);
+        const newProj = e.detail;
+        setProjects((prev) => [newProj, ...prev.filter((p) => p.id !== newProj.id)]);
+        setSelected(newProj);
+        setScreen("app");
+        setTimeout(() => {
+          if (newProj.location?.lon && newProj.location?.lat) {
+            cesiumMapRef.current?.flyToLonLat(newProj.location.lon, newProj.location.lat, 1800);
+          }
+        }, 300);
       }
     };
     window.addEventListener("open-add-lgu-project", handleOpen);
@@ -989,7 +996,7 @@ export default function App() {
       const parsed = raw ? JSON.parse(raw) : [];
       const list = Array.isArray(parsed) ? parsed : [];
       return list
-        .filter((p: any) => !p?.siteMarkerOnly || p?.isPrivateApplication)
+        .filter((p: any) => !p?.siteMarkerOnly || p?.isPrivateApplication || p?.isLguProject || p?.id?.startsWith("lgu-proj-"))
         .filter((p: any) => p?.modelType !== "custom" && !p?.customModelUrl);
     } catch {
       return [];
@@ -1050,7 +1057,7 @@ export default function App() {
         const data = await res.json();
         const rawList = Array.isArray(data) ? data : (Array.isArray(data?.projects) ? data.projects : []);
         const list = rawList
-          .filter((x: any) => !x?.siteMarkerOnly || x?.isPrivateApplication)
+          .filter((x: any) => !x?.siteMarkerOnly || x?.isPrivateApplication || x?.isLguProject || x?.id?.startsWith("lgu-proj-"))
           .filter((x: any) => x?.modelType !== "custom" && !x?.customModelUrl);
         setProjects(list);
         try {
@@ -2208,7 +2215,7 @@ export default function App() {
     socket.on("projects:update", (p) => {
       const rawList = Array.isArray(p?.projects) ? p.projects : [];
       const list = rawList
-        .filter((x: any) => !x?.siteMarkerOnly || x?.isPrivateApplication)
+        .filter((x: any) => !x?.siteMarkerOnly || x?.isPrivateApplication || x?.isLguProject || x?.id?.startsWith("lgu-proj-"))
         .filter((x: any) => x?.modelType !== "custom" && !x?.customModelUrl);
       setProjects(list);
       try {

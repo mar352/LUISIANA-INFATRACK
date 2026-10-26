@@ -3653,8 +3653,10 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         }
         return Boolean(
           proj.isPrivateApplication ||
+          proj.isLguProject ||
+          proj.type === "Municipal Project" ||
           proj.trackingNumber ||
-          (typeof proj.id === "string" && (proj.id.startsWith("app-") || proj.id.startsWith("infra-app-"))) ||
+          (typeof proj.id === "string" && (proj.id.startsWith("app-") || proj.id.startsWith("infra-app-") || proj.id.startsWith("lgu-proj-"))) ||
           proj.type === "Private Building" ||
           proj.fundingSource?.includes("Private") ||
           proj.contractor?.includes("Private")
@@ -3699,8 +3701,10 @@ export const CesiumMap = forwardRef<CesiumMapHandle, Props>(function CesiumMap(
         }
         return Boolean(
           proj.isPrivateApplication ||
+          proj.isLguProject ||
+          proj.type === "Municipal Project" ||
           proj.trackingNumber ||
-          (typeof proj.id === "string" && (proj.id.startsWith("app-") || proj.id.startsWith("infra-app-"))) ||
+          (typeof proj.id === "string" && (proj.id.startsWith("app-") || proj.id.startsWith("infra-app-") || proj.id.startsWith("lgu-proj-"))) ||
           proj.type === "Private Building" ||
           proj.fundingSource?.includes("Private") ||
           proj.contractor?.includes("Private")

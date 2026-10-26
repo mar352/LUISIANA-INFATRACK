@@ -315,8 +315,9 @@ export const AddLguProjectModal: React.FC<AddLguProjectModalProps> = ({
       const newProject: Project = {
         id: generatedId,
         name: name.trim(),
-        modelType: "municipal",
+        modelType: "office",
         type: "Municipal Project",
+        isLguProject: true,
         department: currentRole === "Engineer" ? "Engineering" : "MPDC",
         status: projectStatus,
         lifecyclePhase: lifecyclePhase as any,
@@ -332,6 +333,11 @@ export const AddLguProjectModal: React.FC<AddLguProjectModalProps> = ({
         budgetSpent: 0,
         siteMarkerOnly: true,
         markerColor: status === "Completed" ? "#10b981" : status === "Ongoing" ? "#f5a623" : "#3b82f6",
+        mapSketch: {
+          kind: "pin",
+          color: status === "Completed" ? "#10b981" : status === "Ongoing" ? "#f5a623" : "#3b82f6",
+          coordinates: [{ lon: numLon, lat: numLat }],
+        },
         noticeOfAwardUrl: noaUrl || undefined,
         noticeOfAwardName: noaName || undefined,
         programOfWorksUrl: powUrl || undefined,

@@ -303,6 +303,7 @@ export type Project = {
   activityLog: ProjectActivity[];
   updatedAt: string;
   isPrivateApplication?: boolean;
+  isLguProject?: boolean;
   trackingNumber?: string;
   applicantName?: string;
   applicationId?: string;
