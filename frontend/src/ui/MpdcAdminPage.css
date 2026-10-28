@@ -246,6 +246,21 @@
   color: var(--apple-accent-hover);
 }
 
+.mpdc-sidebar-action-btn {
+  background: rgba(0, 113, 227, 0.08);
+  color: var(--apple-accent);
+  font-weight: 600;
+  border: 1px dashed rgba(0, 113, 227, 0.35);
+  margin-bottom: 6px;
+}
+
+.mpdc-sidebar-action-btn:hover {
+  background: var(--apple-accent);
+  color: #ffffff;
+  border-style: solid;
+  border-color: var(--apple-accent);
+}
+
 .mpdc-sidebar-footer {
   padding: 12px 14px;
   border-top: 1px solid var(--apple-border);

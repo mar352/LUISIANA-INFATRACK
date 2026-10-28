@@ -252,14 +252,16 @@ const PageOverview = ({
 
           <button
             type="button"
-            className="landing-btn landing-btn-secondary"
+            className="landing-btn landing-btn-secondary landing-hero-btn-transparency"
             onClick={onPublicPortal}
+            title={isEn ? "Open Public Transparency Portal" : "Buksan ang Pampublikong Portal ng Transparensya"}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <circle cx="12" cy="12" r="10" />
-              <polygon points="12 8 8 12 12 16 12 8" />
+              <path d="M2 12h20" />
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
             </svg>
-            <span>{isEn ? "Open Public Portal" : "Buksan ang Pampublikong Portal"}</span>
+            <span>{isEn ? "Public Transparency Portal" : "Pampublikong Portal ng Transparensya"}</span>
           </button>
 
           {onTrackPermit && (
@@ -433,7 +435,7 @@ const PageOverview = ({
       </div>
       <div className="cta-banner-actions">
         <button type="button" className="landing-btn landing-btn-primary" onClick={onPublicPortal}>
-          Open Public Portal
+          {isEn ? "Public Transparency Portal" : "Pampublikong Portal ng Transparensya"}
         </button>
         <button type="button" className="landing-btn landing-btn-secondary" onClick={onEnter}>
           Department Sign In
@@ -469,7 +471,7 @@ const PageFeatures = ({ onEnter, onPublicPortal }: { onEnter: () => void; onPubl
 
     <div style={{ display: "flex", justifyContent: "center", gap: 12, marginTop: 48 }}>
       <button type="button" className="landing-btn landing-btn-primary" onClick={onPublicPortal}>
-        Open Public Portal
+        {isEn ? "Public Transparency Portal" : "Pampublikong Portal ng Transparensya"}
       </button>
       <button type="button" className="landing-btn landing-btn-secondary" onClick={onEnter}>
         Sign In to Dashboard
@@ -511,7 +513,7 @@ const PageDepartments = ({ onEnter, onPublicPortal }: { onEnter: () => void; onP
 
     <div style={{ display: "flex", justifyContent: "center", gap: 12, marginTop: 48 }}>
       <button type="button" className="landing-btn landing-btn-primary" onClick={onPublicPortal}>
-        Open Public Portal
+        {isEn ? "Public Transparency Portal" : "Pampublikong Portal ng Transparensya"}
       </button>
       <button type="button" className="landing-btn landing-btn-secondary" onClick={onEnter}>
         Sign In to Your Department
@@ -585,7 +587,7 @@ const PageAbout = ({ onEnter, onPublicPortal }: { onEnter: () => void; onPublicP
         </p>
         <div style={{ display: "flex", gap: 10, marginTop: 24 }}>
           <button type="button" className="landing-btn landing-btn-primary" onClick={onPublicPortal}>
-            Open Public Portal
+            {isEn ? "Public Transparency Portal" : "Pampublikong Portal ng Transparensya"}
           </button>
           <button type="button" className="landing-btn landing-btn-secondary" onClick={onEnter}>
             Department Sign In
@@ -749,11 +751,41 @@ export function LandingPage({
               {link.label}
             </button>
           ))}
+          <button
+            type="button"
+            className="landing-link landing-link-transparency"
+            onClick={onPublicPortal}
+            title={isEn ? "Public Transparency Portal" : "Pampublikong Portal ng Transparensya"}
+          >
+            <span>{isEn ? "Transparency Portal" : "Portal ng Transparensya"}</span>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <line x1="7" y1="17" x2="17" y2="7" />
+              <polyline points="7 7 17 7 17 17" />
+            </svg>
+          </button>
         </div>
 
         <div className="landing-nav-actions">
           <LanguageToggle />
           <ThemeToggle iconOnly />
+
+          {/* Public Transparency Portal Button */}
+          {onPublicPortal && (
+            <button
+              type="button"
+              className="landing-btn landing-btn-outline landing-nav-btn-transparency"
+              onClick={onPublicPortal}
+              title={isEn ? "Public Transparency Portal (DILG Compliance)" : "Pampublikong Portal ng Transparensya"}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <circle cx="12" cy="12" r="10" />
+                <path d="M2 12h20" />
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+              </svg>
+              <span className="landing-btn-label-desktop">{isEn ? "Transparency Portal" : "Portal ng Transparensya"}</span>
+              <span className="landing-btn-label-mobile">{isEn ? "Transparency" : "Transparensya"}</span>
+            </button>
+          )}
 
           {onTrackPermit && (
             <button
@@ -851,6 +883,24 @@ export function LandingPage({
               <div style={{ display: "flex", justifyContent: "center", marginBottom: "10px" }}>
                 <LanguageToggle />
               </div>
+
+              {onPublicPortal && (
+                <button
+                  type="button"
+                  className="landing-btn landing-btn-outline landing-btn-full landing-nav-btn-transparency"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onPublicPortal();
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M2 12h20" />
+                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                  </svg>
+                  <span>{isEn ? "Public Transparency Portal" : "Pampublikong Portal ng Transparensya"}</span>
+                </button>
+              )}
               {onTrackPermit && (
                 <button
                   type="button"

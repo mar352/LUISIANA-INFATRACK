@@ -443,6 +443,21 @@ const IconCamera = ({ size = 22, color = "currentColor" }: { size?: number; colo
   </svg>
 );
 
+const IconCopy = ({ size = 15, color = "currentColor" }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+  </svg>
+);
+
+const IconPrinter = ({ size = 16, color = "currentColor" }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <polyline points="6 9 6 2 18 2 18 9" />
+    <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+    <rect x="6" y="14" width="12" height="8" />
+  </svg>
+);
+
 
 export type AttachedDocument = {
   file?: File;
@@ -502,7 +517,10 @@ export default function NewApplicationPage({
     const p = new URLSearchParams(window.location.search).get("step");
     if (p) {
       const num = parseInt(p, 10);
-      if (num >= 1 && num <= 4) return num as Step;
+      if (num >= 1 && num <= 3) return num as Step;
+      if (num === 4 && typeof window !== "undefined" && (sessionStorage.getItem("infatrack_last_tracking_no") || "").trim()) {
+        return 4 as Step;
+      }
     }
     if (initialDraft && initialDraft.step) {
       return (initialDraft.step >= 1 && initialDraft.step <= 3 ? initialDraft.step : 1) as Step;
@@ -552,7 +570,7 @@ export default function NewApplicationPage({
   }, [onBack]);
 
   const handleBack = useCallback(() => {
-    if (step > 1) {
+    if (step > 1 && step < 4) {
       setStep((s) => Math.max(1, s - 1) as Step);
     } else {
       onBack();
@@ -780,7 +798,11 @@ export default function NewApplicationPage({
   };
 
   // Tracking & Submission State
-  const [generatedTrackingNo, setGeneratedTrackingNo] = useState("");
+  const [generatedTrackingNo, setGeneratedTrackingNo] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
+    return sessionStorage.getItem("infatrack_last_tracking_no") || "";
+  });
+  const [copiedTracking, setCopiedTracking] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [attemptedStep2Proceed, setAttemptedStep2Proceed] = useState(false);
 
@@ -856,7 +878,7 @@ export default function NewApplicationPage({
       ploCertDoc !== null ||
       photoDocsDoc !== null;
 
-    if (!hasAnyInput) {
+    if (step === 4 || !hasAnyInput) {
       clearApplicationDraft();
       return;
     }
@@ -1151,6 +1173,7 @@ export default function NewApplicationPage({
           fullName: applicantName.trim() || "Municipal Officer / LGU",
           contactPhone: contactPhone.trim(),
           contactEmail: contactEmail.trim(),
+          email: contactEmail.trim(),
           address: locationDescription.trim(),
           barangay,
         },
@@ -1186,6 +1209,14 @@ export default function NewApplicationPage({
           lat: pinnedCoords.lat,
           lon: pinnedCoords.lon,
         },
+        property: {
+          tctNo: tctNo.trim(),
+          taxDecNo: taxDecNo.trim(),
+          isRegisteredOwner: isOwner,
+          proposedBuildingType: buildingType,
+          lotAreaSqM: typeof lotAreaSqM === "number" ? lotAreaSqM : 0,
+          locationDescription: locationDescription.trim(),
+        },
         uploads: uploadsPayload,
         notes: notes.trim(),
         clientIp: clientPublicIp || undefined,
@@ -1217,6 +1248,11 @@ export default function NewApplicationPage({
       )}`;
     }
 
+    try {
+      sessionStorage.setItem("infatrack_last_tracking_no", officialTrackingNo);
+    } catch {
+      /* ignore */
+    }
     setGeneratedTrackingNo(officialTrackingNo);
     setSubmitting(false);
     setConfirmModalOpen(false);
@@ -1363,9 +1399,9 @@ export default function NewApplicationPage({
             <div className="new-app-stepper-mobile-bar">
               <div
                 className={`new-app-mobile-step-item ${step === 1 ? "active" : step > 1 ? "completed" : ""}`}
-                onClick={() => { if (step > 1) setStep(1); }}
-                role={step > 1 ? "button" : undefined}
-                tabIndex={step > 1 ? 0 : undefined}
+                onClick={() => { if (step > 1 && step < 4) setStep(1); }}
+                role={step > 1 && step < 4 ? "button" : undefined}
+                tabIndex={step > 1 && step < 4 ? 0 : undefined}
                 title={isEn ? "1. Category" : "1. Kategorya"}
               >
                 <div className={`new-app-mobile-segment ${step >= 1 ? "filled" : ""}`} />
@@ -1373,9 +1409,9 @@ export default function NewApplicationPage({
               </div>
               <div
                 className={`new-app-mobile-step-item ${step === 2 ? "active" : step > 2 ? "completed" : ""}`}
-                onClick={() => { if (step > 2) setStep(2); }}
-                role={step > 2 ? "button" : undefined}
-                tabIndex={step > 2 ? 0 : undefined}
+                onClick={() => { if (step > 2 && step < 4) setStep(2); }}
+                role={step > 2 && step < 4 ? "button" : undefined}
+                tabIndex={step > 2 && step < 4 ? 0 : undefined}
                 title={isEn ? "2. Information" : "2. Impormasyon"}
               >
                 <div className={`new-app-mobile-segment ${step >= 2 ? "filled" : ""}`} />
@@ -1383,9 +1419,9 @@ export default function NewApplicationPage({
               </div>
               <div
                 className={`new-app-mobile-step-item ${step === 3 ? "active" : step > 3 ? "completed" : ""}`}
-                onClick={() => { if (step > 3) setStep(3); }}
-                role={step > 3 ? "button" : undefined}
-                tabIndex={step > 3 ? 0 : undefined}
+                onClick={() => { if (step > 3 && step < 4) setStep(3); }}
+                role={step > 3 && step < 4 ? "button" : undefined}
+                tabIndex={step > 3 && step < 4 ? 0 : undefined}
                 title="3. GIS & Hazard"
               >
                 <div className={`new-app-mobile-segment ${step >= 3 ? "filled" : ""}`} />
@@ -1643,6 +1679,11 @@ export default function NewApplicationPage({
                   onKeyDown={handleIntegerKeyDown}
                   placeholder="09171234567"
                 />
+                <span style={{ fontSize: "0.78rem", color: "#64748b", marginTop: "4px", display: "block" }}>
+                  {isEn
+                    ? "SMS updates (tracking no., inspection notice, order of payment, approval) will be sent to this number."
+                    : "Makakatanggap ka ng libreng SMS text (tracking no., inspection schedule, bayarin, approval) sa numerong ito."}
+                </span>
               </div>
 
               {/* Email */}
@@ -2534,8 +2575,39 @@ export default function NewApplicationPage({
               <div style={{ fontSize: 12, color: "var(--apple-text-secondary, #6e6e73)", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>
                 {isEn ? "Tracking Reference Number" : "Tracking Reference Number"}
               </div>
-              <div style={{ fontSize: "1.75rem", fontWeight: 800, color: "var(--apple-text, #1d1d1f)", marginTop: 6, letterSpacing: "0.05em", fontFamily: "monospace" }}>
+              <div style={{ fontSize: "1.75rem", fontWeight: 800, color: "var(--apple-text, #1d1d1f)", marginTop: 6, letterSpacing: "0.05em", fontFamily: "monospace", userSelect: "all" }}>
                 {generatedTrackingNo}
+              </div>
+              <div style={{ marginTop: 12 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (generatedTrackingNo) {
+                      navigator.clipboard?.writeText(generatedTrackingNo);
+                      setCopiedTracking(true);
+                      setTimeout(() => setCopiedTracking(false), 2500);
+                    }
+                  }}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "7px 16px",
+                    borderRadius: 8,
+                    border: "1px solid var(--apple-border, rgba(0,0,0,0.15))",
+                    background: copiedTracking ? "rgba(21, 128, 61, 0.1)" : "var(--apple-surface, #ffffff)",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    color: copiedTracking ? "var(--apple-safe, #15803d)" : "var(--apple-text, #1d1d1f)",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+                    transition: "all 0.15s ease",
+                  }}
+                  title={isEn ? "Copy tracking number to clipboard" : "Kopyahin ang tracking reference number"}
+                >
+                  {copiedTracking ? <IconCheck size={14} color="var(--apple-safe, #15803d)" /> : <IconCopy size={14} />}
+                  <span>{copiedTracking ? (isEn ? "✓ Copied!" : "✓ Nakopya na!") : (isEn ? "Copy Tracking Code" : "Kopyahin ang Tracking Code")}</span>
+                </button>
               </div>
             </div>
 
@@ -2597,6 +2669,16 @@ export default function NewApplicationPage({
               >
                 <IconPin size={16} color="currentColor" />
                 <span>{isEn ? "Track Application (Live Tracker)" : "Subaybayan ang Aplikasyon (Live Tracker)"}</span>
+              </button>
+
+              <button
+                type="button"
+                className="new-app-page-btn new-app-page-btn-secondary"
+                onClick={() => window.print()}
+                title={isEn ? "Print or save this confirmation page as PDF" : "I-print o i-save bilang PDF ang pagkumpirmang ito"}
+              >
+                <IconPrinter size={16} color="currentColor" />
+                <span>{isEn ? "Print / Save Slip" : "I-print / I-save ang Slip"}</span>
               </button>
 
               {onViewOnMap && (

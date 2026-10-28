@@ -25,6 +25,54 @@ function loadApplications() {
     const list = JSON.parse(raw) || [];
     let updatedAny = false;
     for (const app of list) {
+      if (app.applicant) {
+        if (!app.applicant.email && app.applicant.contactEmail) {
+          app.applicant.email = app.applicant.contactEmail;
+        }
+        if (!app.applicant.contactEmail && app.applicant.email) {
+          app.applicant.contactEmail = app.applicant.email;
+        }
+      }
+      if (app.lotDetails) {
+        if (!app.property) {
+          app.property = {
+            tctNo: app.lotDetails.tctNo || "",
+            taxDecNo: app.lotDetails.taxDecNo || "",
+            isRegisteredOwner: Boolean(app.lotDetails.isApplicantOwner ?? app.isOwner),
+            proposedBuildingType: app.lotDetails.proposedBuildingType || app.buildingType || "Residential",
+            lotAreaSqM: Number(app.lotDetails.lotAreaSqM) || 0,
+            locationDescription: app.lotDetails.lotLocationDescription || app.applicant?.address || "",
+          };
+        } else {
+          if (!app.property.tctNo && app.lotDetails.tctNo) app.property.tctNo = app.lotDetails.tctNo;
+          if (!app.property.taxDecNo && app.lotDetails.taxDecNo) app.property.taxDecNo = app.lotDetails.taxDecNo;
+          if (app.property.isRegisteredOwner === undefined && app.lotDetails.isApplicantOwner !== undefined) {
+            app.property.isRegisteredOwner = Boolean(app.lotDetails.isApplicantOwner);
+          }
+          if (!app.property.proposedBuildingType && app.lotDetails.proposedBuildingType) {
+            app.property.proposedBuildingType = app.lotDetails.proposedBuildingType;
+          }
+          if (!app.property.lotAreaSqM && app.lotDetails.lotAreaSqM) {
+            app.property.lotAreaSqM = Number(app.lotDetails.lotAreaSqM);
+          }
+          if (!app.property.locationDescription && (app.lotDetails.lotLocationDescription || app.applicant?.address)) {
+            app.property.locationDescription = app.lotDetails.lotLocationDescription || app.applicant?.address;
+          }
+        }
+      } else if (app.property) {
+        app.lotDetails = {
+          tctNo: app.property.tctNo || "",
+          taxDecNo: app.property.taxDecNo || "",
+          lotOwner: "",
+          isApplicantOwner: Boolean(app.property.isRegisteredOwner),
+          proposedBuildingType: app.property.proposedBuildingType || "Residential",
+          lotAreaSqM: Number(app.property.lotAreaSqM) || 0,
+          lotLocationDescription: app.property.locationDescription || app.applicant?.address || "",
+          zoningClassification: app.zoningClassification || "Urban / Commercial Zone",
+          lat: app.latitude || null,
+          lon: app.longitude || null,
+        };
+      }
       if (!app.dataHash) {
         app.dataHash = computeApplicationHash(app);
         updatedAny = true;
@@ -163,8 +211,9 @@ export function createCitizenApplication(data) {
       estimatedCost,
       applicant: {
         fullName: data.applicant?.fullName || "",
-        contactPhone: data.applicant?.contactPhone || "",
-        contactEmail: data.applicant?.contactEmail || "",
+        contactPhone: data.applicant?.contactPhone || data.applicant?.phone || "",
+        contactEmail: data.applicant?.contactEmail || data.applicant?.email || "",
+        email: data.applicant?.contactEmail || data.applicant?.email || "",
         address: data.applicant?.address || "",
         barangay: data.applicant?.barangay || "Poblacion",
       },
@@ -175,16 +224,24 @@ export function createCitizenApplication(data) {
       municipalDetails,
       zoningClassification,
       lotDetails: {
-        tctNo: data.lotDetails?.tctNo || "",
-        taxDecNo: data.lotDetails?.taxDecNo || "",
+        tctNo: data.lotDetails?.tctNo || data.tctNo || "",
+        taxDecNo: data.lotDetails?.taxDecNo || data.taxDecNo || "",
         lotOwner: data.lotDetails?.lotOwner || "",
         isApplicantOwner: Boolean(data.lotDetails?.isApplicantOwner ?? data.isOwner),
-        proposedBuildingType: data.lotDetails?.proposedBuildingType || data.buildingType || "",
-        lotAreaSqM: Number(data.lotDetails?.lotAreaSqM) || 0,
-        lotLocationDescription: data.lotDetails?.lotLocationDescription || "",
+        proposedBuildingType: data.lotDetails?.proposedBuildingType || data.buildingType || "Residential",
+        lotAreaSqM: Number(data.lotDetails?.lotAreaSqM || data.lotAreaSqM) || 0,
+        lotLocationDescription: data.lotDetails?.lotLocationDescription || data.locationDescription || data.applicant?.address || "",
         zoningClassification,
         lat,
         lon,
+      },
+      property: {
+        tctNo: data.lotDetails?.tctNo || data.tctNo || "",
+        taxDecNo: data.lotDetails?.taxDecNo || data.taxDecNo || "",
+        isRegisteredOwner: Boolean(data.lotDetails?.isApplicantOwner ?? data.isOwner),
+        proposedBuildingType: data.lotDetails?.proposedBuildingType || data.buildingType || "Residential",
+        lotAreaSqM: Number(data.lotDetails?.lotAreaSqM || data.lotAreaSqM) || 0,
+        locationDescription: data.lotDetails?.lotLocationDescription || data.locationDescription || data.applicant?.address || "",
       },
     uploads: {
       tctTaxDec: Array.isArray(data.uploads?.tctTaxDec) ? data.uploads.tctTaxDec : [],
@@ -613,6 +670,110 @@ export function updateCitizenApplication(id, patch) {
     });
   }
 
+  // Handle Official Receipt Picture Review & Verification by Municipal Engineer
+  if (patch.orVerified !== undefined) {
+    const isVerified = Boolean(patch.orVerified);
+    const verifier = patch.orVerifiedBy || "Engr. Mario S. Baldovino (Municipal Engineer)";
+    const verAt = patch.orVerifiedAt || new Date().toISOString();
+    
+    updated.payment = {
+      ...(updated.payment || {}),
+      orVerified: isVerified,
+      orVerifiedAt: verAt,
+      orVerifiedBy: verifier,
+      orVerificationNotes: patch.orVerificationNotes || "",
+      orRejected: false,
+    };
+    updated.orVerified = isVerified;
+
+    if (isVerified) {
+      if (!Array.isArray(updated.remarks)) updated.remarks = [];
+      const orNum = updated.payment?.orNumber || updated.payment?.or_number || updated.or_number || "O.R.";
+      const alreadyVerified = updated.remarks.some((r) => r.actionType === "OR_PICTURE_VERIFIED");
+      if (!alreadyVerified) {
+        const verRemark = {
+          id: `rem-or-ver-${Date.now()}`,
+          fromOffice: "Engineering",
+          author: verifier,
+          message: `Nasuri at napatunayan ang litrato ng Official Receipt (${orNum}). Kumpirmado ang kabayaran mula sa Assessor / Treasury at handa na para sa Site Inspection at 3D Map Pinning.`,
+          createdAt: verAt,
+          actionType: "OR_PICTURE_VERIFIED",
+          requiresAction: false,
+        };
+        updated.remarks.push(verRemark);
+
+        if (isDbConnected()) {
+          query(
+            `INSERT INTO application_remarks (
+              id, application_id, tracking_number, from_office, author, message, requires_action, created_at
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+            ON CONFLICT (id) DO NOTHING`,
+            [
+              verRemark.id,
+              updated.id,
+              updated.trackingNumber,
+              verRemark.fromOffice,
+              verRemark.author,
+              verRemark.message,
+              verRemark.requiresAction,
+              verRemark.createdAt,
+            ]
+          ).catch((err) => console.warn("[PostgreSQL] Insert OR verified remark failed:", err.message));
+        }
+      }
+    }
+  }
+
+  // Handle Official Receipt Picture Rejection (Requesting Citizen Re-upload)
+  if (patch.orRejected) {
+    const rejReason = patch.orRejectReason || "Hindi malinaw o hindi mabasa ang isinumiteng litrato ng Official Receipt.";
+    const rejecter = patch.orRejectedBy || "Engr. Mario S. Baldovino (Municipal Engineer)";
+    const rejAt = patch.orRejectedAt || new Date().toISOString();
+
+    updated.status = "returned";
+    updated.holdReason = rejReason;
+    updated.payment = {
+      ...(updated.payment || {}),
+      orVerified: false,
+      orRejected: true,
+      orRejectReason: rejReason,
+      orRejectedAt: rejAt,
+      orRejectedBy: rejecter,
+    };
+    updated.orVerified = false;
+
+    if (!Array.isArray(updated.remarks)) updated.remarks = [];
+    const rejRemark = {
+      id: `rem-or-rej-${Date.now()}`,
+      fromOffice: "Engineering",
+      author: rejecter,
+      message: `Hindi naaprubahan ang litrato ng Official Receipt: ${rejReason}. Mangyaring mag-upload muli ng malinaw at lehitimong kopya upang makapagpatuloy sa site inspection.`,
+      createdAt: rejAt,
+      actionType: "OR_PICTURE_REJECTED",
+      requiresAction: true,
+    };
+    updated.remarks.push(rejRemark);
+
+    if (isDbConnected()) {
+      query(
+        `INSERT INTO application_remarks (
+          id, application_id, tracking_number, from_office, author, message, requires_action, created_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+        ON CONFLICT (id) DO NOTHING`,
+        [
+          rejRemark.id,
+          updated.id,
+          updated.trackingNumber,
+          rejRemark.fromOffice,
+          rejRemark.author,
+          rejRemark.message,
+          rejRemark.requiresAction,
+          rejRemark.createdAt,
+        ]
+      ).catch((err) => console.warn("[PostgreSQL] Insert OR rejected remark failed:", err.message));
+    }
+  }
+
   // Handle Engineer Approval & Map Pinning
   if (patch.engineerApproved || nextSt === "approved_for_construction") {
     updated.engineerApproved = true;
@@ -622,6 +783,13 @@ export function updateCitizenApplication(id, patch) {
     if (!patch.status || patch.status === "for_engineering_inspection") {
       updated.status = "approved_for_construction";
     }
+    updated.payment = {
+      ...(updated.payment || {}),
+      orVerified: true,
+      orVerifiedAt: updated.engineerApprovedAt,
+      orVerifiedBy: updated.engineerApprovedBy,
+    };
+    updated.orVerified = true;
 
     if (!Array.isArray(updated.remarks)) updated.remarks = [];
     const approvalNote = patch.notes && String(patch.notes).trim()

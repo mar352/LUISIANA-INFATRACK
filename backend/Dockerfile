@@ -6,6 +6,8 @@ COPY package.json package-lock.json* ./
 RUN npm install --omit=dev
 
 COPY src ./src
+COPY sql ./sql
+COPY data ./data
 
 ENV PORT=4000
 ENV UPLOADS_DIR=/app/uploads

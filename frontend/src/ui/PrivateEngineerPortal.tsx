@@ -758,15 +758,31 @@ export function PrivateEngineerPortal({ onBack, session, onOpenLiveMap }: Props)
               </div>
               <div className="pe-siting-metric">
                 <span>{isEn ? "Lot Area:" : "Sukat ng Lupa:"}</span>
-                <strong>{selectedApp.property?.lotAreaSqM ? `${selectedApp.property.lotAreaSqM} sq.m.` : "—"}</strong>
+                <strong>
+                  {(() => {
+                    const a = selectedApp.lotDetails?.lotAreaSqM ?? selectedApp.property?.lotAreaSqM ?? selectedApp.lotAreaSqM;
+                    return a && Number(a) > 0 ? `${a} sq.m.` : "—";
+                  })()}
+                </strong>
               </div>
               <div className="pe-siting-metric">
                 <span>Tax Dec / TCT No.:</span>
-                <strong>{selectedApp.property?.taxDecNo || selectedApp.property?.tctNo || "—"}</strong>
+                <strong>
+                  {selectedApp.lotDetails?.taxDecNo ||
+                    selectedApp.property?.taxDecNo ||
+                    selectedApp.lotDetails?.tctNo ||
+                    selectedApp.property?.tctNo ||
+                    "—"}
+                </strong>
               </div>
               <div className="pe-siting-metric">
                 <span>{isEn ? "Address / Landmark:" : "Address / Palatandaan:"}</span>
-                <strong>{selectedApp.property?.locationDescription || selectedApp.applicant?.address || "Luisiana"}</strong>
+                <strong>
+                  {selectedApp.lotDetails?.lotLocationDescription ||
+                    selectedApp.property?.locationDescription ||
+                    selectedApp.applicant?.address ||
+                    "Luisiana"}
+                </strong>
               </div>
             </div>
 

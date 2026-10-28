@@ -614,6 +614,9 @@ export function NewApplicationModal({
                     onChange={(e) => setContactPhone(e.target.value)}
                     placeholder="0917-123-4567"
                   />
+                  <span style={{ fontSize: "0.78rem", color: "#64748b", marginTop: "4px", display: "block" }}>
+                    Makakatanggap ng libreng SMS text updates (tracking no., inspection, approval) sa numerong ito.
+                  </span>
                 </div>
 
                 {/* Barangay */}

@@ -1,0 +1,1519 @@
+/* ── ZoningOcularInspectionView.css · Professional LGU Dashboard Design System ── */
+
+.zoi-container {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color: var(--apple-text, #1d1d1f);
+  background: transparent;
+}
+
+/* ── 1. HEADER ── */
+.zoi-header {
+  background: var(--apple-surface, #ffffff);
+  border: 1px solid var(--apple-border, rgba(0, 0, 0, 0.08));
+  border-radius: var(--apple-radius-md, 14px);
+  padding: 20px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
+  position: relative;
+}
+
+[data-theme="dark"] .zoi-header,
+.dark .zoi-header {
+  background: var(--apple-surface, #141518);
+  border-color: var(--apple-border, rgba(255, 255, 255, 0.1));
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+.zoi-header-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.zoi-header-tag-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.zoi-step-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(0, 113, 227, 0.08);
+  color: var(--apple-accent, #0071e3);
+  border: 1px solid rgba(0, 113, 227, 0.22);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 6px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+[data-theme="dark"] .zoi-step-badge,
+.dark .zoi-step-badge {
+  background: rgba(41, 151, 255, 0.15);
+  color: var(--apple-accent, #2997ff);
+  border-color: rgba(41, 151, 255, 0.3);
+}
+
+.zoi-badge-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 6px currentColor;
+}
+
+.zoi-tracking-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--apple-surface-secondary, #f1f5f9);
+  border: 1px solid var(--apple-border, rgba(0, 0, 0, 0.1));
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+}
+
+[data-theme="dark"] .zoi-tracking-badge,
+.dark .zoi-tracking-badge {
+  background: #1e222b;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.zoi-tracking-label {
+  color: var(--apple-text-secondary, #64748b);
+  font-weight: 500;
+}
+
+.zoi-tracking-number {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: var(--apple-accent, #0071e3);
+  letter-spacing: 0.04em;
+  font-weight: 700;
+}
+
+[data-theme="dark"] .zoi-tracking-number,
+.dark .zoi-tracking-number {
+  color: #38bdf8;
+}
+
+.zoi-brgy-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(16, 185, 129, 0.08);
+  color: var(--apple-safe, #15803d);
+  border: 1px solid rgba(16, 185, 129, 0.24);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+[data-theme="dark"] .zoi-brgy-pill,
+.dark .zoi-brgy-pill {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.zoi-title {
+  margin: 2px 0 0;
+  font-size: 1.18rem;
+  font-weight: 700;
+  color: var(--apple-text, #1d1d1f);
+  letter-spacing: -0.015em;
+  line-height: 1.35;
+}
+
+[data-theme="dark"] .zoi-title,
+.dark .zoi-title {
+  color: #f8fafc;
+}
+
+.zoi-subtitle {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--apple-text-secondary, #64748b);
+  line-height: 1.5;
+  max-width: 820px;
+}
+
+[data-theme="dark"] .zoi-subtitle,
+.dark .zoi-subtitle {
+  color: #94a3b8;
+}
+
+.zoi-close-btn {
+  background: transparent;
+  border: 1px solid var(--apple-border, rgba(0, 0, 0, 0.1));
+  color: var(--apple-text-secondary, #64748b);
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-size: 14px;
+}
+
+.zoi-close-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--apple-text, #1d1d1f);
+}
+
+[data-theme="dark"] .zoi-close-btn:hover,
+.dark .zoi-close-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+/* ── 2. MAP & GIS LAYERS (Top Half) ── */
+.zoi-top-half {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.zoi-map-card {
+  background: var(--apple-surface, #ffffff);
+  border: 1px solid var(--apple-border, rgba(0, 0, 0, 0.08));
+  border-radius: var(--apple-radius-md, 14px);
+  overflow: hidden;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
+}
+
+[data-theme="dark"] .zoi-map-card,
+.dark .zoi-map-card {
+  background: var(--apple-surface, #141518);
+  border-color: var(--apple-border, rgba(255, 255, 255, 0.1));
+}
+
+.zoi-map-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 18px;
+  background: var(--apple-surface-secondary, #f8fafc);
+  border-bottom: 1px solid var(--apple-border, rgba(0, 0, 0, 0.07));
+}
+
+[data-theme="dark"] .zoi-map-bar,
+.dark .zoi-map-bar {
+  background: #181a20;
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+.zoi-map-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.zoi-map-bar-title {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--apple-text, #1e293b);
+}
+
+[data-theme="dark"] .zoi-map-bar-title,
+.dark .zoi-map-bar-title {
+  color: #f1f5f9;
+}
+
+.zoi-map-bar-right {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.zoi-zone-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-weight: 600;
+}
+
+.zoi-coord-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.76rem;
+  color: var(--apple-text-secondary, #64748b);
+  background: rgba(0, 0, 0, 0.04);
+  padding: 4px 10px;
+  border-radius: 6px;
+}
+
+[data-theme="dark"] .zoi-coord-chip,
+.dark .zoi-coord-chip {
+  background: rgba(255, 255, 255, 0.07);
+  color: #94a3b8;
+}
+
+.zoi-coord-chip strong {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: var(--apple-text, #1e293b);
+}
+
+[data-theme="dark"] .zoi-coord-chip strong,
+.dark .zoi-coord-chip strong {
+  color: #e2e8f0;
+}
+
+.zoi-map-viewport {
+  position: relative;
+  width: 100%;
+  min-height: 380px;
+  background: #0f172a;
+}
+
+/* Map Empty State */
+.zoi-map-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 50px 24px;
+  min-height: 380px;
+  background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+  color: #f8fafc;
+  position: relative;
+  overflow: hidden;
+}
+
+.zoi-map-empty-graphic {
+  position: relative;
+  width: 130px;
+  height: 130px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.zoi-empty-grid-lines {
+  position: absolute;
+  inset: 0;
+  border: 1px dashed rgba(255, 255, 255, 0.15);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 113, 227, 0.1) 0%, transparent 70%);
+  animation: zoiPulse 3s infinite ease-in-out;
+}
+
+@keyframes zoiPulse {
+  0%, 100% { transform: scale(0.96); opacity: 0.6; }
+  50% { transform: scale(1.04); opacity: 1; }
+}
+
+.zoi-empty-pin-marker {
+  position: relative;
+  z-index: 2;
+  filter: drop-shadow(0 4px 12px rgba(0, 113, 227, 0.6));
+}
+
+.zoi-map-empty-title {
+  margin: 0 0 8px;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.zoi-map-empty-desc {
+  margin: 0 0 16px;
+  font-size: 0.85rem;
+  color: #94a3b8;
+  max-width: 480px;
+  line-height: 1.5;
+}
+
+.zoi-map-coords-placeholder {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  color: #cbd5e1;
+}
+
+/* Dual Side Panels Grid */
+.zoi-gis-panels-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 16px;
+}
+
+.zoi-panel-card {
+  background: var(--apple-surface, #ffffff);
+  border: 1px solid var(--apple-border, rgba(0, 0, 0, 0.08));
+  border-radius: var(--apple-radius-md, 14px);
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 14px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
+}
+
+[data-theme="dark"] .zoi-panel-card,
+.dark .zoi-panel-card {
+  background: var(--apple-surface, #141518);
+  border-color: var(--apple-border, rgba(255, 255, 255, 0.1));
+}
+
+.zoi-panel-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.zoi-panel-header-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.zoi-panel-header-icon.is-hazard {
+  background: rgba(217, 119, 6, 0.12);
+}
+
+.zoi-panel-header-icon.is-clup {
+  background: rgba(37, 99, 235, 0.12);
+}
+
+.zoi-panel-title {
+  margin: 0;
+  font-size: 0.96rem;
+  font-weight: 700;
+  color: var(--apple-text, #1e293b);
+  letter-spacing: -0.01em;
+}
+
+[data-theme="dark"] .zoi-panel-title,
+.dark .zoi-panel-title {
+  color: #f1f5f9;
+}
+
+.zoi-panel-meta {
+  font-size: 0.74rem;
+  color: var(--apple-text-secondary, #64748b);
+}
+
+[data-theme="dark"] .zoi-panel-meta,
+.dark .zoi-panel-meta {
+  color: #94a3b8;
+}
+
+/* Hazard Table */
+.zoi-hazard-table {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  background: var(--apple-surface-secondary, #f8fafc);
+  border: 1px solid var(--apple-border, rgba(0, 0, 0, 0.06));
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+[data-theme="dark"] .zoi-hazard-table,
+.dark .zoi-hazard-table {
+  background: #181a20;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.zoi-hazard-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.81rem;
+}
+
+.zoi-hazard-key {
+  color: var(--apple-text-secondary, #64748b);
+  font-weight: 500;
+}
+
+[data-theme="dark"] .zoi-hazard-key,
+.dark .zoi-hazard-key {
+  color: #94a3b8;
+}
+
+.zoi-hazard-val {
+  font-weight: 600;
+  color: var(--apple-text, #1e293b);
+  text-align: right;
+}
+
+[data-theme="dark"] .zoi-hazard-val,
+.dark .zoi-hazard-val {
+  color: #e2e8f0;
+}
+
+.zoi-hazard-val.is-accent {
+  color: var(--apple-accent, #0071e3);
+}
+
+.zoi-pulse {
+  color: var(--apple-accent, #0071e3);
+  font-style: italic;
+}
+
+.zoi-placeholder-text {
+  color: var(--apple-text-secondary, #94a3b8);
+  font-style: italic;
+  font-weight: normal;
+}
+
+.zoi-pdf-btn {
+  background: transparent;
+  border: 1px solid var(--apple-border, rgba(0, 0, 0, 0.12));
+  color: var(--apple-accent, #0071e3);
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  width: 100%;
+}
+
+.zoi-pdf-btn:hover {
+  background: rgba(0, 113, 227, 0.06);
+  border-color: var(--apple-accent, #0071e3);
+}
+
+[data-theme="dark"] .zoi-pdf-btn {
+  border-color: rgba(255, 255, 255, 0.14);
+  color: #38bdf8;
+}
+
+[data-theme="dark"] .zoi-pdf-btn:hover {
+  background: rgba(56, 189, 248, 0.1);
+  border-color: #38bdf8;
+}
+
+/* CLUP List */
+.zoi-clup-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--apple-surface-secondary, #f8fafc);
+  border: 1px solid var(--apple-border, rgba(0, 0, 0, 0.06));
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+[data-theme="dark"] .zoi-clup-list,
+.dark .zoi-clup-list {
+  background: #181a20;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.zoi-clup-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.81rem;
+}
+
+.zoi-clup-item.full {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  border-top: 1px solid var(--apple-border, rgba(0, 0, 0, 0.06));
+  padding-top: 8px;
+}
+
+[data-theme="dark"] .zoi-clup-item.full {
+  border-top-color: rgba(255, 255, 255, 0.07);
+}
+
+.zoi-clup-label {
+  color: var(--apple-text-secondary, #64748b);
+  font-weight: 500;
+}
+
+[data-theme="dark"] .zoi-clup-label,
+.dark .zoi-clup-label {
+  color: #94a3b8;
+}
+
+.zoi-clup-value {
+  color: var(--apple-text, #1e293b);
+  font-weight: 600;
+}
+
+[data-theme="dark"] .zoi-clup-value,
+.dark .zoi-clup-value {
+  color: #e2e8f0;
+}
+
+.zoi-clup-badge {
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+}
+
+.zoi-conformity-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(16, 185, 129, 0.1);
+  color: #15803d;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 6px;
+}
+
+[data-theme="dark"] .zoi-conformity-pill,
+.dark .zoi-conformity-pill {
+  background: rgba(16, 185, 129, 0.18);
+  color: #34d399;
+}
+
+.zoi-clup-desc {
+  margin: 0;
+  font-size: 0.77rem;
+  color: var(--apple-text-secondary, #64748b);
+  line-height: 1.45;
+}
+
+[data-theme="dark"] .zoi-clup-desc,
+.dark .zoi-clup-desc {
+  color: #94a3b8;
+}
+
+/* ── 3. OCULAR INSPECTION FORM (Bottom Half) ── */
+.zoi-bottom-half {
+  display: flex;
+  flex-direction: column;
+}
+
+.zoi-form-card {
+  background: var(--apple-surface, #ffffff);
+  border: 1px solid var(--apple-border, rgba(0, 0, 0, 0.08));
+  border-radius: var(--apple-radius-md, 14px);
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
+}
+
+[data-theme="dark"] .zoi-form-card,
+.dark .zoi-form-card {
+  background: var(--apple-surface, #141518);
+  border-color: var(--apple-border, rgba(255, 255, 255, 0.1));
+}
+
+.zoi-form-card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  border-bottom: 1px solid var(--apple-border, rgba(0, 0, 0, 0.07));
+  padding-bottom: 16px;
+}
+
+[data-theme="dark"] .zoi-form-card-header {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+.zoi-card-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: rgba(0, 113, 227, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.zoi-card-title {
+  margin: 0 0 3px;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--apple-text, #1e293b);
+  letter-spacing: -0.01em;
+}
+
+[data-theme="dark"] .zoi-card-title {
+  color: #f8fafc;
+}
+
+.zoi-card-subtitle {
+  margin: 0;
+  font-size: 0.83rem;
+  color: var(--apple-text-secondary, #64748b);
+  line-height: 1.45;
+}
+
+[data-theme="dark"] .zoi-card-subtitle {
+  color: #94a3b8;
+}
+
+/* Form Fields Grid */
+.zoi-form-fields-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 18px;
+}
+
+.zoi-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.zoi-field-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--apple-text, #1e293b);
+}
+
+[data-theme="dark"] .zoi-field-label {
+  color: #e2e8f0;
+}
+
+.zoi-readonly-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.68rem;
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--apple-text-secondary, #64748b);
+  padding: 2px 7px;
+  border-radius: 4px;
+  margin-left: auto;
+  font-weight: 500;
+}
+
+[data-theme="dark"] .zoi-readonly-badge {
+  background: rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+}
+
+.zoi-input-date,
+.zoi-input-readonly {
+  height: 42px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid var(--apple-border, rgba(0, 0, 0, 0.12));
+  background: var(--apple-surface, #ffffff);
+  color: var(--apple-text, #1e293b);
+  font-size: 0.9rem;
+  box-sizing: border-box;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.zoi-input-date:focus {
+  outline: none;
+  border-color: var(--apple-accent, #0071e3);
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.15);
+}
+
+.zoi-input-readonly {
+  background: var(--apple-surface-secondary, #f8fafc);
+  color: var(--apple-text-secondary, #475569);
+  cursor: not-allowed;
+  font-weight: 500;
+}
+
+[data-theme="dark"] .zoi-input-date {
+  background: #181a20;
+  border-color: rgba(255, 255, 255, 0.14);
+  color: #f1f5f9;
+}
+
+[data-theme="dark"] .zoi-input-readonly {
+  background: #1e222b;
+  border-color: rgba(255, 255, 255, 0.09);
+  color: #94a3b8;
+}
+
+.zoi-field-hint {
+  font-size: 0.74rem;
+  color: var(--apple-text-secondary, #64748b);
+}
+
+[data-theme="dark"] .zoi-field-hint {
+  color: #94a3b8;
+}
+
+/* Setbacks Section */
+.zoi-setbacks-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.zoi-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.zoi-counter-pill {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--apple-accent, #0071e3);
+  background: rgba(0, 113, 227, 0.08);
+  border: 1px solid rgba(0, 113, 227, 0.2);
+  padding: 3px 9px;
+  border-radius: 6px;
+}
+
+[data-theme="dark"] .zoi-counter-pill {
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  border-color: rgba(56, 189, 248, 0.25);
+}
+
+.zoi-section-desc {
+  margin: -4px 0 6px;
+  font-size: 0.8rem;
+  color: var(--apple-text-secondary, #64748b);
+  line-height: 1.45;
+}
+
+[data-theme="dark"] .zoi-section-desc {
+  color: #94a3b8;
+}
+
+.zoi-checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.zoi-checkbox-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: var(--apple-surface-secondary, #f8fafc);
+  border: 1.5px solid var(--apple-border, rgba(0, 0, 0, 0.08));
+  border-radius: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  user-select: none;
+}
+
+.zoi-checkbox-card:hover {
+  border-color: rgba(0, 113, 227, 0.35);
+  background: rgba(0, 113, 227, 0.03);
+}
+
+.zoi-checkbox-card.is-checked {
+  background: rgba(21, 128, 61, 0.05);
+  border-color: var(--apple-safe, #15803d);
+}
+
+[data-theme="dark"] .zoi-checkbox-card {
+  background: #181a20;
+  border-color: rgba(255, 255, 255, 0.09);
+}
+
+[data-theme="dark"] .zoi-checkbox-card:hover {
+  background: rgba(41, 151, 255, 0.06);
+  border-color: rgba(56, 189, 248, 0.4);
+}
+
+[data-theme="dark"] .zoi-checkbox-card.is-checked {
+  background: rgba(16, 185, 129, 0.1);
+  border-color: #10b981;
+}
+
+.zoi-checkbox-card input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.zoi-custom-check {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  border: 1.5px solid var(--apple-border-strong, rgba(0, 0, 0, 0.22));
+  background: var(--apple-surface, #ffffff);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+  transition: all 0.15s ease;
+}
+
+[data-theme="dark"] .zoi-custom-check {
+  border-color: rgba(255, 255, 255, 0.25);
+  background: #242933;
+}
+
+.zoi-checkbox-card.is-checked .zoi-custom-check {
+  background: var(--apple-safe, #15803d);
+  border-color: var(--apple-safe, #15803d);
+}
+
+.zoi-cb-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.zoi-cb-title {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--apple-text, #1e293b);
+}
+
+[data-theme="dark"] .zoi-cb-title {
+  color: #f1f5f9;
+}
+
+.zoi-cb-desc {
+  font-size: 0.76rem;
+  color: var(--apple-text-secondary, #64748b);
+  line-height: 1.4;
+}
+
+[data-theme="dark"] .zoi-cb-desc {
+  color: #94a3b8;
+}
+
+/* Remarks Section */
+.zoi-remarks-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.zoi-remarks-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.zoi-template-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.zoi-chips-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--apple-text-secondary, #64748b);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.zoi-chip {
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.zoi-chip.is-pass {
+  background: rgba(16, 185, 129, 0.1);
+  color: #15803d;
+  border-color: rgba(16, 185, 129, 0.25);
+}
+
+.zoi-chip.is-pass:hover {
+  background: rgba(16, 185, 129, 0.18);
+}
+
+.zoi-chip.is-cond {
+  background: rgba(217, 119, 6, 0.1);
+  color: #b45309;
+  border-color: rgba(217, 119, 6, 0.25);
+}
+
+.zoi-chip.is-cond:hover {
+  background: rgba(217, 119, 6, 0.18);
+}
+
+.zoi-chip.is-fail {
+  background: rgba(220, 38, 38, 0.08);
+  color: #dc2626;
+  border-color: rgba(220, 38, 38, 0.2);
+}
+
+.zoi-chip.is-fail:hover {
+  background: rgba(220, 38, 38, 0.16);
+}
+
+.zoi-textarea-remarks {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--apple-border, rgba(0, 0, 0, 0.12));
+  background: var(--apple-surface, #ffffff);
+  color: var(--apple-text, #1e293b);
+  font-size: 0.88rem;
+  line-height: 1.5;
+  box-sizing: border-box;
+  font-family: inherit;
+  resize: vertical;
+  transition: all 0.15s ease;
+}
+
+.zoi-textarea-remarks:focus {
+  outline: none;
+  border-color: var(--apple-accent, #0071e3);
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.15);
+}
+
+[data-theme="dark"] .zoi-textarea-remarks {
+  background: #181a20;
+  border-color: rgba(255, 255, 255, 0.14);
+  color: #f1f5f9;
+}
+
+/* Photos Section */
+.zoi-photos-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.zoi-dropzone {
+  border: 2px dashed var(--apple-border-strong, rgba(0, 0, 0, 0.18));
+  background: var(--apple-surface-secondary, #f8fafc);
+  border-radius: 12px;
+  padding: 32px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.zoi-dropzone:hover,
+.zoi-dropzone.is-dragover {
+  border-color: var(--apple-accent, #0071e3);
+  background: rgba(0, 113, 227, 0.04);
+}
+
+[data-theme="dark"] .zoi-dropzone {
+  background: #181a20;
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+[data-theme="dark"] .zoi-dropzone:hover,
+[data-theme="dark"] .zoi-dropzone.is-dragover {
+  border-color: #38bdf8;
+  background: rgba(56, 189, 248, 0.06);
+}
+
+.zoi-dropzone-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(0, 113, 227, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.zoi-dropzone-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.9rem;
+  color: var(--apple-text, #1e293b);
+}
+
+[data-theme="dark"] .zoi-dropzone-text {
+  color: #f1f5f9;
+}
+
+.zoi-dropzone-text strong {
+  font-weight: 700;
+}
+
+.zoi-dropzone-text span {
+  font-size: 0.8rem;
+  color: var(--apple-text-secondary, #64748b);
+}
+
+[data-theme="dark"] .zoi-dropzone-text span {
+  color: #94a3b8;
+}
+
+.zoi-dropzone-formats {
+  font-size: 0.73rem;
+  color: var(--apple-text-secondary, #94a3b8);
+}
+
+/* Uploaded Photos Grid */
+.zoi-photos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.zoi-photo-card {
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--apple-border, rgba(0, 0, 0, 0.1));
+  background: var(--apple-surface, #ffffff);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+}
+
+[data-theme="dark"] .zoi-photo-card {
+  background: #1e222b;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.zoi-photo-thumb {
+  width: 100%;
+  height: 96px;
+  object-fit: cover;
+  display: block;
+  background: #0f172a;
+}
+
+.zoi-photo-info {
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.zoi-photo-name {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--apple-text, #1e293b);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+[data-theme="dark"] .zoi-photo-name {
+  color: #f1f5f9;
+}
+
+.zoi-photo-size {
+  font-size: 0.68rem;
+  color: var(--apple-text-secondary, #64748b);
+}
+
+.zoi-photo-delete-btn {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.65);
+  color: #ffffff;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.zoi-photo-delete-btn:hover {
+  background: #dc2626;
+  transform: scale(1.08);
+}
+
+.zoi-photos-empty-hint {
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--apple-surface-secondary, #f8fafc);
+  font-size: 0.78rem;
+  color: var(--apple-text-secondary, #94a3b8);
+  font-style: italic;
+  text-align: center;
+}
+
+[data-theme="dark"] .zoi-photos-empty-hint {
+  background: #181a20;
+}
+
+/* ── 4. ACTION FOOTER (Sticky) ── */
+.zoi-sticky-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 40;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-top: 1px solid var(--apple-border, rgba(0, 0, 0, 0.1));
+  box-shadow: 0 -4px 18px rgba(0, 0, 0, 0.06);
+  padding: 14px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  border-radius: 0 0 var(--apple-radius-md, 14px) var(--apple-radius-md, 14px);
+  margin-top: 6px;
+}
+
+[data-theme="dark"] .zoi-sticky-footer,
+.dark .zoi-sticky-footer {
+  background: rgba(20, 21, 24, 0.92);
+  border-top-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 -4px 22px rgba(0, 0, 0, 0.45);
+}
+
+.zoi-footer-left {
+  display: flex;
+  align-items: center;
+}
+
+.zoi-footer-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.82rem;
+  color: var(--apple-text-secondary, #64748b);
+}
+
+[data-theme="dark"] .zoi-footer-summary {
+  color: #94a3b8;
+}
+
+.zoi-summary-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.zoi-summary-item strong {
+  color: var(--apple-text, #1e293b);
+}
+
+[data-theme="dark"] .zoi-summary-item strong {
+  color: #f1f5f9;
+}
+
+.zoi-summary-dot {
+  color: rgba(0, 0, 0, 0.2);
+}
+
+[data-theme="dark"] .zoi-summary-dot {
+  color: rgba(255, 255, 255, 0.2);
+}
+
+.zoi-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+/* Button 1: Reject Application (Outline / Red color) */
+.zoi-btn-reject {
+  height: 42px;
+  padding: 0 18px;
+  border-radius: 8px;
+  border: 1.5px solid #ef4444;
+  background: transparent;
+  color: #dc2626;
+  font-size: 0.88rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.zoi-btn-reject:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: #dc2626;
+  color: #b91c1c;
+  transform: translateY(-1px);
+}
+
+[data-theme="dark"] .zoi-btn-reject {
+  border-color: #f87171;
+  color: #f87171;
+}
+
+[data-theme="dark"] .zoi-btn-reject:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.15);
+  border-color: #ef4444;
+  color: #fca5a5;
+}
+
+/* Button 2: Approve Zoning Clearance (Solid Primary / Green color) */
+.zoi-btn-approve {
+  height: 42px;
+  padding: 0 22px;
+  border-radius: 8px;
+  border: 1px solid #16a34a;
+  background: #16a34a;
+  color: #ffffff;
+  font-size: 0.9rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(22, 163, 74, 0.35);
+  transition: all 0.18s ease;
+}
+
+.zoi-btn-approve:hover:not(:disabled) {
+  background: #15803d;
+  box-shadow: 0 4px 14px rgba(21, 128, 61, 0.45);
+  transform: translateY(-1px);
+}
+
+.zoi-btn-approve:disabled,
+.zoi-btn-approve.is-disabled,
+.zoi-btn-reject:disabled {
+  opacity: 0.52;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.zoi-btn-approve:disabled:hover,
+.zoi-btn-approve.is-disabled:hover {
+  transform: none;
+  background: #16a34a;
+}
+
+/* Photo Requirement Badge & Banners */
+.zoi-field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.zoi-field-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+}
+
+.zoi-field-badge.is-required {
+  background: rgba(220, 38, 38, 0.1);
+  color: #dc2626;
+  border: 1px solid rgba(220, 38, 38, 0.25);
+}
+
+[data-theme="dark"] .zoi-field-badge.is-required {
+  background: rgba(239, 68, 68, 0.18);
+  color: #f87171;
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.zoi-field-badge.is-satisfied {
+  background: rgba(22, 163, 74, 0.1);
+  color: #15803d;
+  border: 1px solid rgba(22, 163, 74, 0.25);
+}
+
+[data-theme="dark"] .zoi-field-badge.is-satisfied {
+  background: rgba(34, 197, 94, 0.15);
+  color: #4ade80;
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+.zoi-photo-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(220, 38, 38, 0.08);
+  border: 1.5px solid rgba(220, 38, 38, 0.35);
+  border-radius: 8px;
+  color: #dc2626;
+  font-size: 0.82rem;
+  font-weight: 600;
+  margin-top: 8px;
+  animation: zoiShake 0.35s ease;
+}
+
+[data-theme="dark"] .zoi-photo-error-banner {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+@keyframes zoiShake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-5px); }
+  40% { transform: translateX(5px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(3px); }
+}
+
+.zoi-photos-required-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  background: rgba(217, 119, 6, 0.08);
+  border: 1px dashed rgba(217, 119, 6, 0.35);
+  border-radius: 8px;
+  text-align: left;
+}
+
+[data-theme="dark"] .zoi-photos-required-alert {
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+.zoi-photos-required-alert .zoi-alert-icon-wrap {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.zoi-photos-required-alert .zoi-alert-content {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.82rem;
+  color: #92400e;
+}
+
+[data-theme="dark"] .zoi-photos-required-alert .zoi-alert-content {
+  color: #fcd34d;
+}
+
+.zoi-photos-required-alert .zoi-alert-content strong {
+  font-weight: 700;
+}
+
+.zoi-photos-required-alert .zoi-alert-content span {
+  font-size: 0.77rem;
+  line-height: 1.4;
+  opacity: 0.95;
+}
+
+.zoi-footer-missing-photo-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(220, 38, 38, 0.1);
+  border: 1px solid rgba(220, 38, 38, 0.25);
+  color: #dc2626;
+  font-size: 0.73rem;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 6px;
+  margin-left: 6px;
+}
+
+[data-theme="dark"] .zoi-footer-missing-photo-tag {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #fca5a5;
+}
+
+.zoi-summary-item.is-missing {
+  color: #dc2626;
+}
+
+[data-theme="dark"] .zoi-summary-item.is-missing {
+  color: #fca5a5;
+}
+
+.zoi-summary-item.is-missing strong {
+  color: #dc2626;
+}
+
+[data-theme="dark"] .zoi-summary-item.is-missing strong {
+  color: #fca5a5;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .zoi-header {
+    padding: 16px;
+  }
+  .zoi-title {
+    font-size: 1.05rem;
+  }
+  .zoi-gis-panels-grid {
+    grid-template-columns: 1fr;
+  }
+  .zoi-checkbox-grid {
+    grid-template-columns: 1fr;
+  }
+  .zoi-sticky-footer {
+    padding: 12px 16px;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .zoi-footer-actions {
+    margin-left: 0;
+    width: 100%;
+    justify-content: stretch;
+  }
+  .zoi-footer-actions button {
+    flex: 1;
+    justify-content: center;
+  }
+}

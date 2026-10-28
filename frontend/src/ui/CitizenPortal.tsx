@@ -13,7 +13,7 @@ import NewApplicationPage from "./NewApplicationPage";
 import { ThemeToggle } from "./ThemeToggle";
 import "./CitizenPortal.css";
 
-type PortalTab = "map" | "apply" | "projects" | "report" | "feedback" | "suggest" | "transparency";
+type PortalTab = "map" | "apply" | "projects" | "report" | "feedback" | "suggest" | "transparency" | "transparency_map";
 
 type Props = {
   onBack: () => void;
@@ -21,6 +21,8 @@ type Props = {
   onOpenLiveMap: () => void;
   /** Open the dedicated full-screen Online Application page */
   onOpenOnlineServices?: () => void;
+  /** Open the dedicated 2D Map Public Transparency Portal */
+  onOpenTransparency?: () => void;
 };
 
 const ISSUE_CATEGORIES = [
@@ -78,7 +80,7 @@ class PortalErrorBoundary extends Component<
   }
 }
 
-export default function CitizenPortal({ onBack, onOpenLiveMap, onOpenOnlineServices }: Props) {
+export default function CitizenPortal({ onBack, onOpenLiveMap, onOpenOnlineServices, onOpenTransparency }: Props) {
   const [tab, setTab] = useState<PortalTab>("projects");
   const [projects, setProjects] = useState<PublicProject[]>([]);
   const [stats, setStats] = useState<EngagementPublicStats | null>(null);
@@ -224,11 +226,12 @@ export default function CitizenPortal({ onBack, onOpenLiveMap, onOpenOnlineServi
         {(
           [
             ["apply", "Mag-apply Online (Zoning & Permits)"],
+            ["transparency_map", "2D Transparency Map & Tracker"],
             ["projects", "Projects"],
             ["report", "Report issue"],
             ["feedback", "Feedback"],
             ["suggest", "Suggest"],
-            ["transparency", "Transparency"],
+            ["transparency", "Analytics & KPIs"],
             ["map", "Live Map"],
           ] as const
         ).map(([id, label]) => (
@@ -237,6 +240,10 @@ export default function CitizenPortal({ onBack, onOpenLiveMap, onOpenOnlineServi
             type="button"
             className={`cp-tab${tab === id ? " active" : ""}`}
             onClick={() => {
+              if (id === "transparency_map" && onOpenTransparency) {
+                onOpenTransparency();
+                return;
+              }
               if (id === "map") {
                 onOpenLiveMap?.();
                 return;
@@ -260,7 +267,14 @@ export default function CitizenPortal({ onBack, onOpenLiveMap, onOpenOnlineServi
           {tab === "apply" && (
             <NewApplicationPage
               onBack={() => setTab("projects")}
-              onCreated={() => setTab("projects")}
+              onCreated={() => {
+                // Keep applicant on Step 4 to view and copy their tracking number
+              }}
+              onTrackApplication={(trackNo) => {
+                if (typeof window !== "undefined") {
+                  window.location.href = `/track?track=${encodeURIComponent(trackNo)}`;
+                }
+              }}
               onViewOnMap={onOpenLiveMap}
             />
           )}

@@ -10,7 +10,7 @@ import {
 } from "../lib/api";
 import { BARANGAY_LIST } from "../types";
 import { ThemeToggle } from "./ThemeToggle";
-import ZoningReviewMapView from "./ZoningReviewMapView";
+import ZoningReviewMapView, { ZoningOcularInspectionView } from "./ZoningReviewMapView";
 import { getClupZone } from "../lib/clup-zones";
 import { useSystemConfig } from "../services/systemConfig";
 import SideNavbar from "./SideNavbar";
@@ -1422,7 +1422,11 @@ export function ZoningPermitsPage({
     }
   };
 
-  const handleUpdateStatus = async (appId: string, nextStatus: string) => {
+  const handleUpdateStatus = async (
+    appId: string,
+    nextStatus: string,
+    options?: { closeModal?: boolean }
+  ) => {
     setUpdating(true);
     try {
       const res = await patchCitizenApplication(appId, {
@@ -1433,7 +1437,11 @@ export function ZoningPermitsPage({
         setApplications((prev) =>
           prev.map((a) => (a.id === appId ? res.application : a))
         );
-        setSelectedApp(res.application);
+        if (options?.closeModal) {
+          setSelectedApp(null);
+        } else {
+          setSelectedApp(res.application);
+        }
         if (nextStatus === "ocular_inspection" || nextStatus === "for_ocular_inspection") {
           setModalTab("map");
         }
@@ -1832,7 +1840,8 @@ export function ZoningPermitsPage({
   const filteredApps = applications.filter((app) => {
     if (filterBarangay && app.applicant?.barangay !== filterBarangay) return false;
     if (filterStatus && app.status !== filterStatus) return false;
-    if (filterType && app.property?.proposedBuildingType !== filterType) return false;
+    const bType = app.lotDetails?.proposedBuildingType || app.property?.proposedBuildingType || app.buildingType;
+    if (filterType && bType !== filterType) return false;
     if (filterDocs) {
       const { isComplete } = getCompletenessSummary(app.uploads);
       if (filterDocs === "complete" && !isComplete) return false;
@@ -1842,9 +1851,11 @@ export function ZoningPermitsPage({
       const q = search.toLowerCase();
       const matchRef = app.trackingNumber?.toLowerCase().includes(q);
       const matchName = app.applicant?.fullName?.toLowerCase().includes(q);
-      const matchPhone = app.applicant?.contactPhone?.toLowerCase().includes(q);
-      const matchTd = app.property?.taxDecNo?.toLowerCase().includes(q);
-      if (!matchRef && !matchName && !matchPhone && !matchTd) return false;
+      const matchPhone = (app.applicant?.contactPhone || app.applicant?.phone)?.toLowerCase().includes(q);
+      const matchEmail = (app.applicant?.contactEmail || app.applicant?.email)?.toLowerCase().includes(q);
+      const matchTd = (app.lotDetails?.taxDecNo || app.property?.taxDecNo || app.taxDecNo)?.toLowerCase().includes(q);
+      const matchTct = (app.lotDetails?.tctNo || app.property?.tctNo || app.tctNo)?.toLowerCase().includes(q);
+      if (!matchRef && !matchName && !matchPhone && !matchEmail && !matchTd && !matchTct) return false;
     }
     return true;
   });
@@ -2124,18 +2135,18 @@ export function ZoningPermitsPage({
                       <td className="zp-col-applicant">
                         <div className="zp-applicant-name">{app.applicant?.fullName || "—"}</div>
                         <div className="zp-applicant-sub">
-                          {app.applicant?.contactPhone || app.applicant?.email || "—"}
+                          {app.applicant?.contactPhone || app.applicant?.contactEmail || app.applicant?.email || "—"}
                         </div>
                       </td>
                       <td className="zp-col-location">
                         <div className="zp-barangay-tag">{app.applicant?.barangay}</div>
                         <div className="zp-location-sub">
-                          {app.property?.locationDescription || app.applicant?.address || "—"}
+                          {app.lotDetails?.lotLocationDescription || app.property?.locationDescription || app.applicant?.address || "—"}
                         </div>
                       </td>
                       <td className="zp-col-type">
                         <span className="zp-building-type">
-                          {app.property?.proposedBuildingType || "Residential"}
+                          {app.lotDetails?.proposedBuildingType || app.property?.proposedBuildingType || app.buildingType || "Residential"}
                         </span>
                       </td>
                       <td className="zp-col-docs">
@@ -2339,11 +2350,31 @@ export function ZoningPermitsPage({
                 </div>
                 <div className="zp-detail-item">
                   <label>Contact Number (Cellphone)</label>
-                  <p>{selectedApp.applicant?.contactPhone || "—"}</p>
+                  <p style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "6px" }}>
+                    <span>{selectedApp.applicant?.contactPhone || selectedApp.applicant?.phone || "—"}</span>
+                    {(selectedApp.applicant?.contactPhone || selectedApp.applicant?.phone) && (
+                      <span
+                        style={{
+                          fontSize: "0.72rem",
+                          padding: "2px 6px",
+                          borderRadius: "4px",
+                          backgroundColor: "#dcfce7",
+                          color: "#166534",
+                          fontWeight: 600,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "3px",
+                        }}
+                        title="Naka-link para sa awtomatikong SMS updates sa bawat aksyon"
+                      >
+                        ✓ SMS Active
+                      </span>
+                    )}
+                  </p>
                 </div>
                 <div className="zp-detail-item">
                   <label>Email Address</label>
-                  <p>{selectedApp.applicant?.email || "—"}</p>
+                  <p>{selectedApp.applicant?.contactEmail || selectedApp.applicant?.email || "—"}</p>
                 </div>
                 <div className="zp-detail-item">
                   <label>Barangay</label>
@@ -2379,27 +2410,36 @@ export function ZoningPermitsPage({
                 </div>
                 <div className="zp-detail-item">
                   <label>Uri ng Ipanapanukalang Gusali</label>
-                  <p>{selectedApp.property?.proposedBuildingType || "Residential"}</p>
+                  <p>
+                    {selectedApp.lotDetails?.proposedBuildingType ||
+                      selectedApp.property?.proposedBuildingType ||
+                      selectedApp.buildingType ||
+                      "Residential"}
+                  </p>
                 </div>
                 <div className="zp-detail-item">
                   <label>Sukat ng Lupa / Floor Area</label>
                   <p>
-                    {selectedApp.property?.lotAreaSqM
-                      ? `${selectedApp.property.lotAreaSqM} sq.m.`
-                      : "—"}
+                    {(() => {
+                      const area =
+                        selectedApp.lotDetails?.lotAreaSqM ??
+                        selectedApp.property?.lotAreaSqM ??
+                        selectedApp.lotAreaSqM;
+                      return area && Number(area) > 0 ? `${area} sq.m.` : "—";
+                    })()}
                   </p>
                 </div>
                 <div className="zp-detail-item">
                   <label>Tax Declaration / TCT No.</label>
                   <p>
-                    TD: <strong>{selectedApp.property?.taxDecNo || "—"}</strong> | TCT:{" "}
-                    <strong>{selectedApp.property?.tctNo || "—"}</strong>
+                    TD: <strong>{selectedApp.lotDetails?.taxDecNo || selectedApp.property?.taxDecNo || selectedApp.taxDecNo || "—"}</strong> | TCT:{" "}
+                    <strong>{selectedApp.lotDetails?.tctNo || selectedApp.property?.tctNo || selectedApp.tctNo || "—"}</strong>
                   </p>
                 </div>
                 <div className="zp-detail-item">
                   <label>Pagmamay-ari ng Lupa</label>
                   <p>
-                    {selectedApp.property?.isRegisteredOwner
+                    {(selectedApp.lotDetails?.isApplicantOwner ?? selectedApp.isOwner ?? selectedApp.property?.isRegisteredOwner)
                       ? "Rehistradong May-ari"
                       : "May Consent / Deed of Sale"}
                   </p>
@@ -2407,7 +2447,8 @@ export function ZoningPermitsPage({
                 <div className="zp-detail-item full">
                   <label>Deskripsyon ng Lokasyon / Landmark</label>
                   <p>
-                    {selectedApp.property?.locationDescription ||
+                    {selectedApp.lotDetails?.lotLocationDescription ||
+                      selectedApp.property?.locationDescription ||
                       selectedApp.applicant?.address ||
                       "—"}
                   </p>
@@ -2989,25 +3030,27 @@ export function ZoningPermitsPage({
             </div>
             ) : (
               <div className="zp-modal-map-wrap">
-                <ZoningReviewMapView
+                <ZoningOcularInspectionView
                   application={selectedApp}
-                  onUpdateApplication={(updated) => {
-                    setApplications((prev) =>
-                      prev.map((a) => (a.id === updated.id ? updated : a))
-                    );
-                    setSelectedApp(updated);
-                    setNotification(
-                      `Matagumpay na nai-save ang na-verify na lokasyon ng lote para sa ${updated.trackingNumber}`
-                    );
-                    setTimeout(() => setNotification(null), 4000);
+                  officerName={session?.name || session?.username || "Edward B. Romulo, EnP. (Zoning Officer)"}
+                  submitting={updating}
+                  onClose={() => setSelectedApp(null)}
+                  onApprove={async (payload) => {
+                    if (!payload.photos || payload.photos.length === 0) {
+                      alert("Hindi maaaring ma-approve: Kinakailangang mag-upload ng kahit isang (1) actual site photo mula sa ocular inspection.");
+                      return;
+                    }
+                    if (payload.remarks) {
+                      handleSendNotes(payload.remarks);
+                    }
+                    await handleUpdateStatus(selectedApp.id, "approved_for_payment", { closeModal: true });
                   }}
-                  onEndorseInspection={handleEndorseInspectionFromMap}
-                  onApprove={(appId) => handleUpdateStatus(appId, "approved_for_payment")}
-                  onDeny={(appId) => handleUpdateStatus(appId, "denied")}
-                  onSendNotes={handleSendNotes}
-                  reviewerNotes={reviewerNotes}
-                  onChangeReviewerNotes={setReviewerNotes}
-                  updating={updating}
+                  onReject={async (payload) => {
+                    if (payload.remarks) {
+                      handleSendNotes(payload.remarks);
+                    }
+                    await handleUpdateStatus(selectedApp.id, "denied", { closeModal: true });
+                  }}
                 />
               </div>
             )}

@@ -1,5 +1,1264 @@
 [
   {
+    "id": "app-1793169214809-473411",
+    "trackingNumber": "LUIS-APP-2026-7652",
+    "serviceType": "Zoning Clearance",
+    "projectTitle": "Residential House Construction (Test)",
+    "category": "private_infrastructure",
+    "estimatedCost": 0,
+    "applicant": {
+      "fullName": "Juan Dela Cruz",
+      "contactPhone": "09618907215",
+      "contactEmail": "juan.delacruz@example.com",
+      "email": "juan.delacruz@example.com",
+      "address": "Brgy. San Salvador, Luisiana, Laguna",
+      "barangay": "San Salvador"
+    },
+    "latitude": null,
+    "longitude": null,
+    "geoRisk": {},
+    "agriculturalDetails": {
+      "farmType": "",
+      "headCapacity": 0,
+      "wasteManagement": "",
+      "bufferComplianceConfirmed": false
+    },
+    "municipalDetails": {
+      "implementingDepartment": "",
+      "fundingSource": "",
+      "cipCode": "",
+      "targetBeneficiaries": ""
+    },
+    "zoningClassification": "Rural Zone",
+    "lotDetails": {
+      "tctNo": "TCT-998811-TEST",
+      "taxDecNo": "TD-2026-0012",
+      "lotOwner": "",
+      "isApplicantOwner": false,
+      "proposedBuildingType": "Residential",
+      "lotAreaSqM": 180,
+      "lotLocationDescription": "Near Barangay Hall, San Salvador",
+      "zoningClassification": "Rural Zone",
+      "lat": null,
+      "lon": null
+    },
+    "property": {
+      "tctNo": "TCT-998811-TEST",
+      "taxDecNo": "TD-2026-0012",
+      "isRegisteredOwner": false,
+      "proposedBuildingType": "Residential",
+      "lotAreaSqM": 180,
+      "locationDescription": "Near Barangay Hall, San Salvador"
+    },
+    "uploads": {
+      "tctTaxDec": [],
+      "taxDeclaration": [],
+      "deedOrConsent": [],
+      "rptReceipt": [],
+      "brgyClearance": [],
+      "ploCert": [],
+      "photoDocs": [],
+      "denrLetter": [],
+      "studentIdLetter": []
+    },
+    "notes": "Tinanggihan: Kulang ang setback clearance at may alinlangan sa road right-of-way.",
+    "status": "rejected",
+    "remarks": [
+      {
+        "id": "rem-init-1793169214809",
+        "fromOffice": "System Notice",
+        "author": "MPDC Automated Intake",
+        "message": "Application submitted online. Initial document integrity check verified.",
+        "createdAt": "2026-10-28T06:33:34.809Z",
+        "requiresAction": false
+      },
+      {
+        "id": "rem-1793169222392",
+        "fromOffice": "MPDC",
+        "author": "Edward B. Romulo, EnP. (Zoning Officer)",
+        "message": "Tinanggihan: Kulang ang setback clearance at may alinlangan sa road right-of-way.",
+        "createdAt": "2026-10-28T06:33:42.392Z",
+        "requiresAction": false
+      }
+    ],
+    "stepProgress": {
+      "currentStep": 1,
+      "totalSteps": 3,
+      "step1Completed": true,
+      "step1At": "2026-10-28T06:33:34.809Z",
+      "step1By": "Online Resident Submission",
+      "step2Completed": false,
+      "step2At": null,
+      "step2By": null,
+      "step3Completed": false,
+      "step3At": null,
+      "step3By": null
+    },
+    "responsibleOfficers": [
+      {
+        "name": "Joy Anne O. Claricia",
+        "role": "Planning Officer (Inquiry & Data Release)"
+      },
+      {
+        "name": "Engr. Cher L. Zabate",
+        "role": "Planning Assistant (Data Gathering)"
+      },
+      {
+        "name": "Rosette Princess R. Dela Torre",
+        "role": "Statistician Aide"
+      },
+      {
+        "name": "Rhyn Giorvic O. Cargar",
+        "role": "Information Technology"
+      }
+    ],
+    "slaDays": 1,
+    "slaMinutes": 12,
+    "fee": "None (Free)",
+    "termsAccepted": true,
+    "termsAcceptedAt": "2026-10-28T06:33:34.809Z",
+    "termsVersion": "2026.1",
+    "clientIp": "",
+    "termsConsentDetails": {
+      "agreedToTerms": true,
+      "agreedToPrivacyAct": true,
+      "agreedToClup": true,
+      "agreedToCookies": true,
+      "acceptedAt": "2026-10-28T06:33:34.809Z",
+      "termsVersion": "2026.1",
+      "ipAddress": ""
+    },
+    "createdAt": "2026-10-28T06:33:34.809Z",
+    "updatedAt": "2026-10-28T06:33:42.392Z",
+    "dataHash": "564ff93a8007b2893c0cfc9590dd657e0f7198efb2ae5541c87c8385bb0fa207",
+    "reviewerNotes": "Tinanggihan: Kulang ang setback clearance at may alinlangan sa road right-of-way.",
+    "holdReason": "Tinanggihan: Kulang ang setback clearance at may alinlangan sa road right-of-way."
+  },
+  {
+    "id": "app-1793163919650-611682",
+    "trackingNumber": "LUIS-ZC-2026-3600",
+    "serviceType": "zoning_certificate",
+    "projectTitle": "Juan Hand",
+    "category": "private_infrastructure",
+    "estimatedCost": 0,
+    "applicant": {
+      "fullName": "dsadsadsa",
+      "contactPhone": "09723193132",
+      "contactEmail": "podcastdaelee2@gmail.com",
+      "address": "Sitio Santol",
+      "barangay": "Barangay Zone VI (Poblacion)",
+      "email": "podcastdaelee2@gmail.com"
+    },
+    "latitude": 14.185665,
+    "longitude": 121.51193,
+    "geoRisk": {
+      "inside": true,
+      "flood": {
+        "value": "Unavailable",
+        "code": null
+      },
+      "landslide": {
+        "value": "Unavailable",
+        "code": null
+      },
+      "source": "MGB via GeoRiskPH"
+    },
+    "agriculturalDetails": {
+      "farmType": "poultry_broiler",
+      "headCapacity": 5000,
+      "wasteManagement": "Biogas Digester + Wastewater Lagoon",
+      "bufferComplianceConfirmed": true
+    },
+    "municipalDetails": {
+      "implementingDepartment": "Municipal Engineering Office",
+      "fundingSource": "20_dev_fund",
+      "cipCode": "",
+      "targetBeneficiaries": "All residents of Luisiana"
+    },
+    "zoningClassification": "Urban / Commercial Zone",
+    "lotDetails": {
+      "tctNo": "TCTe4244324",
+      "taxDecNo": "tyyert53244323",
+      "lotOwner": "",
+      "isApplicantOwner": true,
+      "proposedBuildingType": "Dormitory",
+      "lotAreaSqM": 245,
+      "lotLocationDescription": "Sitio Santol",
+      "zoningClassification": "Urban / Commercial Zone",
+      "lat": 14.185665,
+      "lon": 121.51193
+    },
+    "uploads": {
+      "tctTaxDec": [
+        {
+          "url": "/uploads/czreq-1793163867582-153417732.png",
+          "originalName": "0001.png",
+          "size": 388826
+        }
+      ],
+      "taxDeclaration": [
+        {
+          "url": "/uploads/czreq-1793163869748-915090716.png",
+          "originalName": "3f2a6352ee090f4a5ce727a4b12d0074-removebg-preview.png",
+          "size": 204653
+        }
+      ],
+      "deedOrConsent": [],
+      "rptReceipt": [
+        {
+          "url": "/uploads/czreq-1793163873689-788111331.jpg",
+          "originalName": "39kav46n0rmc1.jpg",
+          "size": 147010
+        }
+      ],
+      "brgyClearance": [
+        {
+          "url": "/uploads/czreq-1793163876206-657445138.jpg",
+          "originalName": "93182b298559047a15f5e20739147952.jpg",
+          "size": 3865
+        }
+      ],
+      "ploCert": [
+        {
+          "url": "/uploads/czreq-1793163878562-803187927.jpg",
+          "originalName": "501041573_1044063931256128_6485874556449876306_n.jpg",
+          "size": 637049
+        }
+      ],
+      "photoDocs": [
+        {
+          "url": "/uploads/czreq-1793163914966-452178012.jpg",
+          "originalName": "geotagged-photo.jpg",
+          "size": 232884
+        }
+      ],
+      "denrLetter": [],
+      "studentIdLetter": []
+    },
+    "notes": "",
+    "status": "for_payment",
+    "remarks": [
+      {
+        "id": "rem-init-1793163919650",
+        "fromOffice": "System Notice",
+        "author": "MPDC Automated Intake",
+        "message": "Application submitted online. Initial document integrity check verified.",
+        "createdAt": "2026-10-28T05:05:19.650Z",
+        "requiresAction": false
+      }
+    ],
+    "stepProgress": {
+      "currentStep": 3,
+      "totalSteps": 5,
+      "step1Completed": true,
+      "step1At": "2026-10-28T05:05:19.650Z",
+      "step1By": "Online Resident Submission",
+      "step2Completed": true,
+      "step2At": "2026-10-28T05:16:15.089Z",
+      "step2By": "Municipal Assessor's Office (Fee Assessment)",
+      "step3Completed": false,
+      "step3At": null,
+      "step3By": null
+    },
+    "responsibleOfficers": [
+      {
+        "name": "Bon Ryan P. Pedron",
+        "role": "Admin Aide (Verification & Issuance)"
+      },
+      {
+        "name": "Edward B. Romulo, EnP.",
+        "role": "Zoning Officer (Review & Permit Preparation)"
+      },
+      {
+        "name": "Engr. Mario S. Baldovino",
+        "role": "MPDC (Final Approval & Signing)"
+      },
+      {
+        "name": "Randy A. Balasabas",
+        "role": "Admin Aide (Inspection & Verification)"
+      }
+    ],
+    "slaDays": 1,
+    "slaMinutes": 12,
+    "fee": "None (Free)",
+    "termsAccepted": true,
+    "termsAcceptedAt": "2026-10-28T05:05:19.646Z",
+    "termsVersion": "2026.1",
+    "clientIp": "160.20.40.22",
+    "termsConsentDetails": {
+      "agreedToTerms": true,
+      "agreedToPrivacyAct": true,
+      "agreedToClup": true,
+      "agreedToCookies": true,
+      "acceptedAt": "2026-10-28T05:05:19.646Z",
+      "termsVersion": "2026.1",
+      "ipAddress": "160.20.40.22"
+    },
+    "createdAt": "2026-10-28T05:05:19.650Z",
+    "updatedAt": "2026-10-28T05:16:20.037Z",
+    "dataHash": "982e850ca3310e0e4a6b43f34b9033d5184ffc066af88069ba505d3d77bb1d56",
+    "approvedDocs": {
+      "tct": {
+        "approvedAt": "2026-10-28T05:05:41.256Z",
+        "approvedBy": "MPDC",
+        "title": "Photocopy ng TCT (Land Title)"
+      },
+      "tax_dec": {
+        "approvedAt": "2026-10-28T05:05:41.256Z",
+        "approvedBy": "MPDC",
+        "title": "Tax Declaration"
+      },
+      "rpt_receipt": {
+        "approvedAt": "2026-10-28T05:05:41.256Z",
+        "approvedBy": "MPDC",
+        "title": "Current Real Property Tax Receipt (Amilyar)"
+      },
+      "brgy_clearance": {
+        "approvedAt": "2026-10-28T05:05:41.256Z",
+        "approvedBy": "MPDC",
+        "title": "Barangay Clearance"
+      },
+      "plo_cert": {
+        "approvedAt": "2026-10-28T05:05:41.256Z",
+        "approvedBy": "MPDC",
+        "title": "PLO Certification (Clearance mula sa MERALCO)"
+      },
+      "photo_docs": {
+        "approvedAt": "2026-10-28T05:05:41.256Z",
+        "approvedBy": "MPDC",
+        "title": "Photo Documentation (Loob at Labas ng Site)"
+      }
+    },
+    "rejectedDocs": {},
+    "property": {
+      "tctNo": "TCTe4244324",
+      "taxDecNo": "tyyert53244323",
+      "isRegisteredOwner": true,
+      "proposedBuildingType": "Dormitory",
+      "lotAreaSqM": 245,
+      "locationDescription": "Sitio Santol"
+    },
+    "payment": {
+      "status": "order_of_payment_issued",
+      "orderOfPaymentNo": "OP-2026-3600",
+      "feeAmount": 280,
+      "amount": 280,
+      "breakdown": [
+        {
+          "label": "Zoning Clearance Assessment Fee",
+          "amount": 250
+        },
+        {
+          "label": "Legal & Filing Assessment Fee",
+          "amount": 30
+        }
+      ],
+      "assessedAt": "2026-10-28T05:16:20.037Z",
+      "assessedBy": "Municipal Assessor's Office",
+      "issuedAt": "2026-10-28T05:16:20.037Z",
+      "issuedBy": "Municipal Assessor's Office",
+      "instruction": "Assessor Fee Computed. Ipakita ang pahinang ito sa Municipal Treasury Office upang magbayad ng kaukulang fee.",
+      "notes": ""
+    }
+  },
+  {
+    "id": "app-1793161450322-577201",
+    "trackingNumber": "LUIS-ZC-2026-5805",
+    "serviceType": "zoning_certificate",
+    "projectTitle": "Building",
+    "category": "private_infrastructure",
+    "estimatedCost": 0,
+    "applicant": {
+      "fullName": "Juan Piece",
+      "contactPhone": "09618907215",
+      "contactEmail": "podcastdaelee@gmail.com",
+      "address": "dadasdd",
+      "barangay": "Barangay Zone VI (Poblacion)",
+      "email": "podcastdaelee@gmail.com"
+    },
+    "latitude": 14.185206,
+    "longitude": 121.512712,
+    "geoRisk": {
+      "inside": true,
+      "flood": {
+        "value": "Unavailable",
+        "code": null
+      },
+      "landslide": {
+        "value": "Unavailable",
+        "code": null
+      },
+      "source": "MGB via GeoRiskPH"
+    },
+    "agriculturalDetails": {
+      "farmType": "poultry_broiler",
+      "headCapacity": 5000,
+      "wasteManagement": "Biogas Digester + Wastewater Lagoon",
+      "bufferComplianceConfirmed": true
+    },
+    "municipalDetails": {
+      "implementingDepartment": "Municipal Engineering Office",
+      "fundingSource": "20_dev_fund",
+      "cipCode": "",
+      "targetBeneficiaries": "All residents of Luisiana"
+    },
+    "zoningClassification": "Urban / Commercial Zone",
+    "lotDetails": {
+      "tctNo": "343432434",
+      "taxDecNo": "43224342",
+      "lotOwner": "",
+      "isApplicantOwner": true,
+      "proposedBuildingType": "Residential",
+      "lotAreaSqM": 250,
+      "lotLocationDescription": "dadasdd",
+      "zoningClassification": "Urban / Commercial Zone",
+      "lat": 14.185206,
+      "lon": 121.512712
+    },
+    "uploads": {
+      "tctTaxDec": [
+        {
+          "url": "/uploads/czreq-1793161669994-565468441.png",
+          "filename": "czreq-1793161669994-565468441.png",
+          "originalName": "0001.png",
+          "size": 388826,
+          "mimeType": "image/png"
+        }
+      ],
+      "taxDeclaration": [
+        {
+          "url": "/uploads/czreq-1793161430310-968751423.png",
+          "originalName": "0001.png",
+          "size": 388826
+        }
+      ],
+      "deedOrConsent": [],
+      "rptReceipt": [
+        {
+          "url": "/uploads/czreq-1793161435828-108046212.png",
+          "originalName": "4018d804-7f47-4269-b208-8c4d366b43cf-1754922852041.png",
+          "size": 11758
+        }
+      ],
+      "brgyClearance": [
+        {
+          "url": "/uploads/czreq-1793161438883-411995144.jpg",
+          "originalName": "501041573_1044063931256128_6485874556449876306_n.jpg",
+          "size": 637049
+        }
+      ],
+      "ploCert": [
+        {
+          "url": "/uploads/czreq-1793161447729-632411101.jpg",
+          "originalName": "851365713_3193201724351751_2584421094433934360_n.jpg",
+          "size": 14493
+        }
+      ],
+      "photoDocs": [
+        {
+          "url": "/uploads/czreq-1793161370513-65181633.jpg",
+          "originalName": "geotagged-photo (1).jpg",
+          "size": 54601
+        }
+      ],
+      "denrLetter": [],
+      "studentIdLetter": [],
+      "tct": [
+        {
+          "url": "/uploads/czreq-1793161669994-565468441.png",
+          "filename": "czreq-1793161669994-565468441.png",
+          "originalName": "0001.png",
+          "size": 388826,
+          "mimeType": "image/png"
+        }
+      ],
+      "officialReceipt": [
+        {
+          "url": "/uploads/czreq-1793169619820-832536451.jpg",
+          "originalName": "855099802_1084366584375501_315268858587365599_n (1).jpg",
+          "size": 180260,
+          "orNumber": "OR-ASSESSOR-2026-5805",
+          "paidAmount": null,
+          "paidAt": "2026-10-28T06:40:19.808Z"
+        }
+      ]
+    },
+    "notes": "❌ [HINDI WASTONG DOKUMENTO: Photocopy ng TCT (Land Title)] Dahilan: Malabo o hindi mabasa ang kopya ng dokumento",
+    "status": "approved_for_construction",
+    "remarks": [
+      {
+        "id": "rem-init-1793161450322",
+        "fromOffice": "System Notice",
+        "author": "MPDC Automated Intake",
+        "message": "Application submitted online. Initial document integrity check verified.",
+        "createdAt": "2026-10-28T04:24:10.322Z",
+        "requiresAction": false
+      },
+      {
+        "id": "rem-1793161638424",
+        "fromOffice": "MPDC",
+        "author": "Edward B. Romulo, EnP. (Zoning Officer)",
+        "message": "❌ [HINDI WASTONG DOKUMENTO: Photocopy ng TCT (Land Title)] Dahilan: Malabo o hindi mabasa ang kopya ng dokumento",
+        "createdAt": "2026-10-28T04:27:18.424Z",
+        "requiresAction": false
+      },
+      {
+        "id": "rem-reup-1793161670011",
+        "fromOffice": "Applicant",
+        "author": "Juan Piece",
+        "message": "Muling nag-upload ang aplikante ng bagong kopya para sa \"Photocopy ng TCT (Land Title)\": \"0001.png\". Handa na ito para sa muling pagsusuri ng MPDC.",
+        "createdAt": "2026-10-28T04:27:50.011Z",
+        "requiresAction": false,
+        "attachedFile": "0001.png"
+      },
+      {
+        "id": "rem-1793169529655-968",
+        "fromOffice": "Applicant",
+        "author": "Juan Piece",
+        "message": "may concern lang po",
+        "createdAt": "2026-10-28T06:38:49.655Z",
+        "requiresAction": false,
+        "attachedFile": null
+      },
+      {
+        "id": "rem-receipt-1793169619834",
+        "fromOffice": "Applicant",
+        "author": "Applicant (Proof of Payment)",
+        "message": "Opisyal na Resibo mula sa Assessor (855099802_1084366584375501_315268858587365599_n (1).jpg) ay matagumpay na naisumite. Naka-endorso na sa Municipal Engineering Office para sa Site Inspection.",
+        "createdAt": "2026-10-28T06:40:19.834Z",
+        "requiresAction": false,
+        "attachedFile": "855099802_1084366584375501_315268858587365599_n (1).jpg"
+      },
+      {
+        "id": "rem-or-ver-1793169674178",
+        "fromOffice": "Engineering",
+        "author": "Municipal Engineer Office",
+        "message": "Nasuri at napatunayan ang litrato ng Official Receipt (OR-ASSESSOR-2026-5805). Kumpirmado ang kabayaran mula sa Assessor / Treasury at handa na para sa Site Inspection at 3D Map Pinning.",
+        "createdAt": "2026-10-28T06:41:14.152Z",
+        "actionType": "OR_PICTURE_VERIFIED",
+        "requiresAction": false
+      },
+      {
+        "fromOffice": "Engineering",
+        "author": "Municipal Engineer Office",
+        "message": "Inaprubahan ng Municipal Engineer ang aplikasyon para sa konstruksyon. Opisyal nang nai-pin ang site sa 3D GIS Mapa.",
+        "timestamp": "2026-10-28T06:41:14.179Z",
+        "actionType": "ENGINEER_APPROVED_PINNED"
+      }
+    ],
+    "stepProgress": {
+      "currentStep": 3,
+      "totalSteps": 3,
+      "step1Completed": true,
+      "step1At": "2026-10-28T04:24:10.322Z",
+      "step1By": "Online Resident Submission",
+      "step2Completed": true,
+      "step2At": "2026-10-28T06:40:19.834Z",
+      "step2By": "Applicant (Official Receipt Uploaded)",
+      "step3Completed": true,
+      "step3At": "2026-10-28T06:41:14.152Z",
+      "step3By": "Municipal Engineer Office"
+    },
+    "responsibleOfficers": [
+      {
+        "name": "Bon Ryan P. Pedron",
+        "role": "Admin Aide (Verification & Issuance)"
+      },
+      {
+        "name": "Edward B. Romulo, EnP.",
+        "role": "Zoning Officer (Review & Permit Preparation)"
+      },
+      {
+        "name": "Engr. Mario S. Baldovino",
+        "role": "MPDC (Final Approval & Signing)"
+      },
+      {
+        "name": "Randy A. Balasabas",
+        "role": "Admin Aide (Inspection & Verification)"
+      }
+    ],
+    "slaDays": 1,
+    "slaMinutes": 12,
+    "fee": "None (Free)",
+    "termsAccepted": true,
+    "termsAcceptedAt": "2026-10-28T04:24:10.316Z",
+    "termsVersion": "2026.1",
+    "clientIp": "160.20.40.22",
+    "termsConsentDetails": {
+      "agreedToTerms": true,
+      "agreedToPrivacyAct": true,
+      "agreedToClup": true,
+      "agreedToCookies": true,
+      "acceptedAt": "2026-10-28T04:24:10.316Z",
+      "termsVersion": "2026.1",
+      "ipAddress": "160.20.40.22"
+    },
+    "createdAt": "2026-10-28T04:24:10.322Z",
+    "updatedAt": "2026-10-28T06:41:14.178Z",
+    "dataHash": "5faa020e0aecabc82cc3610a5ee7369b437196944697fede2732c84ea90cee39",
+    "rejectedDocs": {},
+    "approvedDocs": {
+      "tct": {
+        "approvedAt": "2026-10-28T04:30:35.854Z",
+        "approvedBy": "MPDC",
+        "title": "Photocopy ng TCT (Land Title)"
+      },
+      "tax_dec": {
+        "approvedAt": "2026-10-28T04:30:35.854Z",
+        "approvedBy": "MPDC",
+        "title": "Tax Declaration"
+      },
+      "rpt_receipt": {
+        "approvedAt": "2026-10-28T04:30:35.854Z",
+        "approvedBy": "MPDC",
+        "title": "Current Real Property Tax Receipt (Amilyar)"
+      },
+      "brgy_clearance": {
+        "approvedAt": "2026-10-28T04:30:35.854Z",
+        "approvedBy": "MPDC",
+        "title": "Barangay Clearance"
+      },
+      "plo_cert": {
+        "approvedAt": "2026-10-28T04:30:35.854Z",
+        "approvedBy": "MPDC",
+        "title": "PLO Certification (Clearance mula sa MERALCO)"
+      },
+      "photo_docs": {
+        "approvedAt": "2026-10-28T04:30:35.854Z",
+        "approvedBy": "MPDC",
+        "title": "Photo Documentation (Loob at Labas ng Site)"
+      }
+    },
+    "payment": {
+      "status": "paid",
+      "orderOfPaymentNo": "OP-2026-5805",
+      "feeAmount": 280,
+      "amount": 280,
+      "breakdown": [
+        {
+          "label": "Zoning Clearance Assessment Fee",
+          "amount": 250
+        },
+        {
+          "label": "Legal & Filing Assessment Fee",
+          "amount": 30
+        }
+      ],
+      "assessedAt": "2026-10-28T04:57:14.393Z",
+      "assessedBy": "Municipal Assessor's Office",
+      "issuedAt": "2026-10-28T04:57:14.393Z",
+      "issuedBy": "Municipal Treasury Office (Treasury Teller)",
+      "instruction": "Assessor Fee Computed. Ipakita ang pahinang ito sa Municipal Treasury Office upang magbayad ng kaukulang fee.",
+      "notes": "❌ [HINDI WASTONG DOKUMENTO: Photocopy ng TCT (Land Title)] Dahilan: Malabo o hindi mabasa ang kopya ng dokumento",
+      "orNumber": "OR-ASSESSOR-2026-5805",
+      "paidAt": "2026-10-28T06:40:19.808Z",
+      "receiptUrl": "/uploads/czreq-1793169619820-832536451.jpg",
+      "receiptOriginalName": "855099802_1084366584375501_315268858587365599_n (1).jpg",
+      "receiptSize": 180260,
+      "submittedAt": "2026-10-28T06:40:19.833Z",
+      "verifiedBy": "Applicant Upload (Assessor Receipt)",
+      "orVerified": true,
+      "orVerifiedAt": "2026-10-28T06:41:14.152Z",
+      "orVerifiedBy": "Municipal Engineer Office",
+      "or_number": "OR-ASSESSOR-2026-5805",
+      "amount_paid": 280,
+      "payment_date": "2026-10-28T06:40:19.808Z",
+      "user_id": "Treasury Teller",
+      "cashier": "Treasury Teller"
+    },
+    "property": {
+      "tctNo": "343432434",
+      "taxDecNo": "43224342",
+      "isRegisteredOwner": true,
+      "proposedBuildingType": "Residential",
+      "lotAreaSqM": 250,
+      "locationDescription": "dadasdd"
+    },
+    "engineerApproved": true,
+    "engineerApprovedAt": "2026-10-28T06:41:14.152Z",
+    "engineerApprovedBy": "Municipal Engineer Office",
+    "engineerNotes": "Approved for site construction and coordinate pinning.",
+    "orVerified": true,
+    "orVerifiedAt": "2026-10-28T06:41:14.152Z",
+    "orVerifiedBy": "Municipal Engineer Office",
+    "isPinned": true,
+    "or_number": "OR-ASSESSOR-2026-5805",
+    "amount_paid": 280,
+    "payment_date": "2026-10-28T06:40:19.808Z",
+    "user_id": "Treasury Teller"
+  },
+  {
+    "id": "app-1793160376218-549233",
+    "trackingNumber": "LUIS-ZC-2026-6612",
+    "serviceType": "zoning_certificate",
+    "projectTitle": "dsdasddasda",
+    "category": "private_infrastructure",
+    "estimatedCost": 0,
+    "applicant": {
+      "fullName": "dwadasdas",
+      "contactPhone": "32243243243",
+      "contactEmail": "podcastdaelee@gmail.com",
+      "address": "4fdsffdsfds",
+      "barangay": "Barangay Zone VI (Poblacion)",
+      "email": "podcastdaelee@gmail.com"
+    },
+    "latitude": 14.185206,
+    "longitude": 121.512712,
+    "geoRisk": {
+      "inside": true,
+      "flood": {
+        "value": "Unavailable",
+        "code": null
+      },
+      "landslide": {
+        "value": "Unavailable",
+        "code": null
+      },
+      "source": "MGB via GeoRiskPH"
+    },
+    "agriculturalDetails": {
+      "farmType": "poultry_broiler",
+      "headCapacity": 5000,
+      "wasteManagement": "Biogas Digester + Wastewater Lagoon",
+      "bufferComplianceConfirmed": true
+    },
+    "municipalDetails": {
+      "implementingDepartment": "Municipal Engineering Office",
+      "fundingSource": "20_dev_fund",
+      "cipCode": "",
+      "targetBeneficiaries": "All residents of Luisiana"
+    },
+    "zoningClassification": "Urban / Commercial Zone",
+    "lotDetails": {
+      "tctNo": "TCT42343324324",
+      "taxDecNo": "TD324324234324",
+      "lotOwner": "",
+      "isApplicantOwner": true,
+      "proposedBuildingType": "Residential",
+      "lotAreaSqM": 250,
+      "lotLocationDescription": "4fdsffdsfds",
+      "zoningClassification": "Urban / Commercial Zone",
+      "lat": 14.185206,
+      "lon": 121.512712
+    },
+    "uploads": {
+      "tctTaxDec": [
+        {
+          "url": "/uploads/czreq-1793160338088-35258332.png",
+          "originalName": "0001.png",
+          "size": 388826
+        }
+      ],
+      "taxDeclaration": [
+        {
+          "url": "/uploads/czreq-1793160343401-420408007.jpg",
+          "originalName": "93182b298559047a15f5e20739147952.jpg",
+          "size": 3865
+        }
+      ],
+      "deedOrConsent": [],
+      "rptReceipt": [
+        {
+          "url": "/uploads/czreq-1793160373856-299114414.jpg",
+          "originalName": "855099802_1084366584375501_315268858587365599_n (1).jpg",
+          "size": 180260
+        }
+      ],
+      "brgyClearance": [
+        {
+          "url": "/uploads/czreq-1793160351131-72192125.png",
+          "originalName": "640275919_1434806965018467_710684539780681408_n.png",
+          "size": 102329
+        }
+      ],
+      "ploCert": [
+        {
+          "url": "/uploads/czreq-1793160356223-808897342.png",
+          "originalName": "809615398_28361558796837560_1737487579131908310_n.png",
+          "size": 126532
+        }
+      ],
+      "photoDocs": [
+        {
+          "url": "/uploads/czreq-1793160321283-604315215.jpg",
+          "originalName": "geotagged-photo (1).jpg",
+          "size": 54601
+        }
+      ],
+      "denrLetter": [],
+      "studentIdLetter": []
+    },
+    "notes": "",
+    "status": "for_payment",
+    "remarks": [
+      {
+        "id": "rem-init-1793160376218",
+        "fromOffice": "System Notice",
+        "author": "MPDC Automated Intake",
+        "message": "Application submitted online. Initial document integrity check verified.",
+        "createdAt": "2026-10-28T04:06:16.218Z",
+        "requiresAction": false
+      }
+    ],
+    "stepProgress": {
+      "currentStep": 3,
+      "totalSteps": 5,
+      "step1Completed": true,
+      "step1At": "2026-10-28T04:06:16.218Z",
+      "step1By": "Online Resident Submission",
+      "step2Completed": true,
+      "step2At": "2026-10-28T05:23:31.801Z",
+      "step2By": "Municipal Assessor's Office (Fee Assessment)",
+      "step3Completed": false,
+      "step3At": null,
+      "step3By": null
+    },
+    "responsibleOfficers": [
+      {
+        "name": "Bon Ryan P. Pedron",
+        "role": "Admin Aide (Verification & Issuance)"
+      },
+      {
+        "name": "Edward B. Romulo, EnP.",
+        "role": "Zoning Officer (Review & Permit Preparation)"
+      },
+      {
+        "name": "Engr. Mario S. Baldovino",
+        "role": "MPDC (Final Approval & Signing)"
+      },
+      {
+        "name": "Randy A. Balasabas",
+        "role": "Admin Aide (Inspection & Verification)"
+      }
+    ],
+    "slaDays": 1,
+    "slaMinutes": 12,
+    "fee": "None (Free)",
+    "termsAccepted": true,
+    "termsAcceptedAt": "2026-10-28T04:06:16.196Z",
+    "termsVersion": "2026.1",
+    "clientIp": "160.20.40.22",
+    "termsConsentDetails": {
+      "agreedToTerms": true,
+      "agreedToPrivacyAct": true,
+      "agreedToClup": true,
+      "agreedToCookies": true,
+      "acceptedAt": "2026-10-28T04:06:16.196Z",
+      "termsVersion": "2026.1",
+      "ipAddress": "160.20.40.22"
+    },
+    "createdAt": "2026-10-28T04:06:16.218Z",
+    "updatedAt": "2026-10-28T05:23:31.801Z",
+    "dataHash": "92c4c5e7f7f991e8d37bd05fee630f45004fd9665f8cf0e061f0423e1f22589f",
+    "property": {
+      "tctNo": "TCT42343324324",
+      "taxDecNo": "TD324324234324",
+      "isRegisteredOwner": true,
+      "proposedBuildingType": "Residential",
+      "lotAreaSqM": 250,
+      "locationDescription": "4fdsffdsfds"
+    },
+    "approvedDocs": {
+      "tct": {
+        "approvedAt": "2026-10-28T05:22:55.358Z",
+        "approvedBy": "MPDC",
+        "title": "Photocopy ng TCT (Land Title)"
+      },
+      "tax_dec": {
+        "approvedAt": "2026-10-28T05:22:55.358Z",
+        "approvedBy": "MPDC",
+        "title": "Tax Declaration"
+      },
+      "rpt_receipt": {
+        "approvedAt": "2026-10-28T05:22:55.358Z",
+        "approvedBy": "MPDC",
+        "title": "Current Real Property Tax Receipt (Amilyar)"
+      },
+      "brgy_clearance": {
+        "approvedAt": "2026-10-28T05:22:55.358Z",
+        "approvedBy": "MPDC",
+        "title": "Barangay Clearance"
+      },
+      "plo_cert": {
+        "approvedAt": "2026-10-28T05:22:55.358Z",
+        "approvedBy": "MPDC",
+        "title": "PLO Certification (Clearance mula sa MERALCO)"
+      },
+      "photo_docs": {
+        "approvedAt": "2026-10-28T05:22:55.358Z",
+        "approvedBy": "MPDC",
+        "title": "Photo Documentation (Loob at Labas ng Site)"
+      }
+    },
+    "rejectedDocs": {},
+    "payment": {
+      "status": "order_of_payment_issued",
+      "orderOfPaymentNo": "OP-2026-6612",
+      "feeAmount": 280,
+      "amount": 280,
+      "breakdown": [
+        {
+          "label": "Zoning Clearance Assessment Fee",
+          "amount": 250
+        },
+        {
+          "label": "Legal & Filing Assessment Fee",
+          "amount": 30
+        }
+      ],
+      "assessedAt": "2026-10-28T05:23:31.801Z",
+      "assessedBy": "Municipal Assessor's Office",
+      "issuedAt": "2026-10-28T05:23:31.801Z",
+      "issuedBy": "Municipal Assessor's Office",
+      "instruction": "Assessor Fee Computed. Ipakita ang pahinang ito sa Municipal Treasury Office upang magbayad ng kaukulang fee.",
+      "notes": ""
+    }
+  },
+  {
+    "id": "app-1793160302682-483920",
+    "trackingNumber": "LUIS-ZC-2026-9062",
+    "serviceType": "zoning_certificate",
+    "projectTitle": "dsadadasd",
+    "category": "private_infrastructure",
+    "estimatedCost": 0,
+    "applicant": {
+      "fullName": "sdsdasdassa",
+      "contactPhone": "32321312321",
+      "contactEmail": "maraldrei@gmail.com",
+      "address": "eweqweqweqe",
+      "barangay": "Barangay Zone VI (Poblacion)",
+      "email": "maraldrei@gmail.com"
+    },
+    "latitude": 14.185665,
+    "longitude": 121.51193,
+    "geoRisk": {
+      "inside": true,
+      "flood": {
+        "value": "Unavailable",
+        "code": null
+      },
+      "landslide": {
+        "value": "Unavailable",
+        "code": null
+      },
+      "source": "MGB via GeoRiskPH"
+    },
+    "agriculturalDetails": {
+      "farmType": "poultry_broiler",
+      "headCapacity": 5000,
+      "wasteManagement": "Biogas Digester + Wastewater Lagoon",
+      "bufferComplianceConfirmed": true
+    },
+    "municipalDetails": {
+      "implementingDepartment": "Municipal Engineering Office",
+      "fundingSource": "20_dev_fund",
+      "cipCode": "",
+      "targetBeneficiaries": "All residents of Luisiana"
+    },
+    "zoningClassification": "Urban / Commercial Zone",
+    "lotDetails": {
+      "tctNo": "e31231221",
+      "taxDecNo": "31232132132",
+      "lotOwner": "",
+      "isApplicantOwner": true,
+      "proposedBuildingType": "Dormitory",
+      "lotAreaSqM": 250,
+      "lotLocationDescription": "eweqweqweqe",
+      "zoningClassification": "Urban / Commercial Zone",
+      "lat": 14.185665,
+      "lon": 121.51193
+    },
+    "uploads": {
+      "tctTaxDec": [
+        {
+          "url": "/uploads/czreq-1793160260953-701389117.jpg",
+          "originalName": "851365713_3193201724351751_2584421094433934360_n.jpg",
+          "size": 14493
+        }
+      ],
+      "taxDeclaration": [
+        {
+          "url": "/uploads/czreq-1793160267937-359812836.png",
+          "originalName": "640275919_1434806965018467_710684539780681408_n.png",
+          "size": 102329
+        }
+      ],
+      "deedOrConsent": [],
+      "rptReceipt": [
+        {
+          "url": "/uploads/czreq-1793160291518-98859425.jpg",
+          "originalName": "501041573_1044063931256128_6485874556449876306_n.jpg",
+          "size": 637049
+        }
+      ],
+      "brgyClearance": [
+        {
+          "url": "/uploads/czreq-1793160294065-761296455.jpg",
+          "originalName": "93182b298559047a15f5e20739147952.jpg",
+          "size": 3865
+        }
+      ],
+      "ploCert": [
+        {
+          "url": "/uploads/czreq-1793160299225-907220268.jpg",
+          "originalName": "855099802_1084366584375501_315268858587365599_n.jpg",
+          "size": 180260
+        }
+      ],
+      "photoDocs": [
+        {
+          "url": "/uploads/czreq-1793146051264-153465466.jpg",
+          "originalName": "geotagged-photo.jpg",
+          "size": 232884
+        }
+      ],
+      "denrLetter": [],
+      "studentIdLetter": []
+    },
+    "notes": "",
+    "status": "submitted",
+    "remarks": [
+      {
+        "id": "rem-init-1793160302682",
+        "fromOffice": "System Notice",
+        "author": "MPDC Automated Intake",
+        "message": "Application submitted online. Initial document integrity check verified.",
+        "createdAt": "2026-10-28T04:05:02.682Z",
+        "requiresAction": false
+      }
+    ],
+    "stepProgress": {
+      "currentStep": 1,
+      "totalSteps": 3,
+      "step1Completed": true,
+      "step1At": "2026-10-28T04:05:02.682Z",
+      "step1By": "Online Resident Submission",
+      "step2Completed": false,
+      "step2At": null,
+      "step2By": null,
+      "step3Completed": false,
+      "step3At": null,
+      "step3By": null
+    },
+    "responsibleOfficers": [
+      {
+        "name": "Bon Ryan P. Pedron",
+        "role": "Admin Aide (Verification & Issuance)"
+      },
+      {
+        "name": "Edward B. Romulo, EnP.",
+        "role": "Zoning Officer (Review & Permit Preparation)"
+      },
+      {
+        "name": "Engr. Mario S. Baldovino",
+        "role": "MPDC (Final Approval & Signing)"
+      },
+      {
+        "name": "Randy A. Balasabas",
+        "role": "Admin Aide (Inspection & Verification)"
+      }
+    ],
+    "slaDays": 1,
+    "slaMinutes": 12,
+    "fee": "None (Free)",
+    "termsAccepted": true,
+    "termsAcceptedAt": "2026-10-28T04:05:02.648Z",
+    "termsVersion": "2026.1",
+    "clientIp": "160.20.40.22",
+    "termsConsentDetails": {
+      "agreedToTerms": true,
+      "agreedToPrivacyAct": true,
+      "agreedToClup": true,
+      "agreedToCookies": true,
+      "acceptedAt": "2026-10-28T04:05:02.648Z",
+      "termsVersion": "2026.1",
+      "ipAddress": "160.20.40.22"
+    },
+    "createdAt": "2026-10-28T04:05:02.682Z",
+    "updatedAt": "2026-10-28T04:05:02.682Z",
+    "dataHash": "2761373fb765d2701e197dcd950858fe5e277721c7b595a0f90d240c04922f88",
+    "property": {
+      "tctNo": "e31231221",
+      "taxDecNo": "31232132132",
+      "isRegisteredOwner": true,
+      "proposedBuildingType": "Dormitory",
+      "lotAreaSqM": 250,
+      "locationDescription": "eweqweqweqe"
+    }
+  },
+  {
+    "id": "app-1793148755842-828757",
+    "trackingNumber": "LUIS-ZC-2026-7460",
+    "serviceType": "zoning_certificate",
+    "projectTitle": "frvrvvg",
+    "category": "private_infrastructure",
+    "estimatedCost": 0,
+    "applicant": {
+      "fullName": "vvgvgtvtv",
+      "contactPhone": "09618907215",
+      "contactEmail": "maraldrei@gmail.com",
+      "address": "73 Ubaldo Suello St. Brgy Zone IV",
+      "barangay": "Barangay Zone VI (Poblacion)",
+      "email": "maraldrei@gmail.com"
+    },
+    "latitude": 14.185665,
+    "longitude": 121.51193,
+    "geoRisk": {
+      "inside": true,
+      "flood": {
+        "value": "Unavailable",
+        "code": null
+      },
+      "landslide": {
+        "value": "Unavailable",
+        "code": null
+      },
+      "source": "MGB via GeoRiskPH"
+    },
+    "agriculturalDetails": {
+      "farmType": "poultry_broiler",
+      "headCapacity": 5000,
+      "wasteManagement": "Biogas Digester + Wastewater Lagoon",
+      "bufferComplianceConfirmed": true
+    },
+    "municipalDetails": {
+      "implementingDepartment": "Municipal Engineering Office",
+      "fundingSource": "20_dev_fund",
+      "cipCode": "",
+      "targetBeneficiaries": "All residents of Luisiana"
+    },
+    "zoningClassification": "Urban / Commercial Zone",
+    "lotDetails": {
+      "tctNo": "rfrfft3e454",
+      "taxDecNo": "43343233",
+      "lotOwner": "",
+      "isApplicantOwner": true,
+      "proposedBuildingType": "Residential",
+      "lotAreaSqM": 4342,
+      "lotLocationDescription": "73 Ubaldo Suello St. Brgy Zone IV",
+      "zoningClassification": "Urban / Commercial Zone",
+      "lat": 14.185665,
+      "lon": 121.51193
+    },
+    "uploads": {
+      "tctTaxDec": [
+        {
+          "url": "/uploads/czreq-1793148716197-910342929.png",
+          "originalName": "0001.png",
+          "size": 388826
+        }
+      ],
+      "taxDeclaration": [
+        {
+          "url": "/uploads/czreq-1793148724660-193012496.jpg",
+          "originalName": "8d31e5e7c80eda494708af513d1e9e16.jpg",
+          "size": 31553
+        }
+      ],
+      "deedOrConsent": [],
+      "rptReceipt": [
+        {
+          "url": "/uploads/czreq-1793148730794-385851589.jpg",
+          "originalName": "39kav46n0rmc1.jpg",
+          "size": 147010
+        }
+      ],
+      "brgyClearance": [
+        {
+          "url": "/uploads/czreq-1793148734956-495887539.png",
+          "originalName": "640275919_1434806965018467_710684539780681408_n.png",
+          "size": 102329
+        }
+      ],
+      "ploCert": [
+        {
+          "url": "/uploads/czreq-1793148739520-241418735.jpg",
+          "originalName": "851365713_3193201724351751_2584421094433934360_n.jpg",
+          "size": 14493
+        }
+      ],
+      "photoDocs": [
+        {
+          "url": "/uploads/czreq-1793148496070-951643864.jpg",
+          "originalName": "geotagged-photo.jpg",
+          "size": 232884
+        }
+      ],
+      "denrLetter": [],
+      "studentIdLetter": []
+    },
+    "notes": "",
+    "status": "submitted",
+    "remarks": [
+      {
+        "id": "rem-init-1793148755843",
+        "fromOffice": "System Notice",
+        "author": "MPDC Automated Intake",
+        "message": "Application submitted online. Initial document integrity check verified.",
+        "createdAt": "2026-10-28T00:52:35.842Z",
+        "requiresAction": false
+      }
+    ],
+    "stepProgress": {
+      "currentStep": 1,
+      "totalSteps": 3,
+      "step1Completed": true,
+      "step1At": "2026-10-28T00:52:35.842Z",
+      "step1By": "Online Resident Submission",
+      "step2Completed": false,
+      "step2At": null,
+      "step2By": null,
+      "step3Completed": false,
+      "step3At": null,
+      "step3By": null
+    },
+    "responsibleOfficers": [
+      {
+        "name": "Bon Ryan P. Pedron",
+        "role": "Admin Aide (Verification & Issuance)"
+      },
+      {
+        "name": "Edward B. Romulo, EnP.",
+        "role": "Zoning Officer (Review & Permit Preparation)"
+      },
+      {
+        "name": "Engr. Mario S. Baldovino",
+        "role": "MPDC (Final Approval & Signing)"
+      },
+      {
+        "name": "Randy A. Balasabas",
+        "role": "Admin Aide (Inspection & Verification)"
+      }
+    ],
+    "slaDays": 1,
+    "slaMinutes": 12,
+    "fee": "None (Free)",
+    "termsAccepted": true,
+    "termsAcceptedAt": "2026-10-28T00:52:35.826Z",
+    "termsVersion": "2026.1",
+    "clientIp": "175.158.213.207",
+    "termsConsentDetails": {
+      "agreedToTerms": true,
+      "agreedToPrivacyAct": true,
+      "agreedToClup": true,
+      "agreedToCookies": true,
+      "acceptedAt": "2026-10-28T00:52:35.826Z",
+      "termsVersion": "2026.1",
+      "ipAddress": "175.158.213.207"
+    },
+    "createdAt": "2026-10-28T00:52:35.842Z",
+    "updatedAt": "2026-10-28T00:52:35.842Z",
+    "dataHash": "4b0a2066e9b3d2e56cbf55ed7d2bf3ac2483183bf0fd89f366a7bcec828f731e",
+    "property": {
+      "tctNo": "rfrfft3e454",
+      "taxDecNo": "43343233",
+      "isRegisteredOwner": true,
+      "proposedBuildingType": "Residential",
+      "lotAreaSqM": 4342,
+      "locationDescription": "73 Ubaldo Suello St. Brgy Zone IV"
+    }
+  },
+  {
     "id": "app-1792722910028-563513",
     "trackingNumber": "LUIS-ZC-2026-8241",
     "serviceType": "zoning_certificate",
@@ -11,7 +1270,8 @@
       "contactPhone": "23131002120",
       "contactEmail": "lalli@gmail.com",
       "address": "dsadasassaassad",
-      "barangay": "San Pedro"
+      "barangay": "San Pedro",
+      "email": "lalli@gmail.com"
     },
     "latitude": 14.174455,
     "longitude": 121.518885,
@@ -215,6 +1475,14 @@
       "issuedBy": "Municipal Assessor's Office",
       "instruction": "Assessor Fee Computed. Ipakita ang pahinang ito sa Municipal Treasury Office upang magbayad ng kaukulang fee.",
       "notes": ""
+    },
+    "property": {
+      "tctNo": "dsadasasas",
+      "taxDecNo": "dasdasasdasda",
+      "isRegisteredOwner": true,
+      "proposedBuildingType": "Apartment",
+      "lotAreaSqM": 260,
+      "locationDescription": "dsadasassaassad"
     }
   },
   {
@@ -229,7 +1497,8 @@
       "contactPhone": "23131002120",
       "contactEmail": "lalli@gmail.com",
       "address": "dsadasassaassad",
-      "barangay": "San Pedro"
+      "barangay": "San Pedro",
+      "email": "lalli@gmail.com"
     },
     "latitude": 14.174455,
     "longitude": 121.518885,
@@ -378,7 +1647,15 @@
     },
     "createdAt": "2026-10-23T02:34:55.890Z",
     "updatedAt": "2026-10-23T02:34:55.890Z",
-    "dataHash": "62643ff2fb7f68cc3be868895708d5cee11cc8dca004357cd9216c5b0432fdf6"
+    "dataHash": "62643ff2fb7f68cc3be868895708d5cee11cc8dca004357cd9216c5b0432fdf6",
+    "property": {
+      "tctNo": "dsadasasas",
+      "taxDecNo": "dasdasasdasda",
+      "isRegisteredOwner": true,
+      "proposedBuildingType": "Apartment",
+      "lotAreaSqM": 260,
+      "locationDescription": "dsadasassaassad"
+    }
   },
   {
     "id": "app-1791286361095-651716",
@@ -392,7 +1669,8 @@
       "contactPhone": "06051515116",
       "contactEmail": "podcastdaelee@gmail.com",
       "address": "dsadasdasdas",
-      "barangay": "Barangay Zone IV (Poblacion)"
+      "barangay": "Barangay Zone IV (Poblacion)",
+      "email": "podcastdaelee@gmail.com"
     },
     "latitude": 14.183753,
     "longitude": 121.513354,
@@ -574,7 +1852,15 @@
         "title": "Photo Documentation (Loob at Labas ng Site)"
       }
     },
-    "rejectedDocs": {}
+    "rejectedDocs": {},
+    "property": {
+      "tctNo": "dsdasdsdasdasda",
+      "taxDecNo": "dsadasdasdasdadas",
+      "isRegisteredOwner": true,
+      "proposedBuildingType": "Residential",
+      "lotAreaSqM": 250,
+      "locationDescription": "dsadasdasdas"
+    }
   },
   {
     "id": "app-1790078173083-980868",
@@ -726,7 +2012,15 @@
     },
     "createdAt": "2026-09-22T11:56:13.083Z",
     "updatedAt": "2026-09-22T11:56:13.083Z",
-    "dataHash": "d3d34b4dbce81a3cfd575cc6e35b3c216087129dd921fc781864179a03df263f"
+    "dataHash": "d3d34b4dbce81a3cfd575cc6e35b3c216087129dd921fc781864179a03df263f",
+    "property": {
+      "tctNo": "",
+      "taxDecNo": "",
+      "isRegisteredOwner": false,
+      "proposedBuildingType": "Residential",
+      "lotAreaSqM": 0,
+      "locationDescription": ""
+    }
   },
   {
     "id": "app-1789266276897-806487",
@@ -740,7 +2034,8 @@
       "contactPhone": "09877665365",
       "contactEmail": "maraldrei@gmail.com",
       "address": "73 Ubaldo Suello St. Brgy Zone IV",
-      "barangay": "San Antonio"
+      "barangay": "San Antonio",
+      "email": "maraldrei@gmail.com"
     },
     "latitude": 14.1899,
     "longitude": 121.505833,
@@ -930,6 +2225,14 @@
         "approvedBy": "MPDC",
         "title": "Photo Documentation (Loob at Labas ng Site)"
       }
+    },
+    "property": {
+      "tctNo": "TCT 432043204320493204",
+      "taxDecNo": "TD 43243243243432",
+      "isRegisteredOwner": true,
+      "proposedBuildingType": "Residential",
+      "lotAreaSqM": 250,
+      "locationDescription": "73 Ubaldo Suello St. Brgy Zone IV"
     }
   },
   {
@@ -944,7 +2247,8 @@
       "contactPhone": "09654845234",
       "contactEmail": "maraldrei@gmail.com",
       "address": "73 Ubaldo Suello St. Brgy Zone IV",
-      "barangay": "Barangay Zone V (Poblacion)"
+      "barangay": "Barangay Zone V (Poblacion)",
+      "email": "maraldrei@gmail.com"
     },
     "latitude": 14.1854,
     "longitude": 121.514932,
@@ -1189,6 +2493,14 @@
       "issuedBy": "Municipal Assessor's Office (assessor)",
       "instruction": "Assessor Fee Computed. Ipakita ang pahinang ito sa Municipal Treasury Office upang magbayad ng kaukulang fee.",
       "notes": "Nai-assess ng Assessor's Office ang bayarin (₱480.00). Handa na ang Order of Payment para bayaran sa Treasury."
+    },
+    "property": {
+      "tctNo": "tct 3432433243243243242",
+      "taxDecNo": "td432423432432423432",
+      "isRegisteredOwner": true,
+      "proposedBuildingType": "Residential",
+      "lotAreaSqM": 232,
+      "locationDescription": "73 Ubaldo Suello St. Brgy Zone IV"
     }
   },
   {
@@ -1203,7 +2515,8 @@
       "contactPhone": "09161225511",
       "contactEmail": "maraldrei@gmail.com",
       "address": "Mabini St.",
-      "barangay": "Barangay Zone VIII (Poblacion)"
+      "barangay": "Barangay Zone VIII (Poblacion)",
+      "email": "maraldrei@gmail.com"
     },
     "latitude": 14.186126,
     "longitude": 121.509952,
@@ -1462,7 +2775,15 @@
       "inspector": "engineer"
     },
     "inspectionStage": "before",
-    "progress": 0
+    "progress": 0,
+    "property": {
+      "tctNo": "TCT 432432423432423423",
+      "taxDecNo": "TD 4234234324234244",
+      "isRegisteredOwner": true,
+      "proposedBuildingType": "Institutional",
+      "lotAreaSqM": 250,
+      "locationDescription": "Mabini St."
+    }
   },
   {
     "id": "app-test-overdue-8801",
@@ -1476,7 +2797,8 @@
       "contactPhone": "09171234567",
       "contactEmail": "cardo.test@luisiana.gov.ph",
       "address": "Zone II (Poblacion), Luisiana, Laguna",
-      "barangay": "Barangay Zone II (Poblacion)"
+      "barangay": "Barangay Zone II (Poblacion)",
+      "email": "cardo.test@luisiana.gov.ph"
     },
     "latitude": 14.184,
     "longitude": 121.512,
@@ -1619,7 +2941,15 @@
       "inspector": "Engr. Municipal Office"
     },
     "inspectionStage": "during",
-    "progress": 50
+    "progress": 50,
+    "property": {
+      "tctNo": "TCT-2026-9912",
+      "taxDecNo": "TD-2026-8801",
+      "isRegisteredOwner": true,
+      "proposedBuildingType": "Residential",
+      "lotAreaSqM": 180,
+      "locationDescription": "Zone II (Poblacion), Luisiana, Laguna"
+    }
   },
   {
     "id": "app-1788689384841-400053",
@@ -1633,7 +2963,8 @@
       "contactPhone": "32131232131",
       "contactEmail": "alfredo@gmail.com",
       "address": "dsdsaaddsadadasd",
-      "barangay": "Santo Tomas"
+      "barangay": "Santo Tomas",
+      "email": "alfredo@gmail.com"
     },
     "latitude": 14.187103,
     "longitude": 121.515138,
@@ -1972,7 +3303,15 @@
       "inspector": "engineer"
     },
     "inspectionStage": "after",
-    "progress": 100
+    "progress": 100,
+    "property": {
+      "tctNo": "ffsddsfdsfdsf",
+      "taxDecNo": "sdfdsfdsfdsfdsfdsfsd",
+      "isRegisteredOwner": true,
+      "proposedBuildingType": "Residential",
+      "lotAreaSqM": 232,
+      "locationDescription": "dsdsaaddsadadasd"
+    }
   },
   {
     "id": "app-1788689012900-853919",
@@ -1986,7 +3325,8 @@
       "contactPhone": "09181234567",
       "contactEmail": "pedro.test@example.com",
       "address": "Barangay San Buenaventura, Luisiana",
-      "barangay": "San Buenaventura"
+      "barangay": "San Buenaventura",
+      "email": "pedro.test@example.com"
     },
     "latitude": null,
     "longitude": null,
@@ -2117,7 +3457,15 @@
     "engineerApprovedBy": "Engr. Mario S. Baldovino (Municipal Engineer)",
     "isPinned": true,
     "fromOffice": "Engineering",
-    "author": "Engr. Mario S. Baldovino (Municipal Engineer)"
+    "author": "Engr. Mario S. Baldovino (Municipal Engineer)",
+    "property": {
+      "tctNo": "",
+      "taxDecNo": "",
+      "isRegisteredOwner": false,
+      "proposedBuildingType": "Residential",
+      "lotAreaSqM": 0,
+      "locationDescription": "Barangay San Buenaventura, Luisiana"
+    }
   },
   {
     "id": "app-1788486323245-708224",
@@ -2131,7 +3479,8 @@
       "contactPhone": "09171234567",
       "contactEmail": "juandelacruz@example.com",
       "address": "Poblacion Zone I",
-      "barangay": "Barangay Zone I (Poblacion)"
+      "barangay": "Barangay Zone I (Poblacion)",
+      "email": "juandelacruz@example.com"
     },
     "latitude": 14.191508,
     "longitude": 121.509918,
@@ -2354,7 +3703,15 @@
     "engineerApprovedBy": "Engr. Mario S. Baldovino (Municipal Engineer)",
     "isPinned": true,
     "fromOffice": "Engineering",
-    "engineerApprovedAt": "2026-09-08T15:52:54.597Z"
+    "engineerApprovedAt": "2026-09-08T15:52:54.597Z",
+    "property": {
+      "tctNo": "4234324324",
+      "taxDecNo": "sfddsfdsfsdf",
+      "isRegisteredOwner": true,
+      "proposedBuildingType": "Residential",
+      "lotAreaSqM": 343,
+      "locationDescription": "fsdfdsfdsfsd"
+    }
   },
   {
     "id": "app-1788485863467-282911",
@@ -2368,7 +3725,8 @@
       "contactPhone": "09998887777",
       "contactEmail": "maria@example.com",
       "address": "Poblacion Zone IV",
-      "barangay": "Barangay Zone IV (Poblacion)"
+      "barangay": "Barangay Zone IV (Poblacion)",
+      "email": "maria@example.com"
     },
     "latitude": 14.1842,
     "longitude": 121.5135,
@@ -2506,7 +3864,15 @@
     "fee": "None (Free)",
     "createdAt": "2026-09-04T01:37:43.467Z",
     "updatedAt": "2026-09-05T04:53:14.946Z",
-    "dataHash": "89fdb129e1dd51f57c2e692fa49c285f1efef20dfd81fa97de5f48c98411743e"
+    "dataHash": "89fdb129e1dd51f57c2e692fa49c285f1efef20dfd81fa97de5f48c98411743e",
+    "property": {
+      "tctNo": "TCT-2026-9876",
+      "taxDecNo": "TD-2026-5432",
+      "isRegisteredOwner": false,
+      "proposedBuildingType": "Residential 2-Storey",
+      "lotAreaSqM": 350,
+      "locationDescription": "Near Municipal Plaza"
+    }
   },
   {
     "id": "app-1788485147265-847431",
@@ -2591,7 +3957,15 @@
     "fee": "None (Free)",
     "createdAt": "2026-09-04T01:25:47.265Z",
     "updatedAt": "2026-09-05T04:55:08.457Z",
-    "dataHash": "00f90888dcc6f39fe836b695d4ef601e88fbbb34a9b4ff8396251ef598cc1942"
+    "dataHash": "00f90888dcc6f39fe836b695d4ef601e88fbbb34a9b4ff8396251ef598cc1942",
+    "property": {
+      "tctNo": "TCT-9999",
+      "taxDecNo": "TD-9999",
+      "isRegisteredOwner": false,
+      "proposedBuildingType": "Residential",
+      "lotAreaSqM": 150,
+      "locationDescription": "Brgy Zone I"
+    }
   },
   {
     "id": "app-1788485065149-934879",
@@ -2676,7 +4050,15 @@
     "fee": "None (Free)",
     "createdAt": "2026-09-04T01:24:25.149Z",
     "updatedAt": "2026-09-04T01:24:25.149Z",
-    "dataHash": "c2bfd414bca112f21c843ae7e82dc59d38a1e1a884503cebdccc1f695b7f91c6"
+    "dataHash": "c2bfd414bca112f21c843ae7e82dc59d38a1e1a884503cebdccc1f695b7f91c6",
+    "property": {
+      "tctNo": "TCT-9999",
+      "taxDecNo": "TD-9999",
+      "isRegisteredOwner": false,
+      "proposedBuildingType": "Residential",
+      "lotAreaSqM": 150,
+      "locationDescription": "Brgy Zone I"
+    }
   },
   {
     "id": "app-1788386319655-792023",
@@ -2687,7 +4069,8 @@
       "contactPhone": "09618907215",
       "contactEmail": "maraldrei@gmail.com",
       "address": "dfsfsdfds",
-      "barangay": "Barangay Zone II (Poblacion)"
+      "barangay": "Barangay Zone II (Poblacion)",
+      "email": "maraldrei@gmail.com"
     },
     "lotDetails": {
       "tctNo": "tct-5323243432",
@@ -2774,7 +4157,15 @@
     "fee": "None (Free)",
     "createdAt": "2026-09-02T21:58:39.655Z",
     "updatedAt": "2026-09-02T21:58:39.655Z",
-    "dataHash": "8e30a542a622e3b66aa64db955543e67b6079142446b207ade35883ed22bd1a8"
+    "dataHash": "8e30a542a622e3b66aa64db955543e67b6079142446b207ade35883ed22bd1a8",
+    "property": {
+      "tctNo": "tct-5323243432",
+      "taxDecNo": "td 43343243243",
+      "isRegisteredOwner": false,
+      "proposedBuildingType": "Residential",
+      "lotAreaSqM": 250,
+      "locationDescription": "dfsfsdfds"
+    }
   },
   {
     "id": "app-1788385280144-231248",
@@ -2785,7 +4176,8 @@
       "contactPhone": "09618907215",
       "contactEmail": "maraldrei@gmail.com",
       "address": "73 Ubaldo Suello St. Brgy Zone IV",
-      "barangay": "Barangay Zone IV (Poblacion)"
+      "barangay": "Barangay Zone IV (Poblacion)",
+      "email": "maraldrei@gmail.com"
     },
     "lotDetails": {
       "tctNo": "tct342343242",
@@ -2872,7 +4264,15 @@
     "fee": "None (Free)",
     "createdAt": "2026-09-02T21:41:20.144Z",
     "updatedAt": "2026-09-02T21:41:20.144Z",
-    "dataHash": "5b9ebfe8fc41b3f60f36ef58d3985867b6cfe6a6b2c97540a2b68e2a44e7eb45"
+    "dataHash": "5b9ebfe8fc41b3f60f36ef58d3985867b6cfe6a6b2c97540a2b68e2a44e7eb45",
+    "property": {
+      "tctNo": "tct342343242",
+      "taxDecNo": "43432432432432",
+      "isRegisteredOwner": false,
+      "proposedBuildingType": "Residential",
+      "lotAreaSqM": 259,
+      "locationDescription": "73 Ubaldo Suello St. Brgy Zone IV"
+    }
   },
   {
     "id": "app-1788384778576-917726",
@@ -2883,7 +4283,8 @@
       "contactPhone": "09618907215",
       "contactEmail": "maraldrei@gmail.com",
       "address": "Rizal Extension",
-      "barangay": "Barangay Zone VIII (Poblacion)"
+      "barangay": "Barangay Zone VIII (Poblacion)",
+      "email": "maraldrei@gmail.com"
     },
     "lotDetails": {
       "tctNo": "TCT-456-34242534354",
@@ -2985,7 +4386,15 @@
     "author": "Engr. Mario S. Baldovino (Municipal Engineer)",
     "requiresAction": true,
     "heldAt": "2026-09-08T15:52:33.041Z",
-    "heldBy": "Engr. Mario S. Baldovino (Municipal Engineer)"
+    "heldBy": "Engr. Mario S. Baldovino (Municipal Engineer)",
+    "property": {
+      "tctNo": "TCT-456-34242534354",
+      "taxDecNo": "TD-2026-5677-5644",
+      "isRegisteredOwner": false,
+      "proposedBuildingType": "Residential",
+      "lotAreaSqM": 240,
+      "locationDescription": "Rizal Extension"
+    }
   },
   {
     "id": "app-1788297076513-269464",
@@ -2996,7 +4405,8 @@
       "contactPhone": "09618907215",
       "contactEmail": "maraldrei@gmail.com",
       "address": "73 Ubaldo Suello St. Brgy Zone IV",
-      "barangay": "Barangay Zone IV (Poblacion)"
+      "barangay": "Barangay Zone IV (Poblacion)",
+      "email": "maraldrei@gmail.com"
     },
     "lotDetails": {
       "tctNo": "313 31321 31321 3",
@@ -3078,6 +4488,14 @@
     "fee": "None (Free)",
     "createdAt": "2026-09-01T21:11:16.513Z",
     "updatedAt": "2026-09-01T21:11:16.513Z",
-    "dataHash": "b05c1deb814415883dc9af818ebd147b1785f38fe475264d9bffb2ac6fcffacc"
+    "dataHash": "b05c1deb814415883dc9af818ebd147b1785f38fe475264d9bffb2ac6fcffacc",
+    "property": {
+      "tctNo": "313 31321 31321 3",
+      "taxDecNo": "123 3232 1231",
+      "isRegisteredOwner": true,
+      "proposedBuildingType": "Commercial",
+      "lotAreaSqM": 130,
+      "locationDescription": "73 Ubaldo Suello St. Brgy Zone IV"
+    }
   }
 ]
