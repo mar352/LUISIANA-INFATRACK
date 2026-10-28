@@ -4969,3 +4969,516 @@ body.dark [class*="topnav-accent-"] .topBar-nav .topBar-exit:hover {
   color: inherit;
 }
 
+/* ── Floating Sector Filter Pills on GIS Map ────────────────────────────── */
+.map-sector-filter-floating {
+  position: absolute;
+  top: calc(var(--map-hud-top, 56px) + 12px);
+  left: 72px;
+  z-index: 25;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border-radius: var(--apple-radius-full, 980px);
+  background: rgba(255, 255, 255, 0.90);
+  backdrop-filter: blur(24px) saturate(190%);
+  -webkit-backdrop-filter: blur(24px) saturate(190%);
+  border: 1px solid var(--apple-border, rgba(0, 0, 0, 0.12));
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.10), 0 2px 8px rgba(0, 0, 0, 0.04);
+  max-width: min(840px, calc(100vw - 480px));
+  pointer-events: auto;
+  user-select: none;
+  box-sizing: border-box;
+  animation: mapSectorFadeIn 180ms ease-out;
+}
+
+[data-theme="dark"] .map-sector-filter-floating,
+body.dark .map-sector-filter-floating {
+  background: rgba(22, 24, 28, 0.90);
+  border-color: var(--apple-border, rgba(255, 255, 255, 0.14));
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55);
+}
+
+/* Master Sector Button */
+.map-sector-master-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 980px;
+  padding: 4px 9px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--apple-text, #1d1d1f);
+  cursor: pointer;
+  transition: all 140ms cubic-bezier(0.16, 1, 0.3, 1);
+  flex-shrink: 0;
+  line-height: 1.2;
+}
+
+.map-sector-master-btn:hover,
+.map-sector-master-btn.is-open {
+  background: rgba(0, 0, 0, 0.06);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="dark"] .map-sector-master-btn,
+body.dark .map-sector-master-btn {
+  color: var(--apple-text, #f5f5f7);
+}
+
+[data-theme="dark"] .map-sector-master-btn:hover,
+body.dark .map-sector-master-btn:hover,
+[data-theme="dark"] .map-sector-master-btn.is-open,
+body.dark .map-sector-master-btn.is-open {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.map-sector-master-icon {
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.map-sector-master-text {
+  letter-spacing: 0.01em;
+}
+
+.map-sector-master-caret {
+  opacity: 0.6;
+  transition: transform 160ms ease;
+}
+
+.map-sector-master-btn.is-open .map-sector-master-caret {
+  transform: rotate(180deg);
+}
+
+/* Vertical Hairline Divider */
+.map-sector-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--apple-border, rgba(0, 0, 0, 0.12));
+  flex-shrink: 0;
+  margin: 0 2px;
+}
+
+[data-theme="dark"] .map-sector-divider,
+body.dark .map-sector-divider {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+/* Scroll Arrow Controls */
+.map-sector-scroll-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: rgba(255, 255, 255, 0.80);
+  color: var(--apple-text-secondary, #6e6e73);
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 130ms ease;
+  padding: 0;
+}
+
+.map-sector-scroll-arrow:hover {
+  background: #ffffff;
+  color: var(--apple-text, #1d1d1f);
+  border-color: rgba(0, 0, 0, 0.22);
+  transform: scale(1.08);
+}
+
+[data-theme="dark"] .map-sector-scroll-arrow,
+body.dark .map-sector-scroll-arrow {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: var(--apple-text-secondary, #a1a1a6);
+}
+
+[data-theme="dark"] .map-sector-scroll-arrow:hover,
+body.dark .map-sector-scroll-arrow:hover {
+  background: rgba(255, 255, 255, 0.20);
+  color: #ffffff;
+}
+
+/* Scrollable Pills Track */
+.map-sector-pills-track {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+  flex: 1;
+  min-width: 0;
+  padding: 1px 3px;
+  mask-image: linear-gradient(to right, transparent, black 8px, black calc(100% - 8px), transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, black 8px, black calc(100% - 8px), transparent);
+}
+
+.map-sector-pills-track::-webkit-scrollbar {
+  display: none;
+}
+
+/* Sector Pill Buttons */
+.map-sector-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--apple-surface-secondary, #f5f5f7);
+  border: 1px solid var(--apple-border, rgba(0, 0, 0, 0.10));
+  border-radius: var(--apple-radius-full, 980px);
+  padding: 4px 9px;
+  font-size: 0.73rem;
+  font-weight: 600;
+  color: var(--apple-text, #1d1d1f);
+  cursor: pointer;
+  transition: all 130ms cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.map-sector-pill-btn:hover {
+  background: var(--apple-surface-tertiary, #e8e8ed);
+  transform: translateY(-1px);
+}
+
+[data-theme="dark"] .map-sector-pill-btn,
+body.dark .map-sector-pill-btn {
+  background: var(--apple-surface-secondary, #1c1e22);
+  border-color: var(--apple-border, rgba(255, 255, 255, 0.12));
+  color: var(--apple-text, #f5f5f7);
+}
+
+[data-theme="dark"] .map-sector-pill-btn:hover,
+body.dark .map-sector-pill-btn:hover {
+  background: var(--apple-surface-tertiary, #272a30);
+}
+
+/* Empty vs Non-Empty Styling */
+.map-sector-pill-btn.is-empty {
+  opacity: 0.65;
+}
+
+.map-sector-pill-btn.is-empty:hover {
+  opacity: 1;
+}
+
+.map-sector-pill-btn.has-count {
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.map-sector-pill-btn.active {
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.22);
+  font-weight: 700;
+  transform: translateY(-1px);
+}
+
+.map-sector-pill-btn.all-pill.active {
+  background: var(--apple-accent, #0071e3) !important;
+  border-color: var(--apple-accent, #0071e3) !important;
+  color: #ffffff !important;
+}
+
+.map-sector-pill-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.map-sector-pill-title {
+  font-weight: 600;
+}
+
+.map-sector-pill-count {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 980px;
+  background: rgba(0, 0, 0, 0.08);
+  color: inherit;
+  margin-left: 1px;
+}
+
+.map-sector-pill-btn.active .map-sector-pill-count {
+  background: rgba(255, 255, 255, 0.28);
+  color: #ffffff;
+}
+
+[data-theme="dark"] .map-sector-pill-count,
+body.dark .map-sector-pill-count {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Reset / Clear Button */
+.map-sector-pill-clear {
+  background: transparent;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  font-size: 0.70rem;
+  font-weight: 700;
+  color: #ef4444;
+  cursor: pointer;
+  padding: 3px 8px;
+  border-radius: 980px;
+  transition: all 130ms ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.map-sector-pill-clear:hover {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: #ef4444;
+}
+
+/* ── Popover Floating Grid Card ─────────────────────────────────────────── */
+.map-sector-popover-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 998;
+  background: transparent;
+}
+
+.map-sector-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 999;
+  width: 490px;
+  max-width: calc(100vw - 32px);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(28px) saturate(190%);
+  -webkit-backdrop-filter: blur(28px) saturate(190%);
+  border: 1px solid var(--apple-border, rgba(0, 0, 0, 0.12));
+  border-radius: 18px;
+  box-shadow: 0 20px 48px -6px rgba(0, 0, 0, 0.20), 0 8px 18px rgba(0, 0, 0, 0.08);
+  padding: 14px;
+  animation: mapSectorPopIn 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
+}
+
+[data-theme="dark"] .map-sector-popover,
+body.dark .map-sector-popover {
+  background: rgba(26, 28, 33, 0.96);
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 24px 54px rgba(0, 0, 0, 0.65);
+}
+
+.map-sector-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 10px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--apple-border, rgba(0, 0, 0, 0.08));
+}
+
+[data-theme="dark"] .map-sector-popover-header,
+body.dark .map-sector-popover-header {
+  border-color: rgba(255, 255, 255, 0.10);
+}
+
+.map-sector-popover-title {
+  font-size: 0.80rem;
+  font-weight: 700;
+  color: var(--apple-text, #1d1d1f);
+}
+
+[data-theme="dark"] .map-sector-popover-title,
+body.dark .map-sector-popover-title {
+  color: #f5f5f7;
+}
+
+.map-sector-popover-close {
+  background: rgba(0, 0, 0, 0.06);
+  border: none;
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  font-size: 0.72rem;
+  color: var(--apple-text-secondary, #6e6e73);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 120ms ease;
+}
+
+.map-sector-popover-close:hover {
+  background: rgba(0, 0, 0, 0.14);
+  color: var(--apple-text, #1d1d1f);
+}
+
+[data-theme="dark"] .map-sector-popover-close,
+body.dark .map-sector-popover-close {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--apple-text-secondary, #a1a1a6);
+}
+
+[data-theme="dark"] .map-sector-popover-close:hover,
+body.dark .map-sector-popover-close:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+}
+
+.map-sector-popover-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  max-height: 380px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.map-sector-popover-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  background: var(--apple-surface-secondary, #f8f8fa);
+  border: 1px solid var(--apple-border, rgba(0, 0, 0, 0.08));
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 140ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.map-sector-popover-item:hover {
+  background: var(--apple-surface-tertiary, #f0f0f4);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+
+.map-sector-popover-item.active {
+  background: rgba(0, 113, 227, 0.08);
+  border-color: var(--apple-accent, #0071e3);
+  box-shadow: 0 2px 8px rgba(0, 113, 227, 0.15);
+}
+
+[data-theme="dark"] .map-sector-popover-item,
+body.dark .map-sector-popover-item {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark"] .map-sector-popover-item:hover,
+body.dark .map-sector-popover-item:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+[data-theme="dark"] .map-sector-popover-item.active,
+body.dark .map-sector-popover-item.active {
+  background: rgba(0, 113, 227, 0.20);
+  border-color: var(--apple-accent, #0071e3);
+}
+
+.map-sector-popover-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.map-sector-popover-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.map-sector-popover-name {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--apple-text, #1d1d1f);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+[data-theme="dark"] .map-sector-popover-name,
+body.dark .map-sector-popover-name {
+  color: #f5f5f7;
+}
+
+.map-sector-popover-sub {
+  font-size: 0.68rem;
+  color: var(--apple-text-secondary, #6e6e73);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.25;
+}
+
+[data-theme="dark"] .map-sector-popover-sub,
+body.dark .map-sector-popover-sub {
+  color: #a1a1a6;
+}
+
+.map-sector-popover-badge {
+  font-size: 0.66rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 980px;
+  background: rgba(0, 0, 0, 0.07);
+  color: var(--apple-text-secondary, #6e6e73);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+[data-theme="dark"] .map-sector-popover-badge,
+body.dark .map-sector-popover-badge {
+  background: rgba(255, 255, 255, 0.12);
+  color: #d1d1d6;
+}
+
+@keyframes mapSectorPopIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes mapSectorFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 1024px) {
+  .map-sector-filter-floating {
+    left: 14px;
+    top: calc(var(--map-hud-top, 56px) + 64px);
+    max-width: calc(100vw - 28px);
+  }
+  .map-sector-popover {
+    width: calc(100vw - 28px);
+  }
+  .map-sector-popover-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+

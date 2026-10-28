@@ -1,0 +1,1637 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   PUBLIC TRANSPARENCY PORTAL (INFA-TRACK)
+   Clean, Realistic Philippine LGU Portal Aesthetic with Stadia Maps
+   ═══════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --ptp-bg: var(--apple-bg, #ffffff);
+  --ptp-surface: var(--apple-surface, #ffffff);
+  --ptp-surface-subtle: var(--apple-surface-secondary, #f5f5f7);
+  --ptp-border: var(--apple-border, rgba(0, 0, 0, 0.08));
+  --ptp-border-strong: var(--apple-border-strong, rgba(0, 0, 0, 0.14));
+  --ptp-text: var(--apple-text, #1d1d1f);
+  --ptp-text-muted: var(--apple-text-secondary, #6e6e73);
+  --ptp-text-dim: var(--apple-text-tertiary, #86868b);
+  --ptp-navy: var(--navy, #151c28);
+  --ptp-primary: var(--apple-accent, #0071e3);
+  --ptp-primary-hover: var(--apple-accent-hover, #0077ed);
+  --ptp-accent-gold: #d97706;
+  --ptp-accent-green: #059669;
+  --ptp-accent-blue: #2563eb;
+  --ptp-sidebar-width: 340px;
+}
+
+[data-theme="dark"],
+body.dark {
+  --ptp-bg: var(--apple-bg, #0b0e14);
+  --ptp-surface: var(--apple-surface, #141518);
+  --ptp-surface-subtle: var(--apple-surface-secondary, #1c1e22);
+  --ptp-border: var(--apple-border, rgba(255, 255, 255, 0.10));
+  --ptp-border-strong: var(--apple-border-strong, rgba(255, 255, 255, 0.20));
+  --ptp-text: var(--apple-text, #f5f5f7);
+  --ptp-text-muted: var(--apple-text-secondary, #a1a1a6);
+  --ptp-text-dim: var(--apple-text-tertiary, #6e6e73);
+  --ptp-navy: #0f131a;
+  --ptp-primary: var(--apple-accent, #2997ff);
+  --ptp-primary-hover: var(--apple-accent-hover, #47a6ff);
+}
+
+/* ── Container / Root Layout ── */
+.ptp-container {
+  display: flex;
+  flex-direction: column;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background-color: var(--ptp-bg);
+  color: var(--ptp-text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  box-sizing: border-box;
+}
+
+/* ── Clean Top Header / Branding Bar ── */
+.ptp-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 60px;
+  min-height: 60px;
+  padding: 0 20px;
+  background: var(--ptp-navy);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  color: #ffffff;
+  z-index: 50;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.ptp-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.ptp-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  color: #ffffff;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ptp-back-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.ptp-branding {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ptp-lgu-seal {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: #1e293b;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: #38bdf8;
+}
+
+.ptp-brand-title {
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.ptp-brand-title span {
+  font-weight: 400;
+  color: #94a3b8;
+  margin-left: 6px;
+  font-size: 0.88rem;
+}
+
+.ptp-brand-sub {
+  font-size: 0.72rem;
+  color: #94a3b8;
+}
+
+.ptp-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Stadia Basemap Style Selector */
+.ptp-style-btn-wrap {
+  position: relative;
+}
+
+.ptp-basemap-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  color: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.ptp-basemap-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.ptp-style-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 290px;
+  background: #ffffff;
+  border: 1px solid var(--ptp-border-strong);
+  border-radius: 10px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  padding: 12px;
+  z-index: 100;
+  color: var(--ptp-text);
+}
+
+.ptp-style-popover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--ptp-text);
+  border-bottom: 1px solid var(--ptp-border);
+  padding-bottom: 6px;
+}
+
+.ptp-style-popover-close {
+  background: none;
+  border: none;
+  color: var(--ptp-text-dim);
+  cursor: pointer;
+  padding: 2px;
+}
+
+.ptp-style-popover-close:hover {
+  color: var(--ptp-text);
+}
+
+.ptp-style-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.ptp-style-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  background: #f8fafc;
+  border: 1px solid var(--ptp-border);
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+}
+
+.ptp-style-card:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.ptp-style-card.active {
+  background: #f0f9ff;
+  border-color: var(--ptp-primary);
+}
+
+.ptp-style-icon {
+  font-size: 1.1rem;
+}
+
+.ptp-style-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.ptp-style-name {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.ptp-style-tagline {
+  font-size: 0.68rem;
+  color: var(--ptp-text-muted);
+}
+
+.ptp-style-check {
+  color: var(--ptp-primary);
+  font-weight: 800;
+  font-size: 0.9rem;
+}
+
+.ptp-project-count-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 16px;
+  font-size: 0.75rem;
+  color: #e2e8f0;
+}
+
+.ptp-count-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+}
+
+.ptp-project-count-badge strong {
+  color: #ffffff;
+}
+
+.ptp-services-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: var(--ptp-primary);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  color: #ffffff;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.ptp-services-btn:hover {
+  background: var(--ptp-primary-hover);
+}
+
+/* ── Main Workspace ── */
+.ptp-workspace {
+  display: flex;
+  flex: 1;
+  width: 100%;
+  height: calc(100vh - 60px);
+  position: relative;
+  overflow: hidden;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   1. MAIN LAYOUT: LEFT COLLAPSIBLE SIDEBAR (~340px)
+   Matches Main Theme / MPDC Panel Sidebar Design System
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.ptp-sidebar {
+  width: var(--ptp-sidebar-width);
+  flex: 0 0 var(--ptp-sidebar-width);
+  height: 100%;
+  background: var(--apple-surface-secondary);
+  border-right: 1px solid var(--apple-border);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  z-index: 40;
+  box-sizing: border-box;
+  user-select: none;
+  transition: width 0.24s cubic-bezier(0.16, 1, 0.3, 1),
+              flex-basis 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 2px 0 12px rgba(0, 0, 0, 0.05);
+  font-family: var(--apple-font);
+}
+
+.ptp-sidebar.collapsed {
+  width: 0 !important;
+  flex: 0 0 0 !important;
+  overflow: hidden !important;
+  border-right-color: transparent;
+  pointer-events: none;
+}
+
+/* Sidebar Header matching MPDC panel */
+.ptp-sidebar-header {
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--apple-border);
+  background: var(--apple-surface);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 54px;
+  box-sizing: border-box;
+  gap: 8px;
+}
+
+.ptp-sidebar-header-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.ptp-sidebar-kicker {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--apple-accent);
+}
+
+.ptp-sidebar-title {
+  margin: 2px 0 0;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--apple-text);
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ptp-title-pin {
+  color: var(--apple-accent);
+  flex-shrink: 0;
+}
+
+.ptp-collapse-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--apple-radius-sm);
+  border: 1px solid var(--apple-border);
+  background: var(--apple-surface-secondary);
+  color: var(--apple-text-secondary);
+  cursor: pointer;
+  transition: all 0.16s ease;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.ptp-collapse-btn:hover {
+  background: var(--apple-surface-tertiary);
+  color: var(--apple-text);
+  border-color: var(--apple-border-strong);
+}
+
+/* Sidebar Filter Controls */
+.ptp-filters-section {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--apple-border);
+  background: var(--apple-surface);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  box-sizing: border-box;
+}
+
+/* Search Bar */
+.ptp-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.ptp-search-icon {
+  position: absolute;
+  left: 10px;
+  color: var(--apple-text-tertiary);
+  pointer-events: none;
+}
+
+.ptp-search-input {
+  width: 100%;
+  height: 35px;
+  padding: 0 28px 0 32px;
+  background: var(--apple-surface-secondary);
+  border: 1px solid var(--apple-border);
+  border-radius: var(--apple-radius-sm);
+  color: var(--apple-text);
+  font-size: 0.81rem;
+  font-family: inherit;
+  box-sizing: border-box;
+  transition: all 0.16s ease;
+}
+
+.ptp-search-input:focus {
+  outline: none;
+  background: var(--apple-surface);
+  border-color: var(--apple-accent);
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.16);
+}
+
+.ptp-search-input::placeholder {
+  color: var(--apple-text-tertiary);
+}
+
+.ptp-search-clear {
+  position: absolute;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--apple-text-tertiary);
+  cursor: pointer;
+  padding: 3px;
+  border-radius: var(--apple-radius-full);
+  transition: all 0.14s ease;
+}
+
+.ptp-search-clear:hover {
+  color: var(--apple-text);
+  background: var(--apple-surface-tertiary);
+}
+
+/* Dropdown Grid */
+.ptp-dropdown-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.ptp-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.ptp-field-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--apple-text-tertiary);
+}
+
+.ptp-select {
+  width: 100%;
+  height: 33px;
+  padding: 0 8px;
+  background: var(--apple-surface-secondary);
+  border: 1px solid var(--apple-border);
+  border-radius: var(--apple-radius-sm);
+  color: var(--apple-text);
+  font-size: 0.78rem;
+  font-family: inherit;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: all 0.15s ease;
+}
+
+.ptp-select:focus {
+  outline: none;
+  background: var(--apple-surface);
+  border-color: var(--apple-accent);
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.16);
+}
+
+.ptp-filter-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  color: var(--apple-text-secondary);
+  padding-top: 1px;
+}
+
+.ptp-filter-summary strong {
+  color: var(--apple-text);
+  font-weight: 600;
+}
+
+.ptp-reset-filters-btn {
+  background: none;
+  border: none;
+  color: var(--apple-accent);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.15s ease;
+}
+
+.ptp-reset-filters-btn:hover {
+  color: var(--apple-accent-hover);
+  text-decoration: underline;
+}
+
+/* Scrollable List Container */
+.ptp-list-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 12px;
+  background: var(--apple-surface-secondary);
+  scrollbar-width: thin;
+  scrollbar-color: var(--apple-border-strong) transparent;
+}
+
+.ptp-list-container::-webkit-scrollbar {
+  width: 5px;
+}
+
+.ptp-list-container::-webkit-scrollbar-thumb {
+  background: var(--apple-border-strong);
+  border-radius: 4px;
+}
+
+/* Loading State */
+.ptp-loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 180px;
+  color: var(--apple-text-secondary);
+  font-size: 0.8rem;
+}
+
+.ptp-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--apple-border);
+  border-top-color: var(--apple-accent);
+  border-radius: 50%;
+  animation: ptpSpin 0.8s linear infinite;
+}
+
+@keyframes ptpSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* Empty State Card */
+.ptp-empty-state-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 28px 16px;
+  background: var(--apple-surface);
+  border: 1px dashed var(--apple-border-strong);
+  border-radius: var(--apple-radius-sm);
+  margin: 10px 0;
+  box-shadow: var(--apple-shadow-subtle);
+}
+
+.ptp-empty-icon-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  background: var(--apple-surface-secondary);
+  border-radius: 50%;
+  color: var(--apple-text-tertiary);
+  margin-bottom: 10px;
+}
+
+.ptp-empty-title {
+  margin: 0 0 6px 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--apple-text);
+}
+
+.ptp-empty-sub {
+  margin: 0 0 12px 0;
+  font-size: 0.74rem;
+  color: var(--apple-text-secondary);
+  line-height: 1.4;
+  max-width: 250px;
+}
+
+.ptp-empty-reset-btn {
+  padding: 5px 12px;
+  background: var(--apple-surface-secondary);
+  border: 1px solid var(--apple-border);
+  border-radius: var(--apple-radius-sm);
+  color: var(--apple-text);
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-bottom: 8px;
+}
+
+.ptp-empty-reset-btn:hover {
+  background: var(--apple-surface-tertiary);
+  color: var(--apple-text);
+}
+
+.ptp-todo-comment {
+  padding: 3px 8px;
+  background: var(--apple-surface-secondary);
+  border: 1px solid var(--apple-border);
+  border-radius: 4px;
+}
+
+.ptp-todo-comment code {
+  font-family: monospace;
+  font-size: 0.68rem;
+  color: var(--apple-accent);
+}
+
+/* Real Project List */
+.ptp-project-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.ptp-project-item {
+  width: 100%;
+  text-align: left;
+  background: var(--apple-surface);
+  border: 1px solid var(--apple-border);
+  border-radius: var(--apple-radius-sm);
+  padding: 11px 13px;
+  color: var(--apple-text);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  box-sizing: border-box;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  font-family: inherit;
+}
+
+.ptp-project-item:hover {
+  background: var(--apple-surface);
+  border-color: var(--apple-border-strong);
+  transform: translateY(-1px);
+  box-shadow: var(--apple-shadow-card);
+}
+
+.ptp-project-item.selected {
+  border-color: var(--apple-accent);
+  background: var(--apple-surface);
+  box-shadow: 0 2px 10px rgba(0, 113, 227, 0.14);
+}
+
+/* Signature MPDC accent indicator bar */
+.ptp-project-item.selected::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 7px;
+  bottom: 7px;
+  width: 3.5px;
+  background: var(--apple-accent);
+  border-radius: 0 3px 3px 0;
+}
+
+.ptp-proj-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ptp-status-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: var(--apple-radius-full);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.ptp-status-pill.pre-construction {
+  background: rgba(0, 113, 227, 0.1);
+  color: var(--apple-accent);
+  border: 1px solid rgba(0, 113, 227, 0.2);
+}
+
+.ptp-status-pill.ongoing {
+  background: rgba(217, 119, 6, 0.12);
+  color: #d97706;
+  border: 1px solid rgba(217, 119, 6, 0.25);
+}
+
+[data-theme="dark"] .ptp-status-pill.ongoing,
+body.dark .ptp-status-pill.ongoing {
+  background: rgba(245, 158, 11, 0.16);
+  color: #fbbf24;
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+.ptp-status-pill.completed {
+  background: rgba(16, 185, 129, 0.12);
+  color: #059669;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+[data-theme="dark"] .ptp-status-pill.completed,
+body.dark .ptp-status-pill.completed {
+  background: rgba(16, 185, 129, 0.18);
+  color: #34d399;
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.ptp-status-pill.awaiting-data {
+  background: var(--apple-surface-tertiary);
+  color: var(--apple-text-secondary);
+  border: 1px solid var(--apple-border);
+}
+
+.ptp-proj-progress {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--apple-text-secondary);
+  font-feature-settings: "tnum";
+}
+
+.ptp-proj-name {
+  font-size: 0.83rem;
+  font-weight: 600;
+  color: var(--apple-text);
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+}
+
+.ptp-proj-details {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.72rem;
+  color: var(--apple-text-secondary);
+}
+
+.ptp-proj-meta-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ptp-proj-meta-item.budget {
+  color: var(--apple-accent);
+  font-weight: 700;
+  font-feature-settings: "tnum";
+}
+
+.ptp-proj-meta-item .truncate {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 235px;
+}
+
+.ptp-proj-progress-track {
+  width: 100%;
+  height: 4px;
+  background: var(--apple-border);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 3px;
+}
+
+.ptp-proj-progress-bar {
+  height: 100%;
+  border-radius: 2px;
+}
+
+.ptp-proj-progress-bar.pre-construction { background: var(--apple-accent); }
+.ptp-proj-progress-bar.ongoing { background: var(--ptp-accent-gold); }
+.ptp-proj-progress-bar.completed { background: var(--ptp-accent-green); }
+
+/* Floating Expand Trigger when Sidebar is collapsed */
+.ptp-expand-trigger-btn {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 45;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: var(--apple-surface);
+  border: 1px solid var(--apple-border);
+  border-radius: var(--apple-radius-sm);
+  color: var(--apple-text);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--apple-shadow-card);
+  transition: all 0.16s ease;
+  font-family: var(--apple-font);
+}
+
+.ptp-expand-trigger-btn:hover {
+  background: var(--apple-surface-secondary);
+  border-color: var(--apple-border-strong);
+  transform: translateY(-1px);
+}
+
+.ptp-expand-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  background: var(--apple-accent);
+  color: #ffffff;
+  border-radius: var(--apple-radius-full);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   2. MAIN LAYOUT: RIGHT FULL-SCREEN STADIA MAPS AREA
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.ptp-map-area {
+  flex: 1;
+  height: 100%;
+  position: relative;
+  background: #e9edf2;
+  overflow: hidden;
+}
+
+/* MapLibre Canvas Container */
+.ptp-maplibre-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.ptp-maplibre-canvas .maplibregl-canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Recenter Button */
+.ptp-map-quick-actions {
+  position: absolute;
+  bottom: 24px;
+  left: 20px;
+  z-index: 35;
+}
+
+.ptp-recenter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  background: #ffffff;
+  border: 1px solid var(--ptp-border-strong);
+  border-radius: 20px;
+  color: #0f172a;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  transition: all 0.15s ease;
+}
+
+.ptp-recenter-btn:hover {
+  background: #f1f5f9;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   3. STADIA MAP MARKER (Clean Classic Red Pin)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.ptp-stadia-marker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  position: relative;
+  transform: translateY(0);
+  transition: transform 0.15s ease;
+}
+
+.ptp-stadia-marker:hover {
+  transform: translateY(-4px);
+}
+
+.ptp-marker-pin-head {
+  width: 36px;
+  height: 36px;
+  background: #dc2626;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+  color: #ffffff;
+}
+
+.ptp-marker-pin-tip {
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 8px solid #dc2626;
+  margin-top: -1px;
+}
+
+.ptp-marker-pin-shadow {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  width: 20px;
+  height: 8px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  filter: blur(2px);
+  pointer-events: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   4. ACTIVE MAP POP-UP / TOOLTIP CARD (Clean Floating LGU Card)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.ptp-popup-card.ptp-popup-card--stadia {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 360px;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+  background: #ffffff;
+  border: 1px solid var(--ptp-border-strong);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-sizing: border-box;
+}
+
+.ptp-popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ptp-popup-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ptp-popup-status-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.ptp-popup-status-badge.pre-construction {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.ptp-popup-status-badge.ongoing {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.ptp-popup-status-badge.completed {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.ptp-popup-status-badge.awaiting-data {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.ptp-popup-type {
+  font-size: 0.72rem;
+  color: var(--ptp-text-dim);
+}
+
+.ptp-popup-close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  background: #f1f5f9;
+  border: 1px solid var(--ptp-border);
+  border-radius: 6px;
+  color: var(--ptp-text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ptp-popup-close-btn:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+/* 1. Project Name */
+.ptp-popup-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.35;
+}
+
+/* 2 & 3. Barangay & Winning Contractor Rows */
+.ptp-popup-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--ptp-border);
+}
+
+.ptp-popup-row-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ptp-text-muted);
+}
+
+.ptp-row-icon {
+  color: var(--ptp-primary);
+  flex-shrink: 0;
+}
+
+.ptp-popup-row-value {
+  color: #0f172a;
+  font-weight: 600;
+  text-align: right;
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ptp-popup-row-value.highlight {
+  color: #0369a1;
+}
+
+/* 4 & 5. Approved Budget & Utilized Budget Card */
+.ptp-budget-card {
+  background: #f8fafc;
+  border: 1px solid var(--ptp-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ptp-budget-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.ptp-budget-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ptp-budget-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.68rem;
+  color: var(--ptp-text-muted);
+}
+
+.ptp-budget-amount {
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.ptp-budget-amount.total {
+  color: #0f172a;
+}
+
+.ptp-budget-amount.spent {
+  color: #059669;
+}
+
+/* Utilization Bar */
+.ptp-utilization-bar-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-top: 4px;
+  border-top: 1px solid var(--ptp-border);
+}
+
+.ptp-utilization-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.68rem;
+  color: var(--ptp-text-muted);
+}
+
+.ptp-utilization-labels strong {
+  color: #0284c7;
+}
+
+.ptp-utilization-track {
+  width: 100%;
+  height: 5px;
+  background: #e2e8f0;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.ptp-utilization-fill {
+  height: 100%;
+  background: #0284c7;
+  border-radius: 3px;
+}
+
+/* 7. Image Placeholder Box for Geotagged Site Photo */
+.ptp-photo-container {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ptp-photo-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.72rem;
+}
+
+.ptp-photo-title {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ptp-text-muted);
+  font-weight: 600;
+}
+
+.ptp-photo-status {
+  color: var(--ptp-text-dim);
+  font-size: 0.68rem;
+}
+
+.ptp-photo-image-wrap {
+  position: relative;
+  width: 100%;
+  height: 130px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--ptp-border);
+}
+
+.ptp-site-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.ptp-photo-overlay-tag {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* REQUIRED IMAGE PLACEHOLDER BOX (Clean Government Style) */
+.ptp-photo-placeholder-box {
+  width: 100%;
+  height: 100px;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ptp-photo-placeholder-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  color: var(--ptp-text-dim);
+}
+
+.ptp-ph-camera-icon {
+  color: #94a3b8;
+}
+
+.ptp-ph-text {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.ptp-ph-subtext {
+  font-size: 0.68rem;
+  color: #94a3b8;
+}
+
+/* Card Action Buttons (Tingnan ang Site at Progress) */
+.ptp-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 5px;
+  margin-bottom: 7px;
+}
+
+.ptp-view-progress-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 14px;
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+  color: #ffffff;
+  border: 1px solid #0284c7;
+  border-radius: 7px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.25);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.ptp-view-progress-btn:hover {
+  background: linear-gradient(135deg, #0369a1 0%, #075985 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.35);
+}
+
+.ptp-view-progress-btn:active {
+  transform: translateY(0);
+}
+
+.ptp-engineer-inspect-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 12px;
+  background: #f8fafc;
+  color: #1e293b;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ptp-engineer-inspect-btn:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+/* Clickable Geotagged Site Photo box */
+.ptp-photo-container.is-clickable {
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.ptp-photo-container.is-clickable:hover .ptp-photo-placeholder-box {
+  background: #f0f9ff;
+  border-color: #0284c7;
+}
+
+.ptp-photo-container.is-clickable:hover .ptp-site-img {
+  transform: scale(1.025);
+  transition: transform 0.25s ease;
+}
+
+/* Pop-up Footer */
+.ptp-popup-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 4px;
+  border-top: 1px solid var(--ptp-border);
+  font-size: 0.68rem;
+  color: var(--ptp-text-dim);
+}
+
+.ptp-footer-tag {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #059669;
+}
+
+.ptp-verified-icon {
+  color: #059669;
+}
+
+/* ── RESPONSIVE DESIGN ── */
+@media (max-width: 900px) {
+  .ptp-sidebar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 70;
+  }
+  .ptp-sidebar.collapsed {
+    transform: translateX(-100%);
+  }
+  .ptp-popup-card.ptp-popup-card--stadia {
+    width: 320px;
+    top: 10px;
+    right: 10px;
+  }
+}
+
+@media (max-width: 600px) {
+  .ptp-topbar {
+    padding: 0 12px;
+  }
+  .ptp-brand-sub,
+  .ptp-project-count-badge {
+    display: none;
+  }
+  .ptp-popup-card.ptp-popup-card--stadia {
+    width: calc(100vw - 24px);
+    right: 12px;
+    left: 12px;
+    top: auto;
+    bottom: 16px;
+    max-height: 48vh;
+  }
+}
+
+/* ── EXACT ENGINEER PORTAL MAP PIN POINTER ────────────────────────── */
+/* 1. Root Marker Anchor: Managed exclusively by MapLibre GL.
+      CRITICAL: MUST BE position: absolute; top: 0; left: 0;
+      NEVER use position: relative, otherwise markers participate in normal document flow
+      and drift/jump violently across the screen when zooming! */
+.ptp-marker-anchor {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 38px !important;
+  height: 48px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  cursor: pointer;
+  user-select: none;
+  pointer-events: auto;
+  z-index: 20;
+  will-change: transform !important;
+  -webkit-backface-visibility: hidden !important;
+  backface-visibility: hidden !important;
+  transform-origin: 50% 100% !important;
+}
+
+.ptp-marker-anchor.is-selected {
+  z-index: 60;
+}
+
+/* 2. Inner Marker Body: Rock-solid container with NO CSS transitions to prevent lag during zoom */
+.ptp-marker-body {
+  width: 38px;
+  height: 48px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  transform-origin: 50% 100%;
+  pointer-events: none;
+}
+
+.ptp-engineer-pin-img {
+  width: 38px;
+  height: 48px;
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.35));
+}
+
+.ptp-marker-anchor:hover .ptp-engineer-pin-img {
+  filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.5));
+}
+
+.ptp-marker-anchor.is-selected .ptp-engineer-pin-img {
+  filter: drop-shadow(0 8px 16px rgba(0, 113, 227, 0.55)) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+}
+
+/* Ground Contact Ring: Static glow to prevent continuous composite layer repaints during zoom */
+.ptp-pin-pulse {
+  position: absolute;
+  bottom: 1px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 14px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(0, 113, 227, 0.5);
+  box-shadow: 0 0 6px 2px rgba(0, 113, 227, 0.4);
+  pointer-events: none;
+}
+
+.ptp-pin-pulse.pulse-completed {
+  background: rgba(16, 185, 129, 0.6);
+  box-shadow: 0 0 6px 2px rgba(16, 185, 129, 0.5);
+}
+
+.ptp-pin-pulse.pulse-ongoing {
+  background: rgba(245, 166, 35, 0.65);
+  box-shadow: 0 0 6px 2px rgba(245, 166, 35, 0.5);
+}
+
+.ptp-pin-pulse.pulse-planned {
+  background: rgba(234, 67, 53, 0.6);
+  box-shadow: 0 0 6px 2px rgba(234, 67, 53, 0.5);
+}
+
+/* Floating Project Name Pill Label (Matching CesiumMap infraLabelText) */
+.ptp-pin-label {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  background: rgba(12, 18, 28, 0.94);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: #ffffff;
+  padding: 5px 10px;
+  border-radius: 7px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  white-space: nowrap;
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.ptp-marker-anchor:hover .ptp-pin-label,
+.ptp-marker-anchor.is-selected .ptp-pin-label {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.ptp-pin-label-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #f8fafc;
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ptp-pin-label-sub {
+  font-size: 9.5px;
+  font-weight: 500;
+  color: #94a3b8;
+}
+
+/* ── Engineer Action Controls ── */
+.ptp-add-project-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  color: #ffffff;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(2, 132, 199, 0.3);
+  transition: all 0.18s ease;
+}
+
+.ptp-add-project-btn:hover {
+  background: linear-gradient(135deg, #0369a1 0%, #075985 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.4);
+}
+
+.ptp-engineer-card-actions {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ptp-border);
+}
+
+.ptp-engineer-inspect-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  color: #ffffff;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  box-shadow: 0 3px 10px rgba(2, 132, 199, 0.35);
+  transition: all 0.18s ease;
+}
+
+.ptp-engineer-inspect-btn:hover {
+  background: linear-gradient(135deg, #0369a1 0%, #075985 100%);
+  box-shadow: 0 5px 16px rgba(2, 132, 199, 0.45);
+  transform: translateY(-1px);
+}
+
+.ptp-engineer-inspect-btn:active {
+  transform: translateY(0);
+}
+
+/* ── WebGL Map Pin Tooltip / Popup Styling ── */
+.ptp-stadia-hover-popup .maplibregl-popup-content {
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  pointer-events: none;
+}
+
+.ptp-stadia-hover-popup .maplibregl-popup-tip {
+  display: none !important;
+}
+
+.ptp-pin-label.is-hover-label {
+  position: relative !important;
+  bottom: auto !important;
+  left: auto !important;
+  opacity: 1 !important;
+  transform: none !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45) !important;
+}
+
+
+

@@ -174,10 +174,19 @@ export const SiteProgressPopup: React.FC<SiteProgressPopupProps> = ({
     if (Array.isArray(project.photos)) {
       project.photos.forEach((p, idx) => {
         if (!p.url || seenUrls.has(p.url)) return;
+        // Ang geotagged photo ay para sa coordinate extraction lamang at HINDI dapat gamitin sa street view o panorama!
+        if (
+          p.kind === "site" ||
+          p.kind === "geotagged" ||
+          p.caption?.toLowerCase().includes("geotagged") ||
+          p.caption?.toLowerCase().includes("baseline")
+        ) {
+          return;
+        }
         seenUrls.add(p.url);
         const caption = (p.caption || "").toLowerCase();
         let s: TimelineStage = "during";
-        if (caption.includes("before") || caption.includes("pre") || p.kind === "site") {
+        if (caption.includes("before") || caption.includes("pre")) {
           s = "before";
         } else if (caption.includes("after") || caption.includes("complete") || caption.includes("finish")) {
           s = "after";
@@ -398,6 +407,23 @@ export const SiteProgressPopup: React.FC<SiteProgressPopupProps> = ({
         });
       }
     });
+
+    // C. Baseline & Geotagged site photos from project.photos
+    if (Array.isArray(project.photos)) {
+      project.photos.forEach((p, i) => {
+        const rawUrl = p.url || (p as any).photoUrl;
+        const url = resolvePhotoUrl(rawUrl);
+        if (!url || seen.has(url)) return;
+        seen.add(url);
+        list.push({
+          id: p.id || `site-photo-${i}`,
+          url,
+          stage: "before",
+          caption: p.caption || "Geotagged Baseline Site Photo",
+          uploadedAt: p.uploadedAt,
+        });
+      });
+    }
 
     return list;
   }, [project, activeStage, localSidePhotos, normalizeStageName]);

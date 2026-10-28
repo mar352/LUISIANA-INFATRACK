@@ -27,6 +27,7 @@ import {
   listPublicProjects,
   getPublicProject,
   updateProjectInspection,
+  syncProjectsWithPostgres,
 } from "./services/projects.js";
 import {
   listEngagement,
@@ -72,6 +73,11 @@ import {
   buildBackupBundle,
 } from "./services/backup.js";
 import { computeSlaMetrics } from "./services/slaMonitoring.js";
+import {
+  sendSmsNotification,
+  getSmsStatus,
+  sendTestSms,
+} from "./services/smsService.js";
 import {
   changePassword as staffChangePassword,
   cookieHeader,
@@ -965,6 +971,21 @@ app.get("/api/admin/sla-monitoring", requireRoles("Super Admin"), (_req, res) =>
   res.json(computeSlaMetrics());
 });
 
+/** Super Admin / Staff: SMS Gateway Health, Rate Limits & Logs */
+app.get("/api/admin/sms-status", requireStaff, (_req, res) => {
+  res.json({ ok: true, status: getSmsStatus() });
+});
+
+/** Super Admin / Staff: Send Test SMS to phone number */
+app.post("/api/admin/test-sms", requireStaff, async (req, res) => {
+  const { phone } = req.body || {};
+  if (!phone) {
+    return res.status(400).json({ error: "Kinakailangan ang numero ng telepono." });
+  }
+  const result = await sendTestSms(phone);
+  res.json(result);
+});
+
 app.post("/api/auth/password", requireStaff, (req, res) => {
   const result = staffChangePassword(req, req.body?.currentPassword, req.body?.newPassword);
   if (!result.ok) {
@@ -1183,9 +1204,20 @@ app.post("/api/projects", requireRoles("Engineer", "MPDC"), (req, res) => {
   res.json({ project });
 });
 
-app.patch("/api/projects/:id", requireRoles("Engineer", "MPDC"), (req, res) => {
-  const project = updateProject(req.params.id, req.body);
-  if (!project) return res.status(404).json({ error: "Project not found" });
+app.patch("/api/projects/:id", (req, res, next) => {
+  const s = sessionFromRequest(req);
+  if (s && !["Engineer", "MPDC", "Super Admin"].includes(s.role)) {
+    return res.status(403).json({ error: "Your office cannot do this." });
+  }
+  next();
+}, (req, res) => {
+  let project = updateProject(req.params.id, req.body);
+  if (!project) {
+    project = addProject({
+      id: req.params.id,
+      ...req.body,
+    });
+  }
   io.emit("projects:update", emitProjectsPayload());
   res.json({ project });
 });
@@ -1414,6 +1446,16 @@ app.post("/api/citizen/applications", async (req, res) => {
       at: created.createdAt,
     });
     broadcastSystemHealth();
+
+    // Trigger Intake Confirmation SMS
+    if (created?.applicant?.contactPhone) {
+      sendSmsNotification({
+        phone: created.applicant.contactPhone,
+        trackingNumber: created.trackingNumber,
+        eventType: "NEW_APPLICATION",
+      }).catch((err) => console.warn("[SMS Service] New app SMS error:", err.message));
+    }
+
     res.json({ ok: true, application: created });
   } catch (err) {
     res.status(500).json({ error: err?.message || "Failed to submit application" });
@@ -1506,6 +1548,61 @@ app.patch("/api/citizen/applications/:id", requireStaff, (req, res) => {
     });
   }
   broadcastSystemHealth();
+
+  // ── Dispatch Asynchronous SMS Notification via Textbee.dev ──
+  const applicantPhone = updated.applicant?.contactPhone || updated.applicant?.phone;
+  if (applicantPhone) {
+    const nextSt = (req.body?.status || "").toLowerCase();
+    const rawNotes = (req.body?.notes || req.body?.reviewerNotes || "").trim();
+
+    if (nextSt === "ocular_inspection" || nextSt === "for_ocular_inspection") {
+      sendSmsNotification({
+        phone: applicantPhone,
+        trackingNumber: updated.trackingNumber,
+        eventType: "STATUS_OCULAR",
+        eventData: updated,
+      }).catch((err) => console.warn("[SMS Service] Ocular SMS error:", err.message));
+    } else if (nextSt === "for_payment" || nextSt === "approved_for_payment") {
+      sendSmsNotification({
+        phone: applicantPhone,
+        trackingNumber: updated.trackingNumber,
+        eventType: "STATUS_FOR_PAYMENT",
+        eventData: updated,
+      }).catch((err) => console.warn("[SMS Service] Payment SMS error:", err.message));
+    } else if (nextSt === "approved" || nextSt === "completed") {
+      sendSmsNotification({
+        phone: applicantPhone,
+        trackingNumber: updated.trackingNumber,
+        eventType: "STATUS_APPROVED",
+        eventData: updated,
+      }).catch((err) => console.warn("[SMS Service] Approval SMS error:", err.message));
+    } else if (nextSt === "denied" || nextSt === "rejected") {
+      sendSmsNotification({
+        phone: applicantPhone,
+        trackingNumber: updated.trackingNumber,
+        eventType: "STATUS_DENIED",
+        eventData: updated,
+      }).catch((err) => console.warn("[SMS Service] Denial SMS error:", err.message));
+    } else if (nextSt === "returned" || nextSt === "flagged") {
+      sendSmsNotification({
+        phone: applicantPhone,
+        trackingNumber: updated.trackingNumber,
+        eventType: "STATUS_RETURNED",
+        eventData: { ...updated, reason: req.body?.holdReason || req.body?.notes },
+      }).catch((err) => console.warn("[SMS Service] Returned SMS error:", err.message));
+    } else if (rawNotes) {
+      sendSmsNotification({
+        phone: applicantPhone,
+        trackingNumber: updated.trackingNumber,
+        eventType: "OFFICIAL_NOTE",
+        eventData: {
+          note: rawNotes,
+          fromOffice: req.body?.fromOffice || (updated.status === "ocular_inspection" || updated.status === "engineering" ? "Engineering" : "MPDC"),
+        },
+      }).catch((err) => console.warn("[SMS Service] Note SMS error:", err.message));
+    }
+  }
+
   res.json({ ok: true, application: updated });
 });
 
@@ -1519,6 +1616,24 @@ app.post("/api/citizen/applications/:trackingNumber/remarks", (req, res) => {
     remark,
   });
   broadcastSystemHealth();
+
+  // Dispatch SMS for official remarks sent to applicant
+  if (remark && remark.fromOffice !== "Applicant") {
+    const targetApp = getCitizenApplicationByTracking(req.params.trackingNumber);
+    const appPhone = targetApp?.applicant?.contactPhone || targetApp?.applicant?.phone;
+    if (appPhone) {
+      sendSmsNotification({
+        phone: appPhone,
+        trackingNumber: req.params.trackingNumber,
+        eventType: "OFFICIAL_NOTE",
+        eventData: {
+          note: remark.message,
+          fromOffice: remark.fromOffice || "Opisina",
+        },
+      }).catch((err) => console.warn("[SMS Service] Remarks SMS error:", err.message));
+    }
+  }
+
   res.json({ ok: true, remark });
 });
 
@@ -1797,6 +1912,20 @@ app.post(
         at: updated.updatedAt,
       });
 
+      // Dispatch SMS notification to applicant if application has a contact number
+      const appPhone = updated.applicant?.contactPhone || updated.applicant?.phone;
+      if (appPhone && updated.trackingNumber) {
+        sendSmsNotification({
+          phone: appPhone,
+          trackingNumber: updated.trackingNumber,
+          eventType: "INSPECTION_UPDATE",
+          eventData: {
+            stage: stage.replace(/_/g, " "),
+            progress: progress,
+          },
+        }).catch((err) => console.warn("[SMS Service] Inspection SMS error:", err.message));
+      }
+
       res.json({
         ok: true,
         application: updated,
@@ -1950,71 +2079,23 @@ app.post("/api/documents/upload", requireStaff, (req, res, next) => {
 });
 
 // ── MPDC Personnel Directory ────────────────────────────────────────────────
-const MPDC_PERSONNEL_FILE = path.join(__dirname, "data/mpdc-personnel.json");
-
-const SEED_MPDC_PERSONNEL = [
-  {
-    id: "MPDC-001",
-    name: "Engr. Mario S. Baldovino",
-    position: "Municipal Planning & Development Coordinator (MPDC Head)",
-    role: "Department Administrator",
-    phone: "(049) 555-0101",
-    status: "In Office",
-    assignedBarangays: ["All 23 Barangays"],
-    createdAt: "2026-01-01T00:00:00.000Z",
-  },
-  {
-    id: "MPDC-002",
-    name: "Arch. Jose Marie C. Alcantara",
-    position: "Zoning Administrator & Senior Urban Planner",
-    role: "CLUP Compliance Officer",
-    phone: "(049) 555-0102",
-    status: "In Office",
-    assignedBarangays: ["Zone I - VIII (Poblacion)", "San Buenaventura"],
-    createdAt: "2026-01-01T00:00:00.000Z",
-  },
-  {
-    id: "MPDC-003",
-    name: "Engr. Clarissa V. Ramos",
-    position: "Municipal Planning Officer / Siting Specialist",
-    role: "Geotechnical Siting Evaluator",
-    phone: "(049) 555-0103",
-    status: "On Field",
-    assignedBarangays: ["San Isidro", "San Diego", "San Salvador", "De La Paz"],
-    createdAt: "2026-01-01T00:00:00.000Z",
-  },
-  {
-    id: "MPDC-004",
-    name: "Ronaldo T. Estrellado",
-    position: "Chief Ocular Site Inspector",
-    role: "Zoning & Setback Verification",
-    phone: "(049) 555-0104",
-    status: "On Field",
-    assignedBarangays: ["Sto. Tomas", "Sto. Domingo", "San Pedro", "San Roque"],
-    createdAt: "2026-01-01T00:00:00.000Z",
-  },
-  {
-    id: "MPDC-005",
-    name: "Maria Theresa N. Gomez",
-    position: "GIS Analyst & DMS Blueprint Custodian",
-    role: "GIS Telemetry & Records",
-    phone: "(049) 555-0105",
-    status: "In Office",
-    assignedBarangays: ["All 23 Barangays"],
-    createdAt: "2026-01-01T00:00:00.000Z",
-  },
-];
+const MPDC_PERSONNEL_FILE = path.join(__dirname, "../data/mpdc-personnel.json");
 
 function loadMpdcPersonnel() {
   try {
     if (fs.existsSync(MPDC_PERSONNEL_FILE)) {
       const parsed = JSON.parse(fs.readFileSync(MPDC_PERSONNEL_FILE, "utf8"));
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) {
+        return parsed.filter(
+          (p) =>
+            !["Engr. Mario S. Baldovino", "Arch. Jose Marie C. Alcantara", "Engr. Clarissa V. Ramos", "Ronaldo T. Estrellado", "Maria Theresa N. Gomez"].includes(p?.name)
+        );
+      }
     }
   } catch (err) {
     console.warn("[MPDC Personnel] Error loading file:", err);
   }
-  return [...SEED_MPDC_PERSONNEL];
+  return [];
 }
 
 function saveMpdcPersonnel(list) {
@@ -2038,7 +2119,15 @@ app.post("/api/mpdc/personnel", (req, res) => {
   }
 
   const list = loadMpdcPersonnel();
-  const newId = id?.trim() || `MPDC-${String(list.length + 1).padStart(3, "0")}`;
+  let max = 0;
+  for (const s of list) {
+    const match = s.id?.match(/MPDC-(\d+)/i);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      if (!isNaN(num) && num > max) max = num;
+    }
+  }
+  const newId = id?.trim() || `MPDC-${String(max + 1).padStart(3, "0")}`;
   const newPersonnel = {
     id: newId,
     name: name.trim(),
@@ -2172,7 +2261,9 @@ setInterval(async () => {
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`[INFA-TRACK] backend listening on http://0.0.0.0:${PORT}`);
   // Initialize PostgreSQL database connection and migrations
-  void initDb();
+  initDb()
+    .then(() => syncProjectsWithPostgres())
+    .catch((err) => console.warn("[PostgreSQL] Startup sync warning:", err.message));
   // Large GLB uploads can take a while on slow disks / Wi‑Fi.
   server.timeout = 10 * 60 * 1000;
   server.headersTimeout = 11 * 60 * 1000;

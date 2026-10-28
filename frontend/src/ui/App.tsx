@@ -13,6 +13,8 @@ import NewApplicationPage from "./NewApplicationPage";
 import InfaTrackApplicationForm from "./InfaTrackApplicationForm";
 import ApplicantTrackingPage from "./ApplicantTrackingPage";
 import EngagementPage from "./EngagementPage";
+import PublicTransparencyPortal from "./PublicTransparencyPortal";
+import StadiaEngineerMap from "./StadiaEngineerMap";
 import { addProjectToFirestore } from "../services/firestore-projects";
 import type {
   AlertItem,
@@ -86,6 +88,7 @@ import {
   type InfraFilter,
 } from "../lib/infra-filter";
 import { BARANGAY_LIST } from "../types";
+import { SECTORAL_KEYS, SECTOR_DEFINITIONS, getBuildingSector } from "../lib/sectoral-filter";
 import { earthquakeProneModel, type EarthquakeGridCell, type EarthquakeTrainStatus } from "../lib/ml-earthquake";
 import { classAdvice, classColor } from "../lib/earthquake-labels";
 import { ProjectMonitoringPanel } from "./ProjectMonitoringPanel";
@@ -494,7 +497,8 @@ export type AppScreen =
   | "engineer_documents"
   | "admin_users"
   | "mpdc_admin"
-  | "infa_form";
+  | "infa_form"
+  | "transparency";
 
 export const PROTECTED_STAFF_SCREENS: Set<AppScreen> = new Set([
   "app",
@@ -527,7 +531,7 @@ export function parseScreenFromLocation(): { screen: AppScreen; trackingRef?: st
     if (screenParam && [
       "landing", "login", "app", "inventory", "documents", "analytics",
       "engagement", "citizen", "services", "audit", "permits",
-      "new_application", "applicant_tracking", "pengineer", "engineer_applications", "engineer_dashboard", "engineer_documents", "admin_users", "mpdc_admin"
+      "new_application", "applicant_tracking", "pengineer", "engineer_applications", "engineer_dashboard", "engineer_documents", "admin_users", "mpdc_admin", "transparency"
     ].includes(screenParam)) {
       return { screen: screenParam as AppScreen };
     }
@@ -562,6 +566,11 @@ export function parseScreenFromLocation(): { screen: AppScreen; trackingRef?: st
     case "/public":
     case "/bantay-bayan":
       return { screen: "citizen" };
+    case "/transparency":
+    case "/transparency-portal":
+    case "/public-transparency":
+    case "/tracker":
+      return { screen: "transparency" };
     case "/services":
     case "/online-services":
       return { screen: "new_application" };
@@ -729,8 +738,10 @@ export default function App() {
       if (e?.detail) {
         const newProj = e.detail;
         setProjects((prev) => [newProj, ...prev.filter((p) => p.id !== newProj.id)]);
-        setSelected(newProj);
-        setScreen("app");
+        setInspectingProject(newProj);
+        setSelectedSitePin(null);
+        // Only jump to 3D map if not actively in transparency or other dedicated screen
+        setScreen((curr) => (curr === "transparency" ? curr : "app"));
         setTimeout(() => {
           if (newProj.location?.lon && newProj.location?.lat) {
             cesiumMapRef.current?.flyToLonLat(newProj.location.lon, newProj.location.lat, 1800);
@@ -738,11 +749,23 @@ export default function App() {
         }, 300);
       }
     };
+    const handleProjectsUpdated = (e: any) => {
+      if (Array.isArray(e?.detail)) {
+        setProjects((prev) => {
+          const map = new Map<string, Project>();
+          for (const p of prev) if (p?.id) map.set(p.id, p);
+          for (const p of e.detail) if (p?.id) map.set(p.id, p);
+          return Array.from(map.values());
+        });
+      }
+    };
     window.addEventListener("open-add-lgu-project", handleOpen);
     window.addEventListener("lgu-project-added", handleProjectAdded);
+    window.addEventListener("projects-updated", handleProjectsUpdated);
     return () => {
       window.removeEventListener("open-add-lgu-project", handleOpen);
       window.removeEventListener("lgu-project-added", handleProjectAdded);
+      window.removeEventListener("projects-updated", handleProjectsUpdated);
     };
   }, []);
   const [isAuthChecking, setIsAuthChecking] = useState<boolean>(() => {
@@ -1010,6 +1033,25 @@ export default function App() {
     [projects, infraFilter],
   );
 
+  const sectorProjectCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const k of SECTORAL_KEYS) counts[k] = 0;
+    for (const p of (Array.isArray(projects) ? projects : [])) {
+      const s = getBuildingSector(p);
+      counts[s] = (counts[s] || 0) + 1;
+    }
+    return counts;
+  }, [projects]);
+
+  const [mapSectorMenuOpen, setMapSectorMenuOpen] = useState(false);
+  const mapSectorTrackRef = useRef<HTMLDivElement | null>(null);
+
+  const scrollMapSectorTrack = (delta: number) => {
+    if (mapSectorTrackRef.current) {
+      mapSectorTrackRef.current.scrollBy({ left: delta, behavior: "smooth" });
+    }
+  };
+
   useEffect(() => {
     const id = assetQueryParam();
     if (!id) return;
@@ -1050,9 +1092,43 @@ export default function App() {
 
   const refreshProjects = async () => {
     try {
-      const res = await fetch(backendUrl("/api/projects"), { credentials: "include" });
-      if (res.ok) {
-        const data = await res.json();
+      // 1. Immediately sync with local cache so newly created/pinned projects are never lost
+      try {
+        const raw = localStorage.getItem("infatrack-projects-cache");
+        if (raw) {
+          const list = JSON.parse(raw);
+          if (Array.isArray(list) && list.length > 0) {
+            setProjects((prev) => {
+              const map = new Map<string, Project>();
+              for (const p of prev) if (p?.id) map.set(p.id, p);
+              for (const item of list) if (item?.id) {
+                if (item.id === "lgu-proj-1793104962886" && (item.name !== "Simbahan" || Number(item.budgetTotal) > 100000)) {
+                  continue;
+                }
+                const existing = map.get(item.id);
+                map.set(item.id, { ...existing, ...item });
+              }
+              return Array.from(map.values());
+            });
+          }
+        }
+      } catch {}
+
+      // 2. Try staff projects endpoint, then fallback to public projects endpoint
+      let data: any = null;
+      try {
+        const res = await fetch(backendUrl("/api/projects"), { credentials: "include" });
+        if (res.ok) data = await res.json();
+      } catch {}
+
+      if (!data) {
+        try {
+          const resPub = await fetch(backendUrl("/api/public/projects"));
+          if (resPub.ok) data = await resPub.json();
+        } catch {}
+      }
+
+      if (data) {
         const rawList = Array.isArray(data) ? data : (Array.isArray(data?.projects) ? data.projects : []);
         const list = rawList
           .filter((x: any) => !x?.siteMarkerOnly || x?.isPrivateApplication || x?.isLguProject || x?.type === "Municipal Project" || x?.id?.startsWith("lgu-proj-") || x?.id?.startsWith("P"))
@@ -2072,7 +2148,7 @@ export default function App() {
           archivedAt: null,
         } as Project;
         linkedId = fallback.id;
-        await addProjectToFirestore(fallback);
+        addProjectToFirestore(fallback).catch(() => undefined);
         setProjects((prev) => [fallback, ...prev]);
       }
 
@@ -2188,7 +2264,7 @@ export default function App() {
         pendingEditIdRef.current = project.id;
       } catch (backendErr) {
         const localProject: Project = fallbackProject;
-        await addProjectToFirestore(localProject);
+        addProjectToFirestore(localProject).catch(() => undefined);
         setProjects((prev) => [localProject, ...prev]);
         pendingEditIdRef.current = localProject.id;
         console.warn("[Projects] Backend unavailable, saved placement directly to Firestore:", backendErr);
@@ -2860,6 +2936,7 @@ export default function App() {
     screen === "permits" ||
     screen === "new_application" ||
     screen === "applicant_tracking" ||
+    screen === "transparency" ||
     screen === "pengineer" ||
     screen === "admin_users" ||
     screen === "landing" ||
@@ -2959,7 +3036,7 @@ export default function App() {
           onTrackPermit={() => setScreen("applicant_tracking")}
           onPublicPortal={() => {
             setCurrentSession(sessionForRole("Viewer"));
-            setScreen("citizen");
+            setScreen("transparency");
           }}
           onOnlineServices={() => setScreen("new_application")}
         />
@@ -3077,12 +3154,10 @@ export default function App() {
               };
               setProjects((prev) => [newProj, ...prev]);
               addProjectToFirestore(newProj).catch(() => undefined);
-              setSelected(newProj);
-              setScreen(
-                currentRole === "MPDC" || currentRole === "MPDC Admin" || currentSession?.username === "mpdc_admin" || currentSession?.username === "mpdc"
-                  ? (currentSession?.username === "mpdc_admin" || currentSession?.role === "MPDC Admin" ? "mpdc_admin" : "permits")
-                  : "app"
-              );
+              setSelectedSitePin(newProj);
+              setTrackingReference(trackingNo);
+              // NOTE: Do not call setScreen here.
+              // The user must remain on NewApplicationPage Step 4 to view and copy their official tracking number.
             }}
             onTrackApplication={(trackingNo) => {
               setTrackingReference(trackingNo);
@@ -3090,7 +3165,7 @@ export default function App() {
             }}
             onViewOnMap={(lon, lat) => {
               if (!currentSession) {
-                setScreen("login");
+                setScreen("transparency");
                 return;
               }
               if (
@@ -3152,6 +3227,31 @@ export default function App() {
               setScreen("app");
             }}
             onOpenOnlineServices={() => setScreen("new_application")}
+            onOpenTransparency={() => setScreen("transparency")}
+          />
+        </div>
+      )}
+
+      {/* 2D Map Public Transparency Portal UI */}
+      {screen === "transparency" && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 10000, overflow: "hidden", background: "#0b111e" }}>
+          <PublicTransparencyPortal
+            projects={
+              Array.isArray(projects)
+                ? projects.filter(
+                    (p: any) =>
+                      !p?.isPrivateApplication &&
+                      p?.type !== "Private Building" &&
+                      !p?.trackingNumber &&
+                      (p?.isLguProject ||
+                        p?.type === "Municipal Project" ||
+                        p?.id?.startsWith("lgu-proj-") ||
+                        p?.id?.startsWith("P"))
+                  )
+                : undefined
+            }
+            onBack={goHome}
+            onOpenOnlineServices={() => setScreen("new_application")}
           />
         </div>
       )}
@@ -3195,12 +3295,10 @@ export default function App() {
                 }
                 return merged;
               });
-              setSelected(projectObj);
               setSelectedSitePin(projectObj);
             } else if (projId) {
               const target = projects.find((p) => p.id === projId);
               if (target) {
-                setSelected(target);
                 setSelectedSitePin(target);
               }
             }
@@ -3251,12 +3349,10 @@ export default function App() {
                 }
                 return merged;
               });
-              setSelected(projectObj);
               setSelectedSitePin(projectObj);
             } else if (projId) {
               const target = projects.find((p) => p.id === projId);
               if (target) {
-                setSelected(target);
                 setSelectedSitePin(target);
               }
             }
@@ -3329,67 +3425,240 @@ export default function App() {
         >
           <>
             <div className="mapWrap">
-              <CesiumMap
+              <StadiaEngineerMap
                 ref={cesiumMapRef}
                 barangaysVisible={barangaysVisible}
                 focusedBarangay={focusedBarangay}
-                terrainEnabled={toggles.satellite}
-                satellite={toggles.satellite}
-                mapSettings={mapSettings}
                 earthquakeEnabled={quakeModelEnabled}
                 earthquakeGrid={quakeGrid}
                 projects={filteredProjects}
-                clusteringEnabled={infraFilter.clustering}
+                satellite={toggles.satellite}
+                mapSettings={mapSettings}
                 visible={!parkMapShell}
                 paused={parkMapShell}
-                placementMode={placementMode && currentRole === "Engineer"}
-                editMode={false}
-                placementTool={placementTool}
-                placementColor={placementColor}
+                selectedProjectId={selectedSitePin?.id || null}
+                placementMode={placementMode && (currentRole === "Engineer" || currentRole === "MPDC" || currentRole === "Super Admin")}
                 onPlaceClick={openPlacementAt}
-                onPlaceSketch={handlePlaceSketch}
-                readOnly={currentRole === "Viewer" || isBarangayOfficial(currentRole)}
-                canManipulateModels={false}
-                canPromoteSitePin={false}
-                onProjectPatch={(projectId, patch) => {
-                  setProjects((prev) =>
-                    prev.map((p) => (p.id === projectId ? { ...p, ...patch } : p)),
-                  );
-                }}
-                canAddPhotos={currentRole === "Engineer"}
-                onPhotosChange={(projectId, photos) => {
-                  setProjects((prev) =>
-                    prev.map((p) => (p.id === projectId ? { ...p, photos } : p)),
-                  );
-                }}
                 onSelectSitePin={(p) => {
-                  const hasUploadedPhoto =
+                  const actualInspectionPhotos = (p as any).inspectionPhotos || [];
+                  const nonGeotaggedPhotos = (p.photos || []).filter(
+                    (ph: any) =>
+                      ph &&
+                      ph.url &&
+                      ph.kind !== "site" &&
+                      ph.kind !== "geotagged" &&
+                      !ph.caption?.toLowerCase().includes("geotagged") &&
+                      !ph.caption?.toLowerCase().includes("baseline")
+                  );
+                  const hasActualInspectionPhoto =
                     Boolean((p as any).latestInspection?.photoUrl) ||
-                    (Array.isArray((p as any).inspectionPhotos) && (p as any).inspectionPhotos.length > 0) ||
-                    (Array.isArray(p.photos) && p.photos.length > 0);
+                    actualInspectionPhotos.length > 0 ||
+                    nonGeotaggedPhotos.length > 0;
 
-                  // Kung wala pang na-upload na litrato, ilabas agad ang inspection update modal!
-                  if (!hasUploadedPhoto && (currentRole === "Engineer" || currentRole === "Admin")) {
+                  // Kung wala pang actual inspection photo (pagka-post ay walang picture/panorama),
+                  // ilabas agad ang "I-update ang Site Progress at Inspeksyon" modal!
+                  if (!hasActualInspectionPhoto) {
                     setInspectingProject(p);
+                    setSelectedSitePin(null);
                   } else {
                     setSelectedSitePin(p);
                   }
                 }}
-                onDeleteBuilding={
-                  currentRole === "Engineer"
-                    ? async (projectId) => {
-                      try {
-                        await fetch(backendUrl(`/api/projects/${projectId}`), {
-                          method: "DELETE",
-                          credentials: "include",
-                        });
-                      } catch (err) {
-                        console.error("Failed to delete project:", err);
-                      }
-                    }
-                    : undefined
-                }
               />
+
+              {/* Floating Sectoral Filter for GIS Map Pins */}
+              {(currentRole === "Engineer" || currentRole === "Super Admin" || isMunicipalStaff(currentRole) || currentRole === "Viewer" || !currentRole) && (
+                <div
+                  className="map-sector-filter-floating"
+                  onPointerDown={stopMapPointer}
+                  onMouseDown={stopMapPointer}
+                  onWheel={(e) => e.stopPropagation()}
+                >
+                  {/* Master Sector Popover Trigger */}
+                  <button
+                    type="button"
+                    className={`map-sector-master-btn ${mapSectorMenuOpen ? "is-open" : ""}`}
+                    onClick={() => setMapSectorMenuOpen((v) => !v)}
+                    title="I-click para buksan ang buong talaan ng 8 Opisyal na Sektor"
+                  >
+                    <span className="map-sector-master-icon">🏢</span>
+                    <span className="map-sector-master-text">Sektor</span>
+                    <svg className="map-sector-master-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </button>
+
+                  <div className="map-sector-divider" />
+
+                  {/* Left Scroll Arrow */}
+                  <button
+                    type="button"
+                    className="map-sector-scroll-arrow left"
+                    onClick={() => scrollMapSectorTrack(-180)}
+                    title="I-scroll pakaliwa"
+                    aria-label="Scroll left"
+                  >
+                    ‹
+                  </button>
+
+                  {/* Horizontal Scrollable Pills Track */}
+                  <div
+                    className="map-sector-pills-track"
+                    ref={mapSectorTrackRef}
+                    onWheel={(e) => {
+                      e.stopPropagation();
+                      if (mapSectorTrackRef.current && Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+                        mapSectorTrackRef.current.scrollLeft += e.deltaY;
+                      }
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className={`map-sector-pill-btn all-pill ${(!infraFilter.sector || infraFilter.sector === "all") ? "active" : ""}`}
+                      onClick={() => setInfraFilter((prev) => ({ ...prev, sector: "all" }))}
+                    >
+                      <span>Lahat</span>
+                      <span className="map-sector-pill-count">{projects.length}</span>
+                    </button>
+
+                    {SECTORAL_KEYS.map((k) => {
+                      const def = SECTOR_DEFINITIONS[k];
+                      if (!def) return null;
+                      const isSelected = infraFilter.sector === k;
+                      const Icon = def.icon;
+                      const count = sectorProjectCounts?.[k] ?? 0;
+                      const isEmpty = count === 0;
+
+                      return (
+                        <button
+                          key={k}
+                          type="button"
+                          className={`map-sector-pill-btn ${isSelected ? "active" : ""} ${isEmpty ? "is-empty" : "has-count"}`}
+                          onClick={() => setInfraFilter((prev) => ({ ...prev, sector: isSelected ? "all" : k }))}
+                          style={{
+                            borderColor: isSelected ? def.color : count > 0 ? `${def.color}45` : undefined,
+                            background: isSelected ? def.color : undefined,
+                            color: isSelected ? "#ffffff" : undefined,
+                          }}
+                          title={`Salain ang mga pin ayon sa ${def.title} (${count} na lugar)`}
+                        >
+                          <span className="map-sector-pill-icon" style={{ color: isSelected ? "#ffffff" : def.color }}>
+                            <Icon size={13} color={isSelected ? "#ffffff" : def.color} />
+                          </span>
+                          <span className="map-sector-pill-title">{def.title}</span>
+                          <span className="map-sector-pill-count">{count}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Right Scroll Arrow */}
+                  <button
+                    type="button"
+                    className="map-sector-scroll-arrow right"
+                    onClick={() => scrollMapSectorTrack(180)}
+                    title="I-scroll pakanan"
+                    aria-label="Scroll right"
+                  >
+                    ›
+                  </button>
+
+                  {/* Clear Filter Button */}
+                  {infraFilter.sector && infraFilter.sector !== "all" && (
+                    <>
+                      <div className="map-sector-divider" />
+                      <button
+                        type="button"
+                        className="map-sector-pill-clear"
+                        onClick={() => setInfraFilter((prev) => ({ ...prev, sector: "all" }))}
+                        title="I-reset sa lahat ng sektor"
+                      >
+                        ✕ I-reset
+                      </button>
+                    </>
+                  )}
+
+                  {/* Popover Floating Grid Card */}
+                  {mapSectorMenuOpen && (
+                    <>
+                      <div
+                        className="map-sector-popover-backdrop"
+                        onClick={() => setMapSectorMenuOpen(false)}
+                      />
+                      <div className="map-sector-popover">
+                        <div className="map-sector-popover-header">
+                          <span className="map-sector-popover-title">🏢 8 Opisyal na Sektor ng Imprastraktura</span>
+                          <button
+                            type="button"
+                            className="map-sector-popover-close"
+                            onClick={() => setMapSectorMenuOpen(false)}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                        <div className="map-sector-popover-grid">
+                          <button
+                            type="button"
+                            className={`map-sector-popover-item ${(!infraFilter.sector || infraFilter.sector === "all") ? "active" : ""}`}
+                            onClick={() => {
+                              setInfraFilter((prev) => ({ ...prev, sector: "all" }));
+                              setMapSectorMenuOpen(false);
+                            }}
+                          >
+                            <div className="map-sector-popover-icon" style={{ background: "rgba(0, 113, 227, 0.12)", color: "#0071e3" }}>
+                              🏢
+                            </div>
+                            <div className="map-sector-popover-info">
+                              <span className="map-sector-popover-name">Lahat ng Sektor</span>
+                              <span className="map-sector-popover-sub">Ipakita ang lahat ng proyekto sa mapa</span>
+                            </div>
+                            <span className="map-sector-popover-badge">{projects.length} sites</span>
+                          </button>
+
+                          {SECTORAL_KEYS.map((k) => {
+                            const def = SECTOR_DEFINITIONS[k];
+                            if (!def) return null;
+                            const isSelected = infraFilter.sector === k;
+                            const Icon = def.icon;
+                            const count = sectorProjectCounts?.[k] ?? 0;
+                            return (
+                              <button
+                                key={k}
+                                type="button"
+                                className={`map-sector-popover-item ${isSelected ? "active" : ""}`}
+                                onClick={() => {
+                                  setInfraFilter((prev) => ({ ...prev, sector: isSelected ? "all" : k }));
+                                  setMapSectorMenuOpen(false);
+                                }}
+                                style={{
+                                  borderColor: isSelected ? def.color : undefined,
+                                }}
+                              >
+                                <div className="map-sector-popover-icon" style={{ background: def.iconBg, color: def.color }}>
+                                  <Icon size={16} color={def.color} />
+                                </div>
+                                <div className="map-sector-popover-info">
+                                  <span className="map-sector-popover-name">{def.title}</span>
+                                  <span className="map-sector-popover-sub">{def.tagline.tl}</span>
+                                </div>
+                                <span
+                                  className="map-sector-popover-badge"
+                                  style={{
+                                    background: count > 0 ? def.badgeBg : undefined,
+                                    color: count > 0 ? def.badgeColor : undefined,
+                                  }}
+                                >
+                                  {count} {count === 1 ? "site" : "sites"}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
 
               {selectedSitePin && (
                 <SiteProgressPopup
@@ -4625,6 +4894,28 @@ export default function App() {
                           </button>
                         ))}
                       </div>
+                      <div className="infra-filter-label">Sector (8 Building Categories)</div>
+                      <select
+                        style={{
+                          width: "100%",
+                          padding: "6px 10px",
+                          borderRadius: 8,
+                          border: "1px solid var(--apple-border, rgba(0,0,0,0.15))",
+                          background: "var(--apple-surface-secondary, #f5f5f7)",
+                          color: "inherit",
+                          fontSize: 12,
+                          marginBottom: 10,
+                        }}
+                        value={infraFilter.sector || "all"}
+                        onChange={(e) => setInfraFilter((f) => ({ ...f, sector: e.target.value }))}
+                      >
+                        <option value="all">All Building Sectors ({projects.length})</option>
+                        {SECTORAL_KEYS.map((k) => (
+                          <option key={k} value={k}>
+                            {SECTOR_DEFINITIONS[k]?.title ?? k} — {SECTOR_DEFINITIONS[k]?.badge?.en ?? ""}
+                          </option>
+                        ))}
+                      </select>
                       <div className="infra-filter-row">
                         <label>
                           Office
@@ -5065,8 +5356,10 @@ export default function App() {
             const filtered = prev.filter((p) => p.id !== newProject.id);
             return [newProject, ...filtered];
           });
-          setSelected(newProject);
-          setSelectedSitePin(newProject);
+          // Pagka-post, walang picture o panorama sa street view.
+          // Diretso nitong ilalabas ang "I-update ang Site Progress at Inspeksyon" modal!
+          setInspectingProject(newProject);
+          setSelectedSitePin(null);
           setMapHold(true);
           setScreen("app");
           // Smoothly fly camera to the newly pinned project location so the user sees it immediately!

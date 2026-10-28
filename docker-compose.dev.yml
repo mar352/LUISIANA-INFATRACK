@@ -3,6 +3,25 @@
 # Or double-click run-docker-dev.bat
 
 services:
+  postgres:
+    image: postgis/postgis:16-3.4-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PGUSER:-postgres}
+      POSTGRES_PASSWORD: ${PGPASSWORD:-king010605}
+      POSTGRES_DB: ${PGDATABASE:-luisiana_infatrack}
+    ports:
+      - "${PGPORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/sql/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PGUSER:-postgres} -d ${PGDATABASE:-luisiana_infatrack}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   backend:
     build: ./backend
     command: npm run dev
@@ -11,12 +30,18 @@ services:
     environment:
       PORT: 4000
       CLIENT_ORIGIN: ${CLIENT_ORIGIN:-http://localhost:5173}
+      PGHOST: postgres
+      PGPORT: 5432
+      PGUSER: ${PGUSER:-postgres}
+      PGPASSWORD: ${PGPASSWORD:-king010605}
+      PGDATABASE: ${PGDATABASE:-luisiana_infatrack}
       UPLOADS_DIR: /app/uploads
       PROJECTS_DATA_PATH: /app/data/projects.json
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-llama3.2:1b}
     volumes:
       - ./backend/src:/app/src
+      - ./backend/sql:/app/sql
       - uploads_data:/app/uploads
       - project_data:/app/data
     develop:
@@ -24,6 +49,9 @@ services:
         - action: sync+restart
           path: ./backend/package.json
           target: /app/package.json
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
   frontend:
@@ -67,3 +95,4 @@ volumes:
   uploads_data:
   project_data:
   frontend_node_modules:
+  postgres_data:

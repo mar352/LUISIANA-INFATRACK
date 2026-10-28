@@ -78,53 +78,7 @@ const COMMON_ROLES = [
   "Intake & Public Assistance",
 ];
 
-const MPDC_STAFF_ROSTER: StaffMember[] = [
-  {
-    id: "MPDC-001",
-    name: "Engr. Mario S. Baldovino",
-    position: "Municipal Planning & Development Coordinator (MPDC Head)",
-    role: "Department Administrator",
-    phone: "(049) 555-0101",
-    status: "In Office",
-    assignedBarangays: ["All 23 Barangays"],
-  },
-  {
-    id: "MPDC-002",
-    name: "Arch. Jose Marie C. Alcantara",
-    position: "Zoning Administrator & Senior Urban Planner",
-    role: "CLUP Compliance Officer",
-    phone: "(049) 555-0102",
-    status: "In Office",
-    assignedBarangays: ["Zone I - VIII (Poblacion)", "San Buenaventura"],
-  },
-  {
-    id: "MPDC-003",
-    name: "Engr. Clarissa V. Ramos",
-    position: "Municipal Planning Officer / Siting Specialist",
-    role: "Geotechnical Siting Evaluator",
-    phone: "(049) 555-0103",
-    status: "On Field",
-    assignedBarangays: ["San Isidro", "San Diego", "San Salvador", "De La Paz"],
-  },
-  {
-    id: "MPDC-004",
-    name: "Ronaldo T. Estrellado",
-    position: "Chief Ocular Site Inspector",
-    role: "Zoning & Setback Verification",
-    phone: "(049) 555-0104",
-    status: "On Field",
-    assignedBarangays: ["Sto. Tomas", "Sto. Domingo", "San Pedro", "San Roque"],
-  },
-  {
-    id: "MPDC-005",
-    name: "Maria Theresa N. Gomez",
-    position: "GIS Analyst & DMS Blueprint Custodian",
-    role: "GIS Telemetry & Records",
-    phone: "(049) 555-0105",
-    status: "In Office",
-    assignedBarangays: ["All 23 Barangays"],
-  },
-];
+const MPDC_STAFF_ROSTER: StaffMember[] = [];
 
 export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
   const { isEn } = useTranslation();
@@ -142,7 +96,13 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
       const cached = localStorage.getItem("infatrack_mpdc_personnel");
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) {
+          // Filter out legacy hardcoded dummy users
+          return parsed.filter(
+            (p) =>
+              !["Engr. Mario S. Baldovino", "Arch. Jose Marie C. Alcantara", "Engr. Clarissa V. Ramos", "Ronaldo T. Estrellado", "Maria Theresa N. Gomez"].includes(p?.name)
+          );
+        }
       }
     } catch {}
     return MPDC_STAFF_ROSTER;
@@ -219,9 +179,13 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
       const res = await fetch(backendUrl("/api/mpdc/personnel"), { credentials: "include" });
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data?.personnel) && data.personnel.length > 0) {
-          setStaffList(data.personnel);
-          localStorage.setItem("infatrack_mpdc_personnel", JSON.stringify(data.personnel));
+        if (Array.isArray(data?.personnel)) {
+          const cleaned = data.personnel.filter(
+            (p: any) =>
+              !["Engr. Mario S. Baldovino", "Arch. Jose Marie C. Alcantara", "Engr. Clarissa V. Ramos", "Ronaldo T. Estrellado", "Maria Theresa N. Gomez"].includes(p?.name)
+          );
+          setStaffList(cleaned);
+          localStorage.setItem("infatrack_mpdc_personnel", JSON.stringify(cleaned));
         }
       }
     } catch (err) {
@@ -256,8 +220,12 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
 
       socket.on("mpdc:personnel_updated", (payload: any) => {
         if (Array.isArray(payload?.list)) {
-          setStaffList(payload.list);
-          localStorage.setItem("infatrack_mpdc_personnel", JSON.stringify(payload.list));
+          const cleaned = payload.list.filter(
+            (p: any) =>
+              !["Engr. Mario S. Baldovino", "Arch. Jose Marie C. Alcantara", "Engr. Clarissa V. Ramos", "Ronaldo T. Estrellado", "Maria Theresa N. Gomez"].includes(p?.name)
+          );
+          setStaffList(cleaned);
+          localStorage.setItem("infatrack_mpdc_personnel", JSON.stringify(cleaned));
         }
       });
     } catch {
@@ -275,8 +243,15 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
   };
 
   const getNextStaffId = () => {
-    const nextNum = staffList.length + 1;
-    return `MPDC-${String(nextNum).padStart(3, "0")}`;
+    let max = 0;
+    for (const s of staffList) {
+      const match = s.id?.match(/MPDC-(\d+)/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (!isNaN(num) && num > max) max = num;
+      }
+    }
+    return `MPDC-${String(max + 1).padStart(3, "0")}`;
   };
 
   const openAddStaffModal = () => {
@@ -692,6 +667,25 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
               <div className="mpdc-sidebar-btn-label">
                 <span>Kawani &amp; Inspectors</span>
                 <span className="mpdc-sidebar-badge">{staffList.length}</span>
+              </div>
+            </button>
+
+            <div className="mpdc-sidebar-section-divider">Mabilisang Aksyon</div>
+
+            <button
+              type="button"
+              className="mpdc-sidebar-btn mpdc-sidebar-action-btn"
+              onClick={() => window.dispatchEvent(new CustomEvent("open-add-lgu-project"))}
+              title="Add / Encode LGU Project for Transparency"
+            >
+              <span className="mpdc-sidebar-btn-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+              </span>
+              <div className="mpdc-sidebar-btn-label">
+                <span>Mag-encode ng Proyekto</span>
               </div>
             </button>
 
@@ -1431,8 +1425,37 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
                 <tbody>
                   {filteredStaff.length === 0 ? (
                     <tr>
-                      <td colSpan={7} style={{ textAlign: "center", padding: "32px 16px", color: "var(--apple-text-secondary)" }}>
-                        Walang natagpuang kawani sa pamantayan ng paghahanap.
+                      <td colSpan={7} style={{ textAlign: "center", padding: "48px 16px", color: "var(--apple-text-secondary)" }}>
+                        <div style={{ maxWidth: "420px", margin: "0 auto", display: "flex", flexDirection: "column", alignItems: "center", gap: "10px" }}>
+                          <div style={{ width: "48px", height: "48px", borderRadius: "50%", background: "var(--apple-gray-100, #f1f5f9)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--apple-text-secondary)" }}>
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                              <circle cx="9" cy="7" r="4" />
+                              <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                            </svg>
+                          </div>
+                          <div style={{ fontWeight: 600, fontSize: "0.95rem", color: "var(--apple-text)" }}>
+                            {staffSearchQuery || staffStatusFilter !== "All" || staffBarangayFilter !== "All"
+                              ? "Walang natagpuang kawani sa pamantayan ng paghahanap."
+                              : "Walang nakatalang kawani sa direktoryo."}
+                          </div>
+                          <p style={{ fontSize: "0.82rem", margin: 0, color: "var(--apple-text-secondary)" }}>
+                            {staffSearchQuery || staffStatusFilter !== "All" || staffBarangayFilter !== "All"
+                              ? "Subukang i-clear ang filter upang makita ang lahat ng kawani."
+                              : "Gamitin ang \"+ Magdagdag ng Kawani\" upang magrehistro ng opisyal o field inspector sa tanggapan."}
+                          </p>
+                          {!staffSearchQuery && staffStatusFilter === "All" && staffBarangayFilter === "All" && (
+                            <button
+                              type="button"
+                              className="mpdc-btn-emerald"
+                              onClick={openAddStaffModal}
+                              style={{ marginTop: "6px" }}
+                            >
+                              + Magdagdag ng Kawani
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ) : (
@@ -1669,7 +1692,7 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
                     <input
                       type="text"
                       className="mpdc-form-input"
-                      placeholder={isEn ? "e.g. MPDC-006" : "Hal. MPDC-006"}
+                      placeholder={isEn ? "e.g. MPDC-001" : "Hal. MPDC-001"}
                       value={staffFormData.id}
                       onChange={(e) => setStaffFormData((prev) => ({ ...prev, id: e.target.value }))}
                     />

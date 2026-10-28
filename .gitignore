@@ -63,4 +63,6 @@ frontend/public/models/municipal-office.glb
 *.traineddata
 frontend/scratch/
 frontend/test-parse.mjs
+backups/
+backend/data/sms-audit.json
 

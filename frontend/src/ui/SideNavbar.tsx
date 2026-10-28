@@ -291,8 +291,10 @@ export const SideNavbar: React.FC<SideNavbarProps> = ({
       ? [
           {
             id: "app",
-            label: t("nav.map_3d"),
-            tooltip: language === "en" ? "Open 3D Cesium GIS Globe Map & Situation Dashboard" : "Buksan ang 3D Cesium GIS Globe Mapa & Situation Dashboard",
+            label: isEngineer ? (language === "en" ? "Engineering GIS Map" : "Mapa ng Inhinyero") : t("nav.map_3d"),
+            tooltip: isEngineer
+              ? (language === "en" ? "Open Engineering GIS Stadia Map & Situation Dashboard" : "Buksan ang Stadia GIS Mapa ng Inhinyero & Situation Dashboard")
+              : (language === "en" ? "Open 3D Cesium GIS Globe Map & Situation Dashboard" : "Buksan ang 3D Cesium GIS Globe Mapa & Situation Dashboard"),
             isMap: true,
             icon: (active: boolean) => (
               <svg

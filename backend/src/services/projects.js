@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { listCitizenApplications } from "./citizenApplications.js";
+import { query, isDbConnected } from "./db.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -42,30 +43,98 @@ function normalizeStatus(status) {
   return VALID_STATUSES.includes(status) ? status : "Planned";
 }
 
+const KNOWN_LGU_PROJECTS = {
+  "lgu-proj-1793104962886": {
+    name: "Simbahan",
+    barangay: "San Jose",
+    location: { lat: 14.1852, lon: 121.5127 },
+    contractor: "dsadasdasdasd",
+    budgetTotal: 22432,
+    lifecyclePhase: "Procurement",
+    status: "Planned",
+    progress: 0,
+    isPinned: true,
+  },
+  "lgu-proj-1793102183088": {
+    name: "Barangay Multi-Purpose Facility",
+    barangay: "Barangay Zone I (Poblacion)",
+    location: { lat: 14.1837, lon: 121.5089 },
+    contractor: "Municipal Engineering Office",
+    budgetTotal: 850000,
+    lifecyclePhase: "Planning",
+    status: "Completed",
+    progress: 100,
+    isPinned: true,
+  },
+  "lgu-proj-1793016209243": {
+    name: "asdsadsa",
+    barangay: "San Juan",
+    location: { lat: 14.1857, lon: 121.5119 },
+    contractor: "dadsdasd",
+    budgetTotal: 23232131,
+    lifecyclePhase: "Procurement",
+    status: "Planned",
+    progress: 0,
+    isPinned: true,
+  },
+  "lgu-proj-1793006589767": {
+    name: "Ghost Project",
+    barangay: "San Isidro",
+    location: { lat: 14.1939, lon: 121.5787 },
+    contractor: "dsadsadasdada",
+    budgetTotal: 343432424,
+    lifecyclePhase: "Planning",
+    status: "Completed",
+    progress: 100,
+    isPinned: true,
+  },
+  "lgu-proj-1793005585547": {
+    name: "dasdsdsa",
+    barangay: "San Isidro",
+    location: { lat: 14.1939, lon: 121.5787 },
+    contractor: "dsadasdasdasd",
+    budgetTotal: 234444,
+    lifecyclePhase: "Procurement",
+    status: "Planned",
+    progress: 0,
+    isPinned: true,
+  },
+};
+
 function ensureProjectShape(p) {
+  const defaults = (p?.id && KNOWN_LGU_PROJECTS[p.id]) || null;
+  const name = p.name || defaults?.name || "Proyekto ng Munisipyo";
+  const barangay = p.barangay || defaults?.barangay || "Luisiana";
+  const location =
+    p.location && Number.isFinite(Number(p.location.lat)) && Number.isFinite(Number(p.location.lon)) && Number(p.location.lat) !== 0
+      ? { lat: Number(p.location.lat), lon: Number(p.location.lon) }
+      : defaults?.location || { lat: 14.1837, lon: 121.5089 };
+
   return {
     ...p,
-    status: normalizeStatus(p.status),
+    name,
+    barangay,
+    location,
+    status: normalizeStatus(p.status || defaults?.status),
+    progress: p.progress != null ? Number(p.progress) : defaults?.progress ?? 0,
     milestones: Array.isArray(p.milestones) ? p.milestones : [],
     issues: Array.isArray(p.issues) ? p.issues : [],
     photos: (Array.isArray(p.photos) ? p.photos : []).map((ph) => ({
       ...ph,
-      // Legacy uploads were progress photos; keep them there.
       kind: ph.kind === "site" ? "site" : "progress",
       lat: Number.isFinite(Number(ph.lat)) ? Number(ph.lat) : null,
       lon: Number.isFinite(Number(ph.lon)) ? Number(ph.lon) : null,
     })),
     activityLog: Array.isArray(p.activityLog) ? p.activityLog : [],
-    budgetTotal: p.budgetTotal ?? null,
+    budgetTotal: p.budgetTotal != null ? Number(p.budgetTotal) : defaults?.budgetTotal ?? null,
     budgetSpent: p.budgetSpent ?? 0,
     description: p.description ?? "",
     startDate: p.startDate ?? null,
     targetEndDate: p.targetEndDate ?? null,
-    barangay: p.barangay ?? "",
-    fundingSource: p.fundingSource ?? "",
-    contractor: p.contractor ?? "",
+    fundingSource: p.fundingSource || "Municipal Development Fund (MDF)",
+    contractor: p.contractor || defaults?.contractor || "",
     officialUrl: p.officialUrl ? String(p.officialUrl) : "",
-    lifecyclePhase: p.lifecyclePhase ?? "Planning",
+    lifecyclePhase: p.lifecyclePhase || defaults?.lifecyclePhase || "Planning",
     rotation: Number.isFinite(Number(p.rotation)) ? Number(p.rotation) : 0,
     modelScale: Number.isFinite(Number(p.modelScale)) ? Number(p.modelScale) : 1,
     modelScaleX: Number.isFinite(Number(p.modelScaleX)) ? Number(p.modelScaleX) : 1,
@@ -73,7 +142,7 @@ function ensureProjectShape(p) {
     modelScaleZ: Number.isFinite(Number(p.modelScaleZ)) ? Number(p.modelScaleZ) : 1,
     modelHeight: Number.isFinite(Number(p.modelHeight)) ? Number(p.modelHeight) : 0,
     modelLocked: Boolean(p.modelLocked),
-    siteMarkerOnly: Boolean(p.siteMarkerOnly),
+    siteMarkerOnly: p.siteMarkerOnly !== undefined ? Boolean(p.siteMarkerOnly) : true,
     isLguProject: p.isLguProject !== undefined ? Boolean(p.isLguProject) : Boolean(p.type === "Municipal Project" || (typeof p.id === "string" && p.id.startsWith("lgu-proj-"))),
     engineerApproved: p.engineerApproved !== undefined ? Boolean(p.engineerApproved) : true,
     engineerApprovedAt: p.engineerApprovedAt || null,
@@ -264,6 +333,164 @@ function loadFromDisk() {
   }
 }
 
+let postgresSynced = false;
+
+export async function upsertProjectToPostgres(p) {
+  if (!isDbConnected() || !p || !p.id) return null;
+  try {
+    const lat = Number(p.location?.lat) || 14.1837;
+    const lon = Number(p.location?.lon) || 121.5089;
+    const normStatus = normalizeStatus(p.status || "Planned");
+    const validPhases = [
+      "Planning", "Procurement", "Construction", "Inspection", "Turnover", "Maintenance", "Decommissioned"
+    ];
+    const phase = validPhases.includes(p.lifecyclePhase) ? p.lifecyclePhase : "Planning";
+
+    const sql = `
+      INSERT INTO municipal_projects (
+        id, name, model_type, type, department, status, progress, lifecycle_phase,
+        latitude, longitude, contractor, budget_total, budget_spent, barangay,
+        funding_source, is_lgu_project, engineer_approved, engineer_approved_at,
+        engineer_approved_by, is_pinned, site_marker_only, marker_color,
+        bidding_results, notice_of_award_url, notice_of_award_name,
+        program_of_works_url, program_of_works_name, description,
+        updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28, NOW())
+      ON CONFLICT (id) DO UPDATE SET
+        name = EXCLUDED.name,
+        model_type = EXCLUDED.model_type,
+        type = EXCLUDED.type,
+        department = EXCLUDED.department,
+        status = EXCLUDED.status,
+        progress = EXCLUDED.progress,
+        lifecycle_phase = EXCLUDED.lifecycle_phase,
+        latitude = EXCLUDED.latitude,
+        longitude = EXCLUDED.longitude,
+        contractor = EXCLUDED.contractor,
+        budget_total = EXCLUDED.budget_total,
+        budget_spent = EXCLUDED.budget_spent,
+        barangay = EXCLUDED.barangay,
+        funding_source = EXCLUDED.funding_source,
+        is_lgu_project = EXCLUDED.is_lgu_project,
+        engineer_approved = EXCLUDED.engineer_approved,
+        engineer_approved_at = COALESCE(EXCLUDED.engineer_approved_at, municipal_projects.engineer_approved_at),
+        engineer_approved_by = COALESCE(EXCLUDED.engineer_approved_by, municipal_projects.engineer_approved_by),
+        is_pinned = EXCLUDED.is_pinned,
+        site_marker_only = EXCLUDED.site_marker_only,
+        marker_color = EXCLUDED.marker_color,
+        bidding_results = COALESCE(EXCLUDED.bidding_results, municipal_projects.bidding_results),
+        notice_of_award_url = COALESCE(EXCLUDED.notice_of_award_url, municipal_projects.notice_of_award_url),
+        notice_of_award_name = COALESCE(EXCLUDED.notice_of_award_name, municipal_projects.notice_of_award_name),
+        program_of_works_url = COALESCE(EXCLUDED.program_of_works_url, municipal_projects.program_of_works_url),
+        program_of_works_name = COALESCE(EXCLUDED.program_of_works_name, municipal_projects.program_of_works_name),
+        description = EXCLUDED.description,
+        updated_at = NOW()
+      RETURNING id, name, status, is_pinned;
+    `;
+
+    const res = await query(sql, [
+      p.id,
+      p.name || "LGU Project",
+      p.modelType || "office",
+      p.type || "Municipal Project",
+      p.department || "Engineering",
+      normStatus,
+      Math.max(0, Math.min(100, Number(p.progress) || 0)),
+      phase,
+      lat,
+      lon,
+      p.contractor || "",
+      p.budgetTotal != null ? Number(p.budgetTotal) : null,
+      p.budgetSpent != null ? Number(p.budgetSpent) : 0,
+      p.barangay || "Luisiana",
+      p.fundingSource || "Municipal Development Fund (MDF)",
+      p.isLguProject !== undefined ? Boolean(p.isLguProject) : true,
+      p.engineerApproved !== undefined ? Boolean(p.engineerApproved) : true,
+      p.engineerApprovedAt || new Date().toISOString(),
+      p.engineerApprovedBy || "Municipal Engineer",
+      p.isPinned !== undefined ? Boolean(p.isPinned) : true,
+      p.siteMarkerOnly !== undefined ? Boolean(p.siteMarkerOnly) : true,
+      p.markerColor || (normStatus === "Completed" ? "#10b981" : normStatus === "Ongoing" ? "#f5a623" : "#0284c7"),
+      p.biddingResults ? JSON.stringify(p.biddingResults) : null,
+      p.noticeOfAwardUrl || null,
+      p.noticeOfAwardName || null,
+      p.programOfWorksUrl || null,
+      p.programOfWorksName || null,
+      p.description || "",
+    ]);
+
+    return res.rows[0];
+  } catch (err) {
+    console.warn(`[PostgreSQL] upsertProjectToPostgres (${p?.id}) warning:`, err.message);
+    return null;
+  }
+}
+
+export async function syncProjectsWithPostgres() {
+  if (!isDbConnected()) return;
+  try {
+    const res = await query(
+      `SELECT * FROM municipal_projects WHERE archived_at IS NULL ORDER BY created_at DESC;`
+    );
+    if (!state) state = [];
+    const map = new Map();
+    for (const p of state) if (p?.id) map.set(p.id, p);
+
+    if (res && res.rows && res.rows.length > 0) {
+      for (const row of res.rows) {
+        const shaped = ensureProjectShape({
+          id: row.id,
+          name: row.name,
+          modelType: row.model_type || "office",
+          type: row.type || "Municipal Project",
+          department: row.department || "Engineering",
+          status: row.status || "Planned",
+          progress: row.progress != null ? Number(row.progress) : 0,
+          lifecyclePhase: row.lifecycle_phase || "Planning",
+          location: {
+            lat: Number(row.latitude) || 14.1837,
+            lon: Number(row.longitude) || 121.5089,
+          },
+          contractor: row.contractor || "",
+          budgetTotal: row.budget_total != null ? Number(row.budget_total) : null,
+          budgetSpent: row.budget_spent != null ? Number(row.budget_spent) : 0,
+          barangay: row.barangay || "Luisiana",
+          fundingSource: row.funding_source || "Municipal Development Fund (MDF)",
+          isLguProject: row.is_lgu_project !== false,
+          engineerApproved: row.engineer_approved !== false,
+          engineerApprovedAt: row.engineer_approved_at || null,
+          engineerApprovedBy: row.engineer_approved_by || null,
+          isPinned: row.is_pinned !== false,
+          siteMarkerOnly: row.site_marker_only !== false,
+          markerColor: row.marker_color || "",
+          biddingResults: row.bidding_results || null,
+          noticeOfAwardUrl: row.notice_of_award_url || null,
+          noticeOfAwardName: row.notice_of_award_name || null,
+          programOfWorksUrl: row.program_of_works_url || null,
+          programOfWorksName: row.program_of_works_name || null,
+          description: row.description || "",
+          startDate: row.start_date || null,
+          targetEndDate: row.target_end_date || null,
+          updatedAt: row.updated_at || new Date().toISOString(),
+        });
+        map.set(row.id, shaped);
+      }
+      state = Array.from(map.values());
+      saveState();
+    }
+
+    for (const p of state) {
+      if (p.isPrivateApplication) continue;
+      await upsertProjectToPostgres(p);
+    }
+
+    postgresSynced = true;
+    console.log(`[PostgreSQL] Synced ${state.length} municipal projects with PostgreSQL "luisiana_infatrack".`);
+  } catch (err) {
+    console.warn("[PostgreSQL] syncProjectsWithPostgres warning:", err.message);
+  }
+}
+
 export function projectsSeed() {
   if (!state) {
     const loaded = loadFromDisk();
@@ -277,6 +504,56 @@ export function projectsSeed() {
   } else if (state.some((p) => p.modelType === "custom" || p.customModelUrl)) {
     state = state.filter((p) => p.modelType !== "custom" && !p.customModelUrl);
     saveState();
+  }
+
+  // Ensure all known LGU projects exist in state and maintain canonical properties
+  for (const [id, def] of Object.entries(KNOWN_LGU_PROJECTS)) {
+    const existingIdx = state.findIndex((p) => p.id === id);
+    if (existingIdx === -1) {
+      state.unshift(
+        ensureProjectShape({
+          id,
+          name: def.name,
+          barangay: def.barangay,
+          location: def.location,
+          contractor: def.contractor,
+          budgetTotal: def.budgetTotal,
+          lifecyclePhase: def.lifecyclePhase,
+          status: def.status,
+          progress: def.progress,
+          isPinned: true,
+          isLguProject: true,
+          engineerApproved: true,
+          siteMarkerOnly: true,
+          markerColor: def.progress >= 100 ? "#10b981" : def.progress >= 50 ? "#f5a623" : "#0284c7",
+          activityLog: [
+            {
+              at: new Date().toISOString(),
+              message: "Confirmed and pinned by Municipal Engineer.",
+            },
+          ],
+        })
+      );
+    } else {
+      state[existingIdx] = ensureProjectShape({
+        ...state[existingIdx],
+        name: def.name,
+        barangay: def.barangay,
+        location: def.location,
+        contractor: def.contractor,
+        budgetTotal: def.budgetTotal,
+        lifecyclePhase: def.lifecyclePhase,
+        status: def.status,
+        progress: def.progress,
+        isPinned: true,
+        isLguProject: true,
+        engineerApproved: true,
+      });
+    }
+  }
+
+  if (!postgresSynced && isDbConnected()) {
+    void syncProjectsWithPostgres();
   }
 
   const privates = getPrivateInfraProjects();
@@ -549,6 +826,7 @@ export function addProject({
   );
   projects.push(project);
   saveState();
+  void upsertProjectToPostgres(project);
   return project;
 }
 
@@ -740,6 +1018,7 @@ export function updateProject(id, patch) {
 
   project.updatedAt = new Date().toISOString();
   saveState();
+  void upsertProjectToPostgres(project);
   return project;
 }
 
@@ -796,6 +1075,7 @@ export function updateProjectInspection(idOrTracking, { stage, progress, photoUr
     proj.updatedAt = now;
     logActivity(proj, `Site inspection recorded by ${inspector}: ${stageLabel} (${numericProgress}%).`);
     saveState();
+    void upsertProjectToPostgres(proj);
     return proj;
   }
 
@@ -1054,6 +1334,7 @@ export function toPublicProject(p) {
   return {
     id: p.id,
     name: p.name,
+    code: p.code || p.id,
     modelType: p.modelType,
     type: p.type,
     department: p.department,
@@ -1065,11 +1346,21 @@ export function toPublicProject(p) {
     targetEndDate: p.targetEndDate ?? null,
     barangay: p.barangay || null,
     fundingSource: p.fundingSource || null,
+    contractor: p.contractor || "",
+    budgetTotal: p.budgetTotal != null ? Number(p.budgetTotal) : null,
+    budgetSpent: p.budgetSpent != null ? Number(p.budgetSpent) : 0,
+    biddingResults: p.biddingResults || null,
     lifecyclePhase: p.lifecyclePhase || null,
     customModelUrl: p.customModelUrl || null,
     rotation: p.rotation ?? 0,
     modelScale: p.modelScale ?? 1,
     modelHeight: p.modelHeight ?? 0,
+    markerColor: p.markerColor || "",
+    isLguProject: p.isLguProject !== undefined ? Boolean(p.isLguProject) : true,
+    isPinned: p.isPinned !== undefined ? Boolean(p.isPinned) : true,
+    engineerApproved: p.engineerApproved !== undefined ? Boolean(p.engineerApproved) : true,
+    latestInspection: p.latestInspection || null,
+    inspectionPhotos: Array.isArray(p.inspectionPhotos) ? p.inspectionPhotos : [],
     milestones,
     issues,
     photos,
@@ -1081,9 +1372,22 @@ export function toPublicProject(p) {
 export function listPublicProjects() {
   return projectsSeed()
     .filter((p) => !p.archivedAt)
+    .filter(
+      (p) =>
+        !p.isPrivateApplication &&
+        p.type !== "Private Building" &&
+        !p.trackingNumber &&
+        (p.isLguProject ||
+          p.type === "Municipal Project" ||
+          (typeof p.id === "string" && (p.id.startsWith("lgu-proj-") || p.id.startsWith("P"))))
+    )
     .map(toPublicProject);
 }
 
 export function getPublicProject(id) {
-  return toPublicProject(findProject(id));
+  const p = findProject(id);
+  if (!p || p.isPrivateApplication || p.type === "Private Building" || p.trackingNumber) {
+    return null;
+  }
+  return toPublicProject(p);
 }

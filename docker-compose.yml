@@ -1,9 +1,33 @@
 services:
+  postgres:
+    image: postgis/postgis:16-3.4-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PGUSER:-postgres}
+      POSTGRES_PASSWORD: ${PGPASSWORD:-king010605}
+      POSTGRES_DB: ${PGDATABASE:-luisiana_infatrack}
+    ports:
+      - "${PGPORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/sql/init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PGUSER:-postgres} -d ${PGDATABASE:-luisiana_infatrack}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   backend:
     build: ./backend
     environment:
       PORT: 4000
       CLIENT_ORIGIN: ${CLIENT_ORIGIN:-http://localhost:8080}
+      PGHOST: postgres
+      PGPORT: 5432
+      PGUSER: ${PGUSER:-postgres}
+      PGPASSWORD: ${PGPASSWORD:-king010605}
+      PGDATABASE: ${PGDATABASE:-luisiana_infatrack}
       UPLOADS_DIR: /app/uploads
       PROJECTS_DATA_PATH: /app/data/projects.json
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
@@ -23,6 +47,9 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
   frontend:
@@ -44,3 +71,4 @@ services:
 volumes:
   uploads_data:
   project_data:
+  postgres_data:

@@ -1,5 +1,6 @@
 import type { ModelType, Project, ProjectStatus } from "../types";
 import { MODEL_CATALOG } from "../types";
+import { getBuildingSector } from "./sectoral-filter";
 
 export type InfraCategory = "Building" | "Infrastructure" | "Agriculture" | "Construction";
 
@@ -10,6 +11,7 @@ export type InfraFilter = {
   department: "" | Project["department"];
   barangay: string;
   clustering: boolean;
+  sector?: string;
 };
 
 export const INFRA_STATUSES: ProjectStatus[] = [
@@ -51,6 +53,10 @@ export function categoryForModel(type: ModelType | undefined): InfraCategory {
 export function filterInfrastructure(projects: Project[], f: InfraFilter): Project[] {
   const q = f.query.trim().toLowerCase();
   return projects.filter((p) => {
+    if (f.sector && f.sector !== "all") {
+      if (getBuildingSector(p) !== f.sector) return false;
+    }
+
     if (
       (p as any).isPrivateApplication ||
       (p as any).isLguProject ||

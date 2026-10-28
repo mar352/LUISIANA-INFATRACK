@@ -263,6 +263,57 @@
   box-shadow: var(--apple-focus-ring);
 }
 
+/* Public Transparency Portal Button Highlights */
+.landing-nav-btn-transparency {
+  border-color: rgba(0, 113, 227, 0.4) !important;
+  color: var(--apple-primary) !important;
+  background: rgba(0, 113, 227, 0.06) !important;
+  font-weight: 600 !important;
+}
+
+[data-theme="dark"] .landing-nav-btn-transparency,
+body.dark .landing-nav-btn-transparency {
+  border-color: rgba(56, 189, 248, 0.4) !important;
+  color: #38bdf8 !important;
+  background: rgba(56, 189, 248, 0.08) !important;
+}
+
+.landing-nav-btn-transparency:hover {
+  background: rgba(0, 113, 227, 0.14) !important;
+  border-color: var(--apple-primary) !important;
+}
+
+[data-theme="dark"] .landing-nav-btn-transparency:hover,
+body.dark .landing-nav-btn-transparency:hover {
+  background: rgba(56, 189, 248, 0.18) !important;
+  border-color: #38bdf8 !important;
+}
+
+.landing-hero-btn-transparency {
+  border-color: rgba(0, 113, 227, 0.35) !important;
+  color: var(--apple-primary) !important;
+  font-weight: 600 !important;
+}
+
+[data-theme="dark"] .landing-hero-btn-transparency,
+body.dark .landing-hero-btn-transparency {
+  border-color: rgba(56, 189, 248, 0.4) !important;
+  color: #38bdf8 !important;
+}
+
+.landing-link-transparency {
+  color: var(--apple-primary) !important;
+  font-weight: 600 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+}
+
+[data-theme="dark"] .landing-link-transparency,
+body.dark .landing-link-transparency {
+  color: #38bdf8 !important;
+}
+
 /* Theme Toggle in Header & Login */
 .landing .theme-toggle,
 .login .theme-toggle {

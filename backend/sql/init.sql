@@ -382,6 +382,18 @@ CREATE TABLE IF NOT EXISTS municipal_projects (
     budget_total NUMERIC(15, 2),
     budget_spent NUMERIC(15, 2) DEFAULT 0,
     official_url TEXT,
+    is_lgu_project BOOLEAN DEFAULT TRUE,
+    engineer_approved BOOLEAN DEFAULT FALSE,
+    engineer_approved_at TIMESTAMPTZ,
+    engineer_approved_by VARCHAR(255),
+    is_pinned BOOLEAN DEFAULT FALSE,
+    notice_of_award_url TEXT,
+    notice_of_award_name VARCHAR(255),
+    program_of_works_url TEXT,
+    program_of_works_name VARCHAR(255),
+    encoded_by VARCHAR(255),
+    engineer_notes TEXT,
+    bidding_results JSONB,
     is_private_application BOOLEAN DEFAULT FALSE,
     tracking_number VARCHAR(64),
     applicant_name VARCHAR(255),
@@ -394,6 +406,20 @@ CREATE TABLE IF NOT EXISTS municipal_projects (
         'Planning', 'Procurement', 'Construction', 'Inspection', 'Turnover', 'Maintenance', 'Decommissioned'
     ))
 );
+
+-- Idempotent column migrations for municipal_projects
+ALTER TABLE municipal_projects ADD COLUMN IF NOT EXISTS is_lgu_project BOOLEAN DEFAULT TRUE;
+ALTER TABLE municipal_projects ADD COLUMN IF NOT EXISTS engineer_approved BOOLEAN DEFAULT FALSE;
+ALTER TABLE municipal_projects ADD COLUMN IF NOT EXISTS engineer_approved_at TIMESTAMPTZ;
+ALTER TABLE municipal_projects ADD COLUMN IF NOT EXISTS engineer_approved_by VARCHAR(255);
+ALTER TABLE municipal_projects ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN DEFAULT FALSE;
+ALTER TABLE municipal_projects ADD COLUMN IF NOT EXISTS notice_of_award_url TEXT;
+ALTER TABLE municipal_projects ADD COLUMN IF NOT EXISTS notice_of_award_name VARCHAR(255);
+ALTER TABLE municipal_projects ADD COLUMN IF NOT EXISTS program_of_works_url TEXT;
+ALTER TABLE municipal_projects ADD COLUMN IF NOT EXISTS program_of_works_name VARCHAR(255);
+ALTER TABLE municipal_projects ADD COLUMN IF NOT EXISTS encoded_by VARCHAR(255);
+ALTER TABLE municipal_projects ADD COLUMN IF NOT EXISTS engineer_notes TEXT;
+ALTER TABLE municipal_projects ADD COLUMN IF NOT EXISTS bidding_results JSONB;
 
 CREATE TABLE IF NOT EXISTS project_milestones (
     id VARCHAR(64) PRIMARY KEY,
