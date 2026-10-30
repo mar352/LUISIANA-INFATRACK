@@ -1,0 +1,1624 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 3280 2100" width="3280" height="2100">
+  <defs>
+    <style>
+      .font-sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
+      .shadow { filter: drop-shadow(0 2px 4px rgba(0,0,0,0.06)); }
+    </style>
+  </defs>
+
+  <!-- Background Canvas -->
+  <rect width="3280" height="2100" fill="#F8FAFC" />
+
+  <!-- Master Title Banner -->
+  <g class="font-sans shadow">
+    <rect x="40" y="24" width="3200" height="76" rx="8" fill="#0F172A" stroke="#38BDF8" stroke-width="2" />
+    <text x="1640" y="56" fill="#F8FAFC" font-size="20" font-weight="bold" text-anchor="middle">LUISIANA INFA-TRACK — COMPLETE POSTGRESQL DATABASE ARCHITECTURE (ERD)</text>
+    <text x="1640" y="82" fill="#94A3B8" font-size="13" text-anchor="middle">Municipality of Luisiana, Laguna • 33 Production Relational Tables • 401 Attributes • 3rd Normal Form (3NF) Relational Schema</text>
+  </g>
+
+  <!-- Module Background Frames -->
+  <!-- Frame 1: Masterlists & RBAC -->
+  <rect x="45" y="115" width="770" height="1955" rx="8" fill="#F0FDF4" stroke="#BBF7D0" stroke-width="1.5" stroke-dasharray="6 4" />
+  <text x="60" y="132" class="font-sans" font-size="12" font-weight="bold" fill="#166534">1. MASTERLISTS &amp; AUTH SECURITY (Columns 1 - 2)</text>
+
+  <!-- Frame 2: Citizen Permitting 3NF -->
+  <rect x="825" y="115" width="790" height="1955" rx="8" fill="#EFF6FF" stroke="#BFDBFE" stroke-width="1.5" stroke-dasharray="6 4" />
+  <text x="840" y="132" class="font-sans" font-size="12" font-weight="bold" fill="#1E3A8A">2. CITIZEN PERMITTING &amp; 3NF APPLICATION LIFECYCLE (Columns 3 - 4)</text>
+
+  <!-- Frame 3: Municipal Infrastructure & 3D WebGL -->
+  <rect x="1625" y="115" width="795" height="1955" rx="8" fill="#F0FDFA" stroke="#99F6E4" stroke-width="1.5" stroke-dasharray="6 4" />
+  <text x="1640" y="132" class="font-sans" font-size="12" font-weight="bold" fill="#115E59">3. MUNICIPAL INFRASTRUCTURE, 3D WEBGL &amp; FIELD INSPECTIONS (Columns 5 - 6)</text>
+
+  <!-- Frame 4: Planning & Governance -->
+  <rect x="2430" y="115" width="390" height="1955" rx="8" fill="#FAF5FF" stroke="#E9D5FF" stroke-width="1.5" stroke-dasharray="6 4" />
+  <text x="2445" y="132" class="font-sans" font-size="12" font-weight="bold" fill="#6B21A8">4. URBAN PLANNING &amp; GOVERNANCE (Col 7)</text>
+
+  <!-- Frame 5: DMS & Disaster Risk -->
+  <rect x="2830" y="115" width="400" height="1955" rx="8" fill="#FFF1F2" stroke="#FECDD3" stroke-width="1.5" stroke-dasharray="6 4" />
+  <text x="2845" y="132" class="font-sans" font-size="12" font-weight="bold" fill="#9F1239">5. DMS &amp; DISASTER RESILIENCE (Col 8)</text>
+
+  <!-- Table: barangays -->
+  <g class="font-sans shadow" id="tbl_barangays">
+    <!-- Table Outer Box -->
+    <rect x="60" y="140" width="350" height="204" rx="6" fill="#FFFFFF" stroke="#10B981" stroke-width="1.8" />
+    
+    <!-- Table Header -->
+    <path d="M 60 146 Q 60 140 66 140 L 404 140 Q 410 140 410 146 L 410 168 L 60 168 Z" fill="#065F46" />
+    <text x="235" y="159" fill="#FFFFFF" font-size="12" font-weight="bold" text-anchor="middle">barangays</text>
+    <!-- Row 0: id -->
+    <rect x="60" y="168" width="350" height="22" fill="#FEF3C7" />
+    <text x="70" y="183" fill="#92400E" font-size="10.5" font-weight="bold">PK id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 1: code -->
+    <rect x="60" y="190" width="350" height="22" fill="#F8FAFC" />
+    <text x="70" y="205" fill="#334155" font-size="10.5" font-weight="normal">code <tspan fill="#64748B" font-weight="normal">: VARCHAR(32)</tspan></text>
+    <!-- Row 2: name -->
+    <rect x="60" y="212" width="350" height="22" fill="#FFFFFF" />
+    <text x="70" y="227" fill="#334155" font-size="10.5" font-weight="normal">name <tspan fill="#64748B" font-weight="normal">: VARCHAR(128)</tspan></text>
+    <!-- Row 3: zone -->
+    <rect x="60" y="234" width="350" height="22" fill="#F8FAFC" />
+    <text x="70" y="249" fill="#334155" font-size="10.5" font-weight="normal">zone <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 4: is_active -->
+    <rect x="60" y="256" width="350" height="22" fill="#FFFFFF" />
+    <text x="70" y="271" fill="#334155" font-size="10.5" font-weight="normal">is_active <tspan fill="#64748B" font-weight="normal">: BOOLEAN</tspan></text>
+    <!-- Row 5: is_default -->
+    <rect x="60" y="278" width="350" height="22" fill="#F8FAFC" />
+    <text x="70" y="293" fill="#334155" font-size="10.5" font-weight="normal">is_default <tspan fill="#64748B" font-weight="normal">: BOOLEAN</tspan></text>
+    <!-- Row 6: created_at -->
+    <rect x="60" y="300" width="350" height="22" fill="#FFFFFF" />
+    <text x="70" y="315" fill="#334155" font-size="10.5" font-weight="normal">created_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+    <!-- Row 7: updated_at -->
+    <rect x="60" y="322" width="350" height="22" fill="#F8FAFC" />
+    <text x="70" y="337" fill="#334155" font-size="10.5" font-weight="normal">updated_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+  </g>
+
+  <!-- Table: system_config -->
+  <g class="font-sans shadow" id="tbl_system_config">
+    <!-- Table Outer Box -->
+    <rect x="60" y="374" width="350" height="204" rx="6" fill="#FFFFFF" stroke="#10B981" stroke-width="1.8" />
+    
+    <!-- Table Header -->
+    <path d="M 60 380 Q 60 374 66 374 L 404 374 Q 410 374 410 380 L 410 402 L 60 402 Z" fill="#065F46" />
+    <text x="235" y="393" fill="#FFFFFF" font-size="12" font-weight="bold" text-anchor="middle">system_config</text>
+    <!-- Row 0: id -->
+    <rect x="60" y="402" width="350" height="22" fill="#FEF3C7" />
+    <text x="70" y="417" fill="#92400E" font-size="10.5" font-weight="bold">PK id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 1: version -->
+    <rect x="60" y="424" width="350" height="22" fill="#F8FAFC" />
+    <text x="70" y="439" fill="#334155" font-size="10.5" font-weight="normal">version <tspan fill="#64748B" font-weight="normal">: VARCHAR(32)</tspan></text>
+    <!-- Row 2: maintenance_enabled -->
+    <rect x="60" y="446" width="350" height="22" fill="#FFFFFF" />
+    <text x="70" y="461" fill="#334155" font-size="10.5" font-weight="normal">maintenance_enabled <tspan fill="#64748B" font-weight="normal">: BOOLEAN</tspan></text>
+    <!-- Row 3: maintenance_message -->
+    <rect x="60" y="468" width="350" height="22" fill="#F8FAFC" />
+    <text x="70" y="483" fill="#334155" font-size="10.5" font-weight="normal">maintenance_message <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 4: maintenance_estimated_duration -->
+    <rect x="60" y="490" width="350" height="22" fill="#FFFFFF" />
+    <text x="70" y="505" fill="#334155" font-size="10.5" font-weight="normal">maintenance_estimated_duration <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 5: maintenance_updated_by -->
+    <rect x="60" y="512" width="350" height="22" fill="#F8FAFC" />
+    <text x="70" y="527" fill="#334155" font-size="10.5" font-weight="normal">maintenance_updated_by <tspan fill="#64748B" font-weight="normal">: VARCHAR(128)</tspan></text>
+    <!-- Row 6: config_json -->
+    <rect x="60" y="534" width="350" height="22" fill="#FFFFFF" />
+    <text x="70" y="549" fill="#334155" font-size="10.5" font-weight="normal">config_json <tspan fill="#64748B" font-weight="normal">: JSONB</tspan></text>
+    <!-- Row 7: updated_at -->
+    <rect x="60" y="556" width="350" height="22" fill="#F8FAFC" />
+    <text x="70" y="571" fill="#334155" font-size="10.5" font-weight="normal">updated_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+  </g>
+
+  <!-- Table: system_masterlists -->
+  <g class="font-sans shadow" id="tbl_system_masterlists">
+    <!-- Table Outer Box -->
+    <rect x="60" y="608" width="350" height="248" rx="6" fill="#FFFFFF" stroke="#10B981" stroke-width="1.8" />
+    
+    <!-- Table Header -->
+    <path d="M 60 614 Q 60 608 66 608 L 404 608 Q 410 608 410 614 L 410 636 L 60 636 Z" fill="#065F46" />
+    <text x="235" y="627" fill="#FFFFFF" font-size="12" font-weight="bold" text-anchor="middle">system_masterlists</text>
+    <!-- Row 0: id -->
+    <rect x="60" y="636" width="350" height="22" fill="#FEF3C7" />
+    <text x="70" y="651" fill="#92400E" font-size="10.5" font-weight="bold">PK id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 1: category -->
+    <rect x="60" y="658" width="350" height="22" fill="#F8FAFC" />
+    <text x="70" y="673" fill="#334155" font-size="10.5" font-weight="normal">category <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 2: code -->
+    <rect x="60" y="680" width="350" height="22" fill="#FFFFFF" />
+    <text x="70" y="695" fill="#334155" font-size="10.5" font-weight="normal">code <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 3: name -->
+    <rect x="60" y="702" width="350" height="22" fill="#F8FAFC" />
+    <text x="70" y="717" fill="#334155" font-size="10.5" font-weight="normal">name <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 4: description -->
+    <rect x="60" y="724" width="350" height="22" fill="#FFFFFF" />
+    <text x="70" y="739" fill="#334155" font-size="10.5" font-weight="normal">description <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 5: zone_group -->
+    <rect x="60" y="746" width="350" height="22" fill="#F8FAFC" />
+    <text x="70" y="761" fill="#334155" font-size="10.5" font-weight="normal">zone_group <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 6: is_active -->
+    <rect x="60" y="768" width="350" height="22" fill="#FFFFFF" />
+    <text x="70" y="783" fill="#334155" font-size="10.5" font-weight="normal">is_active <tspan fill="#64748B" font-weight="normal">: BOOLEAN</tspan></text>
+    <!-- Row 7: is_default -->
+    <rect x="60" y="790" width="350" height="22" fill="#F8FAFC" />
+    <text x="70" y="805" fill="#334155" font-size="10.5" font-weight="normal">is_default <tspan fill="#64748B" font-weight="normal">: BOOLEAN</tspan></text>
+    <!-- Row 8: created_at -->
+    <rect x="60" y="812" width="350" height="22" fill="#FFFFFF" />
+    <text x="70" y="827" fill="#334155" font-size="10.5" font-weight="normal">created_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+    <!-- Row 9: updated_at -->
+    <rect x="60" y="834" width="350" height="22" fill="#F8FAFC" />
+    <text x="70" y="849" fill="#334155" font-size="10.5" font-weight="normal">updated_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+  </g>
+
+  <!-- Table: staff_accounts -->
+  <g class="font-sans shadow" id="tbl_staff_accounts">
+    <!-- Table Outer Box -->
+    <rect x="60" y="886" width="350" height="468" rx="6" fill="#FFFFFF" stroke="#10B981" stroke-width="1.8" />
+    
+    <!-- Table Header -->
+    <path d="M 60 892 Q 60 886 66 886 L 404 886 Q 410 886 410 892 L 410 914 L 60 914 Z" fill="#065F46" />
+    <text x="235" y="905" fill="#FFFFFF" font-size="12" font-weight="bold" text-anchor="middle">staff_accounts</text>
+    <!-- Row 0: id -->
+    <rect x="60" y="914" width="350" height="22" fill="#FEF3C7" />
+    <text x="70" y="929" fill="#92400E" font-size="10.5" font-weight="bold">PK id <tspan fill="#64748B" font-weight="normal">: UUID</tspan></text>
+    <!-- Row 1: username -->
+    <rect x="60" y="936" width="350" height="22" fill="#F8FAFC" />
+    <text x="70" y="951" fill="#334155" font-size="10.5" font-weight="normal">username <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 2: name -->
+    <rect x="60" y="958" width="350" height="22" fill="#FFFFFF" />
+    <text x="70" y="973" fill="#334155" font-size="10.5" font-weight="normal">name <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 3: employee_id -->
+    <rect x="60" y="980" width="350" height="22" fill="#E0F2FE" />
+    <text x="70" y="995" fill="#0369A1" font-size="10.5" font-weight="bold">FK employee_id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 4: role -->
+    <rect x="60" y="1002" width="350" height="22" fill="#FFFFFF" />
+    <text x="70" y="1017" fill="#334155" font-size="10.5" font-weight="normal">role <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 5: department -->
+    <rect x="60" y="1024" width="350" height="22" fill="#F8FAFC" />
+    <text x="70" y="1039" fill="#334155" font-size="10.5" font-weight="normal">department <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 6: password_hash -->
+    <rect x="60" y="1046" width="350" height="22" fill="#FFFFFF" />
+    <text x="70" y="1061" fill="#334155" font-size="10.5" font-weight="normal">password_hash <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 7: password_salt -->
+    <rect x="60" y="1068" width="350" height="22" fill="#F8FAFC" />
+    <text x="70" y="1083" fill="#334155" font-size="10.5" font-weight="normal">password_salt <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 8: iterations -->
+    <rect x="60" y="1090" width="350" height="22" fill="#FFFFFF" />
+    <text x="70" y="1105" fill="#334155" font-size="10.5" font-weight="normal">iterations <tspan fill="#64748B" font-weight="normal">: INT</tspan></text>
+    <!-- Row 9: failed_attempts -->
+    <rect x="60" y="1112" width="350" height="22" fill="#F8FAFC" />
+    <text x="70" y="1127" fill="#334155" font-size="10.5" font-weight="normal">failed_attempts <tspan fill="#64748B" font-weight="normal">: INT</tspan></text>
+    <!-- Row 10: locked_until -->
+    <rect x="60" y="1134" width="350" height="22" fill="#FFFFFF" />
+    <text x="70" y="1149" fill="#334155" font-size="10.5" font-weight="normal">locked_until <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+    <!-- Row 11: last_login_at -->
+    <rect x="60" y="1156" width="350" height="22" fill="#F8FAFC" />
+    <text x="70" y="1171" fill="#334155" font-size="10.5" font-weight="normal">last_login_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+    <!-- Row 12: last_failed_at -->
+    <rect x="60" y="1178" width="350" height="22" fill="#FFFFFF" />
+    <text x="70" y="1193" fill="#334155" font-size="10.5" font-weight="normal">last_failed_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+    <!-- Row 13: last_failed_ip -->
+    <rect x="60" y="1200" width="350" height="22" fill="#F8FAFC" />
+    <text x="70" y="1215" fill="#334155" font-size="10.5" font-weight="normal">last_failed_ip <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 14: last_failed_device -->
+    <rect x="60" y="1222" width="350" height="22" fill="#FFFFFF" />
+    <text x="70" y="1237" fill="#334155" font-size="10.5" font-weight="normal">last_failed_device <tspan fill="#64748B" font-weight="normal">: VARCHAR(128)</tspan></text>
+    <!-- Row 15: last_failed_location -->
+    <rect x="60" y="1244" width="350" height="22" fill="#F8FAFC" />
+    <text x="70" y="1259" fill="#334155" font-size="10.5" font-weight="normal">last_failed_location <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 16: must_change_password -->
+    <rect x="60" y="1266" width="350" height="22" fill="#FFFFFF" />
+    <text x="70" y="1281" fill="#334155" font-size="10.5" font-weight="normal">must_change_password <tspan fill="#64748B" font-weight="normal">: BOOLEAN</tspan></text>
+    <!-- Row 17: is_active -->
+    <rect x="60" y="1288" width="350" height="22" fill="#F8FAFC" />
+    <text x="70" y="1303" fill="#334155" font-size="10.5" font-weight="normal">is_active <tspan fill="#64748B" font-weight="normal">: BOOLEAN</tspan></text>
+    <!-- Row 18: created_at -->
+    <rect x="60" y="1310" width="350" height="22" fill="#FFFFFF" />
+    <text x="70" y="1325" fill="#334155" font-size="10.5" font-weight="normal">created_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+    <!-- Row 19: updated_at -->
+    <rect x="60" y="1332" width="350" height="22" fill="#F8FAFC" />
+    <text x="70" y="1347" fill="#334155" font-size="10.5" font-weight="normal">updated_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+  </g>
+
+  <!-- Table: user_sessions -->
+  <g class="font-sans shadow" id="tbl_user_sessions">
+    <!-- Table Outer Box -->
+    <rect x="450" y="140" width="350" height="270" rx="6" fill="#FFFFFF" stroke="#6366F1" stroke-width="1.8" />
+    
+    <!-- Table Header -->
+    <path d="M 450 146 Q 450 140 456 140 L 794 140 Q 800 140 800 146 L 800 168 L 450 168 Z" fill="#4338CA" />
+    <text x="625" y="159" fill="#FFFFFF" font-size="12" font-weight="bold" text-anchor="middle">user_sessions</text>
+    <!-- Row 0: id -->
+    <rect x="450" y="168" width="350" height="22" fill="#FEF3C7" />
+    <text x="460" y="183" fill="#92400E" font-size="10.5" font-weight="bold">PK id <tspan fill="#64748B" font-weight="normal">: VARCHAR(128)</tspan></text>
+    <!-- Row 1: username -->
+    <rect x="450" y="190" width="350" height="22" fill="#E0F2FE" />
+    <text x="460" y="205" fill="#0369A1" font-size="10.5" font-weight="bold">FK username <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 2: role -->
+    <rect x="450" y="212" width="350" height="22" fill="#FFFFFF" />
+    <text x="460" y="227" fill="#334155" font-size="10.5" font-weight="normal">role <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 3: department -->
+    <rect x="450" y="234" width="350" height="22" fill="#F8FAFC" />
+    <text x="460" y="249" fill="#334155" font-size="10.5" font-weight="normal">department <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 4: ip_address -->
+    <rect x="450" y="256" width="350" height="22" fill="#FFFFFF" />
+    <text x="460" y="271" fill="#334155" font-size="10.5" font-weight="normal">ip_address <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 5: user_agent -->
+    <rect x="450" y="278" width="350" height="22" fill="#F8FAFC" />
+    <text x="460" y="293" fill="#334155" font-size="10.5" font-weight="normal">user_agent <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 6: device_name -->
+    <rect x="450" y="300" width="350" height="22" fill="#FFFFFF" />
+    <text x="460" y="315" fill="#334155" font-size="10.5" font-weight="normal">device_name <tspan fill="#64748B" font-weight="normal">: VARCHAR(128)</tspan></text>
+    <!-- Row 7: device_type -->
+    <rect x="450" y="322" width="350" height="22" fill="#F8FAFC" />
+    <text x="460" y="337" fill="#334155" font-size="10.5" font-weight="normal">device_type <tspan fill="#64748B" font-weight="normal">: VARCHAR(32)</tspan></text>
+    <!-- Row 8: location_label -->
+    <rect x="450" y="344" width="350" height="22" fill="#FFFFFF" />
+    <text x="460" y="359" fill="#334155" font-size="10.5" font-weight="normal">location_label <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 9: created_at -->
+    <rect x="450" y="366" width="350" height="22" fill="#F8FAFC" />
+    <text x="460" y="381" fill="#334155" font-size="10.5" font-weight="normal">created_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+    <!-- Row 10: expires_at -->
+    <rect x="450" y="388" width="350" height="22" fill="#FFFFFF" />
+    <text x="460" y="403" fill="#334155" font-size="10.5" font-weight="normal">expires_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+  </g>
+
+  <!-- Table: audit_logs -->
+  <g class="font-sans shadow" id="tbl_audit_logs">
+    <!-- Table Outer Box -->
+    <rect x="450" y="440" width="350" height="226" rx="6" fill="#FFFFFF" stroke="#6366F1" stroke-width="1.8" />
+    
+    <!-- Table Header -->
+    <path d="M 450 446 Q 450 440 456 440 L 794 440 Q 800 440 800 446 L 800 468 L 450 468 Z" fill="#4338CA" />
+    <text x="625" y="459" fill="#FFFFFF" font-size="12" font-weight="bold" text-anchor="middle">audit_logs</text>
+    <!-- Row 0: id -->
+    <rect x="450" y="468" width="350" height="22" fill="#FEF3C7" />
+    <text x="460" y="483" fill="#92400E" font-size="10.5" font-weight="bold">PK id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 1: actor_username -->
+    <rect x="450" y="490" width="350" height="22" fill="#E0F2FE" />
+    <text x="460" y="505" fill="#0369A1" font-size="10.5" font-weight="bold">FK actor_username <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 2: actor_role -->
+    <rect x="450" y="512" width="350" height="22" fill="#FFFFFF" />
+    <text x="460" y="527" fill="#334155" font-size="10.5" font-weight="normal">actor_role <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 3: action_type -->
+    <rect x="450" y="534" width="350" height="22" fill="#F8FAFC" />
+    <text x="460" y="549" fill="#334155" font-size="10.5" font-weight="normal">action_type <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 4: resource_type -->
+    <rect x="450" y="556" width="350" height="22" fill="#FFFFFF" />
+    <text x="460" y="571" fill="#334155" font-size="10.5" font-weight="normal">resource_type <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 5: resource_id -->
+    <rect x="450" y="578" width="350" height="22" fill="#E0F2FE" />
+    <text x="460" y="593" fill="#0369A1" font-size="10.5" font-weight="bold">FK resource_id <tspan fill="#64748B" font-weight="normal">: VARCHAR(128)</tspan></text>
+    <!-- Row 6: ip_address -->
+    <rect x="450" y="600" width="350" height="22" fill="#FFFFFF" />
+    <text x="460" y="615" fill="#334155" font-size="10.5" font-weight="normal">ip_address <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 7: details -->
+    <rect x="450" y="622" width="350" height="22" fill="#F8FAFC" />
+    <text x="460" y="637" fill="#334155" font-size="10.5" font-weight="normal">details <tspan fill="#64748B" font-weight="normal">: JSONB</tspan></text>
+    <!-- Row 8: created_at -->
+    <rect x="450" y="644" width="350" height="22" fill="#FFFFFF" />
+    <text x="460" y="659" fill="#334155" font-size="10.5" font-weight="normal">created_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+  </g>
+
+  <!-- Table: security_quarantine_logs -->
+  <g class="font-sans shadow" id="tbl_security_quarantine_logs">
+    <!-- Table Outer Box -->
+    <rect x="450" y="696" width="350" height="270" rx="6" fill="#FFFFFF" stroke="#6366F1" stroke-width="1.8" />
+    
+    <!-- Table Header -->
+    <path d="M 450 702 Q 450 696 456 696 L 794 696 Q 800 696 800 702 L 800 724 L 450 724 Z" fill="#4338CA" />
+    <text x="625" y="715" fill="#FFFFFF" font-size="12" font-weight="bold" text-anchor="middle">security_quarantine_logs</text>
+    <!-- Row 0: id -->
+    <rect x="450" y="724" width="350" height="22" fill="#FEF3C7" />
+    <text x="460" y="739" fill="#92400E" font-size="10.5" font-weight="bold">PK id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 1: original_filename -->
+    <rect x="450" y="746" width="350" height="22" fill="#F8FAFC" />
+    <text x="460" y="761" fill="#334155" font-size="10.5" font-weight="normal">original_filename <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 2: quarantined_path -->
+    <rect x="450" y="768" width="350" height="22" fill="#FFFFFF" />
+    <text x="460" y="783" fill="#334155" font-size="10.5" font-weight="normal">quarantined_path <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 3: threat_type -->
+    <rect x="450" y="790" width="350" height="22" fill="#F8FAFC" />
+    <text x="460" y="805" fill="#334155" font-size="10.5" font-weight="normal">threat_type <tspan fill="#64748B" font-weight="normal">: VARCHAR(128)</tspan></text>
+    <!-- Row 4: file_sha256 -->
+    <rect x="450" y="812" width="350" height="22" fill="#FFFFFF" />
+    <text x="460" y="827" fill="#334155" font-size="10.5" font-weight="normal">file_sha256 <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 5: file_size_bytes -->
+    <rect x="450" y="834" width="350" height="22" fill="#F8FAFC" />
+    <text x="460" y="849" fill="#334155" font-size="10.5" font-weight="normal">file_size_bytes <tspan fill="#64748B" font-weight="normal">: BIGINT</tspan></text>
+    <!-- Row 6: mime_type -->
+    <rect x="450" y="856" width="350" height="22" fill="#FFFFFF" />
+    <text x="460" y="871" fill="#334155" font-size="10.5" font-weight="normal">mime_type <tspan fill="#64748B" font-weight="normal">: VARCHAR(128)</tspan></text>
+    <!-- Row 7: uploaded_by -->
+    <rect x="450" y="878" width="350" height="22" fill="#F8FAFC" />
+    <text x="460" y="893" fill="#334155" font-size="10.5" font-weight="normal">uploaded_by <tspan fill="#64748B" font-weight="normal">: VARCHAR(128)</tspan></text>
+    <!-- Row 8: tracking_number -->
+    <rect x="450" y="900" width="350" height="22" fill="#FFFFFF" />
+    <text x="460" y="915" fill="#334155" font-size="10.5" font-weight="normal">tracking_number <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 9: ip_address -->
+    <rect x="450" y="922" width="350" height="22" fill="#F8FAFC" />
+    <text x="460" y="937" fill="#334155" font-size="10.5" font-weight="normal">ip_address <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 10: created_at -->
+    <rect x="450" y="944" width="350" height="22" fill="#FFFFFF" />
+    <text x="460" y="959" fill="#334155" font-size="10.5" font-weight="normal">created_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+  </g>
+
+  <!-- Table: applicants -->
+  <g class="font-sans shadow" id="tbl_applicants">
+    <!-- Table Outer Box -->
+    <rect x="450" y="996" width="350" height="204" rx="6" fill="#FFFFFF" stroke="#6366F1" stroke-width="1.8" />
+    
+    <!-- Table Header -->
+    <path d="M 450 1002 Q 450 996 456 996 L 794 996 Q 800 996 800 1002 L 800 1024 L 450 1024 Z" fill="#4338CA" />
+    <text x="625" y="1015" fill="#FFFFFF" font-size="12" font-weight="bold" text-anchor="middle">applicants</text>
+    <!-- Row 0: id -->
+    <rect x="450" y="1024" width="350" height="22" fill="#FEF3C7" />
+    <text x="460" y="1039" fill="#92400E" font-size="10.5" font-weight="bold">PK id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 1: full_name -->
+    <rect x="450" y="1046" width="350" height="22" fill="#F8FAFC" />
+    <text x="460" y="1061" fill="#334155" font-size="10.5" font-weight="normal">full_name <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 2: contact_phone -->
+    <rect x="450" y="1068" width="350" height="22" fill="#FFFFFF" />
+    <text x="460" y="1083" fill="#334155" font-size="10.5" font-weight="normal">contact_phone <tspan fill="#64748B" font-weight="normal">: VARCHAR(128)</tspan></text>
+    <!-- Row 3: contact_email -->
+    <rect x="450" y="1090" width="350" height="22" fill="#F8FAFC" />
+    <text x="460" y="1105" fill="#334155" font-size="10.5" font-weight="normal">contact_email <tspan fill="#64748B" font-weight="normal">: VARCHAR(128)</tspan></text>
+    <!-- Row 4: address -->
+    <rect x="450" y="1112" width="350" height="22" fill="#FFFFFF" />
+    <text x="460" y="1127" fill="#334155" font-size="10.5" font-weight="normal">address <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 5: barangay -->
+    <rect x="450" y="1134" width="350" height="22" fill="#E0F2FE" />
+    <text x="460" y="1149" fill="#0369A1" font-size="10.5" font-weight="bold">FK barangay <tspan fill="#64748B" font-weight="normal">: VARCHAR(128)</tspan></text>
+    <!-- Row 6: created_at -->
+    <rect x="450" y="1156" width="350" height="22" fill="#FFFFFF" />
+    <text x="460" y="1171" fill="#334155" font-size="10.5" font-weight="normal">created_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+    <!-- Row 7: updated_at -->
+    <rect x="450" y="1178" width="350" height="22" fill="#F8FAFC" />
+    <text x="460" y="1193" fill="#334155" font-size="10.5" font-weight="normal">updated_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+  </g>
+
+  <!-- Table: user_terms_consents -->
+  <g class="font-sans shadow" id="tbl_user_terms_consents">
+    <!-- Table Outer Box -->
+    <rect x="450" y="1230" width="350" height="248" rx="6" fill="#FFFFFF" stroke="#6366F1" stroke-width="1.8" />
+    
+    <!-- Table Header -->
+    <path d="M 450 1236 Q 450 1230 456 1230 L 794 1230 Q 800 1230 800 1236 L 800 1258 L 450 1258 Z" fill="#4338CA" />
+    <text x="625" y="1249" fill="#FFFFFF" font-size="12" font-weight="bold" text-anchor="middle">user_terms_consents</text>
+    <!-- Row 0: id -->
+    <rect x="450" y="1258" width="350" height="22" fill="#FEF3C7" />
+    <text x="460" y="1273" fill="#92400E" font-size="10.5" font-weight="bold">PK id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 1: ip_address -->
+    <rect x="450" y="1280" width="350" height="22" fill="#F8FAFC" />
+    <text x="460" y="1295" fill="#334155" font-size="10.5" font-weight="normal">ip_address <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 2: user_agent -->
+    <rect x="450" y="1302" width="350" height="22" fill="#FFFFFF" />
+    <text x="460" y="1317" fill="#334155" font-size="10.5" font-weight="normal">user_agent <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 3: terms_version -->
+    <rect x="450" y="1324" width="350" height="22" fill="#F8FAFC" />
+    <text x="460" y="1339" fill="#334155" font-size="10.5" font-weight="normal">terms_version <tspan fill="#64748B" font-weight="normal">: VARCHAR(32)</tspan></text>
+    <!-- Row 4: agreed_terms -->
+    <rect x="450" y="1346" width="350" height="22" fill="#FFFFFF" />
+    <text x="460" y="1361" fill="#334155" font-size="10.5" font-weight="normal">agreed_terms <tspan fill="#64748B" font-weight="normal">: BOOLEAN</tspan></text>
+    <!-- Row 5: agreed_privacy -->
+    <rect x="450" y="1368" width="350" height="22" fill="#F8FAFC" />
+    <text x="460" y="1383" fill="#334155" font-size="10.5" font-weight="normal">agreed_privacy <tspan fill="#64748B" font-weight="normal">: BOOLEAN</tspan></text>
+    <!-- Row 6: agreed_cookies -->
+    <rect x="450" y="1390" width="350" height="22" fill="#FFFFFF" />
+    <text x="460" y="1405" fill="#334155" font-size="10.5" font-weight="normal">agreed_cookies <tspan fill="#64748B" font-weight="normal">: BOOLEAN</tspan></text>
+    <!-- Row 7: consent_source -->
+    <rect x="450" y="1412" width="350" height="22" fill="#F8FAFC" />
+    <text x="460" y="1427" fill="#334155" font-size="10.5" font-weight="normal">consent_source <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 8: applicant_name -->
+    <rect x="450" y="1434" width="350" height="22" fill="#FFFFFF" />
+    <text x="460" y="1449" fill="#334155" font-size="10.5" font-weight="normal">applicant_name <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 9: created_at -->
+    <rect x="450" y="1456" width="350" height="22" fill="#F8FAFC" />
+    <text x="460" y="1471" fill="#334155" font-size="10.5" font-weight="normal">created_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+  </g>
+
+  <!-- Table: citizen_applications -->
+  <g class="font-sans shadow" id="tbl_citizen_applications">
+    <!-- Table Outer Box -->
+    <rect x="840" y="140" width="360" height="424" rx="6" fill="#FFFFFF" stroke="#3B82F6" stroke-width="1.8" />
+    
+    <!-- Table Header -->
+    <path d="M 840 146 Q 840 140 846 140 L 1194 140 Q 1200 140 1200 146 L 1200 168 L 840 168 Z" fill="#1E40AF" />
+    <text x="1020" y="159" fill="#FFFFFF" font-size="12" font-weight="bold" text-anchor="middle">citizen_applications</text>
+    <!-- Row 0: id -->
+    <rect x="840" y="168" width="360" height="22" fill="#FEF3C7" />
+    <text x="850" y="183" fill="#92400E" font-size="10.5" font-weight="bold">PK id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 1: tracking_number -->
+    <rect x="840" y="190" width="360" height="22" fill="#F8FAFC" />
+    <text x="850" y="205" fill="#334155" font-size="10.5" font-weight="normal">tracking_number <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 2: applicant_id -->
+    <rect x="840" y="212" width="360" height="22" fill="#E0F2FE" />
+    <text x="850" y="227" fill="#0369A1" font-size="10.5" font-weight="bold">FK applicant_id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 3: service_type -->
+    <rect x="840" y="234" width="360" height="22" fill="#F8FAFC" />
+    <text x="850" y="249" fill="#334155" font-size="10.5" font-weight="normal">service_type <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 4: category -->
+    <rect x="840" y="256" width="360" height="22" fill="#FFFFFF" />
+    <text x="850" y="271" fill="#334155" font-size="10.5" font-weight="normal">category <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 5: status -->
+    <rect x="840" y="278" width="360" height="22" fill="#F8FAFC" />
+    <text x="850" y="293" fill="#334155" font-size="10.5" font-weight="normal">status <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 6: project_title -->
+    <rect x="840" y="300" width="360" height="22" fill="#FFFFFF" />
+    <text x="850" y="315" fill="#334155" font-size="10.5" font-weight="normal">project_title <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 7: estimated_cost -->
+    <rect x="840" y="322" width="360" height="22" fill="#F8FAFC" />
+    <text x="850" y="337" fill="#334155" font-size="10.5" font-weight="normal">estimated_cost <tspan fill="#64748B" font-weight="normal">: NUMERIC(15, 2)</tspan></text>
+    <!-- Row 8: uploads -->
+    <rect x="840" y="344" width="360" height="22" fill="#FFFFFF" />
+    <text x="850" y="359" fill="#334155" font-size="10.5" font-weight="normal">uploads <tspan fill="#64748B" font-weight="normal">: JSONB</tspan></text>
+    <!-- Row 9: step_progress -->
+    <rect x="840" y="366" width="360" height="22" fill="#F8FAFC" />
+    <text x="850" y="381" fill="#334155" font-size="10.5" font-weight="normal">step_progress <tspan fill="#64748B" font-weight="normal">: JSONB</tspan></text>
+    <!-- Row 10: responsible_officers -->
+    <rect x="840" y="388" width="360" height="22" fill="#FFFFFF" />
+    <text x="850" y="403" fill="#334155" font-size="10.5" font-weight="normal">responsible_officers <tspan fill="#64748B" font-weight="normal">: JSONB</tspan></text>
+    <!-- Row 11: sla_days -->
+    <rect x="840" y="410" width="360" height="22" fill="#F8FAFC" />
+    <text x="850" y="425" fill="#334155" font-size="10.5" font-weight="normal">sla_days <tspan fill="#64748B" font-weight="normal">: INT</tspan></text>
+    <!-- Row 12: sla_minutes -->
+    <rect x="840" y="432" width="360" height="22" fill="#FFFFFF" />
+    <text x="850" y="447" fill="#334155" font-size="10.5" font-weight="normal">sla_minutes <tspan fill="#64748B" font-weight="normal">: INT</tspan></text>
+    <!-- Row 13: fee -->
+    <rect x="840" y="454" width="360" height="22" fill="#F8FAFC" />
+    <text x="850" y="469" fill="#334155" font-size="10.5" font-weight="normal">fee <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 14: notes -->
+    <rect x="840" y="476" width="360" height="22" fill="#FFFFFF" />
+    <text x="850" y="491" fill="#334155" font-size="10.5" font-weight="normal">notes <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 15: data_hash -->
+    <rect x="840" y="498" width="360" height="22" fill="#F8FAFC" />
+    <text x="850" y="513" fill="#334155" font-size="10.5" font-weight="normal">data_hash <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 16: created_at -->
+    <rect x="840" y="520" width="360" height="22" fill="#FFFFFF" />
+    <text x="850" y="535" fill="#334155" font-size="10.5" font-weight="normal">created_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+    <!-- Row 17: updated_at -->
+    <rect x="840" y="542" width="360" height="22" fill="#F8FAFC" />
+    <text x="850" y="557" fill="#334155" font-size="10.5" font-weight="normal">updated_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+  </g>
+
+  <!-- Table: application_documents -->
+  <g class="font-sans shadow" id="tbl_application_documents">
+    <!-- Table Outer Box -->
+    <rect x="840" y="594" width="360" height="248" rx="6" fill="#FFFFFF" stroke="#3B82F6" stroke-width="1.8" />
+    
+    <!-- Table Header -->
+    <path d="M 840 600 Q 840 594 846 594 L 1194 594 Q 1200 594 1200 600 L 1200 622 L 840 622 Z" fill="#1E40AF" />
+    <text x="1020" y="613" fill="#FFFFFF" font-size="12" font-weight="bold" text-anchor="middle">application_documents</text>
+    <!-- Row 0: id -->
+    <rect x="840" y="622" width="360" height="22" fill="#FEF3C7" />
+    <text x="850" y="637" fill="#92400E" font-size="10.5" font-weight="bold">PK id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 1: application_id -->
+    <rect x="840" y="644" width="360" height="22" fill="#E0F2FE" />
+    <text x="850" y="659" fill="#0369A1" font-size="10.5" font-weight="bold">FK application_id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 2: document_type -->
+    <rect x="840" y="666" width="360" height="22" fill="#FFFFFF" />
+    <text x="850" y="681" fill="#334155" font-size="10.5" font-weight="normal">document_type <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 3: original_filename -->
+    <rect x="840" y="688" width="360" height="22" fill="#F8FAFC" />
+    <text x="850" y="703" fill="#334155" font-size="10.5" font-weight="normal">original_filename <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 4: file_url -->
+    <rect x="840" y="710" width="360" height="22" fill="#FFFFFF" />
+    <text x="850" y="725" fill="#334155" font-size="10.5" font-weight="normal">file_url <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 5: file_size_bytes -->
+    <rect x="840" y="732" width="360" height="22" fill="#F8FAFC" />
+    <text x="850" y="747" fill="#334155" font-size="10.5" font-weight="normal">file_size_bytes <tspan fill="#64748B" font-weight="normal">: BIGINT</tspan></text>
+    <!-- Row 6: mime_type -->
+    <rect x="840" y="754" width="360" height="22" fill="#FFFFFF" />
+    <text x="850" y="769" fill="#334155" font-size="10.5" font-weight="normal">mime_type <tspan fill="#64748B" font-weight="normal">: VARCHAR(128)</tspan></text>
+    <!-- Row 7: tag -->
+    <rect x="840" y="776" width="360" height="22" fill="#F8FAFC" />
+    <text x="850" y="791" fill="#334155" font-size="10.5" font-weight="normal">tag <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 8: is_quarantined -->
+    <rect x="840" y="798" width="360" height="22" fill="#FFFFFF" />
+    <text x="850" y="813" fill="#334155" font-size="10.5" font-weight="normal">is_quarantined <tspan fill="#64748B" font-weight="normal">: BOOLEAN</tspan></text>
+    <!-- Row 9: uploaded_at -->
+    <rect x="840" y="820" width="360" height="22" fill="#F8FAFC" />
+    <text x="850" y="835" fill="#334155" font-size="10.5" font-weight="normal">uploaded_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+  </g>
+
+  <!-- Table: application_remarks -->
+  <g class="font-sans shadow" id="tbl_application_remarks">
+    <!-- Table Outer Box -->
+    <rect x="840" y="872" width="360" height="226" rx="6" fill="#FFFFFF" stroke="#3B82F6" stroke-width="1.8" />
+    
+    <!-- Table Header -->
+    <path d="M 840 878 Q 840 872 846 872 L 1194 872 Q 1200 872 1200 878 L 1200 900 L 840 900 Z" fill="#1E40AF" />
+    <text x="1020" y="891" fill="#FFFFFF" font-size="12" font-weight="bold" text-anchor="middle">application_remarks</text>
+    <!-- Row 0: id -->
+    <rect x="840" y="900" width="360" height="22" fill="#FEF3C7" />
+    <text x="850" y="915" fill="#92400E" font-size="10.5" font-weight="bold">PK id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 1: application_id -->
+    <rect x="840" y="922" width="360" height="22" fill="#E0F2FE" />
+    <text x="850" y="937" fill="#0369A1" font-size="10.5" font-weight="bold">FK application_id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 2: tracking_number -->
+    <rect x="840" y="944" width="360" height="22" fill="#FFFFFF" />
+    <text x="850" y="959" fill="#334155" font-size="10.5" font-weight="normal">tracking_number <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 3: from_office -->
+    <rect x="840" y="966" width="360" height="22" fill="#F8FAFC" />
+    <text x="850" y="981" fill="#334155" font-size="10.5" font-weight="normal">from_office <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 4: author -->
+    <rect x="840" y="988" width="360" height="22" fill="#FFFFFF" />
+    <text x="850" y="1003" fill="#334155" font-size="10.5" font-weight="normal">author <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 5: message -->
+    <rect x="840" y="1010" width="360" height="22" fill="#F8FAFC" />
+    <text x="850" y="1025" fill="#334155" font-size="10.5" font-weight="normal">message <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 6: requires_action -->
+    <rect x="840" y="1032" width="360" height="22" fill="#FFFFFF" />
+    <text x="850" y="1047" fill="#334155" font-size="10.5" font-weight="normal">requires_action <tspan fill="#64748B" font-weight="normal">: BOOLEAN</tspan></text>
+    <!-- Row 7: attached_file -->
+    <rect x="840" y="1054" width="360" height="22" fill="#F8FAFC" />
+    <text x="850" y="1069" fill="#334155" font-size="10.5" font-weight="normal">attached_file <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 8: created_at -->
+    <rect x="840" y="1076" width="360" height="22" fill="#FFFFFF" />
+    <text x="850" y="1091" fill="#334155" font-size="10.5" font-weight="normal">created_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+  </g>
+
+  <!-- Table: site_inspection_photos -->
+  <g class="font-sans shadow" id="tbl_site_inspection_photos">
+    <!-- Table Outer Box -->
+    <rect x="840" y="1128" width="360" height="270" rx="6" fill="#FFFFFF" stroke="#3B82F6" stroke-width="1.8" />
+    
+    <!-- Table Header -->
+    <path d="M 840 1134 Q 840 1128 846 1128 L 1194 1128 Q 1200 1128 1200 1134 L 1200 1156 L 840 1156 Z" fill="#1E40AF" />
+    <text x="1020" y="1147" fill="#FFFFFF" font-size="12" font-weight="bold" text-anchor="middle">site_inspection_photos</text>
+    <!-- Row 0: id -->
+    <rect x="840" y="1156" width="360" height="22" fill="#FEF3C7" />
+    <text x="850" y="1171" fill="#92400E" font-size="10.5" font-weight="bold">PK id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 1: application_id -->
+    <rect x="840" y="1178" width="360" height="22" fill="#E0F2FE" />
+    <text x="850" y="1193" fill="#0369A1" font-size="10.5" font-weight="bold">FK application_id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 2: tracking_number -->
+    <rect x="840" y="1200" width="360" height="22" fill="#FFFFFF" />
+    <text x="850" y="1215" fill="#334155" font-size="10.5" font-weight="normal">tracking_number <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 3: photo_url -->
+    <rect x="840" y="1222" width="360" height="22" fill="#F8FAFC" />
+    <text x="850" y="1237" fill="#334155" font-size="10.5" font-weight="normal">photo_url <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 4: photo_type -->
+    <rect x="840" y="1244" width="360" height="22" fill="#FFFFFF" />
+    <text x="850" y="1259" fill="#334155" font-size="10.5" font-weight="normal">photo_type <tspan fill="#64748B" font-weight="normal">: VARCHAR(50)</tspan></text>
+    <!-- Row 5: stage -->
+    <rect x="840" y="1266" width="360" height="22" fill="#F8FAFC" />
+    <text x="850" y="1281" fill="#334155" font-size="10.5" font-weight="normal">stage <tspan fill="#64748B" font-weight="normal">: VARCHAR(50)</tspan></text>
+    <!-- Row 6: progress -->
+    <rect x="840" y="1288" width="360" height="22" fill="#FFFFFF" />
+    <text x="850" y="1303" fill="#334155" font-size="10.5" font-weight="normal">progress <tspan fill="#64748B" font-weight="normal">: INT</tspan></text>
+    <!-- Row 7: remarks -->
+    <rect x="840" y="1310" width="360" height="22" fill="#F8FAFC" />
+    <text x="850" y="1325" fill="#334155" font-size="10.5" font-weight="normal">remarks <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 8: inspector -->
+    <rect x="840" y="1332" width="360" height="22" fill="#FFFFFF" />
+    <text x="850" y="1347" fill="#334155" font-size="10.5" font-weight="normal">inspector <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 9: created_at -->
+    <rect x="840" y="1354" width="360" height="22" fill="#F8FAFC" />
+    <text x="850" y="1369" fill="#334155" font-size="10.5" font-weight="normal">created_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+    <!-- Row 10: updated_at -->
+    <rect x="840" y="1376" width="360" height="22" fill="#FFFFFF" />
+    <text x="850" y="1391" fill="#334155" font-size="10.5" font-weight="normal">updated_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+  </g>
+
+  <!-- Table: application_locations -->
+  <g class="font-sans shadow" id="tbl_application_locations">
+    <!-- Table Outer Box -->
+    <rect x="1240" y="140" width="360" height="402" rx="6" fill="#FFFFFF" stroke="#3B82F6" stroke-width="1.8" />
+    
+    <!-- Table Header -->
+    <path d="M 1240 146 Q 1240 140 1246 140 L 1594 140 Q 1600 140 1600 146 L 1600 168 L 1240 168 Z" fill="#1E40AF" />
+    <text x="1420" y="159" fill="#FFFFFF" font-size="12" font-weight="bold" text-anchor="middle">application_locations</text>
+    <!-- Row 0: id -->
+    <rect x="1240" y="168" width="360" height="22" fill="#FEF3C7" />
+    <text x="1250" y="183" fill="#92400E" font-size="10.5" font-weight="bold">PK id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 1: application_id -->
+    <rect x="1240" y="190" width="360" height="22" fill="#E0F2FE" />
+    <text x="1250" y="205" fill="#0369A1" font-size="10.5" font-weight="bold">FK application_id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 2: latitude -->
+    <rect x="1240" y="212" width="360" height="22" fill="#FFFFFF" />
+    <text x="1250" y="227" fill="#334155" font-size="10.5" font-weight="normal">latitude <tspan fill="#64748B" font-weight="normal">: DOUBLE PRECISION</tspan></text>
+    <!-- Row 3: longitude -->
+    <rect x="1240" y="234" width="360" height="22" fill="#F8FAFC" />
+    <text x="1250" y="249" fill="#334155" font-size="10.5" font-weight="normal">longitude <tspan fill="#64748B" font-weight="normal">: DOUBLE PRECISION</tspan></text>
+    <!-- Row 4: barangay -->
+    <rect x="1240" y="256" width="360" height="22" fill="#E0F2FE" />
+    <text x="1250" y="271" fill="#0369A1" font-size="10.5" font-weight="bold">FK barangay <tspan fill="#64748B" font-weight="normal">: VARCHAR(128)</tspan></text>
+    <!-- Row 5: lot_area_sqm -->
+    <rect x="1240" y="278" width="360" height="22" fill="#F8FAFC" />
+    <text x="1250" y="293" fill="#334155" font-size="10.5" font-weight="normal">lot_area_sqm <tspan fill="#64748B" font-weight="normal">: NUMERIC(10, 2)</tspan></text>
+    <!-- Row 6: lot_location_description -->
+    <rect x="1240" y="300" width="360" height="22" fill="#FFFFFF" />
+    <text x="1250" y="315" fill="#334155" font-size="10.5" font-weight="normal">lot_location_description <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 7: zoning_classification -->
+    <rect x="1240" y="322" width="360" height="22" fill="#F8FAFC" />
+    <text x="1250" y="337" fill="#334155" font-size="10.5" font-weight="normal">zoning_classification <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 8: tct_no -->
+    <rect x="1240" y="344" width="360" height="22" fill="#FFFFFF" />
+    <text x="1250" y="359" fill="#334155" font-size="10.5" font-weight="normal">tct_no <tspan fill="#64748B" font-weight="normal">: VARCHAR(128)</tspan></text>
+    <!-- Row 9: tax_dec_no -->
+    <rect x="1240" y="366" width="360" height="22" fill="#F8FAFC" />
+    <text x="1250" y="381" fill="#334155" font-size="10.5" font-weight="normal">tax_dec_no <tspan fill="#64748B" font-weight="normal">: VARCHAR(128)</tspan></text>
+    <!-- Row 10: lot_owner -->
+    <rect x="1240" y="388" width="360" height="22" fill="#FFFFFF" />
+    <text x="1250" y="403" fill="#334155" font-size="10.5" font-weight="normal">lot_owner <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 11: is_applicant_owner -->
+    <rect x="1240" y="410" width="360" height="22" fill="#F8FAFC" />
+    <text x="1250" y="425" fill="#334155" font-size="10.5" font-weight="normal">is_applicant_owner <tspan fill="#64748B" font-weight="normal">: BOOLEAN</tspan></text>
+    <!-- Row 12: geo_risk -->
+    <rect x="1240" y="432" width="360" height="22" fill="#FFFFFF" />
+    <text x="1250" y="447" fill="#334155" font-size="10.5" font-weight="normal">geo_risk <tspan fill="#64748B" font-weight="normal">: JSONB</tspan></text>
+    <!-- Row 13: lot_details -->
+    <rect x="1240" y="454" width="360" height="22" fill="#F8FAFC" />
+    <text x="1250" y="469" fill="#334155" font-size="10.5" font-weight="normal">lot_details <tspan fill="#64748B" font-weight="normal">: JSONB</tspan></text>
+    <!-- Row 14: agricultural_details -->
+    <rect x="1240" y="476" width="360" height="22" fill="#FFFFFF" />
+    <text x="1250" y="491" fill="#334155" font-size="10.5" font-weight="normal">agricultural_details <tspan fill="#64748B" font-weight="normal">: JSONB</tspan></text>
+    <!-- Row 15: municipal_details -->
+    <rect x="1240" y="498" width="360" height="22" fill="#F8FAFC" />
+    <text x="1250" y="513" fill="#334155" font-size="10.5" font-weight="normal">municipal_details <tspan fill="#64748B" font-weight="normal">: JSONB</tspan></text>
+    <!-- Row 16: created_at -->
+    <rect x="1240" y="520" width="360" height="22" fill="#FFFFFF" />
+    <text x="1250" y="535" fill="#334155" font-size="10.5" font-weight="normal">created_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+  </g>
+
+  <!-- Table: application_payments -->
+  <g class="font-sans shadow" id="tbl_application_payments">
+    <!-- Table Outer Box -->
+    <rect x="1240" y="572" width="360" height="270" rx="6" fill="#FFFFFF" stroke="#3B82F6" stroke-width="1.8" />
+    
+    <!-- Table Header -->
+    <path d="M 1240 578 Q 1240 572 1246 572 L 1594 572 Q 1600 572 1600 578 L 1600 600 L 1240 600 Z" fill="#1E40AF" />
+    <text x="1420" y="591" fill="#FFFFFF" font-size="12" font-weight="bold" text-anchor="middle">application_payments</text>
+    <!-- Row 0: id -->
+    <rect x="1240" y="600" width="360" height="22" fill="#FEF3C7" />
+    <text x="1250" y="615" fill="#92400E" font-size="10.5" font-weight="bold">PK id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 1: application_id -->
+    <rect x="1240" y="622" width="360" height="22" fill="#E0F2FE" />
+    <text x="1250" y="637" fill="#0369A1" font-size="10.5" font-weight="bold">FK application_id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 2: payment_status -->
+    <rect x="1240" y="644" width="360" height="22" fill="#FFFFFF" />
+    <text x="1250" y="659" fill="#334155" font-size="10.5" font-weight="normal">payment_status <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 3: order_of_payment_no -->
+    <rect x="1240" y="666" width="360" height="22" fill="#F8FAFC" />
+    <text x="1250" y="681" fill="#334155" font-size="10.5" font-weight="normal">order_of_payment_no <tspan fill="#64748B" font-weight="normal">: VARCHAR(128)</tspan></text>
+    <!-- Row 4: amount_due -->
+    <rect x="1240" y="688" width="360" height="22" fill="#FFFFFF" />
+    <text x="1250" y="703" fill="#334155" font-size="10.5" font-weight="normal">amount_due <tspan fill="#64748B" font-weight="normal">: NUMERIC(15, 2)</tspan></text>
+    <!-- Row 5: or_number -->
+    <rect x="1240" y="710" width="360" height="22" fill="#F8FAFC" />
+    <text x="1250" y="725" fill="#334155" font-size="10.5" font-weight="normal">or_number <tspan fill="#64748B" font-weight="normal">: VARCHAR(128)</tspan></text>
+    <!-- Row 6: amount_paid -->
+    <rect x="1240" y="732" width="360" height="22" fill="#FFFFFF" />
+    <text x="1250" y="747" fill="#334155" font-size="10.5" font-weight="normal">amount_paid <tspan fill="#64748B" font-weight="normal">: NUMERIC(15, 2)</tspan></text>
+    <!-- Row 7: payment_date -->
+    <rect x="1240" y="754" width="360" height="22" fill="#F8FAFC" />
+    <text x="1250" y="769" fill="#334155" font-size="10.5" font-weight="normal">payment_date <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+    <!-- Row 8: cashier -->
+    <rect x="1240" y="776" width="360" height="22" fill="#FFFFFF" />
+    <text x="1250" y="791" fill="#334155" font-size="10.5" font-weight="normal">cashier <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 9: created_at -->
+    <rect x="1240" y="798" width="360" height="22" fill="#F8FAFC" />
+    <text x="1250" y="813" fill="#334155" font-size="10.5" font-weight="normal">created_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+    <!-- Row 10: updated_at -->
+    <rect x="1240" y="820" width="360" height="22" fill="#FFFFFF" />
+    <text x="1250" y="835" fill="#334155" font-size="10.5" font-weight="normal">updated_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+  </g>
+
+  <!-- Table: engineering_reviews -->
+  <g class="font-sans shadow" id="tbl_engineering_reviews">
+    <!-- Table Outer Box -->
+    <rect x="1240" y="872" width="360" height="314" rx="6" fill="#FFFFFF" stroke="#3B82F6" stroke-width="1.8" />
+    
+    <!-- Table Header -->
+    <path d="M 1240 878 Q 1240 872 1246 872 L 1594 872 Q 1600 872 1600 878 L 1600 900 L 1240 900 Z" fill="#1E40AF" />
+    <text x="1420" y="891" fill="#FFFFFF" font-size="12" font-weight="bold" text-anchor="middle">engineering_reviews</text>
+    <!-- Row 0: id -->
+    <rect x="1240" y="900" width="360" height="22" fill="#FEF3C7" />
+    <text x="1250" y="915" fill="#92400E" font-size="10.5" font-weight="bold">PK id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 1: application_id -->
+    <rect x="1240" y="922" width="360" height="22" fill="#E0F2FE" />
+    <text x="1250" y="937" fill="#0369A1" font-size="10.5" font-weight="bold">FK application_id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 2: engineer_approved -->
+    <rect x="1240" y="944" width="360" height="22" fill="#FFFFFF" />
+    <text x="1250" y="959" fill="#334155" font-size="10.5" font-weight="normal">engineer_approved <tspan fill="#64748B" font-weight="normal">: BOOLEAN</tspan></text>
+    <!-- Row 3: engineer_approved_at -->
+    <rect x="1240" y="966" width="360" height="22" fill="#F8FAFC" />
+    <text x="1250" y="981" fill="#334155" font-size="10.5" font-weight="normal">engineer_approved_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+    <!-- Row 4: engineer_approved_by -->
+    <rect x="1240" y="988" width="360" height="22" fill="#FFFFFF" />
+    <text x="1250" y="1003" fill="#334155" font-size="10.5" font-weight="normal">engineer_approved_by <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 5: is_pinned -->
+    <rect x="1240" y="1010" width="360" height="22" fill="#F8FAFC" />
+    <text x="1250" y="1025" fill="#334155" font-size="10.5" font-weight="normal">is_pinned <tspan fill="#64748B" font-weight="normal">: BOOLEAN</tspan></text>
+    <!-- Row 6: held_at -->
+    <rect x="1240" y="1032" width="360" height="22" fill="#FFFFFF" />
+    <text x="1250" y="1047" fill="#334155" font-size="10.5" font-weight="normal">held_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+    <!-- Row 7: held_by -->
+    <rect x="1240" y="1054" width="360" height="22" fill="#F8FAFC" />
+    <text x="1250" y="1069" fill="#334155" font-size="10.5" font-weight="normal">held_by <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 8: hold_reason -->
+    <rect x="1240" y="1076" width="360" height="22" fill="#FFFFFF" />
+    <text x="1250" y="1091" fill="#334155" font-size="10.5" font-weight="normal">hold_reason <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 9: occupancy_ready -->
+    <rect x="1240" y="1098" width="360" height="22" fill="#F8FAFC" />
+    <text x="1250" y="1113" fill="#334155" font-size="10.5" font-weight="normal">occupancy_ready <tspan fill="#64748B" font-weight="normal">: BOOLEAN</tspan></text>
+    <!-- Row 10: occupancy_permit_no -->
+    <rect x="1240" y="1120" width="360" height="22" fill="#FFFFFF" />
+    <text x="1250" y="1135" fill="#334155" font-size="10.5" font-weight="normal">occupancy_permit_no <tspan fill="#64748B" font-weight="normal">: VARCHAR(128)</tspan></text>
+    <!-- Row 11: created_at -->
+    <rect x="1240" y="1142" width="360" height="22" fill="#F8FAFC" />
+    <text x="1250" y="1157" fill="#334155" font-size="10.5" font-weight="normal">created_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+    <!-- Row 12: updated_at -->
+    <rect x="1240" y="1164" width="360" height="22" fill="#FFFFFF" />
+    <text x="1250" y="1179" fill="#334155" font-size="10.5" font-weight="normal">updated_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+  </g>
+
+  <!-- Table: municipal_projects -->
+  <g class="font-sans shadow" id="tbl_municipal_projects">
+    <!-- Table Outer Box -->
+    <rect x="1640" y="140" width="370" height="1172" rx="6" fill="#FFFFFF" stroke="#14B8A6" stroke-width="1.8" />
+    
+    <!-- Table Header -->
+    <path d="M 1640 146 Q 1640 140 1646 140 L 2004 140 Q 2010 140 2010 146 L 2010 168 L 1640 168 Z" fill="#0F766E" />
+    <text x="1825" y="159" fill="#FFFFFF" font-size="12" font-weight="bold" text-anchor="middle">municipal_projects</text>
+    <!-- Row 0: id -->
+    <rect x="1640" y="168" width="370" height="22" fill="#FEF3C7" />
+    <text x="1650" y="183" fill="#92400E" font-size="10.5" font-weight="bold">PK id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 1: name -->
+    <rect x="1640" y="190" width="370" height="22" fill="#F8FAFC" />
+    <text x="1650" y="205" fill="#334155" font-size="10.5" font-weight="normal">name <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 2: model_type -->
+    <rect x="1640" y="212" width="370" height="22" fill="#FFFFFF" />
+    <text x="1650" y="227" fill="#334155" font-size="10.5" font-weight="normal">model_type <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 3: type -->
+    <rect x="1640" y="234" width="370" height="22" fill="#F8FAFC" />
+    <text x="1650" y="249" fill="#334155" font-size="10.5" font-weight="normal">type <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 4: department -->
+    <rect x="1640" y="256" width="370" height="22" fill="#FFFFFF" />
+    <text x="1650" y="271" fill="#334155" font-size="10.5" font-weight="normal">department <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 5: status -->
+    <rect x="1640" y="278" width="370" height="22" fill="#F8FAFC" />
+    <text x="1650" y="293" fill="#334155" font-size="10.5" font-weight="normal">status <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 6: progress -->
+    <rect x="1640" y="300" width="370" height="22" fill="#FFFFFF" />
+    <text x="1650" y="315" fill="#334155" font-size="10.5" font-weight="normal">progress <tspan fill="#64748B" font-weight="normal">: INT</tspan></text>
+    <!-- Row 7: lifecycle_phase -->
+    <rect x="1640" y="322" width="370" height="22" fill="#F8FAFC" />
+    <text x="1650" y="337" fill="#334155" font-size="10.5" font-weight="normal">lifecycle_phase <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 8: latitude -->
+    <rect x="1640" y="344" width="370" height="22" fill="#FFFFFF" />
+    <text x="1650" y="359" fill="#334155" font-size="10.5" font-weight="normal">latitude <tspan fill="#64748B" font-weight="normal">: DOUBLE PRECISION</tspan></text>
+    <!-- Row 9: longitude -->
+    <rect x="1640" y="366" width="370" height="22" fill="#F8FAFC" />
+    <text x="1650" y="381" fill="#334155" font-size="10.5" font-weight="normal">longitude <tspan fill="#64748B" font-weight="normal">: DOUBLE PRECISION</tspan></text>
+    <!-- Row 10: rotation_yaw -->
+    <rect x="1640" y="388" width="370" height="22" fill="#FFFFFF" />
+    <text x="1650" y="403" fill="#334155" font-size="10.5" font-weight="normal">rotation_yaw <tspan fill="#64748B" font-weight="normal">: DOUBLE PRECISION</tspan></text>
+    <!-- Row 11: rotation_pitch -->
+    <rect x="1640" y="410" width="370" height="22" fill="#F8FAFC" />
+    <text x="1650" y="425" fill="#334155" font-size="10.5" font-weight="normal">rotation_pitch <tspan fill="#64748B" font-weight="normal">: DOUBLE PRECISION</tspan></text>
+    <!-- Row 12: rotation_roll -->
+    <rect x="1640" y="432" width="370" height="22" fill="#FFFFFF" />
+    <text x="1650" y="447" fill="#334155" font-size="10.5" font-weight="normal">rotation_roll <tspan fill="#64748B" font-weight="normal">: DOUBLE PRECISION</tspan></text>
+    <!-- Row 13: model_scale_x -->
+    <rect x="1640" y="454" width="370" height="22" fill="#F8FAFC" />
+    <text x="1650" y="469" fill="#334155" font-size="10.5" font-weight="normal">model_scale_x <tspan fill="#64748B" font-weight="normal">: DOUBLE PRECISION</tspan></text>
+    <!-- Row 14: model_scale_y -->
+    <rect x="1640" y="476" width="370" height="22" fill="#FFFFFF" />
+    <text x="1650" y="491" fill="#334155" font-size="10.5" font-weight="normal">model_scale_y <tspan fill="#64748B" font-weight="normal">: DOUBLE PRECISION</tspan></text>
+    <!-- Row 15: model_scale_z -->
+    <rect x="1640" y="498" width="370" height="22" fill="#F8FAFC" />
+    <text x="1650" y="513" fill="#334155" font-size="10.5" font-weight="normal">model_scale_z <tspan fill="#64748B" font-weight="normal">: DOUBLE PRECISION</tspan></text>
+    <!-- Row 16: model_height -->
+    <rect x="1640" y="520" width="370" height="22" fill="#FFFFFF" />
+    <text x="1650" y="535" fill="#334155" font-size="10.5" font-weight="normal">model_height <tspan fill="#64748B" font-weight="normal">: DOUBLE PRECISION</tspan></text>
+    <!-- Row 17: model_locked -->
+    <rect x="1640" y="542" width="370" height="22" fill="#F8FAFC" />
+    <text x="1650" y="557" fill="#334155" font-size="10.5" font-weight="normal">model_locked <tspan fill="#64748B" font-weight="normal">: BOOLEAN</tspan></text>
+    <!-- Row 18: hide_badge -->
+    <rect x="1640" y="564" width="370" height="22" fill="#FFFFFF" />
+    <text x="1650" y="579" fill="#334155" font-size="10.5" font-weight="normal">hide_badge <tspan fill="#64748B" font-weight="normal">: BOOLEAN</tspan></text>
+    <!-- Row 19: site_marker_only -->
+    <rect x="1640" y="586" width="370" height="22" fill="#F8FAFC" />
+    <text x="1650" y="601" fill="#334155" font-size="10.5" font-weight="normal">site_marker_only <tspan fill="#64748B" font-weight="normal">: BOOLEAN</tspan></text>
+    <!-- Row 20: marker_color -->
+    <rect x="1640" y="608" width="370" height="22" fill="#FFFFFF" />
+    <text x="1650" y="623" fill="#334155" font-size="10.5" font-weight="normal">marker_color <tspan fill="#64748B" font-weight="normal">: VARCHAR(32)</tspan></text>
+    <!-- Row 21: custom_model_url -->
+    <rect x="1640" y="630" width="370" height="22" fill="#F8FAFC" />
+    <text x="1650" y="645" fill="#334155" font-size="10.5" font-weight="normal">custom_model_url <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 22: map_shape -->
+    <rect x="1640" y="652" width="370" height="22" fill="#FFFFFF" />
+    <text x="1650" y="667" fill="#334155" font-size="10.5" font-weight="normal">map_shape <tspan fill="#64748B" font-weight="normal">: JSONB</tspan></text>
+    <!-- Row 23: map_sketch -->
+    <rect x="1640" y="674" width="370" height="22" fill="#F8FAFC" />
+    <text x="1650" y="689" fill="#334155" font-size="10.5" font-weight="normal">map_sketch <tspan fill="#64748B" font-weight="normal">: JSONB</tspan></text>
+    <!-- Row 24: description -->
+    <rect x="1640" y="696" width="370" height="22" fill="#FFFFFF" />
+    <text x="1650" y="711" fill="#334155" font-size="10.5" font-weight="normal">description <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 25: start_date -->
+    <rect x="1640" y="718" width="370" height="22" fill="#F8FAFC" />
+    <text x="1650" y="733" fill="#334155" font-size="10.5" font-weight="normal">start_date <tspan fill="#64748B" font-weight="normal">: DATE</tspan></text>
+    <!-- Row 26: target_end_date -->
+    <rect x="1640" y="740" width="370" height="22" fill="#FFFFFF" />
+    <text x="1650" y="755" fill="#334155" font-size="10.5" font-weight="normal">target_end_date <tspan fill="#64748B" font-weight="normal">: DATE</tspan></text>
+    <!-- Row 27: barangay -->
+    <rect x="1640" y="762" width="370" height="22" fill="#E0F2FE" />
+    <text x="1650" y="777" fill="#0369A1" font-size="10.5" font-weight="bold">FK barangay <tspan fill="#64748B" font-weight="normal">: VARCHAR(128)</tspan></text>
+    <!-- Row 28: funding_source -->
+    <rect x="1640" y="784" width="370" height="22" fill="#FFFFFF" />
+    <text x="1650" y="799" fill="#334155" font-size="10.5" font-weight="normal">funding_source <tspan fill="#64748B" font-weight="normal">: VARCHAR(128)</tspan></text>
+    <!-- Row 29: contractor -->
+    <rect x="1640" y="806" width="370" height="22" fill="#F8FAFC" />
+    <text x="1650" y="821" fill="#334155" font-size="10.5" font-weight="normal">contractor <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 30: budget_total -->
+    <rect x="1640" y="828" width="370" height="22" fill="#FFFFFF" />
+    <text x="1650" y="843" fill="#334155" font-size="10.5" font-weight="normal">budget_total <tspan fill="#64748B" font-weight="normal">: NUMERIC(15, 2)</tspan></text>
+    <!-- Row 31: budget_spent -->
+    <rect x="1640" y="850" width="370" height="22" fill="#F8FAFC" />
+    <text x="1650" y="865" fill="#334155" font-size="10.5" font-weight="normal">budget_spent <tspan fill="#64748B" font-weight="normal">: NUMERIC(15, 2)</tspan></text>
+    <!-- Row 32: official_url -->
+    <rect x="1640" y="872" width="370" height="22" fill="#FFFFFF" />
+    <text x="1650" y="887" fill="#334155" font-size="10.5" font-weight="normal">official_url <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 33: is_lgu_project -->
+    <rect x="1640" y="894" width="370" height="22" fill="#F8FAFC" />
+    <text x="1650" y="909" fill="#334155" font-size="10.5" font-weight="normal">is_lgu_project <tspan fill="#64748B" font-weight="normal">: BOOLEAN</tspan></text>
+    <!-- Row 34: engineer_approved -->
+    <rect x="1640" y="916" width="370" height="22" fill="#FFFFFF" />
+    <text x="1650" y="931" fill="#334155" font-size="10.5" font-weight="normal">engineer_approved <tspan fill="#64748B" font-weight="normal">: BOOLEAN</tspan></text>
+    <!-- Row 35: engineer_approved_at -->
+    <rect x="1640" y="938" width="370" height="22" fill="#F8FAFC" />
+    <text x="1650" y="953" fill="#334155" font-size="10.5" font-weight="normal">engineer_approved_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+    <!-- Row 36: engineer_approved_by -->
+    <rect x="1640" y="960" width="370" height="22" fill="#FFFFFF" />
+    <text x="1650" y="975" fill="#334155" font-size="10.5" font-weight="normal">engineer_approved_by <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 37: is_pinned -->
+    <rect x="1640" y="982" width="370" height="22" fill="#F8FAFC" />
+    <text x="1650" y="997" fill="#334155" font-size="10.5" font-weight="normal">is_pinned <tspan fill="#64748B" font-weight="normal">: BOOLEAN</tspan></text>
+    <!-- Row 38: notice_of_award_url -->
+    <rect x="1640" y="1004" width="370" height="22" fill="#FFFFFF" />
+    <text x="1650" y="1019" fill="#334155" font-size="10.5" font-weight="normal">notice_of_award_url <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 39: notice_of_award_name -->
+    <rect x="1640" y="1026" width="370" height="22" fill="#F8FAFC" />
+    <text x="1650" y="1041" fill="#334155" font-size="10.5" font-weight="normal">notice_of_award_name <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 40: program_of_works_url -->
+    <rect x="1640" y="1048" width="370" height="22" fill="#FFFFFF" />
+    <text x="1650" y="1063" fill="#334155" font-size="10.5" font-weight="normal">program_of_works_url <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 41: program_of_works_name -->
+    <rect x="1640" y="1070" width="370" height="22" fill="#F8FAFC" />
+    <text x="1650" y="1085" fill="#334155" font-size="10.5" font-weight="normal">program_of_works_name <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 42: encoded_by -->
+    <rect x="1640" y="1092" width="370" height="22" fill="#FFFFFF" />
+    <text x="1650" y="1107" fill="#334155" font-size="10.5" font-weight="normal">encoded_by <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 43: engineer_notes -->
+    <rect x="1640" y="1114" width="370" height="22" fill="#F8FAFC" />
+    <text x="1650" y="1129" fill="#334155" font-size="10.5" font-weight="normal">engineer_notes <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 44: bidding_results -->
+    <rect x="1640" y="1136" width="370" height="22" fill="#FFFFFF" />
+    <text x="1650" y="1151" fill="#334155" font-size="10.5" font-weight="normal">bidding_results <tspan fill="#64748B" font-weight="normal">: JSONB</tspan></text>
+    <!-- Row 45: is_private_application -->
+    <rect x="1640" y="1158" width="370" height="22" fill="#F8FAFC" />
+    <text x="1650" y="1173" fill="#334155" font-size="10.5" font-weight="normal">is_private_application <tspan fill="#64748B" font-weight="normal">: BOOLEAN</tspan></text>
+    <!-- Row 46: tracking_number -->
+    <rect x="1640" y="1180" width="370" height="22" fill="#FFFFFF" />
+    <text x="1650" y="1195" fill="#334155" font-size="10.5" font-weight="normal">tracking_number <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 47: applicant_name -->
+    <rect x="1640" y="1202" width="370" height="22" fill="#F8FAFC" />
+    <text x="1650" y="1217" fill="#334155" font-size="10.5" font-weight="normal">applicant_name <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 48: application_id -->
+    <rect x="1640" y="1224" width="370" height="22" fill="#E0F2FE" />
+    <text x="1650" y="1239" fill="#0369A1" font-size="10.5" font-weight="bold">FK application_id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 49: archived_at -->
+    <rect x="1640" y="1246" width="370" height="22" fill="#F8FAFC" />
+    <text x="1650" y="1261" fill="#334155" font-size="10.5" font-weight="normal">archived_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+    <!-- Row 50: created_at -->
+    <rect x="1640" y="1268" width="370" height="22" fill="#FFFFFF" />
+    <text x="1650" y="1283" fill="#334155" font-size="10.5" font-weight="normal">created_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+    <!-- Row 51: updated_at -->
+    <rect x="1640" y="1290" width="370" height="22" fill="#F8FAFC" />
+    <text x="1650" y="1305" fill="#334155" font-size="10.5" font-weight="normal">updated_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+  </g>
+
+  <!-- Table: project_milestones -->
+  <g class="font-sans shadow" id="tbl_project_milestones">
+    <!-- Table Outer Box -->
+    <rect x="2050" y="140" width="360" height="182" rx="6" fill="#FFFFFF" stroke="#14B8A6" stroke-width="1.8" />
+    
+    <!-- Table Header -->
+    <path d="M 2050 146 Q 2050 140 2056 140 L 2404 140 Q 2410 140 2410 146 L 2410 168 L 2050 168 Z" fill="#0F766E" />
+    <text x="2230" y="159" fill="#FFFFFF" font-size="12" font-weight="bold" text-anchor="middle">project_milestones</text>
+    <!-- Row 0: id -->
+    <rect x="2050" y="168" width="360" height="22" fill="#FEF3C7" />
+    <text x="2060" y="183" fill="#92400E" font-size="10.5" font-weight="bold">PK id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 1: project_id -->
+    <rect x="2050" y="190" width="360" height="22" fill="#E0F2FE" />
+    <text x="2060" y="205" fill="#0369A1" font-size="10.5" font-weight="bold">FK project_id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 2: title -->
+    <rect x="2050" y="212" width="360" height="22" fill="#FFFFFF" />
+    <text x="2060" y="227" fill="#334155" font-size="10.5" font-weight="normal">title <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 3: target_date -->
+    <rect x="2050" y="234" width="360" height="22" fill="#F8FAFC" />
+    <text x="2060" y="249" fill="#334155" font-size="10.5" font-weight="normal">target_date <tspan fill="#64748B" font-weight="normal">: DATE</tspan></text>
+    <!-- Row 4: completed_at -->
+    <rect x="2050" y="256" width="360" height="22" fill="#FFFFFF" />
+    <text x="2060" y="271" fill="#334155" font-size="10.5" font-weight="normal">completed_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+    <!-- Row 5: status -->
+    <rect x="2050" y="278" width="360" height="22" fill="#F8FAFC" />
+    <text x="2060" y="293" fill="#334155" font-size="10.5" font-weight="normal">status <tspan fill="#64748B" font-weight="normal">: VARCHAR(32)</tspan></text>
+    <!-- Row 6: created_at -->
+    <rect x="2050" y="300" width="360" height="22" fill="#FFFFFF" />
+    <text x="2060" y="315" fill="#334155" font-size="10.5" font-weight="normal">created_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+  </g>
+
+  <!-- Table: meo_inspection_schedules -->
+  <g class="font-sans shadow" id="tbl_meo_inspection_schedules">
+    <!-- Table Outer Box -->
+    <rect x="2050" y="352" width="360" height="270" rx="6" fill="#FFFFFF" stroke="#14B8A6" stroke-width="1.8" />
+    
+    <!-- Table Header -->
+    <path d="M 2050 358 Q 2050 352 2056 352 L 2404 352 Q 2410 352 2410 358 L 2410 380 L 2050 380 Z" fill="#0F766E" />
+    <text x="2230" y="371" fill="#FFFFFF" font-size="12" font-weight="bold" text-anchor="middle">meo_inspection_schedules</text>
+    <!-- Row 0: id -->
+    <rect x="2050" y="380" width="360" height="22" fill="#FEF3C7" />
+    <text x="2060" y="395" fill="#92400E" font-size="10.5" font-weight="bold">PK id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 1: project_code -->
+    <rect x="2050" y="402" width="360" height="22" fill="#E0F2FE" />
+    <text x="2060" y="417" fill="#0369A1" font-size="10.5" font-weight="bold">FK project_code <tspan fill="#64748B" font-weight="normal">: VARCHAR(128)</tspan></text>
+    <!-- Row 2: project_name -->
+    <rect x="2050" y="424" width="360" height="22" fill="#FFFFFF" />
+    <text x="2060" y="439" fill="#334155" font-size="10.5" font-weight="normal">project_name <tspan fill="#64748B" font-weight="normal">: VARCHAR(512)</tspan></text>
+    <!-- Row 3: barangay -->
+    <rect x="2050" y="446" width="360" height="22" fill="#E0F2FE" />
+    <text x="2060" y="461" fill="#0369A1" font-size="10.5" font-weight="bold">FK barangay <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 4: inspection_date -->
+    <rect x="2050" y="468" width="360" height="22" fill="#FFFFFF" />
+    <text x="2060" y="483" fill="#334155" font-size="10.5" font-weight="normal">inspection_date <tspan fill="#64748B" font-weight="normal">: DATE</tspan></text>
+    <!-- Row 5: inspection_time -->
+    <rect x="2050" y="490" width="360" height="22" fill="#F8FAFC" />
+    <text x="2060" y="505" fill="#334155" font-size="10.5" font-weight="normal">inspection_time <tspan fill="#64748B" font-weight="normal">: VARCHAR(32)</tspan></text>
+    <!-- Row 6: assigned_inspector -->
+    <rect x="2050" y="512" width="360" height="22" fill="#FFFFFF" />
+    <text x="2060" y="527" fill="#334155" font-size="10.5" font-weight="normal">assigned_inspector <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 7: status -->
+    <rect x="2050" y="534" width="360" height="22" fill="#F8FAFC" />
+    <text x="2060" y="549" fill="#334155" font-size="10.5" font-weight="normal">status <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 8: notes -->
+    <rect x="2050" y="556" width="360" height="22" fill="#FFFFFF" />
+    <text x="2060" y="571" fill="#334155" font-size="10.5" font-weight="normal">notes <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 9: created_at -->
+    <rect x="2050" y="578" width="360" height="22" fill="#F8FAFC" />
+    <text x="2060" y="593" fill="#334155" font-size="10.5" font-weight="normal">created_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+    <!-- Row 10: updated_at -->
+    <rect x="2050" y="600" width="360" height="22" fill="#FFFFFF" />
+    <text x="2060" y="615" fill="#334155" font-size="10.5" font-weight="normal">updated_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+  </g>
+
+  <!-- Table: project_issues -->
+  <g class="font-sans shadow" id="tbl_project_issues">
+    <!-- Table Outer Box -->
+    <rect x="2050" y="652" width="360" height="204" rx="6" fill="#FFFFFF" stroke="#14B8A6" stroke-width="1.8" />
+    
+    <!-- Table Header -->
+    <path d="M 2050 658 Q 2050 652 2056 652 L 2404 652 Q 2410 652 2410 658 L 2410 680 L 2050 680 Z" fill="#0F766E" />
+    <text x="2230" y="671" fill="#FFFFFF" font-size="12" font-weight="bold" text-anchor="middle">project_issues</text>
+    <!-- Row 0: id -->
+    <rect x="2050" y="680" width="360" height="22" fill="#FEF3C7" />
+    <text x="2060" y="695" fill="#92400E" font-size="10.5" font-weight="bold">PK id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 1: project_id -->
+    <rect x="2050" y="702" width="360" height="22" fill="#E0F2FE" />
+    <text x="2060" y="717" fill="#0369A1" font-size="10.5" font-weight="bold">FK project_id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 2: kind -->
+    <rect x="2050" y="724" width="360" height="22" fill="#FFFFFF" />
+    <text x="2060" y="739" fill="#334155" font-size="10.5" font-weight="normal">kind <tspan fill="#64748B" font-weight="normal">: VARCHAR(32)</tspan></text>
+    <!-- Row 3: title -->
+    <rect x="2050" y="746" width="360" height="22" fill="#F8FAFC" />
+    <text x="2060" y="761" fill="#334155" font-size="10.5" font-weight="normal">title <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 4: description -->
+    <rect x="2050" y="768" width="360" height="22" fill="#FFFFFF" />
+    <text x="2060" y="783" fill="#334155" font-size="10.5" font-weight="normal">description <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 5: is_open -->
+    <rect x="2050" y="790" width="360" height="22" fill="#F8FAFC" />
+    <text x="2060" y="805" fill="#334155" font-size="10.5" font-weight="normal">is_open <tspan fill="#64748B" font-weight="normal">: BOOLEAN</tspan></text>
+    <!-- Row 6: reported_at -->
+    <rect x="2050" y="812" width="360" height="22" fill="#FFFFFF" />
+    <text x="2060" y="827" fill="#334155" font-size="10.5" font-weight="normal">reported_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+    <!-- Row 7: resolved_at -->
+    <rect x="2050" y="834" width="360" height="22" fill="#F8FAFC" />
+    <text x="2060" y="849" fill="#334155" font-size="10.5" font-weight="normal">resolved_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+  </g>
+
+  <!-- Table: project_photos -->
+  <g class="font-sans shadow" id="tbl_project_photos">
+    <!-- Table Outer Box -->
+    <rect x="2050" y="886" width="360" height="248" rx="6" fill="#FFFFFF" stroke="#14B8A6" stroke-width="1.8" />
+    
+    <!-- Table Header -->
+    <path d="M 2050 892 Q 2050 886 2056 886 L 2404 886 Q 2410 886 2410 892 L 2410 914 L 2050 914 Z" fill="#0F766E" />
+    <text x="2230" y="905" fill="#FFFFFF" font-size="12" font-weight="bold" text-anchor="middle">project_photos</text>
+    <!-- Row 0: id -->
+    <rect x="2050" y="914" width="360" height="22" fill="#FEF3C7" />
+    <text x="2060" y="929" fill="#92400E" font-size="10.5" font-weight="bold">PK id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 1: project_id -->
+    <rect x="2050" y="936" width="360" height="22" fill="#E0F2FE" />
+    <text x="2060" y="951" fill="#0369A1" font-size="10.5" font-weight="bold">FK project_id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 2: photo_url -->
+    <rect x="2050" y="958" width="360" height="22" fill="#FFFFFF" />
+    <text x="2060" y="973" fill="#334155" font-size="10.5" font-weight="normal">photo_url <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 3: caption -->
+    <rect x="2050" y="980" width="360" height="22" fill="#F8FAFC" />
+    <text x="2060" y="995" fill="#334155" font-size="10.5" font-weight="normal">caption <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 4: kind -->
+    <rect x="2050" y="1002" width="360" height="22" fill="#FFFFFF" />
+    <text x="2060" y="1017" fill="#334155" font-size="10.5" font-weight="normal">kind <tspan fill="#64748B" font-weight="normal">: VARCHAR(32)</tspan></text>
+    <!-- Row 5: milestone_id -->
+    <rect x="2050" y="1024" width="360" height="22" fill="#E0F2FE" />
+    <text x="2060" y="1039" fill="#0369A1" font-size="10.5" font-weight="bold">FK milestone_id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 6: latitude -->
+    <rect x="2050" y="1046" width="360" height="22" fill="#FFFFFF" />
+    <text x="2060" y="1061" fill="#334155" font-size="10.5" font-weight="normal">latitude <tspan fill="#64748B" font-weight="normal">: DOUBLE PRECISION</tspan></text>
+    <!-- Row 7: longitude -->
+    <rect x="2050" y="1068" width="360" height="22" fill="#F8FAFC" />
+    <text x="2060" y="1083" fill="#334155" font-size="10.5" font-weight="normal">longitude <tspan fill="#64748B" font-weight="normal">: DOUBLE PRECISION</tspan></text>
+    <!-- Row 8: inspector -->
+    <rect x="2050" y="1090" width="360" height="22" fill="#FFFFFF" />
+    <text x="2060" y="1105" fill="#334155" font-size="10.5" font-weight="normal">inspector <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 9: uploaded_at -->
+    <rect x="2050" y="1112" width="360" height="22" fill="#F8FAFC" />
+    <text x="2060" y="1127" fill="#334155" font-size="10.5" font-weight="normal">uploaded_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+  </g>
+
+  <!-- Table: project_activity_logs -->
+  <g class="font-sans shadow" id="tbl_project_activity_logs">
+    <!-- Table Outer Box -->
+    <rect x="2050" y="1164" width="360" height="116" rx="6" fill="#FFFFFF" stroke="#14B8A6" stroke-width="1.8" />
+    
+    <!-- Table Header -->
+    <path d="M 2050 1170 Q 2050 1164 2056 1164 L 2404 1164 Q 2410 1164 2410 1170 L 2410 1192 L 2050 1192 Z" fill="#0F766E" />
+    <text x="2230" y="1183" fill="#FFFFFF" font-size="12" font-weight="bold" text-anchor="middle">project_activity_logs</text>
+    <!-- Row 0: id -->
+    <rect x="2050" y="1192" width="360" height="22" fill="#FEF3C7" />
+    <text x="2060" y="1207" fill="#92400E" font-size="10.5" font-weight="bold">PK id <tspan fill="#64748B" font-weight="normal">: UUID</tspan></text>
+    <!-- Row 1: project_id -->
+    <rect x="2050" y="1214" width="360" height="22" fill="#E0F2FE" />
+    <text x="2060" y="1229" fill="#0369A1" font-size="10.5" font-weight="bold">FK project_id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 2: message -->
+    <rect x="2050" y="1236" width="360" height="22" fill="#FFFFFF" />
+    <text x="2060" y="1251" fill="#334155" font-size="10.5" font-weight="normal">message <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 3: created_at -->
+    <rect x="2050" y="1258" width="360" height="22" fill="#F8FAFC" />
+    <text x="2060" y="1273" fill="#334155" font-size="10.5" font-weight="normal">created_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+  </g>
+
+  <!-- Table: planning_proposals -->
+  <g class="font-sans shadow" id="tbl_planning_proposals">
+    <!-- Table Outer Box -->
+    <rect x="2450" y="140" width="360" height="534" rx="6" fill="#FFFFFF" stroke="#8B5CF6" stroke-width="1.8" />
+    
+    <!-- Table Header -->
+    <path d="M 2450 146 Q 2450 140 2456 140 L 2804 140 Q 2810 140 2810 146 L 2810 168 L 2450 168 Z" fill="#6D28D9" />
+    <text x="2630" y="159" fill="#FFFFFF" font-size="12" font-weight="bold" text-anchor="middle">planning_proposals</text>
+    <!-- Row 0: id -->
+    <rect x="2450" y="168" width="360" height="22" fill="#FEF3C7" />
+    <text x="2460" y="183" fill="#92400E" font-size="10.5" font-weight="bold">PK id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 1: title -->
+    <rect x="2450" y="190" width="360" height="22" fill="#F8FAFC" />
+    <text x="2460" y="205" fill="#334155" font-size="10.5" font-weight="normal">title <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 2: summary -->
+    <rect x="2450" y="212" width="360" height="22" fill="#FFFFFF" />
+    <text x="2460" y="227" fill="#334155" font-size="10.5" font-weight="normal">summary <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 3: department -->
+    <rect x="2450" y="234" width="360" height="22" fill="#F8FAFC" />
+    <text x="2460" y="249" fill="#334155" font-size="10.5" font-weight="normal">department <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 4: barangay -->
+    <rect x="2450" y="256" width="360" height="22" fill="#E0F2FE" />
+    <text x="2460" y="271" fill="#0369A1" font-size="10.5" font-weight="bold">FK barangay <tspan fill="#64748B" font-weight="normal">: VARCHAR(128)</tspan></text>
+    <!-- Row 5: priority -->
+    <rect x="2450" y="278" width="360" height="22" fill="#F8FAFC" />
+    <text x="2460" y="293" fill="#334155" font-size="10.5" font-weight="normal">priority <tspan fill="#64748B" font-weight="normal">: INT</tspan></text>
+    <!-- Row 6: status -->
+    <rect x="2450" y="300" width="360" height="22" fill="#FFFFFF" />
+    <text x="2460" y="315" fill="#334155" font-size="10.5" font-weight="normal">status <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 7: request_kind -->
+    <rect x="2450" y="322" width="360" height="22" fill="#F8FAFC" />
+    <text x="2460" y="337" fill="#334155" font-size="10.5" font-weight="normal">request_kind <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 8: linked_project_id -->
+    <rect x="2450" y="344" width="360" height="22" fill="#E0F2FE" />
+    <text x="2460" y="359" fill="#0369A1" font-size="10.5" font-weight="bold">FK linked_project_id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 9: citizen_application_id -->
+    <rect x="2450" y="366" width="360" height="22" fill="#E0F2FE" />
+    <text x="2460" y="381" fill="#0369A1" font-size="10.5" font-weight="bold">FK citizen_application_id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 10: citizen_tracking_number -->
+    <rect x="2450" y="388" width="360" height="22" fill="#FFFFFF" />
+    <text x="2460" y="403" fill="#334155" font-size="10.5" font-weight="normal">citizen_tracking_number <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 11: latitude -->
+    <rect x="2450" y="410" width="360" height="22" fill="#F8FAFC" />
+    <text x="2460" y="425" fill="#334155" font-size="10.5" font-weight="normal">latitude <tspan fill="#64748B" font-weight="normal">: DOUBLE PRECISION</tspan></text>
+    <!-- Row 12: longitude -->
+    <rect x="2450" y="432" width="360" height="22" fill="#FFFFFF" />
+    <text x="2460" y="447" fill="#334155" font-size="10.5" font-weight="normal">longitude <tspan fill="#64748B" font-weight="normal">: DOUBLE PRECISION</tspan></text>
+    <!-- Row 13: submitter_username -->
+    <rect x="2450" y="454" width="360" height="22" fill="#E0F2FE" />
+    <text x="2460" y="469" fill="#0369A1" font-size="10.5" font-weight="bold">FK submitter_username <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 14: submitter_role -->
+    <rect x="2450" y="476" width="360" height="22" fill="#FFFFFF" />
+    <text x="2460" y="491" fill="#334155" font-size="10.5" font-weight="normal">submitter_role <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 15: assignees -->
+    <rect x="2450" y="498" width="360" height="22" fill="#F8FAFC" />
+    <text x="2460" y="513" fill="#334155" font-size="10.5" font-weight="normal">assignees <tspan fill="#64748B" font-weight="normal">: JSONB</tspan></text>
+    <!-- Row 16: committee_id -->
+    <rect x="2450" y="520" width="360" height="22" fill="#E0F2FE" />
+    <text x="2460" y="535" fill="#0369A1" font-size="10.5" font-weight="bold">FK committee_id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 17: needs_assessment -->
+    <rect x="2450" y="542" width="360" height="22" fill="#F8FAFC" />
+    <text x="2460" y="557" fill="#334155" font-size="10.5" font-weight="normal">needs_assessment <tspan fill="#64748B" font-weight="normal">: JSONB</tspan></text>
+    <!-- Row 18: recommendation_score -->
+    <rect x="2450" y="564" width="360" height="22" fill="#FFFFFF" />
+    <text x="2460" y="579" fill="#334155" font-size="10.5" font-weight="normal">recommendation_score <tspan fill="#64748B" font-weight="normal">: DOUBLE PRECISION</tspan></text>
+    <!-- Row 19: recommendation_reasons -->
+    <rect x="2450" y="586" width="360" height="22" fill="#F8FAFC" />
+    <text x="2460" y="601" fill="#334155" font-size="10.5" font-weight="normal">recommendation_reasons <tspan fill="#64748B" font-weight="normal">: JSONB</tspan></text>
+    <!-- Row 20: attachments -->
+    <rect x="2450" y="608" width="360" height="22" fill="#FFFFFF" />
+    <text x="2460" y="623" fill="#334155" font-size="10.5" font-weight="normal">attachments <tspan fill="#64748B" font-weight="normal">: JSONB</tspan></text>
+    <!-- Row 21: created_at -->
+    <rect x="2450" y="630" width="360" height="22" fill="#F8FAFC" />
+    <text x="2460" y="645" fill="#334155" font-size="10.5" font-weight="normal">created_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+    <!-- Row 22: updated_at -->
+    <rect x="2450" y="652" width="360" height="22" fill="#FFFFFF" />
+    <text x="2460" y="667" fill="#334155" font-size="10.5" font-weight="normal">updated_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+  </g>
+
+  <!-- Table: proposal_comments -->
+  <g class="font-sans shadow" id="tbl_proposal_comments">
+    <!-- Table Outer Box -->
+    <rect x="2450" y="704" width="360" height="204" rx="6" fill="#FFFFFF" stroke="#8B5CF6" stroke-width="1.8" />
+    
+    <!-- Table Header -->
+    <path d="M 2450 710 Q 2450 704 2456 704 L 2804 704 Q 2810 704 2810 710 L 2810 732 L 2450 732 Z" fill="#6D28D9" />
+    <text x="2630" y="723" fill="#FFFFFF" font-size="12" font-weight="bold" text-anchor="middle">proposal_comments</text>
+    <!-- Row 0: id -->
+    <rect x="2450" y="732" width="360" height="22" fill="#FEF3C7" />
+    <text x="2460" y="747" fill="#92400E" font-size="10.5" font-weight="bold">PK id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 1: proposal_id -->
+    <rect x="2450" y="754" width="360" height="22" fill="#E0F2FE" />
+    <text x="2460" y="769" fill="#0369A1" font-size="10.5" font-weight="bold">FK proposal_id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 2: author_username -->
+    <rect x="2450" y="776" width="360" height="22" fill="#E0F2FE" />
+    <text x="2460" y="791" fill="#0369A1" font-size="10.5" font-weight="bold">FK author_username <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 3: author_role -->
+    <rect x="2450" y="798" width="360" height="22" fill="#F8FAFC" />
+    <text x="2460" y="813" fill="#334155" font-size="10.5" font-weight="normal">author_role <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 4: body -->
+    <rect x="2450" y="820" width="360" height="22" fill="#FFFFFF" />
+    <text x="2460" y="835" fill="#334155" font-size="10.5" font-weight="normal">body <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 5: anchor_kind -->
+    <rect x="2450" y="842" width="360" height="22" fill="#F8FAFC" />
+    <text x="2460" y="857" fill="#334155" font-size="10.5" font-weight="normal">anchor_kind <tspan fill="#64748B" font-weight="normal">: VARCHAR(32)</tspan></text>
+    <!-- Row 6: anchor_label -->
+    <rect x="2450" y="864" width="360" height="22" fill="#FFFFFF" />
+    <text x="2460" y="879" fill="#334155" font-size="10.5" font-weight="normal">anchor_label <tspan fill="#64748B" font-weight="normal">: VARCHAR(128)</tspan></text>
+    <!-- Row 7: created_at -->
+    <rect x="2450" y="886" width="360" height="22" fill="#F8FAFC" />
+    <text x="2460" y="901" fill="#334155" font-size="10.5" font-weight="normal">created_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+  </g>
+
+  <!-- Table: proposal_approvals -->
+  <g class="font-sans shadow" id="tbl_proposal_approvals">
+    <!-- Table Outer Box -->
+    <rect x="2450" y="938" width="360" height="182" rx="6" fill="#FFFFFF" stroke="#8B5CF6" stroke-width="1.8" />
+    
+    <!-- Table Header -->
+    <path d="M 2450 944 Q 2450 938 2456 938 L 2804 938 Q 2810 938 2810 944 L 2810 966 L 2450 966 Z" fill="#6D28D9" />
+    <text x="2630" y="957" fill="#FFFFFF" font-size="12" font-weight="bold" text-anchor="middle">proposal_approvals</text>
+    <!-- Row 0: id -->
+    <rect x="2450" y="966" width="360" height="22" fill="#FEF3C7" />
+    <text x="2460" y="981" fill="#92400E" font-size="10.5" font-weight="bold">PK id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 1: proposal_id -->
+    <rect x="2450" y="988" width="360" height="22" fill="#E0F2FE" />
+    <text x="2460" y="1003" fill="#0369A1" font-size="10.5" font-weight="bold">FK proposal_id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 2: username -->
+    <rect x="2450" y="1010" width="360" height="22" fill="#E0F2FE" />
+    <text x="2460" y="1025" fill="#0369A1" font-size="10.5" font-weight="bold">FK username <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 3: role -->
+    <rect x="2450" y="1032" width="360" height="22" fill="#F8FAFC" />
+    <text x="2460" y="1047" fill="#334155" font-size="10.5" font-weight="normal">role <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 4: decision -->
+    <rect x="2450" y="1054" width="360" height="22" fill="#FFFFFF" />
+    <text x="2460" y="1069" fill="#334155" font-size="10.5" font-weight="normal">decision <tspan fill="#64748B" font-weight="normal">: VARCHAR(32)</tspan></text>
+    <!-- Row 5: note -->
+    <rect x="2450" y="1076" width="360" height="22" fill="#F8FAFC" />
+    <text x="2460" y="1091" fill="#334155" font-size="10.5" font-weight="normal">note <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 6: decided_at -->
+    <rect x="2450" y="1098" width="360" height="22" fill="#FFFFFF" />
+    <text x="2460" y="1113" fill="#334155" font-size="10.5" font-weight="normal">decided_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+  </g>
+
+  <!-- Table: proposal_votes -->
+  <g class="font-sans shadow" id="tbl_proposal_votes">
+    <!-- Table Outer Box -->
+    <rect x="2450" y="1150" width="360" height="182" rx="6" fill="#FFFFFF" stroke="#8B5CF6" stroke-width="1.8" />
+    
+    <!-- Table Header -->
+    <path d="M 2450 1156 Q 2450 1150 2456 1150 L 2804 1150 Q 2810 1150 2810 1156 L 2810 1178 L 2450 1178 Z" fill="#6D28D9" />
+    <text x="2630" y="1169" fill="#FFFFFF" font-size="12" font-weight="bold" text-anchor="middle">proposal_votes</text>
+    <!-- Row 0: id -->
+    <rect x="2450" y="1178" width="360" height="22" fill="#FEF3C7" />
+    <text x="2460" y="1193" fill="#92400E" font-size="10.5" font-weight="bold">PK id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 1: proposal_id -->
+    <rect x="2450" y="1200" width="360" height="22" fill="#E0F2FE" />
+    <text x="2460" y="1215" fill="#0369A1" font-size="10.5" font-weight="bold">FK proposal_id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 2: username -->
+    <rect x="2450" y="1222" width="360" height="22" fill="#E0F2FE" />
+    <text x="2460" y="1237" fill="#0369A1" font-size="10.5" font-weight="bold">FK username <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 3: role -->
+    <rect x="2450" y="1244" width="360" height="22" fill="#F8FAFC" />
+    <text x="2460" y="1259" fill="#334155" font-size="10.5" font-weight="normal">role <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 4: choice -->
+    <rect x="2450" y="1266" width="360" height="22" fill="#FFFFFF" />
+    <text x="2460" y="1281" fill="#334155" font-size="10.5" font-weight="normal">choice <tspan fill="#64748B" font-weight="normal">: VARCHAR(32)</tspan></text>
+    <!-- Row 5: note -->
+    <rect x="2450" y="1288" width="360" height="22" fill="#F8FAFC" />
+    <text x="2460" y="1303" fill="#334155" font-size="10.5" font-weight="normal">note <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 6: voted_at -->
+    <rect x="2450" y="1310" width="360" height="22" fill="#FFFFFF" />
+    <text x="2460" y="1325" fill="#334155" font-size="10.5" font-weight="normal">voted_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+  </g>
+
+  <!-- Table: planning_events -->
+  <g class="font-sans shadow" id="tbl_planning_events">
+    <!-- Table Outer Box -->
+    <rect x="2450" y="1362" width="360" height="248" rx="6" fill="#FFFFFF" stroke="#8B5CF6" stroke-width="1.8" />
+    
+    <!-- Table Header -->
+    <path d="M 2450 1368 Q 2450 1362 2456 1362 L 2804 1362 Q 2810 1362 2810 1368 L 2810 1390 L 2450 1390 Z" fill="#6D28D9" />
+    <text x="2630" y="1381" fill="#FFFFFF" font-size="12" font-weight="bold" text-anchor="middle">planning_events</text>
+    <!-- Row 0: id -->
+    <rect x="2450" y="1390" width="360" height="22" fill="#FEF3C7" />
+    <text x="2460" y="1405" fill="#92400E" font-size="10.5" font-weight="bold">PK id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 1: title -->
+    <rect x="2450" y="1412" width="360" height="22" fill="#F8FAFC" />
+    <text x="2460" y="1427" fill="#334155" font-size="10.5" font-weight="normal">title <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 2: type -->
+    <rect x="2450" y="1434" width="360" height="22" fill="#FFFFFF" />
+    <text x="2460" y="1449" fill="#334155" font-size="10.5" font-weight="normal">type <tspan fill="#64748B" font-weight="normal">: VARCHAR(32)</tspan></text>
+    <!-- Row 3: starts_at -->
+    <rect x="2450" y="1456" width="360" height="22" fill="#F8FAFC" />
+    <text x="2460" y="1471" fill="#334155" font-size="10.5" font-weight="normal">starts_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+    <!-- Row 4: ends_at -->
+    <rect x="2450" y="1478" width="360" height="22" fill="#FFFFFF" />
+    <text x="2460" y="1493" fill="#334155" font-size="10.5" font-weight="normal">ends_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+    <!-- Row 5: attendees -->
+    <rect x="2450" y="1500" width="360" height="22" fill="#F8FAFC" />
+    <text x="2460" y="1515" fill="#334155" font-size="10.5" font-weight="normal">attendees <tspan fill="#64748B" font-weight="normal">: JSONB</tspan></text>
+    <!-- Row 6: proposal_ids -->
+    <rect x="2450" y="1522" width="360" height="22" fill="#FFFFFF" />
+    <text x="2460" y="1537" fill="#334155" font-size="10.5" font-weight="normal">proposal_ids <tspan fill="#64748B" font-weight="normal">: JSONB</tspan></text>
+    <!-- Row 7: notes -->
+    <rect x="2450" y="1544" width="360" height="22" fill="#F8FAFC" />
+    <text x="2460" y="1559" fill="#334155" font-size="10.5" font-weight="normal">notes <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 8: created_at -->
+    <rect x="2450" y="1566" width="360" height="22" fill="#FFFFFF" />
+    <text x="2460" y="1581" fill="#334155" font-size="10.5" font-weight="normal">created_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+    <!-- Row 9: updated_at -->
+    <rect x="2450" y="1588" width="360" height="22" fill="#F8FAFC" />
+    <text x="2460" y="1603" fill="#334155" font-size="10.5" font-weight="normal">updated_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+  </g>
+
+  <!-- Table: planning_meetings -->
+  <g class="font-sans shadow" id="tbl_planning_meetings">
+    <!-- Table Outer Box -->
+    <rect x="2450" y="1640" width="360" height="270" rx="6" fill="#FFFFFF" stroke="#8B5CF6" stroke-width="1.8" />
+    
+    <!-- Table Header -->
+    <path d="M 2450 1646 Q 2450 1640 2456 1640 L 2804 1640 Q 2810 1640 2810 1646 L 2810 1668 L 2450 1668 Z" fill="#6D28D9" />
+    <text x="2630" y="1659" fill="#FFFFFF" font-size="12" font-weight="bold" text-anchor="middle">planning_meetings</text>
+    <!-- Row 0: id -->
+    <rect x="2450" y="1668" width="360" height="22" fill="#FEF3C7" />
+    <text x="2460" y="1683" fill="#92400E" font-size="10.5" font-weight="bold">PK id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 1: title -->
+    <rect x="2450" y="1690" width="360" height="22" fill="#F8FAFC" />
+    <text x="2460" y="1705" fill="#334155" font-size="10.5" font-weight="normal">title <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 2: held_at -->
+    <rect x="2450" y="1712" width="360" height="22" fill="#FFFFFF" />
+    <text x="2460" y="1727" fill="#334155" font-size="10.5" font-weight="normal">held_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+    <!-- Row 3: attendees -->
+    <rect x="2450" y="1734" width="360" height="22" fill="#F8FAFC" />
+    <text x="2460" y="1749" fill="#334155" font-size="10.5" font-weight="normal">attendees <tspan fill="#64748B" font-weight="normal">: JSONB</tspan></text>
+    <!-- Row 4: agenda -->
+    <rect x="2450" y="1756" width="360" height="22" fill="#FFFFFF" />
+    <text x="2460" y="1771" fill="#334155" font-size="10.5" font-weight="normal">agenda <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 5: minutes -->
+    <rect x="2450" y="1778" width="360" height="22" fill="#F8FAFC" />
+    <text x="2460" y="1793" fill="#334155" font-size="10.5" font-weight="normal">minutes <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 6: decisions -->
+    <rect x="2450" y="1800" width="360" height="22" fill="#FFFFFF" />
+    <text x="2460" y="1815" fill="#334155" font-size="10.5" font-weight="normal">decisions <tspan fill="#64748B" font-weight="normal">: JSONB</tspan></text>
+    <!-- Row 7: proposal_ids -->
+    <rect x="2450" y="1822" width="360" height="22" fill="#F8FAFC" />
+    <text x="2460" y="1837" fill="#334155" font-size="10.5" font-weight="normal">proposal_ids <tspan fill="#64748B" font-weight="normal">: JSONB</tspan></text>
+    <!-- Row 8: attachments -->
+    <rect x="2450" y="1844" width="360" height="22" fill="#FFFFFF" />
+    <text x="2460" y="1859" fill="#334155" font-size="10.5" font-weight="normal">attachments <tspan fill="#64748B" font-weight="normal">: JSONB</tspan></text>
+    <!-- Row 9: created_at -->
+    <rect x="2450" y="1866" width="360" height="22" fill="#F8FAFC" />
+    <text x="2460" y="1881" fill="#334155" font-size="10.5" font-weight="normal">created_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+    <!-- Row 10: updated_at -->
+    <rect x="2450" y="1888" width="360" height="22" fill="#FFFFFF" />
+    <text x="2460" y="1903" fill="#334155" font-size="10.5" font-weight="normal">updated_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+  </g>
+
+  <!-- Table: municipal_documents -->
+  <g class="font-sans shadow" id="tbl_municipal_documents">
+    <!-- Table Outer Box -->
+    <rect x="2850" y="140" width="360" height="336" rx="6" fill="#FFFFFF" stroke="#F43F5E" stroke-width="1.8" />
+    
+    <!-- Table Header -->
+    <path d="M 2850 146 Q 2850 140 2856 140 L 3204 140 Q 3210 140 3210 146 L 3210 168 L 2850 168 Z" fill="#BE123C" />
+    <text x="3030" y="159" fill="#FFFFFF" font-size="12" font-weight="bold" text-anchor="middle">municipal_documents</text>
+    <!-- Row 0: id -->
+    <rect x="2850" y="168" width="360" height="22" fill="#FEF3C7" />
+    <text x="2860" y="183" fill="#92400E" font-size="10.5" font-weight="bold">PK id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 1: title -->
+    <rect x="2850" y="190" width="360" height="22" fill="#F8FAFC" />
+    <text x="2860" y="205" fill="#334155" font-size="10.5" font-weight="normal">title <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 2: category -->
+    <rect x="2850" y="212" width="360" height="22" fill="#FFFFFF" />
+    <text x="2860" y="227" fill="#334155" font-size="10.5" font-weight="normal">category <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 3: description -->
+    <rect x="2850" y="234" width="360" height="22" fill="#F8FAFC" />
+    <text x="2860" y="249" fill="#334155" font-size="10.5" font-weight="normal">description <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 4: year -->
+    <rect x="2850" y="256" width="360" height="22" fill="#FFFFFF" />
+    <text x="2860" y="271" fill="#334155" font-size="10.5" font-weight="normal">year <tspan fill="#64748B" font-weight="normal">: INT</tspan></text>
+    <!-- Row 5: barangay -->
+    <rect x="2850" y="278" width="360" height="22" fill="#E0F2FE" />
+    <text x="2860" y="293" fill="#0369A1" font-size="10.5" font-weight="bold">FK barangay <tspan fill="#64748B" font-weight="normal">: VARCHAR(128)</tspan></text>
+    <!-- Row 6: tags -->
+    <rect x="2850" y="300" width="360" height="22" fill="#FFFFFF" />
+    <text x="2860" y="315" fill="#334155" font-size="10.5" font-weight="normal">tags <tspan fill="#64748B" font-weight="normal">: JSONB</tspan></text>
+    <!-- Row 7: file_url -->
+    <rect x="2850" y="322" width="360" height="22" fill="#F8FAFC" />
+    <text x="2860" y="337" fill="#334155" font-size="10.5" font-weight="normal">file_url <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 8: file_name -->
+    <rect x="2850" y="344" width="360" height="22" fill="#FFFFFF" />
+    <text x="2860" y="359" fill="#334155" font-size="10.5" font-weight="normal">file_name <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 9: mime_type -->
+    <rect x="2850" y="366" width="360" height="22" fill="#F8FAFC" />
+    <text x="2860" y="381" fill="#334155" font-size="10.5" font-weight="normal">mime_type <tspan fill="#64748B" font-weight="normal">: VARCHAR(128)</tspan></text>
+    <!-- Row 10: version -->
+    <rect x="2850" y="388" width="360" height="22" fill="#FFFFFF" />
+    <text x="2860" y="403" fill="#334155" font-size="10.5" font-weight="normal">version <tspan fill="#64748B" font-weight="normal">: INT</tspan></text>
+    <!-- Row 11: uploaded_by -->
+    <rect x="2850" y="410" width="360" height="22" fill="#F8FAFC" />
+    <text x="2860" y="425" fill="#334155" font-size="10.5" font-weight="normal">uploaded_by <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 12: created_at -->
+    <rect x="2850" y="432" width="360" height="22" fill="#FFFFFF" />
+    <text x="2860" y="447" fill="#334155" font-size="10.5" font-weight="normal">created_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+    <!-- Row 13: updated_at -->
+    <rect x="2850" y="454" width="360" height="22" fill="#F8FAFC" />
+    <text x="2860" y="469" fill="#334155" font-size="10.5" font-weight="normal">updated_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+  </g>
+
+  <!-- Table: document_versions -->
+  <g class="font-sans shadow" id="tbl_document_versions">
+    <!-- Table Outer Box -->
+    <rect x="2850" y="506" width="360" height="204" rx="6" fill="#FFFFFF" stroke="#F43F5E" stroke-width="1.8" />
+    
+    <!-- Table Header -->
+    <path d="M 2850 512 Q 2850 506 2856 506 L 3204 506 Q 3210 506 3210 512 L 3210 534 L 2850 534 Z" fill="#BE123C" />
+    <text x="3030" y="525" fill="#FFFFFF" font-size="12" font-weight="bold" text-anchor="middle">document_versions</text>
+    <!-- Row 0: id -->
+    <rect x="2850" y="534" width="360" height="22" fill="#FEF3C7" />
+    <text x="2860" y="549" fill="#92400E" font-size="10.5" font-weight="bold">PK id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 1: document_id -->
+    <rect x="2850" y="556" width="360" height="22" fill="#E0F2FE" />
+    <text x="2860" y="571" fill="#0369A1" font-size="10.5" font-weight="bold">FK document_id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 2: version_number -->
+    <rect x="2850" y="578" width="360" height="22" fill="#FFFFFF" />
+    <text x="2860" y="593" fill="#334155" font-size="10.5" font-weight="normal">version_number <tspan fill="#64748B" font-weight="normal">: INT</tspan></text>
+    <!-- Row 3: file_url -->
+    <rect x="2850" y="600" width="360" height="22" fill="#F8FAFC" />
+    <text x="2860" y="615" fill="#334155" font-size="10.5" font-weight="normal">file_url <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 4: file_name -->
+    <rect x="2850" y="622" width="360" height="22" fill="#FFFFFF" />
+    <text x="2860" y="637" fill="#334155" font-size="10.5" font-weight="normal">file_name <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 5: mime_type -->
+    <rect x="2850" y="644" width="360" height="22" fill="#F8FAFC" />
+    <text x="2860" y="659" fill="#334155" font-size="10.5" font-weight="normal">mime_type <tspan fill="#64748B" font-weight="normal">: VARCHAR(128)</tspan></text>
+    <!-- Row 6: uploaded_by -->
+    <rect x="2850" y="666" width="360" height="22" fill="#FFFFFF" />
+    <text x="2860" y="681" fill="#334155" font-size="10.5" font-weight="normal">uploaded_by <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 7: uploaded_at -->
+    <rect x="2850" y="688" width="360" height="22" fill="#F8FAFC" />
+    <text x="2860" y="703" fill="#334155" font-size="10.5" font-weight="normal">uploaded_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+  </g>
+
+  <!-- Table: citizen_engagements -->
+  <g class="font-sans shadow" id="tbl_citizen_engagements">
+    <!-- Table Outer Box -->
+    <rect x="2850" y="740" width="360" height="380" rx="6" fill="#FFFFFF" stroke="#F43F5E" stroke-width="1.8" />
+    
+    <!-- Table Header -->
+    <path d="M 2850 746 Q 2850 740 2856 740 L 3204 740 Q 3210 740 3210 746 L 3210 768 L 2850 768 Z" fill="#BE123C" />
+    <text x="3030" y="759" fill="#FFFFFF" font-size="12" font-weight="bold" text-anchor="middle">citizen_engagements</text>
+    <!-- Row 0: id -->
+    <rect x="2850" y="768" width="360" height="22" fill="#FEF3C7" />
+    <text x="2860" y="783" fill="#92400E" font-size="10.5" font-weight="bold">PK id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 1: kind -->
+    <rect x="2850" y="790" width="360" height="22" fill="#F8FAFC" />
+    <text x="2860" y="805" fill="#334155" font-size="10.5" font-weight="normal">kind <tspan fill="#64748B" font-weight="normal">: VARCHAR(32)</tspan></text>
+    <!-- Row 2: status -->
+    <rect x="2850" y="812" width="360" height="22" fill="#FFFFFF" />
+    <text x="2860" y="827" fill="#334155" font-size="10.5" font-weight="normal">status <tspan fill="#64748B" font-weight="normal">: VARCHAR(32)</tspan></text>
+    <!-- Row 3: title -->
+    <rect x="2850" y="834" width="360" height="22" fill="#F8FAFC" />
+    <text x="2860" y="849" fill="#334155" font-size="10.5" font-weight="normal">title <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 4: body -->
+    <rect x="2850" y="856" width="360" height="22" fill="#FFFFFF" />
+    <text x="2860" y="871" fill="#334155" font-size="10.5" font-weight="normal">body <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 5: category -->
+    <rect x="2850" y="878" width="360" height="22" fill="#F8FAFC" />
+    <text x="2860" y="893" fill="#334155" font-size="10.5" font-weight="normal">category <tspan fill="#64748B" font-weight="normal">: VARCHAR(128)</tspan></text>
+    <!-- Row 6: project_id -->
+    <rect x="2850" y="900" width="360" height="22" fill="#E0F2FE" />
+    <text x="2860" y="915" fill="#0369A1" font-size="10.5" font-weight="bold">FK project_id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 7: longitude -->
+    <rect x="2850" y="922" width="360" height="22" fill="#F8FAFC" />
+    <text x="2860" y="937" fill="#334155" font-size="10.5" font-weight="normal">longitude <tspan fill="#64748B" font-weight="normal">: DOUBLE PRECISION</tspan></text>
+    <!-- Row 8: latitude -->
+    <rect x="2850" y="944" width="360" height="22" fill="#FFFFFF" />
+    <text x="2860" y="959" fill="#334155" font-size="10.5" font-weight="normal">latitude <tspan fill="#64748B" font-weight="normal">: DOUBLE PRECISION</tspan></text>
+    <!-- Row 9: barangay -->
+    <rect x="2850" y="966" width="360" height="22" fill="#E0F2FE" />
+    <text x="2860" y="981" fill="#0369A1" font-size="10.5" font-weight="bold">FK barangay <tspan fill="#64748B" font-weight="normal">: VARCHAR(128)</tspan></text>
+    <!-- Row 10: contact_name -->
+    <rect x="2850" y="988" width="360" height="22" fill="#FFFFFF" />
+    <text x="2860" y="1003" fill="#334155" font-size="10.5" font-weight="normal">contact_name <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 11: contact_email -->
+    <rect x="2850" y="1010" width="360" height="22" fill="#F8FAFC" />
+    <text x="2860" y="1025" fill="#334155" font-size="10.5" font-weight="normal">contact_email <tspan fill="#64748B" font-weight="normal">: VARCHAR(128)</tspan></text>
+    <!-- Row 12: contact_phone -->
+    <rect x="2850" y="1032" width="360" height="22" fill="#FFFFFF" />
+    <text x="2860" y="1047" fill="#334155" font-size="10.5" font-weight="normal">contact_phone <tspan fill="#64748B" font-weight="normal">: VARCHAR(128)</tspan></text>
+    <!-- Row 13: staff_note -->
+    <rect x="2850" y="1054" width="360" height="22" fill="#F8FAFC" />
+    <text x="2860" y="1069" fill="#334155" font-size="10.5" font-weight="normal">staff_note <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 14: created_at -->
+    <rect x="2850" y="1076" width="360" height="22" fill="#FFFFFF" />
+    <text x="2860" y="1091" fill="#334155" font-size="10.5" font-weight="normal">created_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+    <!-- Row 15: updated_at -->
+    <rect x="2850" y="1098" width="360" height="22" fill="#F8FAFC" />
+    <text x="2860" y="1113" fill="#334155" font-size="10.5" font-weight="normal">updated_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+  </g>
+
+  <!-- Table: disaster_hazard_alerts -->
+  <g class="font-sans shadow" id="tbl_disaster_hazard_alerts">
+    <!-- Table Outer Box -->
+    <rect x="2850" y="1150" width="360" height="248" rx="6" fill="#FFFFFF" stroke="#F43F5E" stroke-width="1.8" />
+    
+    <!-- Table Header -->
+    <path d="M 2850 1156 Q 2850 1150 2856 1150 L 3204 1150 Q 3210 1150 3210 1156 L 3210 1178 L 2850 1178 Z" fill="#BE123C" />
+    <text x="3030" y="1169" fill="#FFFFFF" font-size="12" font-weight="bold" text-anchor="middle">disaster_hazard_alerts</text>
+    <!-- Row 0: id -->
+    <rect x="2850" y="1178" width="360" height="22" fill="#FEF3C7" />
+    <text x="2860" y="1193" fill="#92400E" font-size="10.5" font-weight="bold">PK id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 1: alert_type -->
+    <rect x="2850" y="1200" width="360" height="22" fill="#F8FAFC" />
+    <text x="2860" y="1215" fill="#334155" font-size="10.5" font-weight="normal">alert_type <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 2: severity -->
+    <rect x="2850" y="1222" width="360" height="22" fill="#FFFFFF" />
+    <text x="2860" y="1237" fill="#334155" font-size="10.5" font-weight="normal">severity <tspan fill="#64748B" font-weight="normal">: VARCHAR(32)</tspan></text>
+    <!-- Row 3: zone_id -->
+    <rect x="2850" y="1244" width="360" height="22" fill="#E0F2FE" />
+    <text x="2860" y="1259" fill="#0369A1" font-size="10.5" font-weight="bold">FK zone_id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 4: title -->
+    <rect x="2850" y="1266" width="360" height="22" fill="#FFFFFF" />
+    <text x="2860" y="1281" fill="#334155" font-size="10.5" font-weight="normal">title <tspan fill="#64748B" font-weight="normal">: VARCHAR(255)</tspan></text>
+    <!-- Row 5: message -->
+    <rect x="2850" y="1288" width="360" height="22" fill="#F8FAFC" />
+    <text x="2860" y="1303" fill="#334155" font-size="10.5" font-weight="normal">message <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 6: recommended_action -->
+    <rect x="2850" y="1310" width="360" height="22" fill="#FFFFFF" />
+    <text x="2860" y="1325" fill="#334155" font-size="10.5" font-weight="normal">recommended_action <tspan fill="#64748B" font-weight="normal">: TEXT</tspan></text>
+    <!-- Row 7: triggered_at -->
+    <rect x="2850" y="1332" width="360" height="22" fill="#F8FAFC" />
+    <text x="2860" y="1347" fill="#334155" font-size="10.5" font-weight="normal">triggered_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+    <!-- Row 8: resolved_at -->
+    <rect x="2850" y="1354" width="360" height="22" fill="#FFFFFF" />
+    <text x="2860" y="1369" fill="#334155" font-size="10.5" font-weight="normal">resolved_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+    <!-- Row 9: is_active -->
+    <rect x="2850" y="1376" width="360" height="22" fill="#F8FAFC" />
+    <text x="2860" y="1391" fill="#334155" font-size="10.5" font-weight="normal">is_active <tspan fill="#64748B" font-weight="normal">: BOOLEAN</tspan></text>
+  </g>
+
+  <!-- Table: disaster_backups -->
+  <g class="font-sans shadow" id="tbl_disaster_backups">
+    <!-- Table Outer Box -->
+    <rect x="2850" y="1428" width="360" height="182" rx="6" fill="#FFFFFF" stroke="#F43F5E" stroke-width="1.8" />
+    
+    <!-- Table Header -->
+    <path d="M 2850 1434 Q 2850 1428 2856 1428 L 3204 1428 Q 3210 1428 3210 1434 L 3210 1456 L 2850 1456 Z" fill="#BE123C" />
+    <text x="3030" y="1447" fill="#FFFFFF" font-size="12" font-weight="bold" text-anchor="middle">disaster_backups</text>
+    <!-- Row 0: id -->
+    <rect x="2850" y="1456" width="360" height="22" fill="#FEF3C7" />
+    <text x="2860" y="1471" fill="#92400E" font-size="10.5" font-weight="bold">PK id <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 1: system_name -->
+    <rect x="2850" y="1478" width="360" height="22" fill="#F8FAFC" />
+    <text x="2860" y="1493" fill="#334155" font-size="10.5" font-weight="normal">system_name <tspan fill="#64748B" font-weight="normal">: VARCHAR(128)</tspan></text>
+    <!-- Row 2: lgu_name -->
+    <rect x="2850" y="1500" width="360" height="22" fill="#FFFFFF" />
+    <text x="2860" y="1515" fill="#334155" font-size="10.5" font-weight="normal">lgu_name <tspan fill="#64748B" font-weight="normal">: VARCHAR(128)</tspan></text>
+    <!-- Row 3: exported_at -->
+    <rect x="2850" y="1522" width="360" height="22" fill="#F8FAFC" />
+    <text x="2860" y="1537" fill="#334155" font-size="10.5" font-weight="normal">exported_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+    <!-- Row 4: exported_by -->
+    <rect x="2850" y="1544" width="360" height="22" fill="#FFFFFF" />
+    <text x="2860" y="1559" fill="#334155" font-size="10.5" font-weight="normal">exported_by <tspan fill="#64748B" font-weight="normal">: VARCHAR(64)</tspan></text>
+    <!-- Row 5: summary -->
+    <rect x="2850" y="1566" width="360" height="22" fill="#F8FAFC" />
+    <text x="2860" y="1581" fill="#334155" font-size="10.5" font-weight="normal">summary <tspan fill="#64748B" font-weight="normal">: JSONB</tspan></text>
+    <!-- Row 6: created_at -->
+    <rect x="2850" y="1588" width="360" height="22" fill="#FFFFFF" />
+    <text x="2860" y="1603" fill="#334155" font-size="10.5" font-weight="normal">created_at <tspan fill="#64748B" font-weight="normal">: TIMESTAMPTZ</tspan></text>
+  </g>
+  <!-- Relational Connectors -->
+  <g class="font-sans">
+    <path d="M 800 1031 C 820 1031, 820 175, 840 175" fill="none" stroke="#2563EB" stroke-width="2" stroke-linecap="round" />
+    <circle cx="800" cy="1031" r="3" fill="#2563EB" />
+    <polygon points="840,175 834,172 834,178" fill="#2563EB" />
+    <rect x="775" y="594" width="90" height="18" rx="4" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1" />
+    <text x="820" y="606" fill="#2563EB" font-size="8.5" font-weight="bold" text-anchor="middle">submits (1:N)</text>
+  </g>
+  <g class="font-sans">
+    <path d="M 1200 175 C 1220 175, 1220 175, 1240 175" fill="none" stroke="#2563EB" stroke-width="2" stroke-linecap="round" />
+    <circle cx="1200" cy="175" r="3" fill="#2563EB" />
+    <polygon points="1240,175 1234,172 1234,178" fill="#2563EB" />
+    <rect x="1175" y="166" width="90" height="18" rx="4" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1" />
+    <text x="1220" y="178" fill="#2563EB" font-size="8.5" font-weight="bold" text-anchor="middle">lot details (1:1)</text>
+  </g>
+  <g class="font-sans">
+    <path d="M 1200 175 C 1220 175, 1220 607, 1240 607" fill="none" stroke="#2563EB" stroke-width="2" stroke-linecap="round" />
+    <circle cx="1200" cy="175" r="3" fill="#2563EB" />
+    <polygon points="1240,607 1234,604 1234,610" fill="#2563EB" />
+    <rect x="1175" y="382" width="90" height="18" rx="4" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1" />
+    <text x="1220" y="394" fill="#2563EB" font-size="8.5" font-weight="bold" text-anchor="middle">treasury (1:1)</text>
+  </g>
+  <g class="font-sans">
+    <path d="M 1200 175 C 1220 175, 1220 907, 1240 907" fill="none" stroke="#2563EB" stroke-width="2" stroke-linecap="round" />
+    <circle cx="1200" cy="175" r="3" fill="#2563EB" />
+    <polygon points="1240,907 1234,904 1234,910" fill="#2563EB" />
+    <rect x="1175" y="532" width="90" height="18" rx="4" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1" />
+    <text x="1220" y="544" fill="#2563EB" font-size="8.5" font-weight="bold" text-anchor="middle">engineer review (1:1)</text>
+  </g>
+  <g class="font-sans">
+    <path d="M 1200 175 C 1420 175, 1420 175, 1640 175" fill="none" stroke="#0D9488" stroke-width="2" stroke-linecap="round" />
+    <circle cx="1200" cy="175" r="3" fill="#0D9488" />
+    <polygon points="1640,175 1634,172 1634,178" fill="#0D9488" />
+    <rect x="1375" y="166" width="90" height="18" rx="4" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1" />
+    <text x="1420" y="178" fill="#0D9488" font-size="8.5" font-weight="bold" text-anchor="middle">promoted project (0..1:1)</text>
+  </g>
+  <g class="font-sans">
+    <path d="M 2010 175 C 2030 175, 2030 175, 2050 175" fill="none" stroke="#0D9488" stroke-width="2" stroke-linecap="round" />
+    <circle cx="2010" cy="175" r="3" fill="#0D9488" />
+    <polygon points="2050,175 2044,172 2044,178" fill="#0D9488" />
+    <rect x="1985" y="166" width="90" height="18" rx="4" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1" />
+    <text x="2030" y="178" fill="#0D9488" font-size="8.5" font-weight="bold" text-anchor="middle">milestones (1:N)</text>
+  </g>
+  <g class="font-sans">
+    <path d="M 2010 175 C 2030 175, 2030 387, 2050 387" fill="none" stroke="#0D9488" stroke-width="2" stroke-linecap="round" />
+    <circle cx="2010" cy="175" r="3" fill="#0D9488" />
+    <polygon points="2050,387 2044,384 2044,390" fill="#0D9488" />
+    <rect x="1985" y="272" width="90" height="18" rx="4" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1" />
+    <text x="2030" y="284" fill="#0D9488" font-size="8.5" font-weight="bold" text-anchor="middle">inspections (1:N)</text>
+  </g>
+  <g class="font-sans">
+    <path d="M 2810 175 C 2225 175, 2225 175, 1640 175" fill="none" stroke="#8B5CF6" stroke-width="2" stroke-linecap="round" />
+    <circle cx="2810" cy="175" r="3" fill="#8B5CF6" />
+    <polygon points="1640,175 1634,172 1634,178" fill="#8B5CF6" />
+    <rect x="2180" y="166" width="90" height="18" rx="4" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1" />
+    <text x="2225" y="178" fill="#8B5CF6" font-size="8.5" font-weight="bold" text-anchor="middle">allocates (0..1:1)</text>
+  </g>
+  <g class="font-sans">
+    <path d="M 3210 175 C 3030 175, 3030 541, 2850 541" fill="none" stroke="#F43F5E" stroke-width="2" stroke-linecap="round" />
+    <circle cx="3210" cy="175" r="3" fill="#F43F5E" />
+    <polygon points="2850,541 2844,538 2844,544" fill="#F43F5E" />
+    <rect x="2985" y="349" width="90" height="18" rx="4" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1" />
+    <text x="3030" y="361" fill="#F43F5E" font-size="8.5" font-weight="bold" text-anchor="middle">versions (1:N)</text>
+  </g>
+</svg>

@@ -22,4 +22,5 @@ export const planningMeetingsCollection = collection(db, "planningMeetings");
 export const documentsCollection = collection(db, "documents");
 export const auditLogsCollection = collection(db, "auditLogs");
 export const sessionsCollection = collection(db, "sessions");
+export const meoInspectionSchedulesCollection = collection(db, "meoInspectionSchedules");
 

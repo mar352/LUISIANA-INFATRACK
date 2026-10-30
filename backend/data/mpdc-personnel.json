@@ -1,0 +1,106 @@
+[
+  {
+    "id": "MPDC-002",
+    "name": "Bon Ryan P. Pedron",
+    "position": "Admin. Aide I",
+    "role": "Assessment of Fees & Receiving Officer",
+    "phone": "(049) 555-0112",
+    "status": "In Office",
+    "assignedBarangays": [
+      "All 23 Barangays"
+    ],
+    "username": "bon_pedron",
+    "createdAt": "2026-10-28T09:00:02.938Z"
+  },
+  {
+    "id": "MPDC-003",
+    "name": "Edward B. Romulo, EnP.",
+    "position": "Zoning Officer",
+    "role": "Zoning Verification & Signing Officer",
+    "phone": "(049) 555-0113",
+    "status": "In Office",
+    "assignedBarangays": [
+      "All 23 Barangays"
+    ],
+    "username": "edward_romulo",
+    "createdAt": "2026-10-28T09:00:02.938Z"
+  },
+  {
+    "id": "MPDC-004",
+    "name": "Randy A. Balasabas",
+    "position": "Admin. Aide",
+    "role": "Ocular Site Inspection & Frontline Support",
+    "phone": "(049) 555-0114",
+    "status": "In Office",
+    "assignedBarangays": [
+      "All 23 Barangays"
+    ],
+    "username": "randy_balasabas",
+    "createdAt": "2026-10-28T09:00:02.938Z"
+  },
+  {
+    "id": "MPDC-005",
+    "name": "Joy Anne O. Claricia",
+    "position": "Planning Officer I",
+    "role": "Data Gathering & Planning Documentation",
+    "phone": "(049) 555-0115",
+    "status": "In Office",
+    "assignedBarangays": [
+      "All 23 Barangays"
+    ],
+    "username": "joy_claricia",
+    "createdAt": "2026-10-28T09:00:02.938Z"
+  },
+  {
+    "id": "MPDC-006",
+    "name": "Engr. Cher L. Zabate",
+    "position": "Planning Assistant",
+    "role": "Planning Assistant & Technical Review",
+    "phone": "(049) 555-0116",
+    "status": "In Office",
+    "assignedBarangays": [
+      "All 23 Barangays"
+    ],
+    "username": "cher_zabate",
+    "createdAt": "2026-10-28T09:00:02.938Z"
+  },
+  {
+    "id": "MPDC-007",
+    "name": "Rosette Princess R. Dela Torre",
+    "position": "Statistician Aide",
+    "role": "Statistical Records & Frontline Inquiry",
+    "phone": "(049) 555-0117",
+    "status": "In Office",
+    "assignedBarangays": [
+      "All 23 Barangays"
+    ],
+    "username": "rosette_delatorre",
+    "createdAt": "2026-10-28T09:00:02.938Z"
+  },
+  {
+    "id": "MPDC-008",
+    "name": "Rhyn Giorvic O. Cargar",
+    "position": "Information Technology",
+    "role": "IT Systems & Spatial Telemetry",
+    "phone": "(049) 555-0118",
+    "status": "On Field",
+    "assignedBarangays": [
+      "All 23 Barangays"
+    ],
+    "username": "rhyn_cargar",
+    "createdAt": "2026-10-28T09:00:02.938Z"
+  },
+  {
+    "id": "MPDC-009",
+    "name": "Mar Aldrei Y. Avila",
+    "position": "Municipal Planning Officer",
+    "role": "Ocular Site Inspector",
+    "phone": "09618907215",
+    "status": "In Office",
+    "assignedBarangays": [
+      "All 23 Barangays"
+    ],
+    "username": "maraldreiyavila",
+    "createdAt": "2026-10-28T11:01:48.715Z"
+  }
+]

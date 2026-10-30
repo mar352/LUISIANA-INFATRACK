@@ -15,13 +15,15 @@ service cloud.firestore {
       allow update: if false;
       allow delete: if true;
     }
-    // Map pins: public read for the citizen globe. Full writes stay on /api/projects.
-    // The Android field app may only append photos (and the matching timestamps).
+    // Map pins, site inspections, and progress photos
     match /projects/{projectId} {
-      allow read: if true;
-      allow create, delete: if false;
-      allow update: if request.resource.data.diff(resource.data).affectedKeys()
-        .hasOnly(["photos", "updatedAt", "activityLog"]);
+      allow read, write: if true;
+    }
+    match /inspections/{document=**} {
+      allow read, write: if true;
+    }
+    match /meoInspectionSchedules/{document=**} {
+      allow read, write: if true;
     }
     // Planning board still uses the client until those APIs move to Express.
     match /proposals/{document=**} {

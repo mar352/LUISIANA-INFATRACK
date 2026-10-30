@@ -6,6 +6,8 @@ import "./Landing.css";
 export type UserRole =
   | "Super Admin"
   | "MPDC"
+  | "MEO"
+  | "OBO"
   | "Engineer"
   | "Agriculture"
   | "Barangay Official"
@@ -20,10 +22,20 @@ export function isPrivateEngineer(role: UserRole | null | undefined): boolean {
   return role === "Private Engineer";
 }
 
+export function isMeoStaff(role: UserRole | null | undefined): boolean {
+  return role === "MEO" || role === "Engineer";
+}
+
+export function isOboStaff(role: UserRole | null | undefined): boolean {
+  return role === "OBO";
+}
+
 export function isMunicipalStaff(role: UserRole | null | undefined): boolean {
   return (
     role === "Super Admin" ||
     role === "MPDC" ||
+    role === "MEO" ||
+    role === "OBO" ||
     role === "Engineer" ||
     role === "Agriculture"
   );
@@ -67,17 +79,41 @@ export const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
     canSeePlanning: false,
     canSeeEngagement: true,
   },
-  Engineer: {
-    label: "Engineer",
-    color: "#8a6500",
-    description: "Infrastructure & Engineering Office",
+  MEO: {
+    label: "MEO",
+    color: "#d97706",
+    description: "Municipal Engineering Office — Public Infrastructure Projects, Bidding, POW & Civil Works",
     canSeeLayers: true,
     canSeeRisk: true,
     canSeeProjects: true,
     canSeeAlerts: true,
     canSeeBusinessPermits: false,
     canSeePlanning: false,
-    canSeeEngagement: true,
+    canSeeEngagement: false,
+  },
+  OBO: {
+    label: "OBO",
+    color: "#0284c7",
+    description: "Office of the Building Official — Private Building Permits, Citizen Applications & Inspections",
+    canSeeLayers: true,
+    canSeeRisk: true,
+    canSeeProjects: false,
+    canSeeAlerts: true,
+    canSeeBusinessPermits: false,
+    canSeePlanning: false,
+    canSeeEngagement: false,
+  },
+  Engineer: {
+    label: "Engineer",
+    color: "#8a6500",
+    description: "Municipal Engineering Office (MEO) — Municipal Public Infrastructure Projects",
+    canSeeLayers: true,
+    canSeeRisk: true,
+    canSeeProjects: true,
+    canSeeAlerts: true,
+    canSeeBusinessPermits: false,
+    canSeePlanning: false,
+    canSeeEngagement: false,
   },
   Agriculture: {
     label: "Agriculture",

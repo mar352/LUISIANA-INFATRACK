@@ -77,13 +77,15 @@ import {
 } from "../lib/street-edit-overlay";
 import { snapLngLatToRoad } from "../lib/snap-to-road";
 import { displayNameForProject } from "../lib/place-name";
-import { LandingPage, LoginScreen, ROLE_CONFIGS, isBarangayOfficial, isMunicipalStaff, type UserRole } from "./Landing";
+import { LandingPage, LoginScreen, ROLE_CONFIGS, isBarangayOfficial, isMunicipalStaff, isMeoStaff, type UserRole } from "./Landing";
 import {
   DEFAULT_INFRA_FILTER,
   INFRA_CATEGORIES,
   INFRA_DEPARTMENTS,
   INFRA_STATUSES,
   filterInfrastructure,
+  isLguInfrastructureProject,
+  isMeoStaffRole,
   toggleListValue,
   type InfraFilter,
 } from "../lib/infra-filter";
@@ -94,6 +96,7 @@ import { classAdvice, classColor } from "../lib/earthquake-labels";
 import { ProjectMonitoringPanel } from "./ProjectMonitoringPanel";
 import { EngineerApplicationsPage } from "./EngineerApplicationsPage";
 import { EngineerDashboardPage } from "./EngineerDashboardPage";
+import { MeoDashboardPage, type MeoDashboardTab } from "./MeoDashboardPage";
 import { EngineeringDocumentsPage } from "./EngineeringDocumentsPage";
 import { ThemeToggle } from "./ThemeToggle";
 import { resolveTheme, subscribeTheme } from "../lib/theme";
@@ -485,6 +488,7 @@ export type AppScreen =
   | "inventory"
   | "documents"
   | "analytics"
+  | "engineer_analytics"
   | "engagement"
   | "citizen"
   | "services"
@@ -494,6 +498,8 @@ export type AppScreen =
   | "pengineer"
   | "engineer_applications"
   | "engineer_dashboard"
+  | "meo_dashboard"
+  | "obo_dashboard"
   | "engineer_documents"
   | "admin_users"
   | "mpdc_admin"
@@ -505,7 +511,10 @@ export const PROTECTED_STAFF_SCREENS: Set<AppScreen> = new Set([
   "permits",
   "engineer_applications",
   "engineer_dashboard",
+  "meo_dashboard",
+  "obo_dashboard",
   "engineer_documents",
+  "engineer_analytics",
   "inventory",
   "documents",
   "analytics",
@@ -531,7 +540,7 @@ export function parseScreenFromLocation(): { screen: AppScreen; trackingRef?: st
     if (screenParam && [
       "landing", "login", "app", "inventory", "documents", "analytics",
       "engagement", "citizen", "services", "audit", "permits",
-      "new_application", "applicant_tracking", "pengineer", "engineer_applications", "engineer_dashboard", "engineer_documents", "admin_users", "mpdc_admin", "transparency"
+      "new_application", "applicant_tracking", "pengineer", "engineer_applications", "engineer_dashboard", "meo_dashboard", "obo_dashboard", "engineer_documents", "admin_users", "mpdc_admin", "transparency"
     ].includes(screenParam)) {
       return { screen: screenParam as AppScreen };
     }
@@ -589,6 +598,18 @@ export function parseScreenFromLocation(): { screen: AppScreen; trackingRef?: st
     case "/engineer_dashboard":
     case "/engineering":
       return { screen: "engineer_dashboard" };
+    case "/meo":
+    case "/meo-dashboard":
+    case "/meo_dashboard":
+      return { screen: "meo_dashboard" };
+    case "/obo":
+    case "/obo-dashboard":
+    case "/obo_dashboard":
+      return { screen: "obo_dashboard" };
+    case "/engineer-analytics":
+    case "/engineer_analytics":
+    case "/engineering-analytics":
+      return { screen: "engineer_analytics" };
     case "/engineer-documents":
     case "/engineer_documents":
     case "/engineering-docs":
@@ -659,6 +680,12 @@ export function getUrlForScreen(targetScreen: AppScreen, trackingRef?: string): 
       return "/permits";
     case "engineer_applications":
       return "/engineer-applications";
+    case "meo_dashboard":
+      return "/meo";
+    case "obo_dashboard":
+      return "/obo";
+    case "engineer_analytics":
+      return "/engineer-analytics";
     case "engineer_documents":
       return "/engineer-documents";
     case "documents":
@@ -702,6 +729,10 @@ export function getPageTitleForScreen(targetScreen: AppScreen): string {
       return "Zoning & Permitting | INFA-TRACK Luisiana";
     case "engineer_applications":
       return "Engineering Clearance & Pinning | INFA-TRACK Luisiana";
+    case "meo_dashboard":
+      return "MEO Public Infrastructure | INFA-TRACK Luisiana";
+    case "obo_dashboard":
+      return "OBO Building Permits | INFA-TRACK Luisiana";
     case "engineer_documents":
       return "Engineering Documents Vault | INFA-TRACK Luisiana";
     case "documents":
@@ -911,15 +942,27 @@ export default function App() {
             if (saved.role === "MPDC" && saved.username !== "mpdc_admin" && (current === "app" || current === "landing" || current === "login")) {
               return "permits";
             }
+            // OBO role lands directly on dedicated OBO dashboard
+            if (saved.role === "OBO" && (current === "app" || current === "landing" || current === "login" || current === "documents" || current === "permits" || current === "analytics" || current === "inventory" || current === "meo_dashboard")) {
+              return "obo_dashboard";
+            }
+            // MEO role lands directly on dedicated MEO public infrastructure dashboard
+            if (saved.role === "MEO" && (current === "app" || current === "landing" || current === "login" || current === "documents" || current === "permits" || current === "analytics" || current === "inventory" || current === "obo_dashboard")) {
+              return "meo_dashboard";
+            }
             // Only auto-redirect to default role screen if user is on landing or login
             if (current === "landing" || current === "login") {
               return saved.role === "Barangay Official"
                 ? "app"
                 : saved.role === "Private Engineer"
                   ? "pengineer"
-                  : saved.role === "MPDC"
-                    ? (saved.username === "mpdc_admin" || saved.role === "MPDC Admin" ? "mpdc_admin" : "permits")
-                    : "app";
+                  : saved.role === "OBO"
+                    ? "obo_dashboard"
+                    : saved.role === "MEO"
+                      ? "meo_dashboard"
+                      : saved.role === "MPDC"
+                        ? (saved.username === "mpdc_admin" || saved.role === "MPDC Admin" ? "mpdc_admin" : "permits")
+                        : "app";
             }
             return current;
           });
@@ -942,10 +985,20 @@ export default function App() {
       });
   }, []);
 
-  // Continuous route protection: immediately eject unauthenticated users from staff screens
+  // Continuous route protection & RBAC segregation:
+  // Immediately eject unauthenticated users from staff screens and prevent cross-office bleed
   useEffect(() => {
     if (!isAuthChecking && !currentSession && PROTECTED_STAFF_SCREENS.has(screen)) {
       setScreen("login");
+      return;
+    }
+    if (currentSession?.role === "OBO" && (screen === "documents" || screen === "permits" || screen === "analytics" || screen === "inventory" || screen === "meo_dashboard")) {
+      setScreen("obo_dashboard");
+      return;
+    }
+    if ((currentSession?.role === "MEO" || currentSession?.role === "Engineer") && (screen === "documents" || screen === "permits" || screen === "analytics" || screen === "inventory" || screen === "obo_dashboard" || screen === "engineer_dashboard" || screen === "engineer_applications" || screen === "engineer_documents")) {
+      setScreen("meo_dashboard");
+      return;
     }
   }, [screen, currentSession, isAuthChecking]);
 
@@ -1028,20 +1081,46 @@ export default function App() {
     }
   });
   const [infraFilter, setInfraFilter] = useState<InfraFilter>(DEFAULT_INFRA_FILTER);
+  const meoRoleActive =
+    isMeoStaffRole(currentRole) ||
+    isMeoStaffRole(currentSession?.role);
+
   const filteredProjects = useMemo(
-    () => filterInfrastructure(Array.isArray(projects) ? projects : [], infraFilter),
-    [projects, infraFilter],
+    () => filterInfrastructure(Array.isArray(projects) ? projects : [], infraFilter, currentRole || currentSession?.role),
+    [projects, infraFilter, currentRole, currentSession?.role],
   );
 
   const sectorProjectCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const k of SECTORAL_KEYS) counts[k] = 0;
-    for (const p of (Array.isArray(projects) ? projects : [])) {
+    const baseList = Array.isArray(projects) ? projects : [];
+    const sourceList = meoRoleActive
+      ? baseList.filter(
+          (p) =>
+            isLguInfrastructureProject(p) &&
+            !(p as any).isPrivateApplication &&
+            p.type !== "Private Building" &&
+            !(p as any).trackingNumber
+        )
+      : baseList;
+    for (const p of sourceList) {
       const s = getBuildingSector(p);
       counts[s] = (counts[s] || 0) + 1;
     }
     return counts;
-  }, [projects]);
+  }, [projects, meoRoleActive]);
+
+  const totalAvailableSites = useMemo(() => {
+    const list = Array.isArray(projects) ? projects : [];
+    if (!meoRoleActive) return list.length;
+    return list.filter(
+      (p) =>
+        isLguInfrastructureProject(p) &&
+        !(p as any).isPrivateApplication &&
+        p.type !== "Private Building" &&
+        !(p as any).trackingNumber
+    ).length;
+  }, [projects, meoRoleActive]);
 
   const [mapSectorMenuOpen, setMapSectorMenuOpen] = useState(false);
   const mapSectorTrackRef = useRef<HTMLDivElement | null>(null);
@@ -1070,6 +1149,7 @@ export default function App() {
 
   const [placementMode, setPlacementMode] = useState(false);
   const [newAppModalOpen, setNewAppModalOpen] = useState(false);
+  const [meoDashboardTab, setMeoDashboardTab] = useState<MeoDashboardTab>("overview");
   const [editMode, setEditMode] = useState(false);
   const [snapToRoad, setSnapToRoad] = useState(true);
   const [selectedModel, setSelectedModel] = useState<ModelType>("office");
@@ -1209,14 +1289,21 @@ export default function App() {
     typeof window !== "undefined" && window.matchMedia("(max-width: 1024px)").matches
   );
 
+  useEffect(() => {
+    if (meoRoleActive && sidebarTab === "inspection") {
+      setSidebarTab("notify");
+    }
+  }, [meoRoleActive, sidebarTab]);
+
   const inspectionTaskCount = useMemo(() => {
+    if (meoRoleActive) return 0;
     return projects.filter(
       (p) =>
         p.isPrivateApplication ||
         p.siteMarkerOnly ||
         (p.id && p.id.startsWith("infra-app-")),
     ).length;
-  }, [projects]);
+  }, [projects, meoRoleActive]);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [compactChrome, setCompactChrome] = useState(
     () => typeof window !== "undefined" && window.matchMedia("(max-width: 768px)").matches,
@@ -1895,7 +1982,9 @@ export default function App() {
       placingNameRef.current.trim() ||
       (shapeKind ? shapeLabel(shapeKind) : `${catalog?.label ?? selectedModelRef.current}`),
     );
+    const isMeoRole = meoRoleActive;
     setModalProjectType(
+      isMeoRole ? "Municipal Project" :
       catalog?.category === "Agriculture" ? "Agricultural Structure" :
         catalog?.category === "Infrastructure" ? "Municipal Project" :
           catalog?.category === "Construction" ? "Municipal Project" : "Private Building"
@@ -1974,6 +2063,10 @@ export default function App() {
   }
 
   function startPinCitizenSite(app: any) {
+    if (meoRoleActive) {
+      console.warn("[App] MEO role is strictly for LGU projects and cannot pin private citizen applications.");
+      return;
+    }
     setPinCitizenApp(app);
     pinCitizenAppRef.current = app;
     setPlacingName(`${app.applicant?.fullName || "Private"} - ${app.property?.proposedBuildingType || "Gusali"}`);
@@ -2000,6 +2093,10 @@ export default function App() {
       color: "#ffc107",
       coordinates: [{ lon: lng, lat }],
     };
+    if (meoRoleActive) {
+      console.warn("[App] MEO role is strictly for LGU projects and cannot pin private citizen applications.");
+      return;
+    }
     const title = `${app.applicant?.fullName || "Private"} - ${app.property?.proposedBuildingType || "Gusali"} (${app.trackingNumber})`;
     const body = {
       name: title,
@@ -2051,7 +2148,9 @@ export default function App() {
         } as Project;
       }
 
-      addProjectToFirestore(createdProject).catch(() => undefined);
+      addProjectToFirestore(createdProject).catch((e) =>
+        console.warn("[App] Firestore citizen site pin sync warning:", e)
+      );
       setProjects((prev) => [createdProject!, ...prev]);
 
       if (app.id) {
@@ -2127,7 +2226,9 @@ export default function App() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const { project } = await res.json();
         linkedId = project.id as string;
-        addProjectToFirestore(project).catch(() => undefined);
+        addProjectToFirestore(project).catch((e) =>
+          console.warn("[App] Firestore proposal pin sync warning:", e)
+        );
       } catch {
         const fallback = {
           id:
@@ -2148,7 +2249,9 @@ export default function App() {
           archivedAt: null,
         } as Project;
         linkedId = fallback.id;
-        addProjectToFirestore(fallback).catch(() => undefined);
+        addProjectToFirestore(fallback).catch((e) =>
+          console.warn("[App] Firestore proposal fallback pin sync warning:", e)
+        );
         setProjects((prev) => [fallback, ...prev]);
       }
 
@@ -2178,6 +2281,9 @@ export default function App() {
     const { lng, lat } = pendingPlacement;
     const now = new Date().toISOString();
     const placedName = modalProjectName.trim();
+    const isMeoRole = meoRoleActive;
+    const effectiveType = isMeoRole ? "Municipal Project" : modalProjectType;
+    const effectiveDept = isMeoRole ? "Engineering" : modalDepartment;
     if (!placedName) return;
     const fallbackProject: Project = {
       id: typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -2185,8 +2291,12 @@ export default function App() {
         : `local-${Date.now()}`,
       name: placedName,
       modelType: pendingShapeKindRef.current ? "shape" : selectedModelRef.current,
-      type: modalProjectType,
-      department: modalDepartment,
+      type: effectiveType,
+      isLguProject: isMeoRole ? true : undefined,
+      isPinned: isMeoRole ? true : undefined,
+      engineerApproved: isMeoRole ? true : undefined,
+      engineerApprovedBy: isMeoRole ? ((currentSession as any)?.fullName || currentSession?.name || "Municipal Engineer") : undefined,
+      department: effectiveDept,
       status: modalStatus,
       progress: modalProgress,
       description: modalDescription || "",
@@ -2222,8 +2332,12 @@ export default function App() {
           body: JSON.stringify({
             name: placedName,
             modelType: pendingShapeKindRef.current ? "shape" : selectedModelRef.current,
-            type: modalProjectType,
-            department: modalDepartment,
+            type: effectiveType,
+      isLguProject: isMeoRole ? true : undefined,
+      isPinned: isMeoRole ? true : undefined,
+      engineerApproved: isMeoRole ? true : undefined,
+      engineerApprovedBy: isMeoRole ? ((currentSession as any)?.fullName || currentSession?.name || "Municipal Engineer") : undefined,
+            department: effectiveDept,
             status: modalStatus,
             progress: modalProgress,
             description: modalDescription,
@@ -2264,7 +2378,9 @@ export default function App() {
         pendingEditIdRef.current = project.id;
       } catch (backendErr) {
         const localProject: Project = fallbackProject;
-        addProjectToFirestore(localProject).catch(() => undefined);
+        addProjectToFirestore(localProject).catch((e) =>
+          console.warn("[Firestore] fallback placement sync failed:", e)
+        );
         setProjects((prev) => [localProject, ...prev]);
         pendingEditIdRef.current = localProject.id;
         console.warn("[Projects] Backend unavailable, saved placement directly to Firestore:", backendErr);
@@ -3057,11 +3173,15 @@ export default function App() {
                   ? "planning"
                   : session.role === "Private Engineer"
                     ? "pengineer"
-                    : session.role === "Engineer"
-                      ? "engineer_dashboard"
-                      : session.role === "MPDC"
-                        ? (session.username === "mpdc_admin" || session.role === "MPDC Admin" ? "mpdc_admin" : "permits")
-                        : "app"
+                    : session.role === "MEO"
+                      ? "meo_dashboard"
+                      : session.role === "OBO"
+                        ? "obo_dashboard"
+                        : session.role === "Engineer"
+                          ? "meo_dashboard"
+                          : session.role === "MPDC"
+                            ? (session.username === "mpdc_admin" || session.role === "MPDC Admin" ? "mpdc_admin" : "permits")
+                            : "app"
             );
           }}
           onBack={() => navigateBack("landing")}
@@ -3129,16 +3249,22 @@ export default function App() {
                 : "landing"
             )}
             onCreated={(payload, trackingNo) => {
+              const isLgu = payload.category === "municipal_project";
               const newProj: Project = {
-                id: `proj_${Date.now()}`,
+                id: isLgu ? `lgu-proj-${Date.now()}` : `app-${Date.now()}`,
+                isPrivateApplication: !isLgu,
+                isLguProject: isLgu,
+                trackingNumber: trackingNo,
+                fundingSource: isLgu ? "Municipal Development Fund (MDF)" : "Private / Citizen",
+                contractor: isLgu ? "Municipal Engineering Office" : (payload.applicantName || "Private Property Owner"),
                 name: payload.title,
-                type: payload.category === "agricultural" ? "barn" : payload.category === "municipal_project" ? "office" : "office",
+                type: payload.category === "agricultural" ? "Agricultural Structure" : isLgu ? "Municipal Project" : "Private Building",
                 category: payload.category === "agricultural" ? "Agriculture" : payload.category === "municipal_project" ? "Infrastructure" : "Building",
                 status: "Planned",
                 progress: 0,
                 budget: payload.estimatedCostPhp || 0,
                 spent: 0,
-                department: payload.implementingDepartment || "MPDC",
+                department: payload.implementingDepartment || (isLgu ? "Engineering" : "OBO"),
                 location: {
                   lon: payload.lon ?? 121.509513,
                   lat: payload.lat ?? 14.185435,
@@ -3153,7 +3279,9 @@ export default function App() {
                 } · Tracking: ${trackingNo} · Proponent: ${payload.applicantName}`,
               };
               setProjects((prev) => [newProj, ...prev]);
-              addProjectToFirestore(newProj).catch(() => undefined);
+              addProjectToFirestore(newProj).catch((e) =>
+                console.warn("[Firestore] new app pin sync warning:", e)
+              );
               setSelectedSitePin(newProj);
               setTrackingReference(trackingNo);
               // NOTE: Do not call setScreen here.
@@ -3238,16 +3366,7 @@ export default function App() {
           <PublicTransparencyPortal
             projects={
               Array.isArray(projects)
-                ? projects.filter(
-                    (p: any) =>
-                      !p?.isPrivateApplication &&
-                      p?.type !== "Private Building" &&
-                      !p?.trackingNumber &&
-                      (p?.isLguProject ||
-                        p?.type === "Municipal Project" ||
-                        p?.id?.startsWith("lgu-proj-") ||
-                        p?.id?.startsWith("P"))
-                  )
+                ? projects.filter((p: any) => isLguInfrastructureProject(p))
                 : undefined
             }
             onBack={goHome}
@@ -3273,7 +3392,8 @@ export default function App() {
         />
       )}
 
-      {(screen === "engineer_dashboard" || screen === "engineer_applications") && currentSession && (
+      {/* Office of the Building Official (OBO) — Executive Dashboard with Site Inspections & Clearances */}
+      {(screen === "obo_dashboard" || screen === "engineer_dashboard" || screen === "engineer_applications") && currentSession && (
         <EngineerDashboardPage
           onBack={() => navigateBack("app")}
           session={currentSession}
@@ -3380,6 +3500,55 @@ export default function App() {
         />
       )}
 
+      {/* Dedicated Municipal Engineering Office (MEO) Public Infrastructure Dashboard */}
+      {screen === "meo_dashboard" && currentSession && (
+        <MeoDashboardPage
+          initialTab={meoDashboardTab}
+          session={currentSession}
+          onBack={() => navigateBack("app")}
+          onNavigateToMap={(projId, lat, lon, projectObj) => {
+            setMapHold(true);
+            setScreen("app");
+            if (projectObj) {
+              setProjects((prev) => {
+                const map = new Map<string, Project>();
+                for (const p of prev) {
+                  if (p?.id) map.set(p.id, p);
+                }
+                map.set(projectObj.id, projectObj);
+                return Array.from(map.values());
+              });
+              setSelectedSitePin(projectObj);
+            } else if (projId) {
+              const target = projects.find((p) => p.id === projId);
+              if (target) setSelectedSitePin(target);
+            }
+
+            const targetLat = lat ?? projectObj?.location?.lat;
+            const targetLon = lon ?? projectObj?.location?.lon;
+
+            let tries = 0;
+            const timer = setInterval(() => {
+              tries++;
+              const ok = projId ? cesiumMapRef.current?.flyToProject(projId) : false;
+              if (ok || tries > 25) {
+                clearInterval(timer);
+                if (!ok && targetLat != null && targetLon != null) {
+                  cesiumMapRef.current?.flyToLonLat(targetLon, targetLat, 250);
+                }
+              }
+            }, 150);
+          }}
+          onNavigate={(target) => setScreen(target as any)}
+          onLogout={goHome}
+          onProjectUpdated={() => {
+            refreshProjects();
+          }}
+        />
+      )}
+
+
+
       {screen === "documents" && currentSession && isMunicipalStaff(currentRole) && currentRole !== "Engineer" && (
         <DocumentsPage
           session={currentSession}
@@ -3403,6 +3572,16 @@ export default function App() {
           onNavigate={(target) => setScreen(target as any)}
           session={currentSession}
           onLogout={goHome}
+        />
+      )}
+
+      {((screen === "engineer_analytics") || (screen === "analytics" && (currentRole === "Engineer" || currentRole === "MEO"))) && currentSession && (
+        <MeoDashboardPage
+          initialTab="analytics"
+          session={currentSession}
+          onNavigateToMap={handleNavigateToMap}
+          onLogout={goHome}
+          onProjectUpdated={refetchCitizenProjects}
         />
       )}
 
@@ -3437,9 +3616,18 @@ export default function App() {
                 visible={!parkMapShell}
                 paused={parkMapShell}
                 selectedProjectId={selectedSitePin?.id || null}
-                placementMode={placementMode && (currentRole === "Engineer" || currentRole === "MPDC" || currentRole === "Super Admin")}
+                placementMode={placementMode && (currentRole === "Engineer" || currentRole === "MEO" || currentRole === "MPDC" || currentRole === "Super Admin")}
                 onPlaceClick={openPlacementAt}
                 onSelectSitePin={(p) => {
+                  if (
+                    meoRoleActive &&
+                    (!isLguInfrastructureProject(p) ||
+                      (p as any).isPrivateApplication ||
+                      p.type === "Private Building" ||
+                      Boolean((p as any).trackingNumber))
+                  ) {
+                    return;
+                  }
                   const actualInspectionPhotos = (p as any).inspectionPhotos || [];
                   const nonGeotaggedPhotos = (p.photos || []).filter(
                     (ph: any) =>
@@ -3467,7 +3655,7 @@ export default function App() {
               />
 
               {/* Floating Sectoral Filter for GIS Map Pins */}
-              {(currentRole === "Engineer" || currentRole === "Super Admin" || isMunicipalStaff(currentRole) || currentRole === "Viewer" || !currentRole) && (
+              {!meoRoleActive && (currentRole === "Super Admin" || isMunicipalStaff(currentRole) || currentRole === "Viewer" || !currentRole) && (
                 <div
                   className="map-sector-filter-floating"
                   onPointerDown={stopMapPointer}
@@ -3518,7 +3706,7 @@ export default function App() {
                       onClick={() => setInfraFilter((prev) => ({ ...prev, sector: "all" }))}
                     >
                       <span>Lahat</span>
-                      <span className="map-sector-pill-count">{projects.length}</span>
+                      <span className="map-sector-pill-count">{totalAvailableSites}</span>
                     </button>
 
                     {SECTORAL_KEYS.map((k) => {
@@ -3528,6 +3716,9 @@ export default function App() {
                       const Icon = def.icon;
                       const count = sectorProjectCounts?.[k] ?? 0;
                       const isEmpty = count === 0;
+                      if (meoRoleActive && (isEmpty || ["Residential", "Apartment", "Townhouse", "Dormitory"].includes(k))) {
+                        return null;
+                      }
 
                       return (
                         <button
@@ -3612,7 +3803,7 @@ export default function App() {
                               <span className="map-sector-popover-name">Lahat ng Sektor</span>
                               <span className="map-sector-popover-sub">Ipakita ang lahat ng proyekto sa mapa</span>
                             </div>
-                            <span className="map-sector-popover-badge">{projects.length} sites</span>
+                            <span className="map-sector-popover-badge">{totalAvailableSites} sites</span>
                           </button>
 
                           {SECTORAL_KEYS.map((k) => {
@@ -3621,6 +3812,9 @@ export default function App() {
                             const isSelected = infraFilter.sector === k;
                             const Icon = def.icon;
                             const count = sectorProjectCounts?.[k] ?? 0;
+                            if (meoRoleActive && (count === 0 || ["Residential", "Apartment", "Townhouse", "Dormitory"].includes(k))) {
+                              return null;
+                            }
                             return (
                               <button
                                 key={k}
@@ -3974,32 +4168,133 @@ export default function App() {
                       </div>
                     )}
 
-                    {currentRole === "Engineer" && (
+                    {/* MEO Role Navigation */}
+                    {currentRole === "MEO" && (
                       <button
                         type="button"
-                        className={`topBar-nav-link topBar-nav-clearance${(screen === "engineer_applications" || screen === "engineer_dashboard") ? " active" : ""}`}
+                        className={`topBar-nav-link topBar-nav-clearance${screen === "meo_dashboard" && meoDashboardTab !== "documents" ? " active" : ""}`}
                         onClick={() => {
                           setMoreMenuOpen(false);
-                          setScreen("engineer_dashboard");
+                          setScreen("meo_dashboard");
                         }}
-                        title="Tanggapan ng Inhinyero (Executive Engineering Dashboard & Site Inspection Queue)"
+                        title="Tanggapan ng Pambayang Inhinyero (MEO Public Infrastructure)"
                       >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
-                          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+                          <path d="M2 20h20M5 20V8l7-5 7 5v12M9 20v-6h6v6" />
                         </svg>
-                        <span className="topBar-exit-full">Clearance &amp; Pinning</span>
-                        <span className="topBar-exit-short">Clearance</span>
+                        <span className="topBar-exit-full">MEO Proyekto</span>
+                        <span className="topBar-exit-short">MEO</span>
                       </button>
                     )}
+
+                    {/* OBO Role Navigation */}
+                    {currentRole === "OBO" && (
+                      <button
+                        type="button"
+                        className={`topBar-nav-link topBar-nav-permits${screen === "obo_dashboard" ? " active" : ""}`}
+                        onClick={() => {
+                          setMoreMenuOpen(false);
+                          setScreen("obo_dashboard");
+                        }}
+                        title="Tanggapan ng Tagapangasiwa ng Gusali (OBO Building Permits & Site Inspections)"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                          <polyline points="14 2 14 8 20 8" />
+                        </svg>
+                        <span className="topBar-exit-full">Building Permits (OBO)</span>
+                        <span className="topBar-exit-short">OBO</span>
+                      </button>
+                    )}
+
+                    {/* Legacy Engineer Role Navigation */}
+                    {currentRole === "Engineer" && (
+                      <>
+                        <button
+                          type="button"
+                          className={`topBar-nav-link topBar-nav-clearance${(screen === "engineer_applications" || screen === "engineer_dashboard" || screen === "meo_dashboard") && screen !== "engineer_analytics" ? " active" : ""}`}
+                          onClick={() => {
+                            setMoreMenuOpen(false);
+                            setScreen("meo_dashboard");
+                          }}
+                          title="Tanggapan ng Inhinyero (Executive Engineering Dashboard)"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
+                            <path d="M2 20h20M5 20V8l7-5 7 5v12M9 20v-6h6v6" />
+                          </svg>
+                          <span className="topBar-exit-full">MEO Proyekto</span>
+                          <span className="topBar-exit-short">MEO</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          className={`topBar-nav-link${screen === "engineer_analytics" ? " active" : ""}`}
+                          onClick={() => {
+                            setMoreMenuOpen(false);
+                            setScreen("engineer_analytics");
+                          }}
+                          title="Engineering and POW Analytics"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
+                            <line x1="18" y1="20" x2="18" y2="10" />
+                            <line x1="12" y1="20" x2="12" y2="4" />
+                            <line x1="6" y1="20" x2="6" y2="14" />
+                          </svg>
+                          <span className="topBar-exit-full">Engineering Analytics</span>
+                          <span className="topBar-exit-short">Stats</span>
+                        </button>
+                      </>
+                    )}
+
+                    {/* Super Admin & MPDC Cross-Department Direct Access */}
+                    {(currentRole === "Super Admin" || currentRole === "MPDC" || currentSession?.username === "mpdc_admin" || currentSession?.role === "MPDC Admin") && (
+                      <>
+                        <button
+                          type="button"
+                          className={`topBar-nav-link topBar-nav-clearance${screen === "meo_dashboard" && meoDashboardTab !== "documents" ? " active" : ""}`}
+                          onClick={() => {
+                            setMoreMenuOpen(false);
+                            setScreen("meo_dashboard");
+                          }}
+                          title="Tanggapan ng Pambayang Inhinyero (MEO Public Infrastructure)"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
+                            <path d="M2 20h20M5 20V8l7-5 7 5v12M9 20v-6h6v6" />
+                          </svg>
+                          <span className="topBar-exit-full">MEO Proyekto</span>
+                          <span className="topBar-exit-short">MEO</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          className={`topBar-nav-link topBar-nav-permits${screen === "obo_dashboard" ? " active" : ""}`}
+                          onClick={() => {
+                            setMoreMenuOpen(false);
+                            setScreen("obo_dashboard");
+                          }}
+                          title="Tanggapan ng Tagapangasiwa ng Gusali (OBO Building Permits & Site Inspections)"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                            <polyline points="14 2 14 8 20 8" />
+                          </svg>
+                          <span className="topBar-exit-full">OBO Permits</span>
+                          <span className="topBar-exit-short">OBO</span>
+                        </button>
+                      </>
+                    )}
+
+                    {/* Engineering Blueprints Vault for MEO / Legacy Engineer */}
                     {currentRole === "Engineer" && (
                       <button
                         type="button"
-                        className={`topBar-nav-link${screen === "engineer_documents" ? " active" : ""}`}
+                        className={`topBar-nav-link${screen === "meo_dashboard" && meoDashboardTab === "documents" ? " active" : ""}`}
                         onClick={() => {
                           setMoreMenuOpen(false);
-                          setScreen("engineer_documents");
+                          setMeoDashboardTab("documents");
+                          setScreen("meo_dashboard");
                         }}
-                        title="Engineering Documents & Blueprints Vault (Opisyal na Resibo O.R., Blueprints, at Clearances)"
+                        title="Engineering Documents & Blueprints Vault"
                       >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
                           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -4012,7 +4307,32 @@ export default function App() {
                         <span className="topBar-exit-short">Docs</span>
                       </button>
                     )}
-                    {(currentSession?.username === "mpdc_admin" || currentSession?.role === "MPDC Admin" || currentRole === "Super Admin" || currentRole === "MPDC") && currentRole !== "Engineer" && (
+
+                    {currentRole === "MEO" && (
+                      <button
+                        type="button"
+                        className={`topBar-nav-link${screen === "meo_dashboard" && meoDashboardTab === "documents" ? " active" : ""}`}
+                        onClick={() => {
+                          setMoreMenuOpen(false);
+                          setMeoDashboardTab("documents");
+                          setScreen("meo_dashboard");
+                        }}
+                        title="Engineering Documents & Blueprints Vault"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                          <polyline points="14 2 14 8 20 8" />
+                          <line x1="16" y1="13" x2="8" y2="13" />
+                          <line x1="16" y1="17" x2="8" y2="17" />
+                          <polyline points="10 9 9 9 8 9" />
+                        </svg>
+                        <span className="topBar-exit-full">Documents</span>
+                        <span className="topBar-exit-short">Docs</span>
+                      </button>
+                    )}
+
+                    {/* MPDC & Super Admin Exclusive Permitting & Zoning */}
+                    {(currentSession?.username === "mpdc_admin" || currentSession?.role === "MPDC Admin" || currentRole === "Super Admin" || currentRole === "MPDC") && (
                       <button
                         type="button"
                         className={`topBar-nav-link topBar-nav-permits${screen === "permits" ? " active" : ""}`}
@@ -4029,7 +4349,9 @@ export default function App() {
                         <span className="topBar-exit-short">Permits</span>
                       </button>
                     )}
-                    {isMunicipalStaff(currentRole) && currentRole !== "Engineer" && (
+
+                    {/* MPDC Planning Documents — strictly isolated from OBO & MEO */}
+                    {(currentRole === "Super Admin" || currentRole === "MPDC" || currentSession?.username === "mpdc_admin" || currentRole === "Agriculture") && (
                       <button
                         type="button"
                         className={`topBar-nav-link${screen === "documents" ? " active" : ""}`}
@@ -4037,6 +4359,7 @@ export default function App() {
                           setMoreMenuOpen(false);
                           setScreen("documents");
                         }}
+                        title="MPDC Document Management System"
                       >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
                           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -4049,7 +4372,9 @@ export default function App() {
                         <span className="topBar-exit-short">Docs</span>
                       </button>
                     )}
-                    {isMunicipalStaff(currentRole) && currentRole !== "Engineer" && (
+
+                    {/* MPDC Analytics — strictly isolated from OBO & MEO */}
+                    {(currentRole === "Super Admin" || currentRole === "MPDC" || currentSession?.username === "mpdc_admin") && (
                       <button
                         type="button"
                         className={`topBar-nav-link${screen === "analytics" ? " active" : ""}`}
@@ -4057,6 +4382,7 @@ export default function App() {
                           setMoreMenuOpen(false);
                           setScreen("analytics");
                         }}
+                        title="MPDC Analytics"
                       >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
                           <line x1="18" y1="20" x2="18" y2="10" />
@@ -4067,7 +4393,9 @@ export default function App() {
                         <span className="topBar-exit-short">Stats</span>
                       </button>
                     )}
-                    {roleConfig?.canSeeEngagement && (
+
+                    {/* Citizen / MPDC Engagement */}
+                    {roleConfig?.canSeeEngagement && (currentRole === "Super Admin" || currentRole === "MPDC" || currentRole === "Viewer") && (
                       <button
                         type="button"
                         className={`topBar-nav-link${screen === "engagement" ? " active" : ""}`}
@@ -4075,6 +4403,7 @@ export default function App() {
                           setMoreMenuOpen(false);
                           setScreen("engagement");
                         }}
+                        title="Citizen Engagement"
                       >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}>
                           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
@@ -4083,7 +4412,9 @@ export default function App() {
                         <span className="topBar-exit-short">Engage</span>
                       </button>
                     )}
-                    {isMunicipalStaff(currentRole) && currentRole !== "Negosyo Center" && (
+
+                    {/* Municipal Inventory */}
+                    {(currentRole === "Super Admin" || currentRole === "MPDC" || currentSession?.username === "mpdc_admin") && (
                       <button
                         type="button"
                         className={`topBar-nav-link${screen === "inventory" ? " active" : ""}`}
@@ -4091,6 +4422,7 @@ export default function App() {
                           setMoreMenuOpen(false);
                           setScreen("inventory");
                         }}
+                        title="Municipal Asset Inventory"
                       >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: 4 }}><rect x="2" y="4" width="20" height="5" rx="1" /><path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9" /><path d="M10 13h4" /></svg>
                         <span className="topBar-exit-full">Inventory</span>
@@ -4197,7 +4529,7 @@ export default function App() {
                 coordinates={mapSettings.showCoordinates ?? true}
                 labels={mapSettings.showFloatingLabels ?? true}
                 placement={placementMode}
-                canPlace={currentRole === "Engineer" || currentRole === "MPDC"}
+                canPlace={currentRole === "Engineer" || currentRole === "MEO" || currentRole === "MPDC"}
                 onPlacement={() => {
                   setPlacementMode((v) => {
                     const next = !v;
@@ -4362,7 +4694,7 @@ export default function App() {
                     )}
                   </button>
                 )}
-                {(currentRole === "Engineer" || currentRole === "Admin") && (
+                {!meoRoleActive && (currentRole === "OBO" || currentRole === "Admin") && (
                   <button
                     type="button"
                     className={`sidebar-tab${sidebarTab === "inspection" ? " active" : ""}`}
@@ -4502,7 +4834,7 @@ export default function App() {
                 )}
 
                 {/* ── Dedicated Inspection Tab Content ── */}
-                {sidebarTab === "inspection" && (
+                {sidebarTab === "inspection" && !meoRoleActive && (
                   <div style={{ marginBottom: 16 }}>
                     <InspectionTaskQueue
                       embedded={true}
@@ -4855,7 +5187,7 @@ export default function App() {
                         Filter &amp; cluster
                       </div>
                       <div className="infra-filter-count">
-                        Showing <strong>{filteredProjects.length}</strong> of {projects.length} sites
+                        Showing <strong>{filteredProjects.length}</strong> of {totalAvailableSites} sites
                       </div>
                       <input
                         className="infra-filter-search"
@@ -4894,7 +5226,9 @@ export default function App() {
                           </button>
                         ))}
                       </div>
-                      <div className="infra-filter-label">Sector (8 Building Categories)</div>
+                      {!meoRoleActive && (
+                        <>
+                          <div className="infra-filter-label">Sector (8 Building Categories)</div>
                       <select
                         style={{
                           width: "100%",
@@ -4916,6 +5250,8 @@ export default function App() {
                           </option>
                         ))}
                       </select>
+                        </>
+                      )}
                       <div className="infra-filter-row">
                         <label>
                           Office
@@ -5080,7 +5416,7 @@ export default function App() {
                   }}
                 >
                   <option value="Municipal Project">Municipal Project</option>
-                  <option value="Private Building">Private Building</option>
+                  {!meoRoleActive && <option value="Private Building">Private Building</option>}
                   <option value="Agricultural Structure">Agricultural Structure</option>
                 </select>
               </div>
@@ -5338,6 +5674,12 @@ export default function App() {
                 ? "planning"
                 : updatedSession.role === "Private Engineer"
                 ? "pengineer"
+                : updatedSession.role === "MEO"
+                ? "meo_dashboard"
+                : updatedSession.role === "OBO"
+                ? "obo_dashboard"
+                : updatedSession.role === "Engineer"
+                ? "meo_dashboard"
                 : updatedSession.role === "MPDC"
                 ? (updatedSession.username === "mpdc_admin" || updatedSession.role === "MPDC Admin" ? "mpdc_admin" : "permits")
                 : "app"

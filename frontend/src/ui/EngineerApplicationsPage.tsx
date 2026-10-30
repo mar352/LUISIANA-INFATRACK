@@ -206,7 +206,7 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
     setIsSubmittingApproval(true);
     try {
       const appId = approvingApp.id || approvingApp.trackingNumber;
-      const engineerName = session?.fullName || session?.username || "Engr. Mario S. Baldovino (Municipal Engineer)";
+      const engineerName = session?.fullName || session?.username || "Municipal Engineer";
 
       await patchCitizenApplication(appId, {
         engineerApproved: true,
@@ -258,7 +258,7 @@ export const EngineerApplicationsPage: React.FC<EngineerApplicationsPageProps> =
     setIsSubmittingHold(true);
     try {
       const appId = holdingApp.id || holdingApp.trackingNumber;
-      const engineerName = session?.fullName || session?.username || "Engr. Mario S. Baldovino (Municipal Engineer)";
+      const engineerName = session?.fullName || session?.username || "Municipal Engineer";
 
       await patchCitizenApplication(appId, {
         status: "returned",

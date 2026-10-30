@@ -14,7 +14,8 @@ import {
 import type { Project } from "../types";
 import { backendUrl } from "../lib/api";
 import { useTranslation } from "../lib/i18n";
-import { updateProjectInFirestore } from "../services/firestore-projects";
+import { updateProjectInFirestore, recordProjectInspectionInFirestore } from "../services/firestore-projects";
+import { compressImageToBase64 } from "../lib/image-compress";
 import "./InspectionUpdateModal.css";
 
 
@@ -250,6 +251,17 @@ export const InspectionUpdateModal: React.FC<InspectionUpdateModalProps> = ({
           ? project.id.replace("infra-app-", "")
           : project.id);
 
+      // Convert photo to compressed base64 if selected, ensuring permanent storage in Cloud Firestore
+      let compressedPhotoUrl = previewUrl || "";
+      if (file) {
+        try {
+          const comp = await compressImageToBase64(file, 1024, 1024, 0.75);
+          if (comp) compressedPhotoUrl = comp;
+        } catch (compErr) {
+          console.warn("[InspectionUpdateModal] Photo compression notice:", compErr);
+        }
+      }
+
       const formData = new FormData();
       formData.append("stage", stage);
       formData.append("progress", String(progress));
@@ -285,31 +297,60 @@ export const InspectionUpdateModal: React.FC<InspectionUpdateModalProps> = ({
       const nextStatus = progress >= 100 ? "Completed" : progress >= 50 ? "Ongoing" : "Planned";
       const nextColor = progress >= 100 ? "#10b981" : progress >= 50 ? "#f5a623" : "#3b82f6";
       const now = new Date().toISOString();
-      const newPhotoUrl = data?.application?.latestInspection?.photoUrl || data?.project?.latestInspection?.photoUrl || previewUrl || "";
+      const serverPhotoUrl = data?.application?.latestInspection?.photoUrl || data?.project?.latestInspection?.photoUrl || "";
+      const finalPhotoUrl = compressedPhotoUrl || (serverPhotoUrl ? resolvePhotoUrl(serverPhotoUrl) : "");
 
       const updatedRecord = {
         id: `insp-${Date.now()}`,
         stage,
         progress,
-        photoUrl: newPhotoUrl,
+        photoUrl: finalPhotoUrl,
         remarks,
         inspector,
         timestamp: now,
         inspectedAt: now,
+        stageLabel: `${stage === "before" ? "Before Construction" : stage === "after" ? "Completed / Final" : "During Construction"} (${progress}%)`,
       };
 
-      // Also persist to Firestore if it's an LGU project or has an ID
+      // ── Cloud Firestore Sync: Pinned project, inspections, and progress photos ──
+      const inspectionPayload = {
+        id: updatedRecord.id,
+        stage,
+        progress,
+        photoUrl: finalPhotoUrl,
+        remarks,
+        inspector,
+        timestamp: now,
+        inspectedAt: now,
+        stageLabel: updatedRecord.stageLabel,
+      };
+
       if (project?.id) {
         try {
-          await updateProjectInFirestore(project.id, {
+          await recordProjectInspectionInFirestore(project.id, inspectionPayload, {
+            ...project,
             progress,
             inspectionStage: stage,
             status: nextStatus as any,
             markerColor: nextColor,
-            latestInspection: updatedRecord as any,
           });
-        } catch (e) {
-          console.warn("[InspectionUpdateModal] Firestore update notice:", e);
+          console.info("[InspectionUpdateModal] Successfully synced inspection to Cloud Firestore:", project.id);
+        } catch (e: any) {
+          console.warn("[InspectionUpdateModal] Firestore inspection sync notice:", e?.message || e);
+        }
+
+        // If appId differs from project.id (e.g. tracking number), also update under appId
+        if (appId && appId !== project.id) {
+          try {
+            await recordProjectInspectionInFirestore(appId, inspectionPayload, {
+              progress,
+              inspectionStage: stage,
+              status: nextStatus as any,
+              markerColor: nextColor,
+            });
+          } catch {
+            /* ignore */
+          }
         }
 
         // Also update local storage cache immediately
@@ -318,7 +359,7 @@ export const InspectionUpdateModal: React.FC<InspectionUpdateModalProps> = ({
           const cached = cachedRaw ? JSON.parse(cachedRaw) : [];
           const list = Array.isArray(cached) ? cached : [];
           const updatedList = list.map((p: any) =>
-            p.id === project.id
+            p.id === project.id || p.trackingNumber === appId
               ? {
                   ...p,
                   progress,
@@ -326,6 +367,21 @@ export const InspectionUpdateModal: React.FC<InspectionUpdateModalProps> = ({
                   status: nextStatus,
                   markerColor: nextColor,
                   latestInspection: updatedRecord,
+                  photos: finalPhotoUrl
+                    ? [
+                        {
+                          id: `photo-${updatedRecord.id}`,
+                          url: finalPhotoUrl,
+                          caption: `${stage.toUpperCase()} Inspection (${progress}%) - ${remarks || "Site progress photo"}`,
+                          stage,
+                          kind: "progress",
+                          uploadedAt: now,
+                          lat: p.location?.lat,
+                          lon: p.location?.lon,
+                        },
+                        ...(p.photos || []),
+                      ]
+                    : p.photos,
                 }
               : p
           );

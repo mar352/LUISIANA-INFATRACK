@@ -18,6 +18,8 @@ import {
   ShieldCheck,
   Layers,
   Eye,
+  Calendar,
+  Clock,
 } from "lucide-react";
 import { SiteProgressPopup } from "./SiteProgressPopup";
 import {
@@ -37,8 +39,14 @@ import {
 import { BARANGAY_COORDINATES } from "./PinpointMapPicker";
 import { lookupBarangayCoords } from "../lib/barangay-overlay";
 import { subscribeToProjects } from "../services/firestore-projects";
+import {
+  subscribeToProjectSchedules,
+  matchesScheduleToProject,
+  type FirestoreInspectionSchedule,
+} from "../services/firestore-inspection-schedules";
 import { fetchPublicProjects } from "../lib/api";
 import { ensurePinImages, projectsToGeoJson } from "../lib/stadia-pins";
+import { isLguInfrastructureProject } from "../lib/infra-filter";
 import "./PublicTransparencyPortal.css";
 
 export interface PublicTransparencyPortalProps {
@@ -205,8 +213,8 @@ export const PublicTransparencyPortal: React.FC<PublicTransparencyPortalProps> =
         const cached = JSON.parse(raw);
         if (Array.isArray(cached) && cached.length > 0) {
           const map = new Map<string, Project>();
-          for (const p of list) if (p?.id) map.set(p.id, p);
-          for (const p of cached) if (p?.id) {
+          for (const p of list) if (p?.id && isLguInfrastructureProject(p)) map.set(p.id, p);
+          for (const p of cached) if (p?.id && isLguInfrastructureProject(p)) {
             // Filter out corrupted test project that overrode Simbahan
             if (p.id === "lgu-proj-1793104962886" && (p.name !== "Simbahan" || Number(p.budgetTotal) > 100000)) {
               continue;
@@ -214,24 +222,25 @@ export const PublicTransparencyPortal: React.FC<PublicTransparencyPortalProps> =
             const existing = map.get(p.id);
             map.set(p.id, { ...p, ...(existing || {}) });
           }
-          return Array.from(map.values());
+          return Array.from(map.values()).filter((p) => isLguInfrastructureProject(p));
         }
       }
     } catch {}
-    return list;
+    return list.filter((p) => isLguInfrastructureProject(p));
   });
   const [isLoading, setIsLoading] = useState<boolean>(!propProjects && dbProjects.length === 0);
 
   useEffect(() => {
     let isMounted = true;
 
-    // Helper to merge incoming projects cleanly into state & cache
+    // Helper to merge incoming projects cleanly into state & cache (Strictly LGU Infrastructure Only)
     const mergeIncomingProjects = (incoming: Project[]) => {
       if (!isMounted || !Array.isArray(incoming) || incoming.length === 0) return;
+      const lguOnlyIncoming = incoming.filter((p) => isLguInfrastructureProject(p));
       setDbProjects((prev) => {
         const map = new Map<string, Project>();
         for (const p of prev) {
-          if (p?.id) {
+          if (p?.id && isLguInfrastructureProject(p)) {
             // Clean out corrupted Simbahan override
             if (p.id === "lgu-proj-1793104962886" && (p.name !== "Simbahan" || Number(p.budgetTotal) > 100000)) {
               continue;
@@ -239,15 +248,12 @@ export const PublicTransparencyPortal: React.FC<PublicTransparencyPortalProps> =
             map.set(p.id, p);
           }
         }
-        for (const p of incoming) if (p?.id) {
+        for (const p of lguOnlyIncoming) if (p?.id) {
           const existing = map.get(p.id);
           // Incoming fresh API / PostgreSQL / event data takes precedence
           map.set(p.id, { ...(existing || {}), ...p });
         }
-        const merged = Array.from(map.values());
-        try {
-          localStorage.setItem("infatrack-projects-cache", JSON.stringify(merged));
-        } catch {}
+        const merged = Array.from(map.values()).filter((p) => isLguInfrastructureProject(p));
         return merged;
       });
       setIsLoading(false);
@@ -339,7 +345,7 @@ export const PublicTransparencyPortal: React.FC<PublicTransparencyPortalProps> =
         const cached = JSON.parse(raw);
         if (Array.isArray(cached)) {
           for (const p of cached) {
-            if (p?.id) {
+            if (p?.id && isLguInfrastructureProject(p)) {
               if (p.id === "lgu-proj-1793104962886" && (p.name !== "Simbahan" || Number(p.budgetTotal) > 100000)) {
                 continue;
               }
@@ -354,25 +360,9 @@ export const PublicTransparencyPortal: React.FC<PublicTransparencyPortalProps> =
 
     const all = Array.from(map.values());
 
-    // STRICT: Only LGU / Municipal Infrastructure projects appear in Public Transparency Portal!
-    return all.filter((p) => {
-      if (!p) return false;
-      // Exclude private citizen applications
-      if (p.isPrivateApplication || p.type === "Private Building" || (p as any).trackingNumber) {
-        return false;
-      }
-      // Must be an LGU / Municipal project
-      return Boolean(
-        p.isLguProject ||
-        p.type === "Municipal Project" ||
-        (typeof p.id === "string" && (
-          p.id.startsWith("lgu-proj-") ||
-          p.id.startsWith("P") ||
-          p.id.startsWith("municipal-") ||
-          p.id.startsWith("muni-")
-        ))
-      );
-    });
+    // STRICT: Only genuine LGU / Municipal Infrastructure projects appear in Public Transparency Portal!
+    // All private citizen building permit applications and private infrastructures are strictly excluded.
+    return all.filter((p) => isLguInfrastructureProject(p));
   }, [propProjects, dbProjects]);
 
   // ── 2. SIDEBAR FILTER CONTROLS ──
@@ -472,6 +462,117 @@ export const PublicTransparencyPortal: React.FC<PublicTransparencyPortalProps> =
       (filteredProjects.length > 0 ? filteredProjects[0] : null)
     );
   }, [selectedProjectId, activeProjects, filteredProjects]);
+
+  // Real-time inspection schedule — Firestore subscription + PostgreSQL REST fallback + LocalStorage + Event listeners
+  const [projectScheduledInspection, setProjectScheduledInspection] = useState<FirestoreInspectionSchedule | null>(null);
+
+  useEffect(() => {
+    // CRITICAL: Immediately clear inspection state so other projects never show stale/hardcoded data
+    setProjectScheduledInspection(null);
+
+    if (!selectedProject) {
+      return;
+    }
+
+    const checkDirectOrLocal = (): boolean => {
+      // 1. Direct nextScheduledInspection on selectedProject object
+      if ((selectedProject as any).nextScheduledInspection?.date) {
+        setProjectScheduledInspection((selectedProject as any).nextScheduledInspection as unknown as FirestoreInspectionSchedule);
+        return true;
+      }
+      // 2. Local storage cache
+      try {
+        const raw = localStorage.getItem("infatrack_meo_inspection_schedules");
+        if (raw) {
+          const list = JSON.parse(raw);
+          if (Array.isArray(list)) {
+            const match = list.find((s) =>
+              matchesScheduleToProject(
+                s,
+                selectedProject.id,
+                (selectedProject as any).code || "",
+                selectedProject.name || (selectedProject as any).title || ""
+              )
+            );
+            if (match) {
+              setProjectScheduledInspection(match);
+              return true;
+            }
+          }
+        }
+      } catch {}
+      return false;
+    };
+
+    // Instant local check (zero latency)
+    checkDirectOrLocal();
+
+    // 3. Real-time Firestore subscription + PostgreSQL REST check
+    const unsub = subscribeToProjectSchedules(
+      selectedProject.id,
+      (selectedProject as any).code || "",
+      selectedProject.name || (selectedProject as any).title || "",
+      (schedule) => {
+        if (schedule) {
+          setProjectScheduledInspection(schedule);
+        } else {
+          // If neither Firestore nor PostgreSQL has a schedule, check if project itself has it, else null
+          const foundLocal = checkDirectOrLocal();
+          if (!foundLocal) {
+            setProjectScheduledInspection(null);
+          }
+        }
+      }
+    );
+
+    // 4. Instant window events (for cross-component / same-tab instant triggers)
+    const handleInspectionScheduled = (e: any) => {
+      const sched = e?.detail;
+      if (
+        sched &&
+        matchesScheduleToProject(
+          sched,
+          selectedProject.id,
+          (selectedProject as any).code || "",
+          selectedProject.name || (selectedProject as any).title || ""
+        )
+      ) {
+        setProjectScheduledInspection(sched);
+      }
+    };
+
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === "infatrack_meo_inspection_schedules" || e.key === "infatrack-projects-cache") {
+        checkDirectOrLocal();
+      }
+    };
+
+    window.addEventListener("inspection-scheduled", handleInspectionScheduled);
+    window.addEventListener("projects-updated", checkDirectOrLocal);
+    window.addEventListener("storage", handleStorageChange);
+
+    return () => {
+      unsub();
+      window.removeEventListener("inspection-scheduled", handleInspectionScheduled);
+      window.removeEventListener("projects-updated", checkDirectOrLocal);
+      window.removeEventListener("storage", handleStorageChange);
+    };
+  }, [selectedProject?.id, selectedProject?.name, (selectedProject as any)?.nextScheduledInspection]);
+
+  const formatInspectionDate = (dateStr?: string): string => {
+    if (!dateStr) return "";
+    try {
+      const d = new Date(dateStr + "T00:00:00");
+      if (isNaN(d.getTime())) return dateStr;
+      return d.toLocaleDateString("en-PH", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+    } catch {
+      return dateStr;
+    }
+  };
 
   // Helper to extract or fallback to verified barangay coordinates, strictly constrained within Luisiana
   const getProjectCoords = (p: Project | null): { lon: number; lat: number } | null => {
@@ -1445,6 +1546,55 @@ export const PublicTransparencyPortal: React.FC<PublicTransparencyPortalProps> =
                     "Awaiting Data"}
                 </div>
               </div>
+
+              {/* 3.5 MEO Scheduled Ocular Inspection */}
+              <div className="ptp-popup-row ptp-inspection-row">
+                <div className="ptp-popup-row-label">
+                  <Calendar size={14} className="ptp-row-icon" />
+                  <span>Ocular Inspection:</span>
+                </div>
+                <div className="ptp-popup-row-value">
+                  {projectScheduledInspection ? (
+                    <span className="ptp-inspection-date-tag">
+                      📅 {formatInspectionDate(projectScheduledInspection.date)}
+                      {projectScheduledInspection.time ? ` · ${projectScheduledInspection.time}` : ""}
+                    </span>
+                  ) : (
+                    <span className="ptp-awaiting-subtle">
+                      Awaiting MEO Schedule
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Dedicated MEO Field Inspection Notice Card */}
+              {projectScheduledInspection && (
+                <div className="ptp-scheduled-inspection-card">
+                  <div className="ptp-sched-head">
+                    <div className="ptp-sched-title-group">
+                      <Calendar size={13} className="ptp-sched-icon" />
+                      <span className="ptp-sched-title">MEO Site Inspection Scheduled</span>
+                    </div>
+                    <span className="ptp-sched-status-badge">
+                      {projectScheduledInspection.status || "Nakatakda"}
+                    </span>
+                  </div>
+                  <div className="ptp-sched-body">
+                    <div className="ptp-sched-time-row">
+                      <Clock size={12} className="ptp-sched-sub-icon" />
+                      <span>
+                        {formatInspectionDate(projectScheduledInspection.date)} at{" "}
+                        {projectScheduledInspection.time || "09:00 AM"}
+                      </span>
+                    </div>
+                    {projectScheduledInspection.assignedInspector && (
+                      <div className="ptp-sched-inspector-row">
+                        <span>Assigned Officer: <strong>{projectScheduledInspection.assignedInspector}</strong></span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* 4 & 5. Approved Budget & Utilized Budget */}
               <div className="ptp-budget-card">

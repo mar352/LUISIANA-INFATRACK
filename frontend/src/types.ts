@@ -322,6 +322,14 @@ export type Project = {
     inspectedAt: string;
     inspector?: string;
   } | null;
+  nextScheduledInspection?: {
+    date: string;
+    time?: string;
+    assignedInspector?: string;
+    status?: string;
+    notes?: string;
+    scheduledAt?: string;
+  } | null;
   inspectionPhotos?: Array<{
     url: string;
     stage: string;

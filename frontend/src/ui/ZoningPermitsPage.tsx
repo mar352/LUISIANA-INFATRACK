@@ -1764,7 +1764,7 @@ export function ZoningPermitsPage({
     const optimisticRemark = {
       id: `rem-instant-${Date.now()}`,
       fromOffice: selectedApp.status === "ocular_inspection" || selectedApp.status === "engineering" ? "Engineering" : "MPDC",
-      author: selectedApp.status === "ocular_inspection" ? "Engr. Mario S. Baldovino (Municipal Engineer)" : "Edward B. Romulo, EnP. (Zoning Officer)",
+      author: selectedApp.status === "ocular_inspection" ? "Municipal Engineer" : "Zoning Officer (MPDC)",
       message: textToSend,
       createdAt: new Date().toISOString(),
       requiresAction: false,
@@ -3040,10 +3040,124 @@ export function ZoningPermitsPage({
                       alert("Hindi maaaring ma-approve: Kinakailangang mag-upload ng kahit isang (1) actual site photo mula sa ocular inspection.");
                       return;
                     }
-                    if (payload.remarks) {
-                      handleSendNotes(payload.remarks);
+
+                    setUpdating(true);
+                    try {
+                      const uploadedPhotos: Array<{ url: string; originalName: string; size: number; name: string }> = [];
+
+                      for (const p of payload.photos) {
+                        if (p.file instanceof File) {
+                          const fd = new FormData();
+                          fd.append("file", p.file);
+                          fd.append("fieldKey", "photoDocs");
+                          const res = await fetch(backendUrl("/api/citizen/applications/upload"), {
+                            method: "POST",
+                            credentials: "include",
+                            body: fd,
+                          });
+                          if (res.ok) {
+                            const json = await res.json();
+                            if (json.url) {
+                              uploadedPhotos.push({
+                                url: json.url,
+                                originalName: p.name || json.originalName || "ocular-inspection-photo.jpg",
+                                size: p.size || json.size || 0,
+                                name: p.name || "Ocular Inspection Photo",
+                              });
+                            }
+                          }
+                        } else if ((p as any).url || (p as any).previewUrl) {
+                          uploadedPhotos.push({
+                            url: (p as any).url || (p as any).previewUrl,
+                            originalName: p.name || "ocular-inspection-photo.jpg",
+                            size: p.size || 0,
+                            name: p.name || "Ocular Inspection Photo",
+                          });
+                        }
+                      }
+
+                      const now = new Date().toISOString();
+                      const inspDate = payload.inspectionDate || now;
+                      const officer = payload.inspectingOfficer || session?.name || "Edward B. Romulo, EnP. (Zoning Officer)";
+                      const primaryPhotoUrl = uploadedPhotos[0]?.url || "";
+
+                      // Create official Before Construction inspection record automatically
+                      const beforeInspectionRecord = {
+                        id: `insp-ocular-${Date.now()}`,
+                        stage: "before",
+                        stageLabel: "Before Construction (0% - Ocular Site Inspection)",
+                        progress: 0,
+                        photoUrl: primaryPhotoUrl,
+                        uploadedAt: inspDate,
+                        inspectedAt: inspDate,
+                        timestamp: inspDate,
+                        remarks: payload.remarks || "Naisagawa ang 1-Araw na Ocular Site Inspection ng Zoning Officer (Hakbang 2).",
+                        inspector: officer,
+                        isActual: true,
+                      };
+
+                      // Existing inspection photos
+                      const existingInspections = Array.isArray(selectedApp.inspectionPhotos) ? selectedApp.inspectionPhotos : [];
+
+                      // Patch application with ocular data AND inspectionPhotos
+                      const patchData: any = {
+                        status: "approved_for_payment",
+                        notes: payload.remarks || reviewerNotes.trim() || undefined,
+                        ocular: {
+                          inspectedAt: inspDate,
+                          inspectingOfficer: officer,
+                          remarks: payload.remarks,
+                          setbacks: payload.setbacks,
+                          photos: uploadedPhotos,
+                        },
+                        ocularInspection: {
+                          inspectedAt: inspDate,
+                          inspectingOfficer: officer,
+                          remarks: payload.remarks,
+                          setbacks: payload.setbacks,
+                          photos: uploadedPhotos,
+                        },
+                        ocularPhotos: uploadedPhotos,
+                        inspectionPhotos: [beforeInspectionRecord, ...existingInspections],
+                        latestInspection: selectedApp.latestInspection || beforeInspectionRecord,
+                        stepProgress: {
+                          ...(selectedApp.stepProgress || {}),
+                          currentStep: 2,
+                          step2Completed: true,
+                          step2At: inspDate,
+                          step2By: officer,
+                        },
+                        remarks: [
+                          ...(selectedApp.remarks || []),
+                          {
+                            id: `rem-ocular-${Date.now()}`,
+                            fromOffice: "MPDC",
+                            author: officer,
+                            message: `[Hakbang 2: Ocular Inspection]: Naisagawa ang ocular inspection sa site. Naitala ang ${uploadedPhotos.length} site inspection photo(s). ${payload.remarks || "Sumusunod sa zoning at setback guidelines."}`,
+                            createdAt: now,
+                            actionType: "OCULAR_INSPECTION_COMPLETED",
+                            requiresAction: false,
+                          },
+                        ],
+                      };
+
+                      const patchRes = await patchCitizenApplication(selectedApp.id, patchData);
+                      if (patchRes && patchRes.application) {
+                        setApplications((prev) =>
+                          prev.map((a) => (a.id === selectedApp.id ? patchRes.application : a))
+                        );
+                        setSelectedApp(null);
+                        setNotification(
+                          `Zoning Clearance Inaprubahan! Matagumpay na naitala ang ${uploadedPhotos.length} ocular photo(s) sa "Before Construction". Handa na para sa bayaran.`
+                        );
+                        setTimeout(() => setNotification(null), 6000);
+                      }
+                    } catch (err: any) {
+                      console.error("Failed to save ocular inspection:", err);
+                      alert("Nabigong i-save ang ocular inspection: " + (err.message || "Error"));
+                    } finally {
+                      setUpdating(false);
                     }
-                    await handleUpdateStatus(selectedApp.id, "approved_for_payment", { closeModal: true });
                   }}
                   onReject={async (payload) => {
                     if (payload.remarks) {

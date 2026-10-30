@@ -16,6 +16,7 @@ import {
   getBuildingSector,
   type BuildingSectorKey,
 } from "../lib/sectoral-filter";
+import { isLguInfrastructureProject } from "../lib/infra-filter";
 import "./EngineerDashboardPage.css";
 
 interface EngineerDashboardPageProps {
@@ -81,26 +82,26 @@ const PRESET_HOLD_REASONS_EN = [
 
 const ENGINEERING_ROSTER: EngineeringStaff[] = [
   {
-    id: "ENG-001",
-    name: "Engr. Mario S. Baldovino",
-    position: "Municipal Engineer (Head of Office)",
-    specialization: "Structural & Geotechnical Engineering",
+    id: "OBO-001",
+    name: "Building Official",
+    position: "Building Official (Head of Office)",
+    specialization: "National Building Code (PD 1096) & Structural Safety",
     phone: "(049) 555-0201",
     status: "In Office",
     assignedBarangays: ["All 23 Barangays"]
   },
   {
-    id: "ENG-002",
-    name: "Engr. Leandro V. Castillo",
-    position: "Assistant Municipal Engineer",
-    specialization: "Infrastructure & Highway Engineering",
+    id: "OBO-002",
+    name: "Building Inspector & Structural Evaluator",
+    position: "Building Inspector & Structural Evaluator",
+    specialization: "Structural & Geotechnical Stability",
     phone: "(049) 555-0202",
     status: "On Field",
     assignedBarangays: ["Poblacion", "San Buenaventura", "San Diego"]
   },
   {
-    id: "ENG-003",
-    name: "Engr. Clarissa P. Alcantara",
+    id: "OBO-003",
+    name: "Building & Siting Inspector",
     position: "Building & Siting Inspector",
     specialization: "Building Setbacks & Zonal Inspection",
     phone: "(049) 555-0203",
@@ -108,8 +109,8 @@ const ENGINEERING_ROSTER: EngineeringStaff[] = [
     assignedBarangays: ["San Isidro", "De La Paz", "San Salvador"]
   },
   {
-    id: "ENG-004",
-    name: "Geod. Engr. Rafael M. Santos",
+    id: "OBO-004",
+    name: "Geodetic & GIS Survey Specialist",
     position: "Geodetic & GIS Survey Specialist",
     specialization: "Cadastral Boundary & Coordinate Pinning",
     phone: "(049) 555-0204",
@@ -117,9 +118,9 @@ const ENGINEERING_ROSTER: EngineeringStaff[] = [
     assignedBarangays: ["All 23 Barangays"]
   },
   {
-    id: "ENG-005",
-    name: "Arch. Dennis G. Ramos",
-    position: "Senior Architectural Draftsman",
+    id: "OBO-005",
+    name: "Senior Architectural Plans Evaluator",
+    position: "Senior Architectural Plans Evaluator",
     specialization: "Architectural Plans & CAD Compliance",
     phone: "(049) 555-0205",
     status: "In Office",
@@ -136,7 +137,7 @@ const INITIAL_SCHEDULES: InspectionSchedule[] = [
     buildingType: "Residential 2-Storey Concrete",
     date: new Date().toISOString().split("T")[0],
     time: "09:30 AM",
-    assignedInspector: "Engr. Clarissa P. Alcantara",
+    assignedInspector: "Building & Siting Inspector",
     status: "Nakatakda",
     notes: "Ocular inspection para sa boundary setbacks at resibo mula sa Assessor."
   },
@@ -148,7 +149,7 @@ const INITIAL_SCHEDULES: InspectionSchedule[] = [
     buildingType: "Commercial Building",
     date: new Date(Date.now() + 86400000).toISOString().split("T")[0],
     time: "02:00 PM",
-    assignedInspector: "Engr. Leandro V. Castillo",
+    assignedInspector: "Building Inspector & Structural Evaluator",
     status: "Nakatakda",
     notes: "Drainage elevation at soil compaction checking."
   }
@@ -436,7 +437,7 @@ export const EngineerDashboardPage: React.FC<EngineerDashboardPageProps> = ({
       const raw = localStorage.getItem("infatrack-projects-cache");
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) return parsed.filter((p: any) => isLguInfrastructureProject(p));
       }
     } catch { }
     return [];
@@ -500,7 +501,10 @@ export const EngineerDashboardPage: React.FC<EngineerDashboardPageProps> = ({
       const cached = localStorage.getItem("infatrack_engineering_roster");
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const hasLegacy = parsed.some((p: any) => /Mario|Baldovino|Alcantara|Castillo|Mercado|Santos/i.test(p?.name || ""));
+          if (!hasLegacy) return parsed;
+        }
       }
     } catch { }
     return ENGINEERING_ROSTER;
@@ -512,7 +516,10 @@ export const EngineerDashboardPage: React.FC<EngineerDashboardPageProps> = ({
       const cached = localStorage.getItem("infatrack_engineering_schedules");
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const hasLegacy = parsed.some((s: any) => /Mario|Baldovino|Alcantara|Castillo|Mercado/i.test(s?.assignedInspector || ""));
+          if (!hasLegacy) return parsed;
+        }
       }
     } catch { }
     return INITIAL_SCHEDULES;
@@ -525,7 +532,7 @@ export const EngineerDashboardPage: React.FC<EngineerDashboardPageProps> = ({
     buildingType: "Residential Building",
     date: new Date().toISOString().split("T")[0],
     time: "10:00 AM",
-    assignedInspector: "Engr. Clarissa P. Alcantara",
+    assignedInspector: "Building & Siting Inspector",
     notes: ""
   });
 
@@ -567,6 +574,7 @@ export const EngineerDashboardPage: React.FC<EngineerDashboardPageProps> = ({
     // Subscribe to live infrastructure projects & merge seamlessly
     const unsubscribeProjects = subscribeToProjects((projs) => {
       if (!Array.isArray(projs) || projs.length === 0) return;
+      projs = projs.filter((p) => isLguInfrastructureProject(p));
       setProjects((prev) => {
         const map = new Map<string, Project>();
         for (const p of prev) if (p?.id) map.set(p.id, p);
@@ -582,6 +590,7 @@ export const EngineerDashboardPage: React.FC<EngineerDashboardPageProps> = ({
     fetchPublicProjects()
       .then((res) => {
         if (Array.isArray(res.projects) && res.projects.length > 0) {
+          res.projects = res.projects.filter((p) => isLguInfrastructureProject(p));
           setProjects((prev) => {
             const map = new Map<string, Project>();
             for (const p of prev) if (p?.id) map.set(p.id, p);
@@ -748,6 +757,7 @@ export const EngineerDashboardPage: React.FC<EngineerDashboardPageProps> = ({
     const counts: Record<string, number> = {};
     for (const k of SECTORAL_KEYS) counts[k] = 0;
     for (const p of projects) {
+      if (!isLguInfrastructureProject(p)) continue;
       const s = getBuildingSector(p);
       counts[s] = (counts[s] || 0) + 1;
     }
@@ -793,6 +803,7 @@ export const EngineerDashboardPage: React.FC<EngineerDashboardPageProps> = ({
   // Filtered Infrastructure Projects for Tab 3
   const displayedProjects = useMemo(() => {
     return projects.filter((p) => {
+      if (!isLguInfrastructureProject(p)) return false;
       const isPendingConfirm = p.engineerApproved === false;
       if (projectStatusFilter === "pending_confirmation" && !isPendingConfirm) return false;
       if (projectStatusFilter === "confirmed" && isPendingConfirm) return false;
@@ -857,7 +868,7 @@ export const EngineerDashboardPage: React.FC<EngineerDashboardPageProps> = ({
     try {
       const updatedStatus = "approved_for_construction";
       const tracking = approvingApp.trackingNumber || approvingApp.id;
-      const engineerName = session?.name || "Engr. Mario S. Baldovino (Municipal Engineer)";
+      const engineerName = session?.name || "Building Official (OBO)";
       const now = new Date().toISOString();
 
       await patchCitizenApplication(tracking, {
@@ -933,8 +944,8 @@ export const EngineerDashboardPage: React.FC<EngineerDashboardPageProps> = ({
 
       const holdRemark = {
         id: `rem-hold-${Date.now()}`,
-        fromOffice: "Engineering",
-        author: session?.name || "Engr. Mario S. Baldovino (Municipal Engineer)",
+        fromOffice: "OBO",
+        author: session?.name || "Building Official (OBO)",
         message: `Inilagay sa Hold / Ibinalik sa Kliyente para sa pagsasaayos: ${holdReason.trim()}`,
         createdAt: new Date().toISOString(),
         requiresAction: true,
@@ -944,7 +955,7 @@ export const EngineerDashboardPage: React.FC<EngineerDashboardPageProps> = ({
         status: "returned",
         engineerApproved: false,
         heldAt: new Date().toISOString(),
-        heldBy: session?.name || "Municipal Engineer",
+        heldBy: session?.name || "Building Official",
         holdReason: holdReason.trim(),
         remarks: [...(holdingApp.remarks || []), holdRemark],
       });
@@ -981,7 +992,7 @@ export const EngineerDashboardPage: React.FC<EngineerDashboardPageProps> = ({
     setIsSubmittingOrReview(true);
     try {
       const tracking = targetApp.trackingNumber || targetApp.id;
-      const engineerName = session?.name || "Engr. Mario S. Baldovino (Municipal Engineer)";
+      const engineerName = session?.name || "Building Official (OBO)";
       const now = new Date().toISOString();
       const notes = orVerificationNotes.trim() || "Nasuri at napatunayan ang litrato ng Official Receipt mula sa Assessor / Ingat-Yaman.";
 
@@ -1049,7 +1060,7 @@ export const EngineerDashboardPage: React.FC<EngineerDashboardPageProps> = ({
     setIsSubmittingOrReview(true);
     try {
       const tracking = targetApp.trackingNumber || targetApp.id;
-      const engineerName = session?.name || "Engr. Mario S. Baldovino (Municipal Engineer)";
+      const engineerName = session?.name || "Building Official (OBO)";
       const now = new Date().toISOString();
 
       await patchCitizenApplication(tracking, {
@@ -1114,7 +1125,7 @@ export const EngineerDashboardPage: React.FC<EngineerDashboardPageProps> = ({
     setIsSubmittingLguApproval(true);
     try {
       const now = new Date().toISOString();
-      const engineerName = session?.name || "Engr. Mario S. Baldovino (Municipal Engineer)";
+      const engineerName = (session?.name && !session.name.includes("Baldovino")) ? session.name : "Building Official";
       const patchData = {
         engineerApproved: true,
         engineerApprovedAt: now,
@@ -1235,7 +1246,7 @@ export const EngineerDashboardPage: React.FC<EngineerDashboardPageProps> = ({
       buildingType: "Residential Building",
       date: new Date().toISOString().split("T")[0],
       time: "10:00 AM",
-      assignedInspector: "Engr. Clarissa P. Alcantara",
+      assignedInspector: "Building & Siting Inspector",
       notes: ""
     });
   };
@@ -1254,29 +1265,18 @@ export const EngineerDashboardPage: React.FC<EngineerDashboardPageProps> = ({
             <div className="eng-brand-titles">
               <div className="eng-brand-eyebrow">
                 <span>{t("eng.republic")}</span>
-                <span className="eng-brand-pill">{t("nav.engineering_office")}</span>
+                <span className="eng-brand-pill">
+                  {language === "en" ? "OFFICE OF THE BUILDING OFFICIAL (OBO)" : "TANGGAPAN NG TAGAPANGASIWA NG GUSALI (OBO)"}
+                </span>
               </div>
               <h1 className="eng-brand-main-title">
-                {t("eng.dept_name")}
+                {language === "en" ? "Office of the Building Official (Executive Dashboard)" : "Tanggapan ng Tagapangasiwa ng Gusali (Executive Dashboard)"}
               </h1>
             </div>
           </div>
         </div>
 
         <div className="eng-dash-nav-right">
-          <button
-            type="button"
-            className="eng-nav-btn eng-nav-btn-add-lgu"
-            onClick={() => window.dispatchEvent(new CustomEvent("open-add-lgu-project"))}
-            title={language === "en" ? "Add LGU Project" : "Mag-encode ng LGU Proyekto"}
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-            <span>{language === "en" ? "Add LGU Project" : "Mag-encode ng Proyekto"}</span>
-          </button>
-
           <button
             type="button"
             className="eng-nav-btn eng-nav-btn-map"
@@ -1303,24 +1303,31 @@ export const EngineerDashboardPage: React.FC<EngineerDashboardPageProps> = ({
               <line x1="16" y1="13" x2="8" y2="13" />
               <line x1="16" y1="17" x2="8" y2="17" />
             </svg>
-            <span>{t("nav.documents")}</span>
+            <span>{language === "en" ? "Documents & Blueprints" : "Mga Dokumento at Plano"}</span>
           </button>
 
           <div className="eng-nav-separator" />
           <LanguageToggle />
           <ThemeToggle />
 
-          {session && (
-            <div className="eng-user-profile-badge">
-              <div className="eng-user-avatar">
-                {session.name ? session.name[0].toUpperCase() : "E"}
+          {session && (() => {
+            const oboDisplayName = (session.name && !session.name.includes("Baldovino"))
+              ? session.name
+              : (language === "en" ? "Building Official" : "Tagapangasiwa ng Gusali");
+            return (
+              <div className="eng-user-profile-badge">
+                <div className="eng-user-avatar">
+                  {oboDisplayName[0]?.toUpperCase() || "B"}
+                </div>
+                <div className="eng-user-info">
+                  <span className="eng-user-name">{oboDisplayName}</span>
+                  <span className="eng-user-role">
+                    {language === "en" ? "Office of the Building Official (OBO)" : "Tanggapan ng Tagapangasiwa ng Gusali (OBO)"}
+                  </span>
+                </div>
               </div>
-              <div className="eng-user-info">
-                <span className="eng-user-name">{session.name || "Municipal Engineer"}</span>
-                <span className="eng-user-role">{language === "en" ? "Engineering Office" : "Tanggapan ng Inhinyero"}</span>
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
           {onLogout && (
             <button
@@ -1341,7 +1348,9 @@ export const EngineerDashboardPage: React.FC<EngineerDashboardPageProps> = ({
         <aside className={`eng-sidebar${isSidebarCollapsed ? " is-collapsed" : ""}`}>
           <div className="eng-sidebar-header">
             <div className="eng-sidebar-header-info">
-              <span className="eng-sidebar-kicker">{t("nav.engineering_office")}</span>
+              <span className="eng-sidebar-kicker">
+                {language === "en" ? "OFFICE OF THE BUILDING OFFICIAL (OBO)" : "TANGGAPAN NG TAGAPANGASIWA NG GUSALI (OBO)"}
+              </span>
               <h4 className="eng-sidebar-title">{t("nav.menu")}</h4>
             </div>
             <button
@@ -1356,7 +1365,9 @@ export const EngineerDashboardPage: React.FC<EngineerDashboardPageProps> = ({
           </div>
 
           <nav className="eng-sidebar-nav-list">
-            <div className="eng-sidebar-section-divider">{t("nav.modules")}</div>
+            <div className="eng-sidebar-section-divider">
+              {language === "en" ? "BUILDING OFFICIAL MODULES" : "MGA MODYUL NG OBO"}
+            </div>
 
             <button
               type="button"
@@ -1399,29 +1410,6 @@ export const EngineerDashboardPage: React.FC<EngineerDashboardPageProps> = ({
                 {metrics.pendingInspection > 0 && (
                   <span className="eng-sidebar-badge alert">{metrics.pendingInspection}</span>
                 )}
-              </div>
-            </button>
-
-            <button
-              type="button"
-              className={`eng-sidebar-btn${activeTab === "projects" ? " active" : ""}`}
-              onClick={() => setActiveTab("projects")}
-              title={t("nav.projects")}
-            >
-              {activeTab === "projects" && <span className="eng-sidebar-pip" />}
-              <span className="eng-sidebar-btn-icon">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M2 20h20" />
-                  <path d="M5 20V8l7-5 7 5v12" />
-                  <rect x="9" y="12" width="6" height="8" />
-                </svg>
-              </span>
-              <div className="eng-sidebar-btn-label">
-                <span>{t("nav.projects")}</span>
-                <span className={`eng-sidebar-badge ${metrics.pendingLguCount > 0 ? "alert" : ""}`}>
-                  {projects.length}
-                  {metrics.pendingLguCount > 0 ? ` (${metrics.pendingLguCount})` : ""}
-                </span>
               </div>
             </button>
 
@@ -1541,13 +1529,25 @@ export const EngineerDashboardPage: React.FC<EngineerDashboardPageProps> = ({
               <div className="eng-hero-card">
                 <div className="eng-hero-left">
                   <div className="eng-hero-tag">
-                    <span>{t("eng.hero_tag")}</span>
+                    <span>
+                      {session?.role === "MEO"
+                        ? "● Executive Command Center · Tanggapan ng Inhinyero"
+                        : "● Executive Command Center · Tanggapan ng Tagapangasiwa ng Gusali (OBO)"}
+                    </span>
                   </div>
                   <h2 className="eng-hero-title">
-                    {t("eng.hero_title")}
+                    {session?.role === "MEO"
+                      ? (language === "en" ? "Office of the Municipal Engineer" : "Tanggapan ng Pambayang Inhinyero")
+                      : (language === "en" ? "Office of the Building Official (OBO)" : "Tanggapan ng Tagapangasiwa ng Gusali (OBO)")}
                   </h2>
                   <p className="eng-hero-desc">
-                    {t("eng.hero_desc")}
+                    {session?.role === "MEO"
+                      ? (language === "en"
+                        ? "Centralized operational command for Program of Works, road networks, municipal buildings, and GIS coordinate transparency."
+                        : "Sentralisadong dashboard para sa Program of Works, pagsubaybay sa mga tulay at pampublikong gusali, at koordinasyon sa 3D GIS Mapa ng Luisiana.")
+                      : (language === "en"
+                        ? "Centralized dashboard for reviewing citizen building permit applications, verifying Official Receipts (O.R.), scheduling ocular site inspections, and 3D GIS coordinate pinning."
+                        : "Sentralisadong dashboard para sa pagsusuri ng mga aplikasyon sa building permit, pag-verify ng Opisyal na Resibo mula sa Assessor, pag-iiskedyul ng ocular inspection, at pre-construction coordinate pinning sa 3D Mapa ng Bayan ng Luisiana.")}
                   </p>
                 </div>
                 <div className="eng-hero-actions">
@@ -1619,17 +1619,21 @@ export const EngineerDashboardPage: React.FC<EngineerDashboardPageProps> = ({
 
                 <div className="eng-stat-card is-infra">
                   <div className="eng-stat-head">
-                    <span className="eng-stat-label">{t("eng.kpi_infra")}</span>
+                    <span className="eng-stat-label">
+                      {language === "en" ? "Total Permit Dossiers" : "Kabuuan ng Aplikasyon"}
+                    </span>
                     <span className="eng-stat-icon-badge purple">
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
-                        <path d="M2 20h20" />
-                        <path d="M5 20V8l7-5 7 5v12" />
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <line x1="16" y1="13" x2="8" y2="13" />
+                        <line x1="16" y1="17" x2="8" y2="17" />
+                        <polyline points="10 9 9 9 8 9" />
                       </svg>
                     </span>
                   </div>
-                  <div className="eng-stat-value">{metrics.activeInfra}</div>
+                  <div className="eng-stat-value">{paidApplications.length}</div>
                   <div className="eng-stat-sub">
-                    {t("eng.kpi_infra_sub")}
+                    {language === "en" ? "Active building permit dossiers filed under OBO" : "Aktibong talaan ng aplikasyon sa pagtatayo sa ilalim ng OBO"}
                   </div>
                 </div>
               </div>
@@ -1928,7 +1932,7 @@ export const EngineerDashboardPage: React.FC<EngineerDashboardPageProps> = ({
                 </div>
 
                 {/* Small Sector Buttons Row */}
-                <div className="eng-sector-pills-row">
+                <div className="eng-sector-pills-row" style={{ display: "none" }}>
                   <span className="eng-sector-pills-label">
                     🏢 {language === "en" ? "Sector:" : "Sektor:"}
                   </span>
@@ -2871,8 +2875,8 @@ export const EngineerDashboardPage: React.FC<EngineerDashboardPageProps> = ({
                   </div>
                 </div>
 
-                {/* Small Sector Buttons Row for Municipal Projects */}
-                <div className="eng-sector-pills-row">
+                {/* Sector filter removed for LGU municipal infrastructure */}
+                <div className="eng-sector-pills-row" style={{ display: "none" }}>
                   <span className="eng-sector-pills-label">
                     🏢 {language === "en" ? "Sector:" : "Sektor:"}
                   </span>
@@ -2888,6 +2892,7 @@ export const EngineerDashboardPage: React.FC<EngineerDashboardPageProps> = ({
                     const def = SECTOR_DEFINITIONS[k];
                     const isSelected = projectSectorFilter === k;
                     const Icon = def.icon;
+                    if (["Residential", "Apartment", "Townhouse", "Dormitory"].includes(k)) return null;
                     const count = sectorProjectCounts[k] || 0;
                     return (
                       <button

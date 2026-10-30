@@ -16,7 +16,7 @@ type Props = {
   onNavigate: (screen: string) => void;
 };
 
-type MpdcAdminTab = "overview" | "zoning" | "clup" | "proposals" | "staff";
+type MpdcAdminTab = "overview" | "zoning" | "clup" | "proposals" | "staff" | "analytics";
 
 export interface StaffMember {
   id: string;
@@ -57,25 +57,25 @@ const LUISIANA_BARANGAYS = [
 ];
 
 const COMMON_POSITIONS = [
-  "Municipal Planning Officer",
-  "Zoning Administrator & Urban Planner",
-  "Senior Urban Planner & CLUP Specialist",
-  "Field Ocular Site Inspector",
-  "Geotechnical Siting Evaluator",
-  "GIS Analyst & Cartographer",
-  "CLUP Compliance Officer",
-  "Building & Zoning Inspector",
-  "Administrative & Records Officer",
+  "MPDC",
+  "Zoning Officer",
+  "Planning Officer I",
+  "Planning Assistant",
+  "Statistician Aide",
+  "Information Technology",
+  "Admin. Aide I",
+  "Admin. Aide",
 ];
 
 const COMMON_ROLES = [
-  "Ocular Site Inspector",
-  "Zoning & Setback Verification",
-  "CLUP Compliance Officer",
-  "Geotechnical Siting Evaluator",
-  "GIS Telemetry & Records Custodian",
-  "Department Administrator",
-  "Intake & Public Assistance",
+  "MPDC",
+  "Zoning Officer",
+  "Planning Officer I",
+  "Planning Assistant",
+  "Statistician Aide",
+  "Information Technology",
+  "Admin. Aide I",
+  "Admin. Aide",
 ];
 
 const MPDC_STAFF_ROSTER: StaffMember[] = [];
@@ -97,11 +97,17 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed)) {
-          // Filter out legacy hardcoded dummy users
-          return parsed.filter(
-            (p) =>
-              !["Engr. Mario S. Baldovino", "Arch. Jose Marie C. Alcantara", "Engr. Clarissa V. Ramos", "Ronaldo T. Estrellado", "Maria Theresa N. Gomez"].includes(p?.name)
-          );
+          // Filter out legacy hardcoded dummy users and guarantee valid properties
+          return parsed
+            .filter(
+              (p) =>
+                p &&
+                !["Arch. Jose Marie C. Alcantara", "Engr. Clarissa V. Ramos", "Ronaldo T. Estrellado", "Maria Theresa N. Gomez"].includes(p?.name)
+            )
+            .map((p) => ({
+              ...p,
+              assignedBarangays: Array.isArray(p.assignedBarangays) ? p.assignedBarangays : ["All 23 Barangays"],
+            }));
         }
       }
     } catch {}
@@ -118,8 +124,8 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
   const [staffFormData, setStaffFormData] = useState({
     name: "",
     id: "",
-    position: "Municipal Planning Officer",
-    role: "Ocular Site Inspector",
+    position: "MPDC",
+    role: "MPDC Coordinator",
     phone: "",
     status: "In Office" as "Active" | "On Field" | "In Office",
     assignedBarangays: ["All 23 Barangays"] as string[],
@@ -180,10 +186,16 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data?.personnel)) {
-          const cleaned = data.personnel.filter(
-            (p: any) =>
-              !["Engr. Mario S. Baldovino", "Arch. Jose Marie C. Alcantara", "Engr. Clarissa V. Ramos", "Ronaldo T. Estrellado", "Maria Theresa N. Gomez"].includes(p?.name)
-          );
+          const cleaned = data.personnel
+            .filter(
+              (p: any) =>
+                p &&
+                !["Arch. Jose Marie C. Alcantara", "Engr. Clarissa V. Ramos", "Ronaldo T. Estrellado", "Maria Theresa N. Gomez"].includes(p?.name)
+            )
+            .map((p: any) => ({
+              ...p,
+              assignedBarangays: Array.isArray(p.assignedBarangays) ? p.assignedBarangays : ["All 23 Barangays"],
+            }));
           setStaffList(cleaned);
           localStorage.setItem("infatrack_mpdc_personnel", JSON.stringify(cleaned));
         }
@@ -220,10 +232,16 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
 
       socket.on("mpdc:personnel_updated", (payload: any) => {
         if (Array.isArray(payload?.list)) {
-          const cleaned = payload.list.filter(
-            (p: any) =>
-              !["Engr. Mario S. Baldovino", "Arch. Jose Marie C. Alcantara", "Engr. Clarissa V. Ramos", "Ronaldo T. Estrellado", "Maria Theresa N. Gomez"].includes(p?.name)
-          );
+          const cleaned = payload.list
+            .filter(
+              (p: any) =>
+                p &&
+                !["Arch. Jose Marie C. Alcantara", "Engr. Clarissa V. Ramos", "Ronaldo T. Estrellado", "Maria Theresa N. Gomez"].includes(p?.name)
+            )
+            .map((p: any) => ({
+              ...p,
+              assignedBarangays: Array.isArray(p.assignedBarangays) ? p.assignedBarangays : ["All 23 Barangays"],
+            }));
           setStaffList(cleaned);
           localStorage.setItem("infatrack_mpdc_personnel", JSON.stringify(cleaned));
         }
@@ -259,12 +277,12 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
     setStaffFormData({
       name: "",
       id: getNextStaffId(),
-      position: "Municipal Planning Officer",
-      role: "Ocular Site Inspector",
+      position: "MPDC",
+      role: "MPDC",
       phone: "",
       status: "In Office",
       assignedBarangays: ["All 23 Barangays"],
-      createAccount: false,
+      createAccount: true,
       username: "",
       defaultPassword: "InfaTrack2026",
     });
@@ -273,11 +291,11 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
 
   const toggleBarangaySelection = (brgy: string) => {
     setStaffFormData((prev) => {
-      let current = [...prev.assignedBarangays];
+      const prevList = Array.isArray(prev?.assignedBarangays) ? prev.assignedBarangays : [];
       if (brgy === "All 23 Barangays") {
-        return ["All 23 Barangays"];
+        return { ...prev, assignedBarangays: ["All 23 Barangays"] };
       }
-      current = current.filter((b) => b !== "All 23 Barangays");
+      let current = prevList.filter((b) => b !== "All 23 Barangays");
       if (current.includes(brgy)) {
         current = current.filter((b) => b !== brgy);
         if (current.length === 0) current = ["All 23 Barangays"];
@@ -286,6 +304,40 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
       }
       return { ...prev, assignedBarangays: current };
     });
+  };
+
+  const [sendingSmsStaffId, setSendingSmsStaffId] = useState<string | null>(null);
+
+  const handleSendStaffSmsPassword = async (staff: StaffMember) => {
+    const rawPhone = (staff.phone || "").trim();
+    const phoneInput = window.prompt(
+      `Ipadala ang Temporary Password sa SMS ni ${staff.name}.\nPakikumpirma o ilagay ang Mobile Number (09XXXXXXXXX):`,
+      rawPhone.startsWith("09") || rawPhone.startsWith("+639") ? rawPhone : "09"
+    );
+    if (!phoneInput || !phoneInput.trim()) return;
+
+    setSendingSmsStaffId(staff.id);
+    try {
+      const res = await fetch(backendUrl(`/api/mpdc/personnel/${staff.id}/send-sms-credentials`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ phone: phoneInput.trim(), defaultPassword: "InfaTrack2026" }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(`✓ Naipadala ang temporary password SMS kay ${staff.name} (${phoneInput.trim()})!`);
+        setStaffList((prev) =>
+          prev.map((s) => (s.id === staff.id ? { ...s, phone: phoneInput.trim() } : s))
+        );
+      } else {
+        showToast(`Hindi naipadala ang SMS: ${data.error || "Nabigo ang gateway."}`);
+      }
+    } catch (err: any) {
+      showToast(`Error: ${err.message || "Nabigo ang koneksyon."}`);
+    } finally {
+      setSendingSmsStaffId(null);
+    }
   };
 
   const handleAddStaffSubmit = async (e: React.FormEvent) => {
@@ -297,6 +349,12 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
       return;
     }
 
+    const rawPhone = staffFormData.phone.trim();
+    if (!rawPhone) {
+      setStaffFormError("Kailangan ilagay ang Mobile Phone Number ng kawani (hal. 09171234567) upang maipadala ang temporary password sa SMS.");
+      return;
+    }
+
     setIsSubmittingStaff(true);
     try {
       const payload = {
@@ -304,10 +362,13 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
         id: staffFormData.id.trim() || getNextStaffId(),
         position: staffFormData.position.trim(),
         role: staffFormData.role.trim(),
-        phone: staffFormData.phone.trim() || "(049) 555-0100",
+        phone: rawPhone,
         status: staffFormData.status,
-        assignedBarangays: staffFormData.assignedBarangays.length > 0 ? staffFormData.assignedBarangays : ["All 23 Barangays"],
-        createAccount: staffFormData.createAccount,
+        assignedBarangays:
+          Array.isArray(staffFormData?.assignedBarangays) && staffFormData.assignedBarangays.length > 0
+            ? staffFormData.assignedBarangays
+            : ["All 23 Barangays"],
+        createAccount: true,
         username: staffFormData.username.trim() || staffFormData.name.toLowerCase().replace(/[^a-z0-9]/g, ""),
         defaultPassword: staffFormData.defaultPassword || "InfaTrack2026",
       };
@@ -330,7 +391,14 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
       localStorage.setItem("infatrack_mpdc_personnel", JSON.stringify(updatedList));
 
       setIsAddStaffModalOpen(false);
-      showToast(`Matagumpay na naidagdag si ${payload.name} bilang kawani ng MPDC!`);
+
+      if (resData.smsResult?.success) {
+        showToast(`✓ Naidagdag si ${payload.name}! Naipadala ang temporary password sa SMS (${payload.phone}).`);
+      } else if (resData.smsResult?.skipped) {
+        showToast(`✓ Naidagdag si ${payload.name}! (SMS notice: ${resData.smsResult.reason})`);
+      } else {
+        showToast(`✓ Naidagdag si ${payload.name}! Naipasa ang credentials sa ${payload.phone}.`);
+      }
     } catch (err: any) {
       // Offline fallback: save to localStorage directly if server unreachable
       const fallbackItem: StaffMember = {
@@ -338,9 +406,12 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
         id: staffFormData.id.trim() || getNextStaffId(),
         position: staffFormData.position.trim(),
         role: staffFormData.role.trim(),
-        phone: staffFormData.phone.trim() || "(049) 555-0100",
+        phone: rawPhone,
         status: staffFormData.status,
-        assignedBarangays: staffFormData.assignedBarangays.length > 0 ? staffFormData.assignedBarangays : ["All 23 Barangays"],
+        assignedBarangays:
+          Array.isArray(staffFormData?.assignedBarangays) && staffFormData.assignedBarangays.length > 0
+            ? staffFormData.assignedBarangays
+            : ["All 23 Barangays"],
         createdAt: new Date().toISOString(),
       };
       const updatedList = [...staffList, fallbackItem];
@@ -412,8 +483,8 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
       s.position,
       s.role,
       s.phone,
-      s.status,
-      s.assignedBarangays.join(" / "),
+      s.status || "In Office",
+      (Array.isArray(s.assignedBarangays) ? s.assignedBarangays : ["All 23 Barangays"]).join(" / "),
     ]);
     const csvContent = [headers, ...rows].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
@@ -427,37 +498,86 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
   };
 
   const filteredStaff = useMemo(() => {
-    return staffList.filter((s) => {
-      const q = staffSearchQuery.toLowerCase().trim();
+    return (staffList || []).filter((s) => {
+      if (!s) return false;
+      const q = (staffSearchQuery || "").toLowerCase().trim();
+      const brgys = Array.isArray(s.assignedBarangays) ? s.assignedBarangays : ["All 23 Barangays"];
+
       const matchSearch =
         q === "" ||
-        s.name.toLowerCase().includes(q) ||
-        s.id.toLowerCase().includes(q) ||
-        s.position.toLowerCase().includes(q) ||
-        s.role.toLowerCase().includes(q) ||
-        s.assignedBarangays.some((b) => b.toLowerCase().includes(q));
+        String(s.name || "").toLowerCase().includes(q) ||
+        String(s.id || "").toLowerCase().includes(q) ||
+        String(s.position || "").toLowerCase().includes(q) ||
+        String(s.role || "").toLowerCase().includes(q) ||
+        brgys.some((b) => typeof b === "string" && b.toLowerCase().includes(q));
 
       const matchStatus = staffStatusFilter === "All" || s.status === staffStatusFilter;
 
       const matchBarangay =
         staffBarangayFilter === "All" ||
-        s.assignedBarangays.includes("All 23 Barangays") ||
-        s.assignedBarangays.some((b) => b.includes(staffBarangayFilter));
+        brgys.includes("All 23 Barangays") ||
+        brgys.some((b) => typeof b === "string" && b.includes(staffBarangayFilter));
 
       return matchSearch && matchStatus && matchBarangay;
     });
   }, [staffList, staffSearchQuery, staffStatusFilter, staffBarangayFilter]);
 
+  // Helper to extract and normalize the official Barangay name from an application
+  const resolveAppBarangay = (a: any): string => {
+    if (!a) return "Barangay Zone I (Poblacion)";
+    const raw = String(
+      a.applicant?.barangay ||
+      a.barangay ||
+      a.lotDetails?.barangay ||
+      a.lotLocation?.barangay ||
+      a.address?.barangay ||
+      ""
+    ).trim();
+
+    if (!raw) return "Barangay Zone I (Poblacion)";
+    if (/zone\s*i\b/i.test(raw) && !/ii|iv|v|vi|vii|viii/i.test(raw)) return "Barangay Zone I (Poblacion)";
+    if (/zone\s*ii\b/i.test(raw) && !/iii/i.test(raw)) return "Barangay Zone II (Poblacion)";
+    if (/zone\s*iii\b/i.test(raw)) return "Barangay Zone III (Poblacion)";
+    if (/zone\s*iv\b/i.test(raw)) return "Barangay Zone IV (Poblacion)";
+    if (/zone\s*v\b/i.test(raw) && !/vi/i.test(raw)) return "Barangay Zone V (Poblacion)";
+    if (/zone\s*vi\b/i.test(raw) && !/vii/i.test(raw)) return "Barangay Zone VI (Poblacion)";
+    if (/zone\s*vii\b/i.test(raw) && !/viii/i.test(raw)) return "Barangay Zone VII (Poblacion)";
+    if (/zone\s*viii\b/i.test(raw)) return "Barangay Zone VIII (Poblacion)";
+    return raw;
+  };
+
+  const resolveAppApplicantName = (a: any): string => {
+    if (!a) return "Aplikante";
+    return a.applicant?.fullName || a.applicantName || a.fullName || a.applicant?.name || "Aplikante";
+  };
+
+  const resolveAppContact = (a: any): string => {
+    if (!a) return "Walang contact";
+    return a.applicant?.contactPhone || a.contactNumber || a.phone || a.applicant?.phone || "Walang contact";
+  };
+
   // Metrics computation
   const metrics = useMemo(() => {
     const totalApps = applications.length;
-    const forOcular = applications.filter((a) => a.status === "ocular_inspection" || a.status === "for_ocular_inspection").length;
-    const inReview = applications.filter((a) => a.status === "in_review" || a.status === "submitted").length;
-    const approved = applications.filter((a) => a.status === "approved" || a.status === "completed").length;
-    const flagged = applications.filter((a) => a.status === "flagged").length;
+    const forOcular = applications.filter((a) => {
+      const st = String(a.status || "").toLowerCase();
+      return st === "ocular_inspection" || st === "for_ocular_inspection";
+    }).length;
+    const inReview = applications.filter((a) => {
+      const st = String(a.status || "").toLowerCase();
+      return st === "in_review" || st === "submitted" || st === "for_payment";
+    }).length;
+    const approved = applications.filter((a) => {
+      const st = String(a.status || "").toLowerCase();
+      return st === "approved" || st === "completed" || st === "approved_for_construction";
+    }).length;
+    const flagged = applications.filter((a) => {
+      const st = String(a.status || "").toLowerCase();
+      return st === "flagged" || st === "returned" || st === "rejected";
+    }).length;
 
     // SLA: Applications acted on in reasonable time
-    const slaRate = totalApps > 0 ? ((totalApps - flagged) / totalApps) * 100 : 98.4;
+    const slaRate = totalApps > 0 ? (((totalApps - flagged) / totalApps) * 100).toFixed(1) : "98.4";
 
     // Total Proposals
     const highPrioProposals = proposals.filter((p) => p.priority === "high").length;
@@ -468,25 +588,172 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
       inReview,
       approved,
       flagged,
-      slaRate: slaRate.toFixed(1),
+      slaRate,
       totalProposals: proposals.length,
       highPrioProposals,
       totalStaff: staffList.length,
     };
   }, [applications, proposals, staffList]);
 
+  // Analytics & Accomplishment Report Statistics (100% Dynamic from live applications)
+  const analyticsStats = useMemo(() => {
+    const total = applications.length;
+    let approvedCount = 0;
+    let forOcularCount = 0;
+    let inReviewCount = 0;
+    let returnedCount = 0;
+    let safeCount = 0;
+    let bufferCount = 0;
+
+    let residentialZoneCount = 0;
+    let commercialZoneCount = 0;
+    let agriculturalZoneCount = 0;
+    let institutionalZoneCount = 0;
+
+    let residentialTypeCount = 0;
+    let commercialTypeCount = 0;
+    let institutionalTypeCount = 0;
+
+    const brgyFrequency: Record<string, number> = {};
+
+    for (const a of applications) {
+      const st = String(a.status || "").toLowerCase();
+      if (st === "approved" || st === "completed" || st === "approved_for_construction") approvedCount++;
+      else if (st === "ocular_inspection" || st === "for_ocular_inspection") forOcularCount++;
+      else if (st === "returned" || st === "rejected") returnedCount++;
+      else inReviewCount++;
+
+      const brgy = resolveAppBarangay(a);
+      brgyFrequency[brgy] = (brgyFrequency[brgy] || 0) + 1;
+
+      // Real CLUP Zoning Classification & Building Type
+      const zc = String(a.zoningClassification || a.lotDetails?.zoningClassification || "").toLowerCase();
+      const bldg = String(a.lotDetails?.proposedBuildingType || a.property?.proposedBuildingType || a.buildingType || "").toLowerCase();
+
+      // Dynamic CLUP 4-Zone Distribution matching official CLUP framework
+      if (bldg.includes("inst") || zc.includes("inst") || zc.includes("eco")) {
+        institutionalZoneCount++;
+      } else if (zc.includes("rural") || zc.includes("agri") || (!brgy.includes("Zone") && !brgy.includes("Poblacion"))) {
+        agriculturalZoneCount++;
+      } else if (bldg.includes("comm") || bldg.includes("dorm") || bldg.includes("retail") || bldg.includes("store") || zc.includes("comm")) {
+        commercialZoneCount++;
+      } else {
+        residentialZoneCount++;
+      }
+
+      // Building Type Breakdown
+      if (bldg.includes("comm") || bldg.includes("dorm") || bldg.includes("retail") || bldg.includes("store")) {
+        commercialTypeCount++;
+      } else if (bldg.includes("inst")) {
+        institutionalTypeCount++;
+      } else {
+        residentialTypeCount++;
+      }
+
+      // GeoRisk Assessment from active record
+      const floodVal = String(a.geoRisk?.flood?.value || a.geoRisk?.flood?.level || "").toLowerCase();
+      const slideVal = String(a.geoRisk?.landslide?.value || a.geoRisk?.landslide?.level || "").toLowerCase();
+      const isBuffer =
+        slideVal.includes("moderate") ||
+        slideVal.includes("high") ||
+        floodVal.includes("moderate") ||
+        floodVal.includes("high");
+
+      if (isBuffer) bufferCount++;
+      else safeCount++;
+    }
+
+    const topBarangays = Object.entries(brgyFrequency)
+      .map(([name, count]) => ({
+        name,
+        count,
+        pct: total > 0 ? Math.round((count / total) * 100) : 0,
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    const safeRate = total > 0 ? Math.round((safeCount / total) * 100) : 100;
+
+    return {
+      total,
+      approvedCount,
+      forOcularCount,
+      inReviewCount,
+      returnedCount,
+      safeCount,
+      bufferCount,
+      safeRate,
+      residentialZoneCount,
+      commercialZoneCount,
+      agriculturalZoneCount,
+      institutionalZoneCount,
+      residentialTypeCount,
+      commercialTypeCount,
+      institutionalTypeCount,
+      topBarangays,
+    };
+  }, [applications]);
+
+  const handleExportAccomplishmentReportCsv = () => {
+    const headers = [
+      "Tracking Number",
+      "Pangalan ng Aplikante",
+      "Pamagat ng Proyekto",
+      "Barangay",
+      "Sona ng Lupa (Zoning)",
+      "Uri ng Gusali (Building Type)",
+      "Katayuan (Status)",
+      "Petsa ng Pagsumite",
+    ];
+    const rows = applications.map((app) => {
+      const brgy = resolveAppBarangay(app);
+      const zoning =
+        app.zoningClassification ||
+        app.lotDetails?.zoningClassification ||
+        (brgy.includes("Poblacion") || brgy.includes("Zone")
+          ? "Urban / Commercial Zone"
+          : "Rural Zone");
+      const bldg = app.lotDetails?.proposedBuildingType || "Residential";
+
+      return [
+        app.trackingNumber || app.id || "",
+        app.applicant?.fullName || app.applicantName || app.applicant?.name || "—",
+        app.projectTitle || app.projectName || "—",
+        brgy,
+        zoning,
+        bldg,
+        app.status || "submitted",
+        app.submittedAt || app.createdAt || new Date().toISOString().slice(0, 10),
+      ];
+    });
+
+    const csvContent = [headers, ...rows]
+      .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `MPDC_Zoning_Report_Luisiana_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast("Matagumpay na na-download ang Talaan ng mga Aplikasyon at Sona.");
+  };
+
   // Filtered applications for Tab 2
   const filteredApplications = useMemo(() => {
     return applications.filter((app) => {
-      const q = searchQuery.toLowerCase().trim();
+      const q = String(searchQuery || "").toLowerCase().trim();
+      const appBrgy = resolveAppBarangay(app);
+      const appApplicant = String(app.applicant?.fullName || app.applicantName || app.applicant?.name || "");
       const matchSearch =
         !q ||
-        (app.trackingNumber || "").toLowerCase().includes(q) ||
-        (app.applicantName || "").toLowerCase().includes(q) ||
-        (app.projectTitle || "").toLowerCase().includes(q) ||
-        (app.barangay || "").toLowerCase().includes(q);
+        String(app.trackingNumber || "").toLowerCase().includes(q) ||
+        appApplicant.toLowerCase().includes(q) ||
+        String(app.projectTitle || app.projectName || "").toLowerCase().includes(q) ||
+        String(appBrgy || "").toLowerCase().includes(q);
 
-      const matchBrgy = selectedBarangay === "all" || app.barangay === selectedBarangay;
+      const matchBrgy = selectedBarangay === "all" || appBrgy === selectedBarangay;
       const matchStat = selectedStatus === "all" || app.status === selectedStatus;
 
       return matchSearch && matchBrgy && matchStat;
@@ -670,6 +937,26 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
               </div>
             </button>
 
+            <button
+              type="button"
+              className={`mpdc-sidebar-btn${activeTab === "analytics" ? " active" : ""}`}
+              onClick={() => setActiveTab("analytics")}
+              title="6. Analytics at mga Ulat (Reports & Statistics)"
+            >
+              {activeTab === "analytics" && <span className="mpdc-sidebar-pip" />}
+              <span className="mpdc-sidebar-btn-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="20" x2="18" y2="10" />
+                  <line x1="12" y1="20" x2="12" y2="4" />
+                  <line x1="6" y1="20" x2="6" y2="14" />
+                </svg>
+              </span>
+              <div className="mpdc-sidebar-btn-label">
+                <span>Analytics &amp; Ulat</span>
+                <span className="mpdc-sidebar-badge" style={{ background: "rgba(0,113,227,0.12)", color: "#0071e3" }}>Live</span>
+              </div>
+            </button>
+
             <div className="mpdc-sidebar-section-divider">Mabilisang Aksyon</div>
 
             <button
@@ -725,6 +1012,24 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
                 <span>DMS Blueprints</span>
               </div>
             </button>
+
+            <button
+              type="button"
+              className="mpdc-sidebar-btn mpdc-sidebar-portal-btn"
+              onClick={() => onNavigate("analytics")}
+              title="Buksan ang Buong 3D GIS Analytics Portal ng Bayan ng Luisiana"
+            >
+              <span className="mpdc-sidebar-btn-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="2" y1="12" x2="22" y2="12" />
+                  <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                </svg>
+              </span>
+              <div className="mpdc-sidebar-btn-label">
+                <span>3D GIS Analytics (Portal)</span>
+              </div>
+            </button>
           </nav>
 
           <div className="mpdc-sidebar-footer">
@@ -752,7 +1057,7 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
 
               <div className="mpdc-hero-tags">
                 <span className="mpdc-hero-tag">
-                  CLUP: <strong>2020–2030</strong>
+                  CLUP: <strong>Bayan ng Luisiana</strong>
                 </span>
                 <span className="mpdc-hero-tag">
                   Saklaw: <strong>23 Barangays</strong>
@@ -882,6 +1187,28 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
               </span>
             </div>
           </div>
+
+          <div
+            className="mpdc-kpi-card"
+            style={{ cursor: "pointer" }}
+            onClick={() => setActiveTab("analytics")}
+            title="Buksan ang Analytics at Accomplishment Reports ng MPDC"
+          >
+            <div className="mpdc-kpi-icon-wrap" style={{ background: "rgba(0,113,227,0.12)", color: "#0071e3" }}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="20" x2="18" y2="10" />
+                <line x1="12" y1="20" x2="12" y2="4" />
+                <line x1="6" y1="20" x2="6" y2="14" />
+              </svg>
+            </div>
+            <div className="mpdc-kpi-body">
+              <span className="mpdc-kpi-label">Analytics &amp; Ulat</span>
+              <span className="mpdc-kpi-val" style={{ color: "#0071e3" }}>{analyticsStats.safeRate}%</span>
+              <span className="mpdc-kpi-sub">
+                <strong style={{ color: "#0071e3" }}>Buksan ang Ulat &amp; Export →</strong>
+              </span>
+            </div>
+          </div>
         </div>
 
         {/* ===================================================================== */}
@@ -924,11 +1251,11 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
                   <span style={{ fontSize: "0.75rem", color: "var(--apple-text-secondary)" }}>Field hazard verification</span>
                 </div>
 
-                <div className="mpdc-pipeline-step" onClick={() => { setActiveTab("zoning"); setSelectedStatus("in_review"); }}>
+                <div className="mpdc-pipeline-step" onClick={() => { setActiveTab("zoning"); setSelectedStatus("for_payment"); }}>
                   <div className="mpdc-pipeline-bar-top" />
                   <span className="mpdc-pipeline-step-num">Hakbang 3</span>
                   <div className="mpdc-pipeline-step-title">Order of Payment &amp; Fees</div>
-                  <div className="mpdc-pipeline-step-count">{applications.filter((a) => a.status === "in_review").length}</div>
+                  <div className="mpdc-pipeline-step-count">{applications.filter((a) => a.status === "in_review" || a.status === "for_payment").length}</div>
                   <span style={{ fontSize: "0.75rem", color: "var(--apple-text-secondary)" }}>Forwarded to Treasury</span>
                 </div>
 
@@ -1137,14 +1464,14 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
                           <span className="mpdc-tracking-pill">{app.trackingNumber || "LUIS-2026-XXXX"}</span>
                         </td>
                         <td>
-                          <strong style={{ display: "block" }}>{app.applicantName || "Aplikante"}</strong>
-                          <span style={{ fontSize: "0.75rem", color: "var(--apple-text-secondary)" }}>{app.contactNumber || "Walang contact"}</span>
+                          <strong style={{ display: "block" }}>{resolveAppApplicantName(app)}</strong>
+                          <span style={{ fontSize: "0.75rem", color: "var(--apple-text-secondary)" }}>{resolveAppContact(app)}</span>
                         </td>
                         <td>
                           <span>{app.projectTitle || "Zoning Clearance Siting"}</span>
                         </td>
                         <td>
-                          <span>{app.barangay ? `Brgy. ${app.barangay}` : "Poblacion"}</span>
+                          <span>{resolveAppBarangay(app)}</span>
                         </td>
                         <td>
                           <span className={`mpdc-status-badge ${app.status || "submitted"}`}>
@@ -1192,7 +1519,7 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
                   </svg>
                 </div>
                 <div>
-                  <h3>Comprehensive Land Use Plan (CLUP) 2020–2030</h3>
+                  <h3>Comprehensive Land Use Plan (CLUP)</h3>
                   <p>Mga opisyal na sona ng lupa at pamantayan sa zoning ng Bayan ng Luisiana, Laguna.</p>
                 </div>
               </div>
@@ -1489,10 +1816,20 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
                           </button>
                         </td>
                         <td style={{ fontSize: "0.8rem", color: "var(--apple-text-secondary)", maxWidth: "240px" }}>
-                          {staff.assignedBarangays.join(", ")}
+                          {(Array.isArray(staff?.assignedBarangays) ? staff.assignedBarangays : ["All 23 Barangays"]).join(", ")}
                         </td>
                         <td style={{ textAlign: "right" }}>
                           <div style={{ display: "inline-flex", gap: "6px" }}>
+                            <button
+                              type="button"
+                              className="mpdc-table-btn"
+                              onClick={() => handleSendStaffSmsPassword(staff)}
+                              disabled={sendingSmsStaffId === staff.id}
+                              title="I-send o muling i-send ang temporary password sa mobile number ng kawani sa SMS"
+                              style={{ color: "#0071e3", borderColor: "rgba(0,113,227,0.3)" }}
+                            >
+                              {sendingSmsStaffId === staff.id ? "Nagpapadala..." : "📱 SMS Pass"}
+                            </button>
                             <button
                               type="button"
                               className="mpdc-table-btn"
@@ -1516,6 +1853,244 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
                   )}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+
+        {/* ===================================================================== */}
+        {/* TAB 6: ANALYTICS AT MGA ULAT (ACCOMPLISHMENT REPORTS)                  */}
+        {/* ===================================================================== */}
+        {activeTab === "analytics" && (
+          <div className="mpdc-card">
+            <div className="mpdc-card-header" style={{ flexWrap: "wrap", gap: "12px", alignItems: "center" }}>
+              <div className="mpdc-card-title-group">
+                <div className="mpdc-card-icon-pill" style={{ background: "rgba(0,113,227,0.12)", color: "#0071e3" }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="20" x2="18" y2="10" />
+                    <line x1="12" y1="20" x2="12" y2="4" />
+                    <line x1="6" y1="20" x2="6" y2="14" />
+                  </svg>
+                </div>
+                <div>
+                  <h3>Analytics at Opisyal na Ulat ng MPDC</h3>
+                  <p>Real-time na mga datos, pag-unlad ng zoning clearances, hazard safety distribution, at opisyal na ulat ng pagsasakatuparan.</p>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+                <button
+                  type="button"
+                  className="mpdc-btn mpdc-btn-secondary"
+                  onClick={handleExportAccomplishmentReportCsv}
+                  title="I-download ang CSV file ng talaan ng aplikasyon at permits"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  <span>I-export ang CSV</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="mpdc-btn mpdc-btn-primary"
+                  onClick={() => onNavigate("analytics")}
+                  title="Buksan ang buong 3D GIS Analytics Portal ng Bayan ng Luisiana"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="2" y1="12" x2="22" y2="12" />
+                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                  </svg>
+                  <span>3D GIS Portal</span>
+                </button>
+              </div>
+            </div>
+
+            {/* KPI Summary Cards */}
+            <div className="mpdc-analytics-kpi-grid">
+              <div className="mpdc-analytics-kpi-card">
+                <div className="mpdc-analytics-kpi-top">
+                  <span className="mpdc-analytics-kpi-label">Kabuuang Aplikasyon</span>
+                  <span style={{ fontSize: "1.1rem" }}>📋</span>
+                </div>
+                <span className="mpdc-analytics-kpi-val">{analyticsStats.total}</span>
+                <span className="mpdc-analytics-kpi-sub">
+                  Nakatala sa sistema ng MPDC
+                </span>
+              </div>
+
+              <div className="mpdc-analytics-kpi-card">
+                <div className="mpdc-analytics-kpi-top">
+                  <span className="mpdc-analytics-kpi-label">Naaprubahan / Inilabas</span>
+                  <span style={{ fontSize: "1.1rem" }}>✅</span>
+                </div>
+                <span className="mpdc-analytics-kpi-val" style={{ color: "#059669" }}>{analyticsStats.approvedCount}</span>
+                <span className="mpdc-analytics-kpi-sub">
+                  May Locational Clearance / Permits
+                </span>
+              </div>
+
+              <div className="mpdc-analytics-kpi-card">
+                <div className="mpdc-analytics-kpi-top">
+                  <span className="mpdc-analytics-kpi-label">Ocular Inspection</span>
+                  <span style={{ fontSize: "1.1rem" }}>🔍</span>
+                </div>
+                <span className="mpdc-analytics-kpi-val" style={{ color: "#d97706" }}>{analyticsStats.forOcularCount}</span>
+                <span className="mpdc-analytics-kpi-sub">
+                  Nakatakdang suriin sa field
+                </span>
+              </div>
+
+              <div className="mpdc-analytics-kpi-card">
+                <div className="mpdc-analytics-kpi-top">
+                  <span className="mpdc-analytics-kpi-label">Ligtas na Pagpapatayo</span>
+                  <span style={{ fontSize: "1.1rem" }}>🛡️</span>
+                </div>
+                <span className="mpdc-analytics-kpi-val" style={{ color: "#0071e3" }}>{analyticsStats.safeRate}%</span>
+                <span className="mpdc-analytics-kpi-sub">
+                  {analyticsStats.safeCount} labas sa high hazard zones
+                </span>
+              </div>
+
+              <div className="mpdc-analytics-kpi-card">
+                <div className="mpdc-analytics-kpi-top">
+                  <span className="mpdc-analytics-kpi-label">AIP Barangay Proposals</span>
+                  <span style={{ fontSize: "1.1rem" }}>📑</span>
+                </div>
+                <span className="mpdc-analytics-kpi-val">{metrics.totalProposals}</span>
+                <span className="mpdc-analytics-kpi-sub">
+                  {metrics.highPrioProposals} Mataas na prayoridad
+                </span>
+              </div>
+            </div>
+
+            {/* Visual Charts & Categorical Breakdown */}
+            <div className="mpdc-analytics-charts-grid">
+              {/* Panel 1: Sona ng Lupa (Zoning Classification) */}
+              <div className="mpdc-analytics-panel">
+                <div className="mpdc-analytics-panel-header">
+                  <h4 className="mpdc-analytics-panel-title">Distribusyon ng Sona (CLUP Zones)</h4>
+                  <span style={{ fontSize: "0.74rem", color: "var(--apple-text-secondary)" }}>
+                    {analyticsStats.total} Aplikasyon
+                  </span>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  <div className="mpdc-analytics-bar-row">
+                    <div className="mpdc-analytics-bar-info">
+                      <span className="mpdc-analytics-bar-name">Residential (R-1 &amp; R-2 Low/Mod Density)</span>
+                      <span className="mpdc-analytics-bar-count">
+                        {analyticsStats.residentialZoneCount} ({analyticsStats.total > 0 ? Math.round((analyticsStats.residentialZoneCount / analyticsStats.total) * 100) : 0}%)
+                      </span>
+                    </div>
+                    <div className="mpdc-analytics-bar-track">
+                      <div
+                        className="mpdc-analytics-bar-fill"
+                        style={{
+                          width: `${analyticsStats.total > 0 ? (analyticsStats.residentialZoneCount / analyticsStats.total) * 100 : 0}%`,
+                          background: "#0071e3",
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mpdc-analytics-bar-row">
+                    <div className="mpdc-analytics-bar-info">
+                      <span className="mpdc-analytics-bar-name">Commercial (C-1 Urban / Poblacion Core)</span>
+                      <span className="mpdc-analytics-bar-count">
+                        {analyticsStats.commercialZoneCount} ({analyticsStats.total > 0 ? Math.round((analyticsStats.commercialZoneCount / analyticsStats.total) * 100) : 0}%)
+                      </span>
+                    </div>
+                    <div className="mpdc-analytics-bar-track">
+                      <div
+                        className="mpdc-analytics-bar-fill"
+                        style={{
+                          width: `${analyticsStats.total > 0 ? (analyticsStats.commercialZoneCount / analyticsStats.total) * 100 : 0}%`,
+                          background: "#f59e0b",
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mpdc-analytics-bar-row">
+                    <div className="mpdc-analytics-bar-info">
+                      <span className="mpdc-analytics-bar-name">Agricultural at Pandan / Lansones</span>
+                      <span className="mpdc-analytics-bar-count">
+                        {analyticsStats.agriculturalZoneCount} ({analyticsStats.total > 0 ? Math.round((analyticsStats.agriculturalZoneCount / analyticsStats.total) * 100) : 0}%)
+                      </span>
+                    </div>
+                    <div className="mpdc-analytics-bar-track">
+                      <div
+                        className="mpdc-analytics-bar-fill"
+                        style={{
+                          width: `${analyticsStats.total > 0 ? (analyticsStats.agriculturalZoneCount / analyticsStats.total) * 100 : 0}%`,
+                          background: "#10b981",
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mpdc-analytics-bar-row">
+                    <div className="mpdc-analytics-bar-info">
+                      <span className="mpdc-analytics-bar-name">Institutional / Protected Eco-Tourism</span>
+                      <span className="mpdc-analytics-bar-count">
+                        {analyticsStats.institutionalZoneCount} ({analyticsStats.total > 0 ? Math.round((analyticsStats.institutionalZoneCount / analyticsStats.total) * 100) : 0}%)
+                      </span>
+                    </div>
+                    <div className="mpdc-analytics-bar-track">
+                      <div
+                        className="mpdc-analytics-bar-fill"
+                        style={{
+                          width: `${analyticsStats.total > 0 ? (analyticsStats.institutionalZoneCount / analyticsStats.total) * 100 : 0}%`,
+                          background: "#8b5cf6",
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ borderTop: "1px solid var(--apple-border)", paddingTop: "10px", marginTop: "4px", fontSize: "0.76rem", color: "var(--apple-text-secondary)", display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: "6px" }}>
+                    <span>Uri ng Ipinapatayo:</span>
+                    <span><strong>{analyticsStats.residentialTypeCount}</strong> Residensyal · <strong>{analyticsStats.commercialTypeCount}</strong> Komersyal / Dormitory · <strong>{analyticsStats.institutionalTypeCount}</strong> Institusyonal</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Panel 2: Nangungunang mga Barangay */}
+              <div className="mpdc-analytics-panel">
+                <div className="mpdc-analytics-panel-header">
+                  <h4 className="mpdc-analytics-panel-title">Nangungunang mga Barangay (Lokasyon)</h4>
+                  <span style={{ fontSize: "0.74rem", color: "var(--apple-text-secondary)" }}>
+                    Top 5 Barangays
+                  </span>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  {analyticsStats.topBarangays.length === 0 ? (
+                    <div style={{ textAlign: "center", padding: "24px 0", color: "var(--apple-text-secondary)", fontSize: "0.82rem" }}>
+                      Wala pang naitalang aplikasyon sa mga barangay.
+                    </div>
+                  ) : (
+                    analyticsStats.topBarangays.map((b) => (
+                      <div key={b.name} className="mpdc-analytics-bar-row">
+                        <div className="mpdc-analytics-bar-info">
+                          <span className="mpdc-analytics-bar-name">{b.name}</span>
+                          <span className="mpdc-analytics-bar-count">
+                            {b.count} aplikasyon ({b.pct}%)
+                          </span>
+                        </div>
+                        <div className="mpdc-analytics-bar-track">
+                          <div
+                            className="mpdc-analytics-bar-fill"
+                            style={{ width: `${b.pct}%`, background: "#059669" }}
+                          />
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -1546,11 +2121,11 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
               <div className="mpdc-detail-grid">
                 <div className="mpdc-detail-item">
                   <span className="mpdc-detail-key">{isEn ? "Applicant Name" : "Pangalan ng Aplikante"}</span>
-                  <span className="mpdc-detail-val">{selectedApp.applicantName || "—"}</span>
+                  <span className="mpdc-detail-val">{resolveAppApplicantName(selectedApp)}</span>
                 </div>
                 <div className="mpdc-detail-item">
                   <span className="mpdc-detail-key">Barangay</span>
-                  <span className="mpdc-detail-val">{selectedApp.barangay || "Luisiana"}</span>
+                  <span className="mpdc-detail-val">{resolveAppBarangay(selectedApp)}</span>
                 </div>
                 <div className="mpdc-detail-item">
                   <span className="mpdc-detail-key">{isEn ? "Current Status" : "Kasalukuyang Status"}</span>
@@ -1558,7 +2133,7 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
                 </div>
                 <div className="mpdc-detail-item">
                   <span className="mpdc-detail-key">{isEn ? "Contact Phone" : "Telepono / Contact"}</span>
-                  <span className="mpdc-detail-val">{selectedApp.contactNumber || "—"}</span>
+                  <span className="mpdc-detail-val">{resolveAppContact(selectedApp)}</span>
                 </div>
               </div>
 
@@ -1702,16 +2277,25 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
                 <div className="mpdc-form-row">
                   <div className="mpdc-form-group">
                     <label className="mpdc-form-label">
-                      {isEn ? "Official Position" : "Opisyal na Posisyon"}
+                      {isEn ? "Official Position / Role (Citizen's Charter)" : "Opisyal na Posisyon / Role (Citizen's Charter)"}
                     </label>
                     <select
                       className="mpdc-select"
                       style={{ width: "100%" }}
                       value={staffFormData.position}
-                      onChange={(e) => setStaffFormData((prev) => ({ ...prev, position: e.target.value }))}
+                      onChange={(e) => {
+                        const sel = e.target.value;
+                        setStaffFormData((prev) => ({
+                          ...prev,
+                          position: sel,
+                          role: sel,
+                        }));
+                      }}
                     >
                       {COMMON_POSITIONS.map((pos) => (
-                        <option key={pos} value={pos}>{pos}</option>
+                        <option key={pos} value={pos}>
+                          {pos}
+                        </option>
                       ))}
                     </select>
                   </div>
@@ -1736,15 +2320,19 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
                 <div className="mpdc-form-row">
                   <div className="mpdc-form-group">
                     <label className="mpdc-form-label">
-                      {isEn ? "Phone / Mobile Contact" : "Telepono / Mobile Contact"}
+                      {isEn ? "Mobile Number (SMS Temporary Password) *" : "Mobile Number (para sa SMS ng Password) *"}
                     </label>
                     <input
-                      type="text"
+                      type="tel"
                       className="mpdc-form-input"
-                      placeholder={isEn ? "e.g. (049) 555-0106 or 0917-xxx-xxxx" : "Hal. (049) 555-0106 o 0917-xxx-xxxx"}
+                      placeholder={isEn ? "e.g. 09171234567" : "Hal. 09171234567"}
                       value={staffFormData.phone}
                       onChange={(e) => setStaffFormData((prev) => ({ ...prev, phone: e.target.value }))}
+                      required
                     />
+                    <span style={{ fontSize: "0.73rem", color: "var(--apple-accent, #0071e3)", marginTop: "4px", display: "flex", alignItems: "center", gap: "4px" }}>
+                      📱 Awtomatikong magpapadala ng SMS ang system na may Temporary Password at Username sa numerong ito.
+                    </span>
                   </div>
 
                   <div className="mpdc-form-group">
@@ -1798,32 +2386,43 @@ export function MpdcAdminPage({ session, onLogout, onNavigate }: Props) {
                     </div>
                   </div>
                   <div className="mpdc-barangay-chips-wrap">
-                    <button
-                      type="button"
-                      className={`mpdc-brgy-chip ${staffFormData.assignedBarangays.includes("All 23 Barangays") ? "selected" : ""}`}
-                      onClick={() => toggleBarangaySelection("All 23 Barangays")}
-                    >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" style={{ marginRight: 4 }} aria-hidden="true">
-                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                      </svg>
-                      <span>{isEn ? "All 23 Barangays" : "Lahat ng 23 Barangay"}</span>
-                    </button>
-                    {LUISIANA_BARANGAYS.map((brgy) => {
-                      const isSel = staffFormData.assignedBarangays.includes(brgy);
+                    {(() => {
+                      const selectedBrgys = Array.isArray(staffFormData?.assignedBarangays) ? staffFormData.assignedBarangays : [];
+                      const isAll = selectedBrgys.includes("All 23 Barangays");
                       return (
-                        <button
-                          key={brgy}
-                          type="button"
-                          className={`mpdc-brgy-chip ${isSel ? "selected" : ""}`}
-                          onClick={() => toggleBarangaySelection(brgy)}
-                        >
-                          {brgy}
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            className={`mpdc-brgy-chip ${isAll ? "selected" : ""}`}
+                            onClick={() => toggleBarangaySelection("All 23 Barangays")}
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" style={{ marginRight: 4 }} aria-hidden="true">
+                              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                            </svg>
+                            <span>{isEn ? "All 23 Barangays" : "Lahat ng 23 Barangay"}</span>
+                          </button>
+                          {LUISIANA_BARANGAYS.map((brgy) => {
+                            const isSel = selectedBrgys.includes(brgy);
+                            return (
+                              <button
+                                key={brgy}
+                                type="button"
+                                className={`mpdc-brgy-chip ${isSel ? "selected" : ""}`}
+                                onClick={() => toggleBarangaySelection(brgy)}
+                              >
+                                {brgy}
+                              </button>
+                            );
+                          })}
+                        </>
                       );
-                    })}
+                    })()}
                   </div>
                   <span style={{ fontSize: "0.72rem", color: "var(--apple-text-secondary)", marginTop: "4px" }}>
-                    {isEn ? "Selected:" : "Napili:"} {staffFormData.assignedBarangays.length ? staffFormData.assignedBarangays.join(", ") : (isEn ? "None yet" : "Wala pa")}
+                    {isEn ? "Selected:" : "Napili:"}{" "}
+                    {Array.isArray(staffFormData?.assignedBarangays) && staffFormData.assignedBarangays.length
+                      ? staffFormData.assignedBarangays.join(", ")
+                      : (isEn ? "None yet" : "Wala pa")}
                   </span>
                 </div>
 

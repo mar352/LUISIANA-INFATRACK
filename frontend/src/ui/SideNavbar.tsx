@@ -113,19 +113,22 @@ export const SideNavbar: React.FC<SideNavbarProps> = ({
   };
 
   const userRole = currentUser?.role || currentRole;
+  const isMeo = userRole === "MEO" || userRole === "Engineer" || currentUser?.username === "meo" || currentUser?.username === "engineer";
   const isMpdc = userRole === "MPDC" || currentUser?.username === "mpdc" || currentUser?.username === "mpdc_admin" || userRole === "MPDC Admin";
   const isMpdcAdmin = isAdmin || currentUser?.username === "mpdc_admin" || userRole === "MPDC Admin";
-  const isEngineer = userRole === "Engineer" || userRole === "Private Engineer" || currentUser?.username === "engineer" || currentUser?.username === "pengineer";
+  const isEngineer = userRole === "Private Engineer" || currentUser?.username === "pengineer";
 
   const canAddLguProject = Boolean(
     currentUser &&
     (currentUser.role === "MPDC" ||
      currentUser.role === "MPDC Admin" ||
      currentUser.role === "Engineer" ||
+     currentUser.role === "MEO" ||
      currentUser.role === "Super Admin" ||
      currentUser.username === "mpdc" ||
      currentUser.username === "mpdc_admin" ||
-     currentUser.username === "engineer")
+     currentUser.username === "engineer" ||
+     currentUser.username === "meo")
   );
 
   useEffect(() => {
@@ -139,8 +142,8 @@ export const SideNavbar: React.FC<SideNavbarProps> = ({
   }, [canAddLguProject]);
 
   const navItems: NavItemDef[] = [
-    // MPDC-Only Modules (Strictly forbidden for Engineering Office per RBAC)
-    ...(!isEngineer
+    // MPDC-Only Modules (Strictly forbidden for Engineering Office & MEO per RBAC)
+    ...(!isEngineer && !isMeo
       ? [
           {
             id: "permits",
@@ -236,8 +239,33 @@ export const SideNavbar: React.FC<SideNavbarProps> = ({
         </svg>
       ),
     },
-    // Engineering Dashboard & Documents for Engineers and Admins.
-    ...(!isMpdc && (isEngineer || isAdmin)
+    // Dedicated MEO Public Infrastructure Module for MEO role
+    ...(isMeo
+      ? [
+          {
+            id: "meo_dashboard",
+            label: language === "en" ? "MEO Projects" : "MEO Proyekto",
+            tooltip: language === "en" ? "Municipal Engineering Office (Public Infrastructure & Bidding)" : "Tanggapan ng Pambayang Inhinyero (MEO Public Infrastructure)",
+            icon: (active: boolean) => (
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={active ? "2.3" : "2"}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M2 20h20M5 20V8l7-5 7 5v12M9 20v-6h6v6" />
+              </svg>
+            ),
+          },
+        ]
+      : []),
+    // Engineering Dashboard & Documents for Legacy Engineers and Admins (isolated from MEO)
+    ...(!isMpdc && !isMeo && (isEngineer || isAdmin)
       ? [
           {
             id: "engineer_dashboard",
@@ -286,8 +314,8 @@ export const SideNavbar: React.FC<SideNavbarProps> = ({
           },
         ]
       : []),
-    // 3D Mapa GIS situation globe for MPDC, Engineers, and Admins
-    ...(isMpdc || isEngineer || isAdmin
+    // 3D Mapa GIS situation globe for MPDC, Engineers, MEO, and Admins
+    ...(isMpdc || isEngineer || isMeo || isAdmin
       ? [
           {
             id: "app",
@@ -344,8 +372,8 @@ export const SideNavbar: React.FC<SideNavbarProps> = ({
 
   const handleItemClick = (item: NavItemDef) => {
     if (onNavigate) {
-      if ((item.id === "permits" || item.id === "documents" || item.id === "analytics") && isEngineer) {
-        // Hard security block: Engineering has ZERO access to MPDC modules per RBAC
+      if ((item.id === "permits" || item.id === "documents" || item.id === "analytics") && (isEngineer || isMeo)) {
+        // Hard security block: Engineering and MEO have ZERO access to MPDC modules per RBAC
         return;
       }
       if ((item.id === "admin_users" || item.id === "mpdc_admin") && isMpdcAdmin) {
@@ -366,8 +394,8 @@ export const SideNavbar: React.FC<SideNavbarProps> = ({
       {/* Sidebar Header Section (Under main header) */}
       <div className="side-nav-header">
         <div className="side-nav-header-info">
-          <span className="side-nav-kicker">{isEngineer ? (language === "en" ? "ENGINEERING" : "INHINYERO") : "INFATRACK"}</span>
-          <h2 className="side-nav-heading">{isEngineer ? (language === "en" ? "Office of the Engineer" : "Tanggapan ng Inhinyero") : (language === "en" ? "Main Menu" : title)}</h2>
+          <span className="side-nav-kicker">{isMeo ? "MEO" : isEngineer ? (language === "en" ? "ENGINEERING" : "INHINYERO") : "INFATRACK"}</span>
+          <h2 className="side-nav-heading">{isMeo ? (language === "en" ? "Municipal Engineering" : "Pambayang Inhinyero") : isEngineer ? (language === "en" ? "Office of the Engineer" : "Tanggapan ng Inhinyero") : (language === "en" ? "Main Menu" : title)}</h2>
         </div>
         <button
           type="button"

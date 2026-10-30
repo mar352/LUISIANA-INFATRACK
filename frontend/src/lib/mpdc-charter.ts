@@ -141,7 +141,7 @@ export const MPDC_CHARTER_SERVICES: Record<CitizenServiceType, MPDCCharterServic
         fees: "None",
         processingTime: "1 day",
         personsResponsible: [
-          { name: "Engr. Mario S. Baldovino", title: "Municipal Planning & Development Coordinator (MPDC)" },
+          { name: "Municipal Planning & Development Coordinator", title: "Head of Office (MPDC)" },
           { name: "Edward B. Romulo, EnP.", title: "Zoning Officer" },
           { name: "Randy A. Balasabas", title: "Admin Aide" },
         ],
@@ -290,7 +290,7 @@ export const MPDC_CHARTER_SERVICES: Record<CitizenServiceType, MPDCCharterServic
         fees: "None",
         processingTime: "1 hour",
         personsResponsible: [
-          { name: "Engr. Mario S. Baldovino", title: "MPDC" },
+          { name: "Municipal Planning & Development Coordinator", title: "MPDC" },
           { name: "Joy Anne O. Claricia", title: "Planning Officer" },
           { name: "Engr. Cher L. Zabate", title: "Planning Assistant" },
           { name: "Rosette Princess R. Dela Torre", title: "Statistician Aide" },
