@@ -33,11 +33,25 @@ export function resolveLanguage(): Language {
 /* ── Bilingual Phrase Pairs for Global DOM-Level Auto-Translation ───────────── */
 export const PHRASE_PAIRS: [string, string][] = [
   // Full Titles & Headings
+  ["Tanggapan ng Pambayang Inhinyero (MEO)", "Municipal Engineering Office (MEO)"],
+  ["Tanggapan ng Pambayang Inhinyero", "Municipal Engineering Office"],
+  ["Pangasiwaan ng Pambayang Inhinyero (MEO)", "Municipal Engineering Office (MEO)"],
+  ["Pangasiwaan ng Pambayang Inhinyero", "Municipal Engineering Office"],
+  ["Tanggapan ng Tagapangasiwa ng Gusali (OBO)", "Office of the Building Official (OBO)"],
+  ["Tanggapan ng Tagapangasiwa ng Gusali", "Office of the Building Official"],
+  ["Pangasiwaan ng Tagapangasiwa ng Gusali (OBO)", "Office of the Building Official (OBO)"],
+  ["Pangasiwaan ng Tagapangasiwa ng Gusali", "Office of the Building Official"],
   ["Tanggapan ng Inhinyero at Pangangasiwa ng Gusali", "Office of the Municipal Engineer & Building Official"],
   ["Pangasiwaan ng Inhinyero (Executive Dashboard)", "Municipal Engineering Office (Executive Dashboard)"],
   ["Pangasiwaan ng Inhinyero", "Municipal Engineering Office"],
   ["Tanggapan ng Inhinyero", "Municipal Engineering Office"],
   ["TANGGAPAN NG INHINYERO", "MUNICIPAL ENGINEERING OFFICE"],
+  ["TANGGAPAN NG PAMBAYANG INHINYERO (MEO)", "MUNICIPAL ENGINEERING OFFICE (MEO)"],
+  ["TANGGAPAN NG TAGAPANGASIWA NG GUSALI (OBO)", "OFFICE OF THE BUILDING OFFICIAL (OBO)"],
+  ["MEO Proyekto", "MEO Projects"],
+  ["OBO Building Permits", "OBO Building Permits"],
+  ["OBO Permits", "OBO Permits"],
+  ["Building Permits (OBO)", "Building Permits (OBO)"],
   ["Republika ng Pilipinas · Lalawigan ng Laguna", "Republic of the Philippines · Province of Laguna"],
   ["Mga Dokumento ng Inhinyero (Engineering Documents & Blueprints Vault)", "Engineering Documents & Blueprints Vault"],
   ["Subaybay sa mga Proyekto ng Bayan", "Municipal Infrastructure Projects Monitoring"],
@@ -740,6 +754,7 @@ export const translations: Record<Language, Record<string, string>> = {
 
     // Engineer Dashboard
     "eng.republic": "Republika ng Pilipinas · Lalawigan ng Laguna",
+    "eng.live_sync": "Real-time Live Sync",
     "eng.dept_name": "Pangasiwaan ng Inhinyero (Executive Dashboard)",
     "eng.hero_title": "Tanggapan ng Inhinyero at Pangangasiwa ng Gusali",
     "eng.hero_tag": "● Executive Command Center · Tanggapan ng Inhinyero",
@@ -934,6 +949,7 @@ export const translations: Record<Language, Record<string, string>> = {
 
     // Engineer Dashboard
     "eng.republic": "Republic of the Philippines · Province of Laguna",
+    "eng.live_sync": "Real-time Live Sync",
     "eng.dept_name": "Municipal Engineering Office (Executive Dashboard)",
     "eng.hero_title": "Office of the Municipal Engineer & Building Official",
     "eng.hero_tag": "● Executive Command Center · Engineering Office",

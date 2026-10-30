@@ -437,6 +437,95 @@
   color: #ffffff;
 }
 
+/* ── Apple-Style Pinned Lot & Inspection Map Trigger Button ── */
+.at-apple-map-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 16px;
+  border-radius: var(--apple-radius-full, 980px);
+  background: linear-gradient(135deg, rgba(0, 113, 227, 0.08) 0%, rgba(56, 189, 248, 0.05) 100%);
+  border: 1px solid rgba(0, 113, 227, 0.24);
+  color: var(--apple-accent, #0071e3);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 2px 8px rgba(0, 113, 227, 0.08);
+}
+
+[data-theme="dark"] .at-apple-map-btn,
+.dark .at-apple-map-btn {
+  background: linear-gradient(135deg, rgba(41, 151, 255, 0.16) 0%, rgba(56, 189, 248, 0.08) 100%);
+  border-color: rgba(41, 151, 255, 0.36);
+  color: #60a5fa;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+
+.at-apple-map-btn:hover {
+  background: var(--apple-accent, #0071e3);
+  color: #ffffff;
+  border-color: var(--apple-accent, #0071e3);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(0, 113, 227, 0.3);
+}
+
+[data-theme="dark"] .at-apple-map-btn:hover,
+.dark .at-apple-map-btn:hover {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #3b82f6;
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.45);
+}
+
+.at-apple-map-btn-badge {
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 980px;
+  background: rgba(0, 113, 227, 0.14);
+  color: currentColor;
+  border: 1px solid rgba(0, 113, 227, 0.25);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.at-apple-map-btn:hover .at-apple-map-btn-badge {
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.4);
+  color: #ffffff;
+}
+
+/* Secondary Map Button in Site Progress Header */
+.at-site-progress-map-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: var(--apple-radius-full, 980px);
+  background: var(--apple-surface, #ffffff);
+  border: 1px solid var(--apple-border-strong, rgba(0, 0, 0, 0.14));
+  color: var(--apple-text, #1d1d1f);
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.16s ease;
+}
+
+[data-theme="dark"] .at-site-progress-map-btn,
+.dark .at-site-progress-map-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+  color: #f1f5f9;
+}
+
+.at-site-progress-map-btn:hover {
+  background: var(--apple-surface-secondary, #f1f5f9);
+  border-color: var(--apple-accent, #0071e3);
+  color: var(--apple-accent, #0071e3);
+  transform: translateY(-1px);
+}
+
 .at-hero-date {
   font-size: 0.76rem;
   color: var(--apple-text-tertiary, #86868b);

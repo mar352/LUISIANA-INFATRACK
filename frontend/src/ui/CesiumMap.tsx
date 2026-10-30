@@ -1391,21 +1391,7 @@ if (typeof window !== "undefined") {
   }
 }
 
-export function isLguInfrastructureProject(p: Project | any): boolean {
-  if (!p) return false;
-  if (p.isPrivateApplication || p.type === "Private Building") return false;
-  return Boolean(
-    p.isLguProject ||
-    p.type === "Municipal Project" ||
-    (typeof p.id === "string" && (
-      p.id.startsWith("lgu-proj-") ||
-      p.id.startsWith("P") ||
-      p.id.startsWith("municipal-") ||
-      p.id.startsWith("muni-")
-    )) ||
-    (p.department && !p.trackingNumber && !p.isPrivateApplication)
-  );
-}
+export { isLguInfrastructureProject } from "../lib/infra-filter";
 
 /**
  * Creates a classic, high-visibility teardrop map pin icon with:

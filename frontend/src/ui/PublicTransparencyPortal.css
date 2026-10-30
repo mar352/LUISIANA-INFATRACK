@@ -1112,6 +1112,106 @@ body.dark .ptp-status-pill.completed {
   color: #0369a1;
 }
 
+/* 3.5 MEO Scheduled Inspection Styles */
+.ptp-inspection-row {
+  background: rgba(2, 132, 199, 0.03);
+  padding: 5px 6px;
+  border-radius: 6px;
+  margin: 2px 0;
+}
+
+.ptp-inspection-date-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #0369a1;
+  background: #e0f2fe;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  border: 1px solid rgba(2, 132, 199, 0.2);
+}
+
+.ptp-awaiting-subtle {
+  color: #94a3b8;
+  font-size: 0.76rem;
+  font-style: italic;
+}
+
+.ptp-scheduled-inspection-card {
+  background: linear-gradient(135deg, rgba(224, 242, 254, 0.45) 0%, rgba(240, 249, 255, 0.7) 100%);
+  border: 1px solid rgba(2, 132, 199, 0.25);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 4px 0 6px 0;
+}
+
+.ptp-sched-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ptp-sched-title-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #0369a1;
+}
+
+.ptp-sched-icon {
+  color: #0284c7;
+  flex-shrink: 0;
+}
+
+.ptp-sched-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #0c4a6e;
+}
+
+.ptp-sched-status-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 9999px;
+  background: #0284c7;
+  color: #ffffff;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.ptp-sched-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.76rem;
+  color: #334155;
+}
+
+.ptp-sched-time-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.ptp-sched-sub-icon {
+  color: #0284c7;
+  flex-shrink: 0;
+}
+
+.ptp-sched-inspector-row {
+  font-size: 0.74rem;
+  color: #475569;
+  padding-left: 17px;
+}
+
 /* 4 & 5. Approved Budget & Utilized Budget Card */
 .ptp-budget-card {
   background: #f8fafc;

@@ -66,7 +66,9 @@ type Props = {
 type AdminTab = "overview" | "users" | "rbac" | "audit" | "config";
 
 const DEPARTMENT_ROLE_OPTIONS: Array<{ label: string; role: UserRole; department: string }> = [
-  { label: "Tanggapan ng Inhinyero (Infrastructure & Engineering)", role: "Engineer", department: "Infrastructure & Engineering Office" },
+  { label: "Tanggapan ng Pambayang Inhinyero (MEO - Public Infrastructure)", role: "MEO", department: "Municipal Engineering Office (MEO)" },
+  { label: "Tanggapan ng Tagapangasiwa ng Gusali (OBO - Building Permits)", role: "OBO", department: "Office of the Building Official (OBO)" },
+  { label: "Tanggapan ng Inhinyero (MEO/OBO Legacy)", role: "Engineer", department: "Infrastructure & Engineering Office" },
   { label: "Tanggapan ng Pagpaplano (MPDC)", role: "MPDC", department: "Municipal Planning & Development Coordinator" },
   { label: "Pangasiwaan ng MPDC (MPDC Administrator)", role: "Super Admin", department: "Municipal Planning & Development Coordinator" },
   { label: "Tanggapan ng Pagsasaka (Agriculture Office)", role: "Agriculture", department: "Municipal Agriculture Office" },
@@ -88,6 +90,8 @@ const RBAC_MODULES = [
 const RBAC_MATRIX: Record<UserRole, string[]> = {
   "Super Admin": ["map", "hazard", "permits", "documents", "engagement", "admin"],
   MPDC: ["map", "hazard", "permits", "documents", "engagement"],
+  MEO: ["map", "hazard", "documents"],
+  OBO: ["map", "hazard", "permits", "documents"],
   Engineer: ["map", "hazard", "permits", "documents"],
   Agriculture: ["map", "hazard"],
   "Barangay Official": ["map", "hazard"],
@@ -172,6 +176,7 @@ export function UserManagementPage({ session, onLogout, onNavigate }: Props) {
     name: "",
     employeeId: "",
     username: "",
+    phone: "",
     roleIdx: 0,
     defaultPassword: "InfaTrack2026",
   });
@@ -556,6 +561,7 @@ export function UserManagementPage({ session, onLogout, onNavigate }: Props) {
       username: addForm.username.trim().toLowerCase(),
       role: sel.role,
       department: sel.department,
+      phone: addForm.phone.trim(),
       defaultPassword: addForm.defaultPassword.trim(),
     };
 
@@ -581,6 +587,7 @@ export function UserManagementPage({ session, onLogout, onNavigate }: Props) {
       name: "",
       employeeId: "",
       username: "",
+      phone: "",
       roleIdx: 0,
       defaultPassword: "InfaTrack2026",
     });
@@ -2781,6 +2788,21 @@ lihim na password bago makapasok sa iyong dashboard.
                       </option>
                     ))}
                   </select>
+                </div>
+
+                {/* Mobile Phone for SMS */}
+                <div className="ump-modal-field">
+                  <label className="ump-modal-label">{isEn ? "Mobile Number (SMS Temporary Password)" : "Mobile Number (para sa SMS ng Password)"}</label>
+                  <input
+                    type="tel"
+                    className="ump-modal-input"
+                    placeholder="09XXXXXXXXX (hal. 09171234567)"
+                    value={addForm.phone}
+                    onChange={(e) => setAddForm({ ...addForm, phone: e.target.value })}
+                  />
+                  <span className="ump-modal-hint" style={{ color: "#0071e3", display: "flex", alignItems: "center", gap: "4px", marginTop: "4px" }}>
+                    📱 Awtomatikong magpapadala ng SMS na naglalaman ng Temporary Password at Username sa numerong ito.
+                  </span>
                 </div>
 
                 {/* Default Password */}

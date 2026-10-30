@@ -284,7 +284,7 @@ export function createCitizenApplication(data) {
         ? [
             { name: "Bon Ryan P. Pedron", role: "Admin Aide (Verification & Issuance)" },
             { name: "Edward B. Romulo, EnP.", role: "Zoning Officer (Review & Permit Preparation)" },
-            { name: "Engr. Mario S. Baldovino", role: "MPDC (Final Approval & Signing)" },
+            { name: "Municipal Planning & Development Coordinator", role: "MPDC (Final Approval & Signing)" },
             { name: "Randy A. Balasabas", role: "Admin Aide (Inspection & Verification)" },
           ]
         : serviceType === "land_titling"
@@ -640,7 +640,7 @@ export function updateCitizenApplication(id, patch) {
       step3Completed: true,
       step4Completed: true,
       step4At: currentProgress.step4At || new Date().toISOString(),
-      step4By: currentProgress.step4By || patch.engineerApprovedBy || "Engr. Mario S. Baldovino (Municipal Engineer)",
+      step4By: currentProgress.step4By || patch.engineerApprovedBy || "Municipal Engineer",
       step5Completed: true,
       step5At: new Date().toISOString(),
       step5By: "Municipal Building Official & Assessor's Office",
@@ -673,7 +673,7 @@ export function updateCitizenApplication(id, patch) {
   // Handle Official Receipt Picture Review & Verification by Municipal Engineer
   if (patch.orVerified !== undefined) {
     const isVerified = Boolean(patch.orVerified);
-    const verifier = patch.orVerifiedBy || "Engr. Mario S. Baldovino (Municipal Engineer)";
+    const verifier = patch.orVerifiedBy || "Municipal Engineer";
     const verAt = patch.orVerifiedAt || new Date().toISOString();
     
     updated.payment = {
@@ -727,7 +727,7 @@ export function updateCitizenApplication(id, patch) {
   // Handle Official Receipt Picture Rejection (Requesting Citizen Re-upload)
   if (patch.orRejected) {
     const rejReason = patch.orRejectReason || "Hindi malinaw o hindi mabasa ang isinumiteng litrato ng Official Receipt.";
-    const rejecter = patch.orRejectedBy || "Engr. Mario S. Baldovino (Municipal Engineer)";
+    const rejecter = patch.orRejectedBy || "Municipal Engineer";
     const rejAt = patch.orRejectedAt || new Date().toISOString();
 
     updated.status = "returned";
@@ -779,7 +779,7 @@ export function updateCitizenApplication(id, patch) {
     updated.engineerApproved = true;
     updated.isPinned = true;
     updated.engineerApprovedAt = patch.engineerApprovedAt || new Date().toISOString();
-    updated.engineerApprovedBy = patch.engineerApprovedBy || "Engr. Mario S. Baldovino (Municipal Engineer)";
+    updated.engineerApprovedBy = patch.engineerApprovedBy || "Building Official";
     if (!patch.status || patch.status === "for_engineering_inspection") {
       updated.status = "approved_for_construction";
     }
@@ -794,12 +794,12 @@ export function updateCitizenApplication(id, patch) {
     if (!Array.isArray(updated.remarks)) updated.remarks = [];
     const approvalNote = patch.notes && String(patch.notes).trim()
       ? String(patch.notes).trim()
-      : "Inaprubahan ng Municipal Engineer ang aplikasyon para sa konstruksyon. Opisyal nang nai-pin ang site sa 3D GIS Mapa.";
+      : "Inaprubahan ng Building Official (OBO) ang aplikasyon para sa konstruksyon. Opisyal nang nai-pin ang site sa 3D GIS Mapa.";
     
     const alreadyLoggedApproval = updated.remarks.some((r) => r.actionType === "ENGINEER_APPROVED_PINNED");
     if (!alreadyLoggedApproval) {
       updated.remarks.push({
-        fromOffice: "Engineering",
+        fromOffice: "OBO",
         author: updated.engineerApprovedBy,
         message: approvalNote,
         timestamp: new Date().toISOString(),
@@ -881,7 +881,7 @@ export function updateCitizenApplication(id, patch) {
     const isDup = updated.remarks.some((r) => r.message === noteText);
     if (!isDup) {
       const office = patch.fromOffice || (patch.status === "ocular_inspection" || patch.status === "engineering" || patch.status === "returned" ? "Engineering" : "MPDC");
-      const defaultAuthor = office === "Engineering" ? "Engr. Mario S. Baldovino (Municipal Engineer)" : "Edward B. Romulo, EnP. (Zoning Officer)";
+      const defaultAuthor = office === "Engineering" ? "Municipal Engineer" : "Zoning Officer (MPDC)";
       const staffRemark = {
         id: `rem-${Date.now()}`,
         fromOffice: office,
@@ -1294,7 +1294,7 @@ export function updateSiteInspection(idOrTracking, { stage, progress, photoUrl, 
     timestamp: now,
     inspectedAt: now,
     remarks: remarks || "",
-    inspector: inspector || "Engr. Mario S. Baldovino (Municipal Engineering Office)",
+    inspector: inspector || "Municipal Engineering Office",
   };
 
   if (!Array.isArray(app.inspectionPhotos)) {
@@ -1327,7 +1327,7 @@ export function updateSiteInspection(idOrTracking, { stage, progress, photoUrl, 
   app.remarks.unshift({
     id: `rem-insp-${Date.now()}`,
     fromOffice: "Engineering",
-    author: inspector || "Engr. Mario S. Baldovino (Municipal Engineer)",
+    author: inspector || "Municipal Engineer",
     message: `[Site Inspection - ${stageLabel}] ${remarks || "Naisagawa ang aktuwal na inspeksyon sa site."}`,
     createdAt: now,
     requiresAction: false,
@@ -1346,7 +1346,7 @@ export function updateSiteInspection(idOrTracking, { stage, progress, photoUrl, 
     app.stepProgress.step2Completed = true;
     app.stepProgress.step3Completed = true;
     app.stepProgress.step3At = now;
-    app.stepProgress.step3By = inspector || "Engr. Mario S. Baldovino (Municipal Engineer)";
+    app.stepProgress.step3By = inspector || "Municipal Engineer";
   } else if (app.status === "for_engineering_inspection" || app.status === "paid") {
     app.status = "in_review";
   }

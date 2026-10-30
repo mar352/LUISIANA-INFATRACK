@@ -851,7 +851,7 @@ INSERT INTO staff_accounts (
 ),
 (
     'mpdc',
-    'Engr. Mario S. Baldovino',
+    'MPDC Planning Coordinator',
     'MPDC-001',
     'MPDC',
     'Municipal Planning & Development Coordinator',

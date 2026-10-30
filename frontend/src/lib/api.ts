@@ -173,6 +173,28 @@ export function fetchPublicProjects() {
   return getJson<{ projects: PublicProject[]; generatedAt: string }>("/api/public/projects");
 }
 
+export function fetchInspectionSchedules() {
+  return getJson<{ ok: boolean; schedules: any[] }>("/api/meo/schedules");
+}
+
+export function saveInspectionScheduleApi(body: {
+  id?: string;
+  projectCode?: string;
+  projectName: string;
+  barangay?: string;
+  date: string;
+  time?: string;
+  assignedInspector?: string;
+  status?: string;
+  notes?: string;
+}) {
+  return sendJson<{ ok: boolean; id: string; schedule?: any }>("/api/meo/schedules", "POST", body);
+}
+
+export function deleteInspectionScheduleApi(id: string) {
+  return sendJson<{ ok: boolean }>(`/api/meo/schedules/${id}`, "DELETE");
+}
+
 export function fetchPublicProject(id: string) {
   return getJson<{ project: PublicProject }>(`/api/public/projects/${id}`);
 }

@@ -28,6 +28,7 @@ import {
   type BarangayArea,
 } from "../lib/barangay-overlay";
 import { createProject } from "../lib/api";
+import { addProjectToFirestore } from "../services/firestore-projects";
 import "./AddLguProjectModal.css";
 
 export type ProjectStatusOption = "Pre-construction" | "Ongoing" | "Completed";
@@ -149,12 +150,12 @@ export const AddLguProjectForm: React.FC<AddLguProjectFormProps> = ({
       (currentSession as any)?.fullName ||
       currentSession?.name ||
       currentSession?.username ||
-      (currentRole === "Engineer" ? "Engr. Mario S. Baldovino" : currentRole) ||
+      (currentRole === "Engineer" ? "Municipal Engineer" : currentRole) ||
       "Staff User";
 
     const dept =
       currentSession?.department ||
-      (currentRole === "Engineer" || currentRole === "Private Engineer"
+      (currentRole === "Engineer" || currentRole === "MEO" || currentRole === "Private Engineer"
         ? "Engineering Office"
         : "MPDC");
 
@@ -344,9 +345,9 @@ export const AddLguProjectForm: React.FC<AddLguProjectFormProps> = ({
       // Geotagged photo is strictly used for auto-extracting GPS coordinates for 2D Map Pinning.
       // It is NOT an inspection photo and must NOT be used in Street View / Panorama.
       // We keep photos: [] empty so that upon posting, it has no inspection pictures or panoramas yet.
-      const isEngineer = currentRole === "Engineer" || currentRole === "Private Engineer";
+      const isEngineer = currentRole === "Engineer" || currentRole === "MEO" || currentRole === "Private Engineer";
       const engineerName = isEngineer
-        ? ((currentSession as any)?.fullName || currentSession?.username || "Engr. Mario S. Baldovino")
+        ? ((currentSession as any)?.fullName || currentSession?.username || "Municipal Engineer")
         : null;
 
       const newProject: Project = {
@@ -424,7 +425,15 @@ export const AddLguProjectForm: React.FC<AddLguProjectFormProps> = ({
         archivedAt: null,
       };
 
-      // 2. Persist to local cache immediately (Firestore bypassed per user request)
+      // 1. Sync directly to Cloud Firestore so the pinned map project is live in the cloud
+      try {
+        await addProjectToFirestore(newProject);
+        console.info("[AddLguProjectForm] Project successfully saved to Cloud Firestore:", newProject.id);
+      } catch (fErr: any) {
+        console.warn("[AddLguProjectForm] Firestore sync note:", fErr?.message || fErr);
+      }
+
+      // 2. Persist to local cache immediately
       let updatedList: Project[] = [newProject];
       try {
         const cachedRaw = localStorage.getItem("infatrack-projects-cache");
@@ -445,10 +454,55 @@ export const AddLguProjectForm: React.FC<AddLguProjectFormProps> = ({
         /* ignore */
       }
 
+      // 4. Automatically synchronize to Program of Works (POW) & BAC Procurement Registry
+      let createdBiddingRecord: any = null;
+      if (numBudget > 0) {
+        try {
+          const rawBidding = localStorage.getItem("infatrack_meo_bidding_records");
+          const existingBidding = rawBidding ? JSON.parse(rawBidding) : [];
+          const bList = Array.isArray(existingBidding) ? existingBidding : [];
+
+          // Determine initial statutory RA 9184 stage
+          let initialStage = "Pre-Procurement";
+          if (status === "Completed") {
+            initialStage = "Completed";
+          } else if (status === "Ongoing") {
+            initialStage = "Under Construction";
+          } else if (noticeOfAwardFile) {
+            initialStage = "Notice of Award (NOA)";
+          }
+
+          createdBiddingRecord = {
+            id: `BID-${newProject.id}`,
+            projectCode: newProject.id,
+            projectName: newProject.name,
+            barangay: newProject.barangay,
+            abcBudget: numBudget,
+            contractAmount: contractor.trim() ? numBudget : 0,
+            contractor: contractor.trim() || "Pending BAC Award",
+            pcabLicense: contractor.trim() ? "PCAB-REGISTERED" : "Pending Bidding",
+            status: initialStage,
+            powUrl: powUrl || undefined,
+            noaDate: noticeOfAwardFile ? now.split("T")[0] : undefined,
+          };
+
+          const updatedBidding = [
+            createdBiddingRecord,
+            ...bList.filter((b: any) => b.projectCode !== newProject.id && b.id !== createdBiddingRecord.id),
+          ];
+          localStorage.setItem("infatrack_meo_bidding_records", JSON.stringify(updatedBidding));
+        } catch (bErr) {
+          console.warn("[AddLguProjectForm] Auto-sync to POW bidding failed:", bErr);
+        }
+      }
+
       setSubmitSuccess(true);
       setTimeout(() => {
         window.dispatchEvent(new CustomEvent("lgu-project-added", { detail: newProject }));
         window.dispatchEvent(new CustomEvent("projects-updated", { detail: updatedList }));
+        if (createdBiddingRecord) {
+          window.dispatchEvent(new CustomEvent("bidding-record-created", { detail: createdBiddingRecord }));
+        }
         onSuccess?.(newProject);
       }, isEngineer ? 900 : 1400);
     } catch (err: any) {
@@ -468,7 +522,7 @@ export const AddLguProjectForm: React.FC<AddLguProjectFormProps> = ({
           <div>
             <strong>LGU Project Encoded Successfully!</strong>
             <p>
-              {currentRole === "Engineer" || currentRole === "Private Engineer"
+              {currentRole === "Engineer" || currentRole === "MEO" || currentRole === "Private Engineer"
                 ? "The project has been confirmed and pinned to the 3D GIS Map."
                 : "Project recorded successfully. Queued for Municipal Engineer confirmation and 2D/3D map pinning."}
             </p>

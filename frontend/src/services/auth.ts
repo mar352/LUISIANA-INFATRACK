@@ -32,6 +32,7 @@ export type AdminUserRecord = {
   role: UserRole;
   department: string;
   label?: string;
+  phone?: string;
   mustChangePassword: boolean;
   isActive?: boolean;
   failedAttempts: number;
@@ -59,6 +60,7 @@ export type NewUserPayload = {
   username: string;
   role: UserRole;
   department?: string;
+  phone?: string;
   defaultPassword?: string;
 };
 

@@ -49,7 +49,7 @@ import {
   getApplicationPhotos,
 } from "./services/citizenApplications.js";
 import { securityCheckUploadedFile, logSecurityEvent } from "./services/fileSecurity.js";
-import { initDb, isDbConnected } from "./services/db.js";
+import { initDb, isDbConnected, query } from "./services/db.js";
 import { recordTermsConsent, listTermsConsents, resolveRealPublicIp } from "./services/termsConsent.js";
 import { createAlertFromRisk } from "./services/alerts.js";
 import { buildSlopeCache } from "./services/dem.js";
@@ -774,7 +774,7 @@ app.get("/api/admin/users", requireRoles("Super Admin"), (_req, res) => {
 });
 
 /** Super Admin: Create a new employee account with default password & mustChangePassword flag */
-app.post("/api/admin/users", requireRoles("Super Admin"), (req, res) => {
+app.post("/api/admin/users", requireRoles("Super Admin"), async (req, res) => {
   const result = createAccount(req.body || {});
   if (!result.ok) {
     const map = {
@@ -786,16 +786,56 @@ app.post("/api/admin/users", requireRoles("Super Admin"), (req, res) => {
     const [status, error] = map[result.error] || [400, "Hindi nalikha ang account."];
     return res.status(status).json({ error });
   }
+
+  const userPhone = (req.body?.phone || result.user?.phone || "").trim();
+  if (userPhone) {
+    try {
+      const smsRes = await sendSmsNotification({
+        phone: userPhone,
+        trackingNumber: result.user?.employeeId || result.user?.username,
+        eventType: "STAFF_ACCOUNT_CREATED",
+        eventData: {
+          name: result.user?.name,
+          username: result.user?.username,
+          temporaryPassword: result.user?.defaultPassword,
+        },
+      });
+      result.smsResult = smsRes;
+    } catch (smsErr) {
+      console.warn(`[User SMS] Failed to send SMS to ${userPhone}:`, smsErr.message);
+    }
+  }
+
   broadcastSystemHealth();
   res.status(201).json(result);
 });
 
 /** Super Admin: Reset employee password to default and re-flag mustChangePassword */
-app.post("/api/admin/users/:username/reset", requireRoles("Super Admin"), (req, res) => {
+app.post("/api/admin/users/:username/reset", requireRoles("Super Admin"), async (req, res) => {
   const result = resetAccountPassword(req.params.username, req.body?.defaultPassword);
   if (!result.ok) {
     return res.status(404).json({ error: "Hindi natagpuan ang account." });
   }
+
+  const phone = (req.body?.phone || result.phone || "").trim();
+  if (phone) {
+    try {
+      const smsRes = await sendSmsNotification({
+        phone,
+        trackingNumber: result.username,
+        eventType: "STAFF_PASSWORD_RESET",
+        eventData: {
+          name: result.name || result.username,
+          username: result.username,
+          temporaryPassword: result.defaultPassword,
+        },
+      });
+      result.smsResult = smsRes;
+    } catch (smsErr) {
+      console.warn(`[Reset SMS] Failed to send SMS to ${phone}:`, smsErr.message);
+    }
+  }
+
   broadcastSystemHealth();
   res.json(result);
 });
@@ -1137,7 +1177,11 @@ app.get("/api/engagement/stats", (_req, res) => {
   res.json({ stats: engagementPublicStats(), generatedAt: new Date().toISOString() });
 });
 
-app.post("/api/projects", requireRoles("Engineer", "MPDC"), (req, res) => {
+app.post("/api/projects", requireRoles("Engineer", "MEO", "MPDC"), (req, res) => {
+  const s = sessionFromRequest(req);
+  if (s?.role === "MEO" && (req.body?.type === "Private Building" || req.body?.isPrivateApplication)) {
+    return res.status(403).json({ error: "MEO role is strictly for LGU infrastructure projects. No private infrastructure can be created or pinned by this role." });
+  }
   const {
     name,
     modelType,
@@ -1206,7 +1250,7 @@ app.post("/api/projects", requireRoles("Engineer", "MPDC"), (req, res) => {
 
 app.patch("/api/projects/:id", (req, res, next) => {
   const s = sessionFromRequest(req);
-  if (s && !["Engineer", "MPDC", "Super Admin"].includes(s.role)) {
+  if (s && !["Engineer", "MEO", "MPDC", "Super Admin"].includes(s.role)) {
     return res.status(403).json({ error: "Your office cannot do this." });
   }
   next();
@@ -1222,14 +1266,14 @@ app.patch("/api/projects/:id", (req, res, next) => {
   res.json({ project });
 });
 
-app.post("/api/projects/:id/milestones", requireRoles("Engineer", "MPDC"), (req, res) => {
+app.post("/api/projects/:id/milestones", requireRoles("Engineer", "MEO", "MPDC"), (req, res) => {
   const milestone = addMilestone(req.params.id, req.body);
   if (!milestone) return res.status(400).json({ error: "Invalid project or milestone data" });
   io.emit("projects:update", emitProjectsPayload());
   res.json({ milestone });
 });
 
-app.patch("/api/projects/:id/milestones/:mid", requireRoles("Engineer", "MPDC"), (req, res) => {
+app.patch("/api/projects/:id/milestones/:mid", requireRoles("Engineer", "MEO", "MPDC"), (req, res) => {
   const milestone = completeMilestone(req.params.id, req.params.mid);
   if (!milestone) return res.status(404).json({ error: "Milestone not found" });
   io.emit("projects:update", emitProjectsPayload());
@@ -1256,7 +1300,7 @@ app.get("/api/projects/:id/report", requireStaff, (req, res) => {
   res.json({ report });
 });
 
-app.post("/api/projects/:id/photos", requireRoles("Engineer", "MPDC"), (req, res, next) => {
+app.post("/api/projects/:id/photos", requireRoles("Engineer", "MEO", "MPDC"), (req, res, next) => {
   uploadPhoto.single("photo")(req, res, (err) => {
     if (err) return multerErrorHandler(err, req, res, next);
     if (!req.file) {
@@ -1508,6 +1552,10 @@ app.get("/api/citizen/applications", (req, res) => {
 });
 
 app.patch("/api/citizen/applications/:id", requireStaff, (req, res) => {
+  const s = sessionFromRequest(req);
+  if (s?.role === "MEO" && (req.body?.engineerApproved || req.body?.isPinned)) {
+    return res.status(403).json({ error: "MEO role is strictly for LGU infrastructure projects. Private building permits cannot be approved or pinned by this role." });
+  }
   const updated = updateCitizenApplication(req.params.id, req.body || {});
   if (!updated) {
     return res.status(404).json({ error: "Application not found." });
@@ -1842,7 +1890,7 @@ app.post(
       const stage = req.body?.stage || "before_construction";
       const progress = req.body?.progress !== undefined && req.body?.progress !== "" ? Number(req.body.progress) : undefined;
       const remarks = req.body?.remarks || "";
-      const inspector = req.body?.inspector || "Engr. Mario S. Baldovino (Municipal Engineering Office)";
+      const inspector = req.body?.inspector || "Municipal Engineering Office";
 
       let photoUrl = "";
       if (req.file) {
@@ -2112,7 +2160,7 @@ app.get("/api/mpdc/personnel", (_req, res) => {
   res.json({ ok: true, personnel: loadMpdcPersonnel() });
 });
 
-app.post("/api/mpdc/personnel", (req, res) => {
+app.post("/api/mpdc/personnel", async (req, res) => {
   const { name, position, role, phone, status, assignedBarangays, id, createAccount: shouldCreateAccount, username, defaultPassword } = req.body || {};
   if (!name || !name.trim()) {
     return res.status(400).json({ error: "Pangalan ng kawani ay kailangan." });
@@ -2128,14 +2176,19 @@ app.post("/api/mpdc/personnel", (req, res) => {
     }
   }
   const newId = id?.trim() || `MPDC-${String(max + 1).padStart(3, "0")}`;
+  const staffPhone = (phone || "").trim();
+  const tempPassword = (defaultPassword || "InfaTrack2026").trim();
+  const userKey = (username || name.toLowerCase().replace(/[^a-z0-9]/g, "")).trim();
+
   const newPersonnel = {
     id: newId,
     name: name.trim(),
     position: (position || "Planning & Zoning Officer").trim(),
     role: (role || "Ocular Inspector").trim(),
-    phone: (phone || "").trim() || "(049) 555-0100",
+    phone: staffPhone || "(049) 555-0100",
     status: status || "In Office",
     assignedBarangays: Array.isArray(assignedBarangays) && assignedBarangays.length > 0 ? assignedBarangays : ["All 23 Barangays"],
+    username: userKey,
     createdAt: new Date().toISOString(),
   };
 
@@ -2143,23 +2196,86 @@ app.post("/api/mpdc/personnel", (req, res) => {
   saveMpdcPersonnel(list);
 
   let accountCreated = null;
-  if (shouldCreateAccount) {
-    const userKey = (username || name.toLowerCase().replace(/[^a-z0-9]/g, "")).trim();
+  if (shouldCreateAccount !== false) {
     const accResult = createAccount({
       name: newPersonnel.name,
       employeeId: newPersonnel.id,
       username: userKey,
       role: "MPDC",
       department: "Municipal Planning & Development Coordinator",
-      defaultPassword: defaultPassword || "InfaTrack2026",
+      phone: staffPhone,
+      defaultPassword: tempPassword,
     });
     if (accResult.ok) {
       accountCreated = accResult.user;
     }
   }
 
+  // ── Dispatch SMS with Temporary Password to Staff Phone ─────────────────────
+  let smsResult = null;
+  if (staffPhone) {
+    try {
+      smsResult = await sendSmsNotification({
+        phone: staffPhone,
+        trackingNumber: newPersonnel.id,
+        eventType: "STAFF_ACCOUNT_CREATED",
+        eventData: {
+          name: newPersonnel.name,
+          username: userKey,
+          temporaryPassword: tempPassword,
+        },
+      });
+      console.log(`[Staff SMS] Dispatched temporary password SMS to ${staffPhone} for ${newPersonnel.name}:`, smsResult);
+    } catch (smsErr) {
+      console.warn(`[Staff SMS] Failed to dispatch SMS to ${staffPhone}:`, smsErr.message);
+      smsResult = { success: false, reason: smsErr.message };
+    }
+  }
+
   io.emit("mpdc:personnel_updated", { list });
-  res.status(201).json({ ok: true, personnel: newPersonnel, list, accountCreated });
+  res.status(201).json({ ok: true, personnel: newPersonnel, list, accountCreated, smsResult });
+});
+
+/** Resend or send temporary password credentials to an existing staff member via SMS */
+app.post("/api/mpdc/personnel/:id/send-sms-credentials", async (req, res) => {
+  const { id } = req.params;
+  const list = loadMpdcPersonnel();
+  const staff = list.find((p) => p.id === id);
+  if (!staff) {
+    return res.status(404).json({ error: "Hindi natagpuan ang kawani." });
+  }
+
+  const phone = (req.body?.phone || staff.phone || "").trim();
+  if (!phone) {
+    return res.status(400).json({ error: "Walang nakatalang mobile phone number ang kawani." });
+  }
+
+  if (req.body?.phone && req.body.phone !== staff.phone) {
+    staff.phone = req.body.phone.trim();
+    saveMpdcPersonnel(list);
+  }
+
+  const username = staff.username || staff.name.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const tempPassword = (req.body?.defaultPassword || "InfaTrack2026").trim();
+
+  // Reset password in auth system so the temporary password is valid
+  resetAccountPassword(username, tempPassword);
+
+  try {
+    const smsResult = await sendSmsNotification({
+      phone,
+      trackingNumber: staff.id,
+      eventType: "STAFF_ACCOUNT_CREATED",
+      eventData: {
+        name: staff.name,
+        username,
+        temporaryPassword: tempPassword,
+      },
+    });
+    res.json({ ok: true, smsResult, phone, username, temporaryPassword: tempPassword });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.patch("/api/mpdc/personnel/:id/status", (req, res) => {
@@ -2258,11 +2374,174 @@ setInterval(async () => {
   }
 }, 5000);
 
+function formatDbDate(d) {
+  if (!d) return "";
+  if (typeof d === "string") return d.split("T")[0];
+  if (d instanceof Date) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  }
+  return String(d).split("T")[0];
+}
+
+// ── MEO Inspection Schedules REST API ──────────────────────────────────────
+app.get("/api/meo/schedules", async (_req, res) => {
+  try {
+    if (isDbConnected()) {
+      const result = await query(
+        "SELECT * FROM meo_inspection_schedules ORDER BY inspection_date DESC"
+      );
+      const mapped = result.rows.map((r) => ({
+        id: r.id,
+        projectCode: r.project_code,
+        projectName: r.project_name,
+        barangay: r.barangay,
+        date: formatDbDate(r.inspection_date),
+        time: r.inspection_time || "09:00 AM",
+        assignedInspector: r.assigned_inspector,
+        status: r.status,
+        notes: r.notes,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+      }));
+      return res.json({ ok: true, schedules: mapped });
+    }
+  } catch (err) {
+    console.warn("[MEO Schedules] DB query failed:", err.message);
+  }
+  res.json({ ok: true, schedules: [] });
+});
+
+app.post("/api/meo/schedules", async (req, res) => {
+  const { id, projectCode, projectName, barangay, date, time, assignedInspector, status, notes } = req.body || {};
+  if (!projectName || !date) return res.status(400).json({ error: "projectName and date are required." });
+  const schedId = id || `MSCH-${Date.now()}`;
+  const inspectionDate = date;
+  const inspectionTime = time || "09:00 AM";
+  const inspector = assignedInspector || "Assistant Municipal Engineer";
+  const schedStatus = status || "Nakatakda";
+  const schedNotes = notes || "";
+
+  try {
+    if (isDbConnected()) {
+      await query(
+        `INSERT INTO meo_inspection_schedules (id, project_code, project_name, barangay, inspection_date, inspection_time, assigned_inspector, status, notes)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         ON CONFLICT (id) DO UPDATE SET
+           project_code = EXCLUDED.project_code, project_name = EXCLUDED.project_name,
+           barangay = EXCLUDED.barangay, inspection_date = EXCLUDED.inspection_date,
+           inspection_time = EXCLUDED.inspection_time, assigned_inspector = EXCLUDED.assigned_inspector,
+           status = EXCLUDED.status, notes = EXCLUDED.notes, updated_at = NOW()`,
+        [schedId, projectCode || "", projectName, barangay || "Poblacion", inspectionDate, inspectionTime,
+         inspector, schedStatus, schedNotes]
+      );
+    }
+  } catch (err) {
+    console.warn("[MEO Schedules] Insert failed:", err.message);
+  }
+
+  // Update in-memory / JSON project record if matched
+  try {
+    const publicList = listPublicProjects();
+    const pNameNorm = (projectName || "").toLowerCase().trim();
+    const targetProj = publicList.find(
+      (p) =>
+        p.id === projectCode ||
+        p.code === projectCode ||
+        (p.name && p.name.toLowerCase().trim() === pNameNorm)
+    );
+    if (targetProj) {
+      updateProject(targetProj.id, {
+        nextScheduledInspection: {
+          date: inspectionDate,
+          time: inspectionTime,
+          assignedInspector: inspector,
+          status: schedStatus,
+          notes: schedNotes,
+          scheduledAt: new Date().toISOString(),
+        },
+      });
+    }
+  } catch (err) {
+    console.warn("[MEO Schedules] Project sync notice:", err.message);
+  }
+
+  const schedRecord = {
+    id: schedId,
+    projectCode: projectCode || "",
+    projectName,
+    barangay: barangay || "Poblacion",
+    date: inspectionDate,
+    time: inspectionTime,
+    assignedInspector: inspector,
+    status: schedStatus,
+    notes: schedNotes,
+    createdAt: new Date().toISOString(),
+  };
+
+  // Broadcast to all connected clients in real time
+  io.emit("inspection:scheduled", schedRecord);
+  io.emit("projects:update", emitProjectsPayload());
+
+  res.status(201).json({ ok: true, id: schedId, schedule: schedRecord });
+});
+
+app.delete("/api/meo/schedules/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    if (isDbConnected()) {
+      await query("DELETE FROM meo_inspection_schedules WHERE id = $1", [id]);
+    }
+  } catch (err) {
+    console.warn("[MEO Schedules] Delete failed:", err.message);
+  }
+  res.json({ ok: true });
+});
+
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`[INFA-TRACK] backend listening on http://0.0.0.0:${PORT}`);
   // Initialize PostgreSQL database connection and migrations
   initDb()
-    .then(() => syncProjectsWithPostgres())
+    .then(async () => {
+      await syncProjectsWithPostgres();
+      // Auto-migrate any existing project inspection schedules into PostgreSQL meo_inspection_schedules table
+      try {
+        const publicList = listPublicProjects();
+        for (const p of publicList) {
+          if (p.nextScheduledInspection?.date) {
+            const sched = p.nextScheduledInspection;
+            const schedId = `MSCH-${p.id}`;
+            await query(
+              `INSERT INTO meo_inspection_schedules (id, project_code, project_name, barangay, inspection_date, inspection_time, assigned_inspector, status, notes)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+               ON CONFLICT (id) DO UPDATE SET
+                 inspection_date = EXCLUDED.inspection_date,
+                 inspection_time = EXCLUDED.inspection_time,
+                 assigned_inspector = EXCLUDED.assigned_inspector,
+                 status = EXCLUDED.status,
+                 notes = EXCLUDED.notes,
+                 updated_at = NOW();`,
+              [
+                schedId,
+                p.code || p.id,
+                p.name,
+                p.barangay ? p.barangay.replace(/^Barangay\s+/i, "").replace(/^Brgy\.?\s+/i, "").trim() : "Poblacion",
+                sched.date,
+                sched.time || "09:00 AM",
+                sched.assignedInspector || "Assistant Municipal Engineer",
+                sched.status || "Nakatakda",
+                sched.notes || "Technical ocular site assessment",
+              ]
+            );
+          }
+        }
+        console.log("[PostgreSQL] Synced MEO inspection schedules with PostgreSQL table.");
+      } catch (e) {
+        console.warn("[PostgreSQL] Inspection schedule startup sync notice:", e.message);
+      }
+    })
     .catch((err) => console.warn("[PostgreSQL] Startup sync warning:", err.message));
   // Large GLB uploads can take a while on slow disks / Wi‑Fi.
   server.timeout = 10 * 60 * 1000;

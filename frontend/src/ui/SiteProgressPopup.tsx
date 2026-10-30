@@ -115,6 +115,31 @@ export const SiteProgressPopup: React.FC<SiteProgressPopupProps> = ({
 
     const seenUrls = new Set<string>();
 
+    // 0. Process Ocular Inspection Photos from Hakbang 2 (Zoning Officer Ocular Visit)
+    // Automatically placed into "Before Construction" (0%)
+    const ocularPhotos =
+      (project as any).ocularPhotos ||
+      (project as any).ocularInspection?.photos ||
+      (project as any).ocular?.photos ||
+      [];
+    if (Array.isArray(ocularPhotos)) {
+      ocularPhotos.forEach((oc: any, idx: number) => {
+        const u = typeof oc === "string" ? oc : oc?.url || oc?.previewUrl;
+        if (!u || seenUrls.has(u)) return;
+        seenUrls.add(u);
+        grouped.before.unshift({
+          id: oc.id || `ocular-photo-${idx}`,
+          url: resolvePhotoUrl(u),
+          stage: "before",
+          progress: 0,
+          uploadedAt: oc.uploadedAt || (project as any).ocularInspection?.inspectedAt || (project as any).ocular?.inspectedAt,
+          remarks: oc.remarks || oc.name || oc.originalName || (project as any).ocularInspection?.remarks || "Hakbang 2: Ocular Inspection Photo (Zoning Officer)",
+          inspector: (project as any).ocularInspection?.inspectingOfficer || (project as any).ocular?.inspectingOfficer || "Edward B. Romulo, EnP. (Zoning Officer)",
+          isActual: true,
+        });
+      });
+    }
+
     // 1. Process inspectionPhotos
     const inspections = (project as any).inspectionPhotos || [];
     inspections.forEach((insp: any, idx: number) => {
@@ -199,6 +224,48 @@ export const SiteProgressPopup: React.FC<SiteProgressPopupProps> = ({
           progress: s === "before" ? 0 : s === "during" ? 50 : 100,
           uploadedAt: p.uploadedAt,
           remarks: p.caption,
+          isActual: true,
+        });
+      });
+    }
+
+    // 4. Process applicant baseline photo documentation (uploads.photoDocs / photoDocs)
+    const citizenDocs =
+      (project as any).uploads?.photoDocs ||
+      (project as any).photoDocs ||
+      (project as any).property?.photoDocs ||
+      [];
+    if (Array.isArray(citizenDocs)) {
+      citizenDocs.forEach((doc: any, idx: number) => {
+        const u = typeof doc === "string" ? doc : doc?.url;
+        if (!u || seenUrls.has(u)) return;
+        seenUrls.add(u);
+        grouped.before.push({
+          id: `citizen-doc-${idx}`,
+          url: resolvePhotoUrl(u),
+          stage: "before",
+          progress: 0,
+          uploadedAt: (project as any).createdAt || doc?.uploadedAt,
+          remarks: doc?.originalName || "Isinumiteng Baseline Site Photo (Aplikante)",
+          inspector: doc?.originalName ? `Litrato ng Lote (${doc.originalName})` : "Aplikante (Baseline Photo)",
+          isActual: true,
+        });
+      });
+    }
+
+    // 5. Fallback: If grouped.before is still empty, and project.photos has a site or geotagged photo, use it as baseline!
+    if (grouped.before.length === 0 && Array.isArray(project.photos)) {
+      project.photos.forEach((p, idx) => {
+        if (!p.url || seenUrls.has(p.url)) return;
+        seenUrls.add(p.url);
+        grouped.before.push({
+          id: p.id || `proj-fallback-photo-${idx}`,
+          url: resolvePhotoUrl(p.url),
+          stage: "before",
+          progress: 0,
+          uploadedAt: p.uploadedAt || (project as any).createdAt,
+          remarks: p.caption || "Baseline Site Documentation",
+          inspector: p.inspector || "Litrato ng Lote",
           isActual: true,
         });
       });
@@ -567,6 +634,33 @@ export const SiteProgressPopup: React.FC<SiteProgressPopupProps> = ({
         {/* Soft Vignette Overlays for UI contrast */}
         <div className="streetview-gradient-top" />
         <div className="streetview-gradient-bottom" />
+
+        {/* Empty State Overlay when no photo exists for active stage */}
+        {!currentPhotoUrl && (
+          <div className="streetview-empty-state-card">
+            <div className="streetview-empty-icon">📷</div>
+            <div className="streetview-empty-title">
+              Walang Litrato para sa Yugtong Ito
+            </div>
+            <div className="streetview-empty-sub">
+              Nakatakda pa ang aktwal na on-site ocular inspection ng Engineering Office para sa <strong>{stageLabel} ({stagePct}%)</strong>.
+            </div>
+            {canInspect && onUpdateProgress && (
+              <button
+                type="button"
+                className="streetview-empty-action-btn"
+                onClick={onUpdateProgress}
+                title="Mag-upload ng Inspection Photo"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                  <circle cx="12" cy="13" r="4" />
+                </svg>
+                <span>Mag-upload ng Litrato mula sa Site</span>
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* UPPER LEFT: Back to Map Navigation & Watermark Information Card */}

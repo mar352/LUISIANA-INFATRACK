@@ -84,6 +84,8 @@ const LOGIN_MAX_PER_IP = 20;
 const STAFF_ROLES = new Set([
   "Super Admin",
   "MPDC",
+  "MEO",
+  "OBO",
   "Engineer",
   "Agriculture",
   "Barangay Official",
@@ -92,9 +94,18 @@ const STAFF_ROLES = new Set([
 
 const SEED = [
   { username: "admin", password: "impact2024", role: "Super Admin", label: "Super Admin", department: "ICT Office / Office of the Mayor", name: "System Administrator", employeeId: "ADMIN-001" },
-  { username: "mpdc", password: "impact2024", role: "MPDC", label: "MPDC", department: "Municipal Planning & Development Coordinator", name: "Engr. Mario S. Baldovino", employeeId: "MPDC-001" },
+  { username: "mpdc", password: "impact2024", role: "MPDC", label: "MPDC", department: "Municipal Planning & Development Coordinator", name: "MPDC Planning Coordinator", employeeId: "MPDC-001" },
   { username: "mpdc_admin", password: "impact2024", role: "Super Admin", label: "MPDC Admin", department: "Municipal Planning & Development Coordinator", name: "MPDC Administrator", employeeId: "MPDC-ADM-001" },
-  { username: "engineer", password: "impact2024", role: "Engineer", label: "Engineer", department: "Infrastructure & Engineering Office", name: "Municipal Engineer Office", employeeId: "ENG-001" },
+  { username: "meo", password: "impact2024", role: "MEO", label: "Municipal Engineer", department: "Municipal Engineering Office (MEO)", name: "Municipal Engineer (Head of Office)", employeeId: "MEO-001" },
+  { username: "obo", password: "impact2024", role: "OBO", label: "Building Official", department: "Office of the Building Official (OBO)", name: "Building Official (OBO Technical Officer)", employeeId: "OBO-001" },
+  { username: "bon_pedron", password: "impact2024", role: "MPDC", label: "Admin. Aide I", department: "Municipal Planning & Development Coordinator", name: "Bon Ryan P. Pedron", employeeId: "MPDC-002" },
+  { username: "edward_romulo", password: "impact2024", role: "MPDC", label: "Zoning Officer", department: "Municipal Planning & Development Coordinator", name: "Edward B. Romulo, EnP.", employeeId: "MPDC-003" },
+  { username: "randy_balasabas", password: "impact2024", role: "MPDC", label: "Admin. Aide", department: "Municipal Planning & Development Coordinator", name: "Randy A. Balasabas", employeeId: "MPDC-004" },
+  { username: "joy_claricia", password: "impact2024", role: "MPDC", label: "Planning Officer I", department: "Municipal Planning & Development Coordinator", name: "Joy Anne O. Claricia", employeeId: "MPDC-005" },
+  { username: "cher_zabate", password: "impact2024", role: "MPDC", label: "Planning Assistant", department: "Municipal Planning & Development Coordinator", name: "Engr. Cher L. Zabate", employeeId: "MPDC-006" },
+  { username: "rosette_delatorre", password: "impact2024", role: "MPDC", label: "Statistician Aide", department: "Municipal Planning & Development Coordinator", name: "Rosette Princess R. Dela Torre", employeeId: "MPDC-007" },
+  { username: "rhyn_cargar", password: "impact2024", role: "MPDC", label: "Information Technology", department: "Municipal Planning & Development Coordinator", name: "Rhyn Giorvic O. Cargar", employeeId: "MPDC-008" },
+  { username: "engineer", password: "impact2024", role: "MEO", label: "Municipal Engineer", department: "Municipal Engineering Office (MEO)", name: "Municipal Engineer Office", employeeId: "ENG-001" },
   { username: "agriculture", password: "impact2024", role: "Agriculture", label: "Agriculture", department: "Municipal Agriculture Office", name: "Municipal Agriculturist", employeeId: "AGRI-001" },
   { username: "barangay", password: "impact2024", role: "Barangay Official", label: "Barangay Official", department: "Barangay Hall — Luisiana", name: "Barangay Officer", employeeId: "BRGY-001" },
   { username: "pengineer", password: "impact2024", role: "Private Engineer", label: "Private Engineer", department: "Private Professional / Design Engineer", name: "Private Design Engineer", employeeId: "PENG-001" },
@@ -519,7 +530,7 @@ export function forcedChangePassword(req, newPassword) {
 /**
  * Super Admin: Create a new employee account with default password & mustChangePassword flag.
  */
-export function createAccount({ name, employeeId, username, role, department, defaultPassword }) {
+export function createAccount({ name, employeeId, username, role, department, phone, defaultPassword }) {
   load();
   const key = String(username || "").toLowerCase().trim();
   const trimmedName = String(name || "").trim();
@@ -527,6 +538,7 @@ export function createAccount({ name, employeeId, username, role, department, de
   const selectedRole = String(role || "").trim();
   const selectedDept = String(department || "").trim();
   const defPass = String(defaultPassword || "InfaTrack2026").trim();
+  const rawPhone = String(phone || "").trim();
 
   if (!key || !trimmedName || !selectedRole) {
     return { ok: false, error: "missing_fields" };
@@ -549,6 +561,7 @@ export function createAccount({ name, employeeId, username, role, department, de
     role: selectedRole,
     label: selectedRole,
     department: selectedDept || selectedRole,
+    phone: rawPhone,
     passwordHash: hashPassword(defPass, passwordSalt),
     passwordSalt,
     iterations: PBKDF2_ITERATIONS,
@@ -571,6 +584,7 @@ export function createAccount({ name, employeeId, username, role, department, de
       employeeId: newAcc.employeeId,
       role: newAcc.role,
       department: newAcc.department,
+      phone: newAcc.phone,
       mustChangePassword: newAcc.mustChangePassword,
       isActive: newAcc.isActive,
       defaultPassword: defPass,
@@ -660,7 +674,7 @@ export function resetAccountPassword(username, defaultPassword = "InfaTrack2026"
   }
 
   save();
-  return { ok: true, username: acc.username, defaultPassword: defPass };
+  return { ok: true, username: acc.username, defaultPassword: defPass, name: acc.name, phone: acc.phone };
 }
 
 /**

@@ -710,6 +710,39 @@ CREATE INDEX IF NOT EXISTS idx_mp_status ON municipal_projects(status);
 CREATE INDEX IF NOT EXISTS idx_mp_coords ON municipal_projects(latitude, longitude);
 
 -- =============================================================================
+-- MEO FIELD INSPECTION SCHEDULES
+-- Stores ocular field inspection schedules created by the Municipal Engineering
+-- Office (MEO) for LGU municipal infrastructure projects.
+-- Publicly visible via the Public Transparency Portal.
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS meo_inspection_schedules (
+    id VARCHAR(64) PRIMARY KEY,
+    project_code VARCHAR(128) NOT NULL,
+    project_name VARCHAR(512) NOT NULL,
+    barangay VARCHAR(255) NOT NULL DEFAULT 'Poblacion',
+    inspection_date DATE NOT NULL,
+    inspection_time VARCHAR(32) NOT NULL DEFAULT '09:00 AM',
+    assigned_inspector VARCHAR(255) NOT NULL DEFAULT 'Assistant Municipal Engineer',
+    status VARCHAR(64) NOT NULL DEFAULT 'Nakatakda',
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT chk_meo_sched_status CHECK (
+        status IN ('Nakatakda', 'Kasalukuyang Ginagawa', 'Tapos Na', 'Naka-reschedule')
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_meo_sched_project_code ON meo_inspection_schedules(project_code);
+CREATE INDEX IF NOT EXISTS idx_meo_sched_date ON meo_inspection_schedules(inspection_date DESC);
+CREATE INDEX IF NOT EXISTS idx_meo_sched_status ON meo_inspection_schedules(status);
+
+DROP TRIGGER IF EXISTS trg_update_meo_inspection_schedules ON meo_inspection_schedules;
+CREATE TRIGGER trg_update_meo_inspection_schedules
+BEFORE UPDATE ON meo_inspection_schedules
+FOR EACH ROW EXECUTE FUNCTION update_timestamp_column();
+
+-- =============================================================================
 -- 10. AUTOMATIC TIMESTAMPTZ TRIGGERS
 -- =============================================================================
 DROP TRIGGER IF EXISTS trg_update_applicants ON applicants;

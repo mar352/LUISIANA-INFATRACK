@@ -270,7 +270,7 @@
         "role": "Zoning Officer (Review & Permit Preparation)"
       },
       {
-        "name": "Engr. Mario S. Baldovino",
+        "name": "Municipal Planning & Development Coordinator",
         "role": "MPDC (Final Approval & Signing)"
       },
       {
@@ -484,7 +484,7 @@
       ]
     },
     "notes": "❌ [HINDI WASTONG DOKUMENTO: Photocopy ng TCT (Land Title)] Dahilan: Malabo o hindi mabasa ang kopya ng dokumento",
-    "status": "approved_for_construction",
+    "status": "approved",
     "remarks": [
       {
         "id": "rem-init-1793161450322",
@@ -547,8 +547,8 @@
       }
     ],
     "stepProgress": {
-      "currentStep": 3,
-      "totalSteps": 3,
+      "currentStep": 5,
+      "totalSteps": 5,
       "step1Completed": true,
       "step1At": "2026-10-28T04:24:10.322Z",
       "step1By": "Online Resident Submission",
@@ -557,7 +557,13 @@
       "step2By": "Applicant (Official Receipt Uploaded)",
       "step3Completed": true,
       "step3At": "2026-10-28T06:41:14.152Z",
-      "step3By": "Municipal Engineer Office"
+      "step3By": "Municipal Engineer Office",
+      "step4Completed": true,
+      "step4At": "2026-10-28T07:57:32.931Z",
+      "step4By": "Municipal Engineer",
+      "step5Completed": true,
+      "step5At": "2026-10-28T07:57:32.931Z",
+      "step5By": "Municipal Building Official & Assessor's Office"
     },
     "responsibleOfficers": [
       {
@@ -569,7 +575,7 @@
         "role": "Zoning Officer (Review & Permit Preparation)"
       },
       {
-        "name": "Engr. Mario S. Baldovino",
+        "name": "Municipal Planning & Development Coordinator",
         "role": "MPDC (Final Approval & Signing)"
       },
       {
@@ -594,7 +600,7 @@
       "ipAddress": "160.20.40.22"
     },
     "createdAt": "2026-10-28T04:24:10.322Z",
-    "updatedAt": "2026-10-28T06:41:14.178Z",
+    "updatedAt": "2026-10-28T07:57:32.931Z",
     "dataHash": "5faa020e0aecabc82cc3610a5ee7369b437196944697fede2732c84ea90cee39",
     "rejectedDocs": {},
     "approvedDocs": {
@@ -685,7 +691,9 @@
     "or_number": "OR-ASSESSOR-2026-5805",
     "amount_paid": 280,
     "payment_date": "2026-10-28T06:40:19.808Z",
-    "user_id": "Treasury Teller"
+    "user_id": "Treasury Teller",
+    "occupancyReady": true,
+    "occupancyPermitNo": "OCC-2026-5805"
   },
   {
     "id": "app-1793160376218-549233",
@@ -823,7 +831,7 @@
         "role": "Zoning Officer (Review & Permit Preparation)"
       },
       {
-        "name": "Engr. Mario S. Baldovino",
+        "name": "Municipal Planning & Development Coordinator",
         "role": "MPDC (Final Approval & Signing)"
       },
       {
@@ -1015,8 +1023,8 @@
       "denrLetter": [],
       "studentIdLetter": []
     },
-    "notes": "",
-    "status": "submitted",
+    "notes": "OKAY NAMAN",
+    "status": "for_payment",
     "remarks": [
       {
         "id": "rem-init-1793160302682",
@@ -1025,17 +1033,25 @@
         "message": "Application submitted online. Initial document integrity check verified.",
         "createdAt": "2026-10-28T04:05:02.682Z",
         "requiresAction": false
+      },
+      {
+        "id": "rem-1793174289098",
+        "fromOffice": "MPDC",
+        "author": "Edward B. Romulo, EnP. (Zoning Officer)",
+        "message": "OKAY NAMAN",
+        "createdAt": "2026-10-28T07:58:09.098Z",
+        "requiresAction": false
       }
     ],
     "stepProgress": {
-      "currentStep": 1,
-      "totalSteps": 3,
+      "currentStep": 3,
+      "totalSteps": 5,
       "step1Completed": true,
       "step1At": "2026-10-28T04:05:02.682Z",
       "step1By": "Online Resident Submission",
-      "step2Completed": false,
-      "step2At": null,
-      "step2By": null,
+      "step2Completed": true,
+      "step2At": "2026-10-28T07:58:09.207Z",
+      "step2By": "Municipal Assessor's Office (Fee Assessment)",
       "step3Completed": false,
       "step3At": null,
       "step3By": null
@@ -1050,7 +1066,7 @@
         "role": "Zoning Officer (Review & Permit Preparation)"
       },
       {
-        "name": "Engr. Mario S. Baldovino",
+        "name": "Municipal Planning & Development Coordinator",
         "role": "MPDC (Final Approval & Signing)"
       },
       {
@@ -1075,7 +1091,7 @@
       "ipAddress": "160.20.40.22"
     },
     "createdAt": "2026-10-28T04:05:02.682Z",
-    "updatedAt": "2026-10-28T04:05:02.682Z",
+    "updatedAt": "2026-10-28T07:58:09.207Z",
     "dataHash": "2761373fb765d2701e197dcd950858fe5e277721c7b595a0f90d240c04922f88",
     "property": {
       "tctNo": "e31231221",
@@ -1084,6 +1100,61 @@
       "proposedBuildingType": "Dormitory",
       "lotAreaSqM": 250,
       "locationDescription": "eweqweqweqe"
+    },
+    "approvedDocs": {
+      "tct": {
+        "approvedAt": "2026-10-28T07:57:49.316Z",
+        "approvedBy": "MPDC",
+        "title": "Photocopy ng TCT (Land Title)"
+      },
+      "tax_dec": {
+        "approvedAt": "2026-10-28T07:57:49.316Z",
+        "approvedBy": "MPDC",
+        "title": "Tax Declaration"
+      },
+      "rpt_receipt": {
+        "approvedAt": "2026-10-28T07:57:49.316Z",
+        "approvedBy": "MPDC",
+        "title": "Current Real Property Tax Receipt (Amilyar)"
+      },
+      "brgy_clearance": {
+        "approvedAt": "2026-10-28T07:57:49.316Z",
+        "approvedBy": "MPDC",
+        "title": "Barangay Clearance"
+      },
+      "plo_cert": {
+        "approvedAt": "2026-10-28T07:57:49.316Z",
+        "approvedBy": "MPDC",
+        "title": "PLO Certification (Clearance mula sa MERALCO)"
+      },
+      "photo_docs": {
+        "approvedAt": "2026-10-28T07:57:49.316Z",
+        "approvedBy": "MPDC",
+        "title": "Photo Documentation (Loob at Labas ng Site)"
+      }
+    },
+    "rejectedDocs": {},
+    "payment": {
+      "status": "order_of_payment_issued",
+      "orderOfPaymentNo": "OP-2026-9062",
+      "feeAmount": 280,
+      "amount": 280,
+      "breakdown": [
+        {
+          "label": "Zoning Clearance Assessment Fee",
+          "amount": 250
+        },
+        {
+          "label": "Legal & Filing Assessment Fee",
+          "amount": 30
+        }
+      ],
+      "assessedAt": "2026-10-28T07:58:09.207Z",
+      "assessedBy": "Municipal Assessor's Office",
+      "issuedAt": "2026-10-28T07:58:09.207Z",
+      "issuedBy": "Municipal Assessor's Office",
+      "instruction": "Assessor Fee Computed. Ipakita ang pahinang ito sa Municipal Treasury Office upang magbayad ng kaukulang fee.",
+      "notes": ""
     }
   },
   {
@@ -1185,10 +1256,20 @@
         }
       ],
       "denrLetter": [],
-      "studentIdLetter": []
+      "studentIdLetter": [],
+      "officialReceipt": [
+        {
+          "url": "/uploads/czreq-1793174443047-450835698.jpg",
+          "originalName": "855099802_1084366584375501_315268858587365599_n.jpg",
+          "size": 180260,
+          "orNumber": "OR-ASSESSOR-2026-7460",
+          "paidAmount": null,
+          "paidAt": "2026-10-28T08:00:43.038Z"
+        }
+      ]
     },
     "notes": "",
-    "status": "submitted",
+    "status": "approved_for_construction",
     "remarks": [
       {
         "id": "rem-init-1793148755843",
@@ -1197,20 +1278,45 @@
         "message": "Application submitted online. Initial document integrity check verified.",
         "createdAt": "2026-10-28T00:52:35.842Z",
         "requiresAction": false
+      },
+      {
+        "id": "rem-receipt-1793174443061",
+        "fromOffice": "Applicant",
+        "author": "Applicant (Proof of Payment)",
+        "message": "Opisyal na Resibo mula sa Assessor (855099802_1084366584375501_315268858587365599_n.jpg) ay matagumpay na naisumite. Naka-endorso na sa Municipal Engineering Office para sa Site Inspection.",
+        "createdAt": "2026-10-28T08:00:43.061Z",
+        "requiresAction": false,
+        "attachedFile": "855099802_1084366584375501_315268858587365599_n.jpg"
+      },
+      {
+        "id": "rem-or-ver-1793175614767",
+        "fromOffice": "Engineering",
+        "author": "Municipal Engineer Office",
+        "message": "Nasuri at napatunayan ang litrato ng Official Receipt (OR-ASSESSOR-2026-7460). Kumpirmado ang kabayaran mula sa Assessor / Treasury at handa na para sa Site Inspection at 3D Map Pinning.",
+        "createdAt": "2026-10-28T08:20:14.718Z",
+        "actionType": "OR_PICTURE_VERIFIED",
+        "requiresAction": false
+      },
+      {
+        "fromOffice": "Engineering",
+        "author": "Municipal Engineer Office",
+        "message": "Inaprubahan ng Municipal Engineer ang aplikasyon para sa konstruksyon. Opisyal nang nai-pin ang site sa 3D GIS Mapa.",
+        "timestamp": "2026-10-28T08:20:14.767Z",
+        "actionType": "ENGINEER_APPROVED_PINNED"
       }
     ],
     "stepProgress": {
-      "currentStep": 1,
+      "currentStep": 3,
       "totalSteps": 3,
       "step1Completed": true,
       "step1At": "2026-10-28T00:52:35.842Z",
       "step1By": "Online Resident Submission",
-      "step2Completed": false,
-      "step2At": null,
-      "step2By": null,
-      "step3Completed": false,
-      "step3At": null,
-      "step3By": null
+      "step2Completed": true,
+      "step2At": "2026-10-28T08:00:43.061Z",
+      "step2By": "Applicant (Official Receipt Uploaded)",
+      "step3Completed": true,
+      "step3At": "2026-10-28T08:20:14.718Z",
+      "step3By": "Municipal Engineer Office"
     },
     "responsibleOfficers": [
       {
@@ -1222,7 +1328,7 @@
         "role": "Zoning Officer (Review & Permit Preparation)"
       },
       {
-        "name": "Engr. Mario S. Baldovino",
+        "name": "Municipal Planning & Development Coordinator",
         "role": "MPDC (Final Approval & Signing)"
       },
       {
@@ -1247,7 +1353,7 @@
       "ipAddress": "175.158.213.207"
     },
     "createdAt": "2026-10-28T00:52:35.842Z",
-    "updatedAt": "2026-10-28T00:52:35.842Z",
+    "updatedAt": "2026-10-28T08:20:14.767Z",
     "dataHash": "4b0a2066e9b3d2e56cbf55ed7d2bf3ac2483183bf0fd89f366a7bcec828f731e",
     "property": {
       "tctNo": "rfrfft3e454",
@@ -1256,6 +1362,139 @@
       "proposedBuildingType": "Residential",
       "lotAreaSqM": 4342,
       "locationDescription": "73 Ubaldo Suello St. Brgy Zone IV"
+    },
+    "approvedDocs": {
+      "tct": {
+        "approvedAt": "2026-10-28T07:59:57.690Z",
+        "approvedBy": "MPDC",
+        "title": "Photocopy ng TCT (Land Title)"
+      },
+      "tax_dec": {
+        "approvedAt": "2026-10-28T07:59:57.690Z",
+        "approvedBy": "MPDC",
+        "title": "Tax Declaration"
+      },
+      "rpt_receipt": {
+        "approvedAt": "2026-10-28T07:59:57.690Z",
+        "approvedBy": "MPDC",
+        "title": "Current Real Property Tax Receipt (Amilyar)"
+      },
+      "brgy_clearance": {
+        "approvedAt": "2026-10-28T07:59:57.690Z",
+        "approvedBy": "MPDC",
+        "title": "Barangay Clearance"
+      },
+      "plo_cert": {
+        "approvedAt": "2026-10-28T07:59:57.690Z",
+        "approvedBy": "MPDC",
+        "title": "PLO Certification (Clearance mula sa MERALCO)"
+      },
+      "photo_docs": {
+        "approvedAt": "2026-10-28T07:59:57.690Z",
+        "approvedBy": "MPDC",
+        "title": "Photo Documentation (Loob at Labas ng Site)"
+      }
+    },
+    "rejectedDocs": {},
+    "payment": {
+      "status": "paid",
+      "orderOfPaymentNo": "OP-2026-7460",
+      "feeAmount": 280,
+      "amount": 280,
+      "breakdown": [
+        {
+          "label": "Zoning Clearance Assessment Fee",
+          "amount": 250
+        },
+        {
+          "label": "Legal & Filing Assessment Fee",
+          "amount": 30
+        }
+      ],
+      "assessedAt": "2026-10-28T08:00:20.800Z",
+      "assessedBy": "Municipal Assessor's Office",
+      "issuedAt": "2026-10-28T08:00:20.800Z",
+      "issuedBy": "Municipal Treasury Office (Treasury Teller)",
+      "instruction": "Assessor Fee Computed. Ipakita ang pahinang ito sa Municipal Treasury Office upang magbayad ng kaukulang fee.",
+      "notes": "",
+      "orNumber": "OR-ASSESSOR-2026-7460",
+      "paidAt": "2026-10-28T08:00:43.038Z",
+      "receiptUrl": "/uploads/czreq-1793174443047-450835698.jpg",
+      "receiptOriginalName": "855099802_1084366584375501_315268858587365599_n.jpg",
+      "receiptSize": 180260,
+      "submittedAt": "2026-10-28T08:00:43.061Z",
+      "verifiedBy": "Applicant Upload (Assessor Receipt)",
+      "orVerified": true,
+      "orVerifiedAt": "2026-10-28T08:20:14.718Z",
+      "orVerifiedBy": "Municipal Engineer Office",
+      "or_number": "OR-ASSESSOR-2026-7460",
+      "amount_paid": 280,
+      "payment_date": "2026-10-28T08:00:43.038Z",
+      "user_id": "Treasury Teller",
+      "cashier": "Treasury Teller"
+    },
+    "engineerApproved": true,
+    "engineerApprovedAt": "2026-10-28T08:20:14.718Z",
+    "engineerApprovedBy": "Municipal Engineer Office",
+    "engineerNotes": "Approved for site construction and coordinate pinning.",
+    "orVerified": true,
+    "orVerifiedAt": "2026-10-28T08:20:14.718Z",
+    "orVerifiedBy": "Municipal Engineer Office",
+    "isPinned": true,
+    "or_number": "OR-ASSESSOR-2026-7460",
+    "amount_paid": 280,
+    "payment_date": "2026-10-28T08:00:43.038Z",
+    "user_id": "Treasury Teller",
+    "ocularInspection": {
+      "inspectedAt": "2026-10-28T07:59:57.690Z",
+      "inspectingOfficer": "Edward B. Romulo, EnP. (Zoning Officer)",
+      "remarks": "[Hakbang 2 Ocular Inspection]: Naisagawa ang ocular inspection sa site sa Barangay Zone VI (Poblacion). Sumusunod sa required setback (≥3.0m sa harapan) at legal easement. Ligtas sa geohazard alinsunod sa CLUP zoning guidelines. Inirerekomenda ang pag-apruba ng Zoning Clearance.",
+      "setbacks": {
+        "roadSetback": true,
+        "waterwayEasement": true,
+        "faultLineClearance": true,
+        "boundaryMonuments": true
+      },
+      "photos": [
+        {
+          "url": "/uploads/czreq-1793148496070-951643864.jpg",
+          "originalName": "geotagged-photo.jpg",
+          "size": 232884,
+          "name": "Ocular Inspection Site Photo"
+        }
+      ]
+    },
+    "ocularPhotos": [
+      {
+        "url": "/uploads/czreq-1793148496070-951643864.jpg",
+        "originalName": "geotagged-photo.jpg",
+        "size": 232884,
+        "name": "Ocular Inspection Site Photo"
+      }
+    ],
+    "inspectionPhotos": [
+      {
+        "id": "insp-ocular-1793148496070",
+        "stage": "before",
+        "stageLabel": "Before Construction (0% - Ocular Site Inspection)",
+        "progress": 0,
+        "photoUrl": "/uploads/czreq-1793148496070-951643864.jpg",
+        "uploadedAt": "2026-10-28T07:59:57.690Z",
+        "inspectedAt": "2026-10-28T07:59:57.690Z",
+        "timestamp": "2026-10-28T07:59:57.690Z",
+        "remarks": "Naisagawa ang 1-Araw na Ocular Site Inspection ng Zoning Officer (Hakbang 2). Sumusunod sa zoning at setback guidelines.",
+        "inspector": "Edward B. Romulo, EnP. (Zoning Officer)",
+        "isActual": true
+      }
+    ],
+    "latestInspection": {
+      "stage": "before",
+      "stageLabel": "Before Construction (0% - Ocular Site Inspection)",
+      "progress": 0,
+      "photoUrl": "/uploads/czreq-1793148496070-951643864.jpg",
+      "remarks": "Naisagawa ang 1-Araw na Ocular Site Inspection ng Zoning Officer (Hakbang 2).",
+      "inspector": "Edward B. Romulo, EnP. (Zoning Officer)",
+      "inspectedAt": "2026-10-28T07:59:57.690Z"
     }
   },
   {
@@ -1394,7 +1633,7 @@
         "role": "Zoning Officer (Review & Permit Preparation)"
       },
       {
-        "name": "Engr. Mario S. Baldovino",
+        "name": "Municipal Planning & Development Coordinator",
         "role": "MPDC (Final Approval & Signing)"
       },
       {
@@ -1621,7 +1860,7 @@
         "role": "Zoning Officer (Review & Permit Preparation)"
       },
       {
-        "name": "Engr. Mario S. Baldovino",
+        "name": "Municipal Planning & Development Coordinator",
         "role": "MPDC (Final Approval & Signing)"
       },
       {
@@ -1793,7 +2032,7 @@
         "role": "Zoning Officer (Review & Permit Preparation)"
       },
       {
-        "name": "Engr. Mario S. Baldovino",
+        "name": "Municipal Planning & Development Coordinator",
         "role": "MPDC (Final Approval & Signing)"
       },
       {
@@ -1986,7 +2225,7 @@
         "role": "Zoning Officer (Review & Permit Preparation)"
       },
       {
-        "name": "Engr. Mario S. Baldovino",
+        "name": "Municipal Planning & Development Coordinator",
         "role": "MPDC (Final Approval & Signing)"
       },
       {
@@ -2166,7 +2405,7 @@
         "role": "Zoning Officer (Review & Permit Preparation)"
       },
       {
-        "name": "Engr. Mario S. Baldovino",
+        "name": "Municipal Planning & Development Coordinator",
         "role": "MPDC (Final Approval & Signing)"
       },
       {
@@ -2379,7 +2618,7 @@
         "role": "Zoning Officer (Review & Permit Preparation)"
       },
       {
-        "name": "Engr. Mario S. Baldovino",
+        "name": "Municipal Planning & Development Coordinator",
         "role": "MPDC (Final Approval & Signing)"
       },
       {
@@ -2666,7 +2905,7 @@
         "role": "Zoning Officer (Review & Permit Preparation)"
       },
       {
-        "name": "Engr. Mario S. Baldovino",
+        "name": "Municipal Planning & Development Coordinator",
         "role": "MPDC (Final Approval & Signing)"
       },
       {
@@ -2896,7 +3135,7 @@
         "role": "Zoning Officer (Review & Permit Preparation)"
       },
       {
-        "name": "Engr. Mario S. Baldovino",
+        "name": "Municipal Planning & Development Coordinator",
         "role": "MPDC (Final Approval & Signing)"
       },
       {
@@ -3156,7 +3395,7 @@
         "role": "Zoning Officer (Review & Permit Preparation)"
       },
       {
-        "name": "Engr. Mario S. Baldovino",
+        "name": "Municipal Planning & Development Coordinator",
         "role": "MPDC (Final Approval & Signing)"
       },
       {
@@ -3388,7 +3627,7 @@
       },
       {
         "fromOffice": "Engineering",
-        "author": "Engr. Mario S. Baldovino (Municipal Engineer)",
+        "author": "Municipal Engineer",
         "message": "Inaprubahan ng Municipal Engineer. Kompleto ang 6 na requirements at na-verify sa site. Opisyal nang nai-pin sa 3D Mapa.",
         "timestamp": "2026-09-08T15:52:42.934Z",
         "actionType": "ENGINEER_APPROVED_PINNED"
@@ -3408,7 +3647,7 @@
       "step3By": "Municipal Treasury (Payment Verified)",
       "step4Completed": true,
       "step4At": "2026-09-08T15:52:42.934Z",
-      "step4By": "Engr. Mario S. Baldovino (Municipal Engineer)"
+      "step4By": "Municipal Engineer"
     },
     "responsibleOfficers": [
       {
@@ -3420,7 +3659,7 @@
         "role": "Zoning Officer (Review & Permit Preparation)"
       },
       {
-        "name": "Engr. Mario S. Baldovino",
+        "name": "Municipal Planning & Development Coordinator",
         "role": "MPDC (Final Approval & Signing)"
       },
       {
@@ -3454,10 +3693,10 @@
     },
     "engineerApproved": false,
     "engineerApprovedAt": "2026-09-08T15:52:42.933Z",
-    "engineerApprovedBy": "Engr. Mario S. Baldovino (Municipal Engineer)",
+    "engineerApprovedBy": "Municipal Engineer",
     "isPinned": true,
     "fromOffice": "Engineering",
-    "author": "Engr. Mario S. Baldovino (Municipal Engineer)",
+    "author": "Municipal Engineer",
     "property": {
       "tctNo": "",
       "taxDecNo": "",
@@ -3622,7 +3861,7 @@
       },
       {
         "fromOffice": "Engineering",
-        "author": "Engr. Mario S. Baldovino (Municipal Engineer)",
+        "author": "Municipal Engineer",
         "message": "Inaprubahan ng Municipal Engineer.",
         "timestamp": "2026-09-08T15:52:54.598Z",
         "actionType": "ENGINEER_APPROVED_PINNED"
@@ -3642,7 +3881,7 @@
       "step3By": "Municipal Treasury (Payment Verified)",
       "step4Completed": true,
       "step4At": "2026-09-08T15:52:54.597Z",
-      "step4By": "Engr. Mario S. Baldovino (Municipal Engineer)"
+      "step4By": "Municipal Engineer"
     },
     "responsibleOfficers": [
       {
@@ -3654,7 +3893,7 @@
         "role": "Zoning Officer (Review & Permit Preparation)"
       },
       {
-        "name": "Engr. Mario S. Baldovino",
+        "name": "Municipal Planning & Development Coordinator",
         "role": "MPDC (Final Approval & Signing)"
       },
       {
@@ -3700,7 +3939,7 @@
     "inspectionStage": "before",
     "progress": 0,
     "engineerApproved": false,
-    "engineerApprovedBy": "Engr. Mario S. Baldovino (Municipal Engineer)",
+    "engineerApprovedBy": "Municipal Engineer",
     "isPinned": true,
     "fromOffice": "Engineering",
     "engineerApprovedAt": "2026-09-08T15:52:54.597Z",
@@ -3822,7 +4061,7 @@
       {
         "id": "rem-1788577439086",
         "fromOffice": "Engineering",
-        "author": "Engr. Mario S. Baldovino (Municipal Engineer)",
+        "author": "Municipal Engineer",
         "message": "[Zoning Officer GIS Pre-check]: Na-verify ang eksaktong pin ng lote sa Barangay Zone IV (Poblacion) (14.184200°N, 121.513500°E). Sona: Urban / Commercial Zone. Hazard Assessment: Baha=Safe, Landslide=Safe, Mt. Banahaw Distance=13.1km. Inindorso para sa 1-Araw na Ocular Inspection.",
         "createdAt": "2026-09-05T03:03:59.086Z",
         "requiresAction": false
@@ -3851,7 +4090,7 @@
         "role": "Zoning Officer (Review & Permit Preparation)"
       },
       {
-        "name": "Engr. Mario S. Baldovino",
+        "name": "Municipal Planning & Development Coordinator",
         "role": "MPDC (Final Approval & Signing)"
       },
       {
@@ -3944,7 +4183,7 @@
         "role": "Zoning Officer (Review & Permit Preparation)"
       },
       {
-        "name": "Engr. Mario S. Baldovino",
+        "name": "Municipal Planning & Development Coordinator",
         "role": "MPDC (Final Approval & Signing)"
       },
       {
@@ -4037,7 +4276,7 @@
         "role": "Zoning Officer (Review & Permit Preparation)"
       },
       {
-        "name": "Engr. Mario S. Baldovino",
+        "name": "Municipal Planning & Development Coordinator",
         "role": "MPDC (Final Approval & Signing)"
       },
       {
@@ -4144,7 +4383,7 @@
         "role": "Zoning Officer (Review & Permit Preparation)"
       },
       {
-        "name": "Engr. Mario S. Baldovino",
+        "name": "Municipal Planning & Development Coordinator",
         "role": "MPDC (Final Approval & Signing)"
       },
       {
@@ -4251,7 +4490,7 @@
         "role": "Zoning Officer (Review & Permit Preparation)"
       },
       {
-        "name": "Engr. Mario S. Baldovino",
+        "name": "Municipal Planning & Development Coordinator",
         "role": "MPDC (Final Approval & Signing)"
       },
       {
@@ -4337,7 +4576,7 @@
       {
         "id": "rem-1788882743019",
         "fromOffice": "Engineering",
-        "author": "Engr. Mario S. Baldovino (Municipal Engineer)",
+        "author": "Municipal Engineer",
         "message": "Kulang sa kinakailangang setback (road right-of-way) at hindi malinaw ang lagda sa structural blueprint.",
         "createdAt": "2026-09-08T15:52:23.019Z",
         "requiresAction": true
@@ -4366,7 +4605,7 @@
         "role": "Zoning Officer (Review & Permit Preparation)"
       },
       {
-        "name": "Engr. Mario S. Baldovino",
+        "name": "Municipal Planning & Development Coordinator",
         "role": "MPDC (Final Approval & Signing)"
       },
       {
@@ -4383,10 +4622,10 @@
     "engineerApproved": false,
     "isPinned": false,
     "fromOffice": "Engineering",
-    "author": "Engr. Mario S. Baldovino (Municipal Engineer)",
+    "author": "Municipal Engineer",
     "requiresAction": true,
     "heldAt": "2026-09-08T15:52:33.041Z",
-    "heldBy": "Engr. Mario S. Baldovino (Municipal Engineer)",
+    "heldBy": "Municipal Engineer",
     "property": {
       "tctNo": "TCT-456-34242534354",
       "taxDecNo": "TD-2026-5677-5644",

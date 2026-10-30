@@ -229,6 +229,26 @@ export function buildSmsTemplate(eventType, data = {}) {
         `[INFA-TRACK] Natanggap ang inyong aplikasyon! Tracking Ref: ${tracking}. Maaari itong subaybayan anumang oras sa ${trackLink}`
       );
 
+    case "STAFF_ACCOUNT_CREATED": {
+      const staffName = data.name || "Kawani";
+      const user = data.username || "user";
+      const pass = data.temporaryPassword || data.defaultPassword || "InfaTrack2026";
+      const shortName = staffName.split(" ")[0];
+      return compactSmsText(
+        `[INFA-TRACK] Magandang araw ${shortName}! Nalikha ang inyong LGU account. User: ${user} | Temp Pass: ${pass}. Mag-login sa portal at magpalit ng password.`
+      );
+    }
+
+    case "STAFF_PASSWORD_RESET": {
+      const staffName = data.name || "Kawani";
+      const user = data.username || "user";
+      const pass = data.temporaryPassword || data.defaultPassword || "InfaTrack2026";
+      const shortName = staffName.split(" ")[0];
+      return compactSmsText(
+        `[INFA-TRACK] Na-reset ang inyong password sa LGU Portal. User: ${user} | Bagong Temp Pass: ${pass}. Mag-login at magpalit ng password.`
+      );
+    }
+
     default:
       return compactSmsText(
         `[INFA-TRACK] Ref: ${tracking}\nMay bagong update sa inyong aplikasyon. Tingnan sa ${trackLink}`

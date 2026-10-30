@@ -1,0 +1,2847 @@
+{
+  "barangays": [
+    {
+      "name": "id",
+      "type": "VARCHAR(64)",
+      "isPk": true,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "code",
+      "type": "VARCHAR(32)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "name",
+      "type": "VARCHAR(128)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "zone",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "is_active",
+      "type": "BOOLEAN",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "is_default",
+      "type": "BOOLEAN",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "created_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "updated_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    }
+  ],
+  "system_config": [
+    {
+      "name": "id",
+      "type": "VARCHAR(64)",
+      "isPk": true,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "version",
+      "type": "VARCHAR(32)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "maintenance_enabled",
+      "type": "BOOLEAN",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "maintenance_message",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "maintenance_estimated_duration",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "maintenance_updated_by",
+      "type": "VARCHAR(128)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "config_json",
+      "type": "JSONB",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "updated_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    }
+  ],
+  "system_masterlists": [
+    {
+      "name": "id",
+      "type": "VARCHAR(64)",
+      "isPk": true,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "category",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "code",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "name",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "description",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "zone_group",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "is_active",
+      "type": "BOOLEAN",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "is_default",
+      "type": "BOOLEAN",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "created_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "updated_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    }
+  ],
+  "staff_accounts": [
+    {
+      "name": "id",
+      "type": "UUID",
+      "isPk": true,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "username",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "name",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "employee_id",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": true,
+      "ref": null
+    },
+    {
+      "name": "role",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "department",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "password_hash",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "password_salt",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "iterations",
+      "type": "INT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "failed_attempts",
+      "type": "INT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "locked_until",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "last_login_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "last_failed_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "last_failed_ip",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "last_failed_device",
+      "type": "VARCHAR(128)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "last_failed_location",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "must_change_password",
+      "type": "BOOLEAN",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "is_active",
+      "type": "BOOLEAN",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "created_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "updated_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    }
+  ],
+  "user_sessions": [
+    {
+      "name": "id",
+      "type": "VARCHAR(128)",
+      "isPk": true,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "username",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": true,
+      "ref": "staff_accounts.username"
+    },
+    {
+      "name": "role",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "department",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "ip_address",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "user_agent",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "device_name",
+      "type": "VARCHAR(128)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "device_type",
+      "type": "VARCHAR(32)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "location_label",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "created_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "expires_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    }
+  ],
+  "audit_logs": [
+    {
+      "name": "id",
+      "type": "VARCHAR(64)",
+      "isPk": true,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "actor_username",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": true,
+      "ref": null
+    },
+    {
+      "name": "actor_role",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "action_type",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "resource_type",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "resource_id",
+      "type": "VARCHAR(128)",
+      "isPk": false,
+      "isFk": true,
+      "ref": null
+    },
+    {
+      "name": "ip_address",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "details",
+      "type": "JSONB",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "created_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    }
+  ],
+  "security_quarantine_logs": [
+    {
+      "name": "id",
+      "type": "VARCHAR(64)",
+      "isPk": true,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "original_filename",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "quarantined_path",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "threat_type",
+      "type": "VARCHAR(128)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "file_sha256",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "file_size_bytes",
+      "type": "BIGINT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "mime_type",
+      "type": "VARCHAR(128)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "uploaded_by",
+      "type": "VARCHAR(128)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "tracking_number",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "ip_address",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "created_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    }
+  ],
+  "applicants": [
+    {
+      "name": "id",
+      "type": "VARCHAR(64)",
+      "isPk": true,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "full_name",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "contact_phone",
+      "type": "VARCHAR(128)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "contact_email",
+      "type": "VARCHAR(128)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "address",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "barangay",
+      "type": "VARCHAR(128)",
+      "isPk": false,
+      "isFk": true,
+      "ref": null
+    },
+    {
+      "name": "created_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "updated_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    }
+  ],
+  "user_terms_consents": [
+    {
+      "name": "id",
+      "type": "VARCHAR(64)",
+      "isPk": true,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "ip_address",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "user_agent",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "terms_version",
+      "type": "VARCHAR(32)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "agreed_terms",
+      "type": "BOOLEAN",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "agreed_privacy",
+      "type": "BOOLEAN",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "agreed_cookies",
+      "type": "BOOLEAN",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "consent_source",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "applicant_name",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "created_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    }
+  ],
+  "citizen_applications": [
+    {
+      "name": "id",
+      "type": "VARCHAR(64)",
+      "isPk": true,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "tracking_number",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "applicant_id",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": true,
+      "ref": "applicants.id"
+    },
+    {
+      "name": "service_type",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "category",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "status",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "project_title",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "estimated_cost",
+      "type": "NUMERIC(15, 2)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "uploads",
+      "type": "JSONB",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "step_progress",
+      "type": "JSONB",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "responsible_officers",
+      "type": "JSONB",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "sla_days",
+      "type": "INT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "sla_minutes",
+      "type": "INT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "fee",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "notes",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "data_hash",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "created_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "updated_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    }
+  ],
+  "application_locations": [
+    {
+      "name": "id",
+      "type": "VARCHAR(64)",
+      "isPk": true,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "application_id",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": true,
+      "ref": "citizen_applications.id"
+    },
+    {
+      "name": "latitude",
+      "type": "DOUBLE PRECISION",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "longitude",
+      "type": "DOUBLE PRECISION",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "barangay",
+      "type": "VARCHAR(128)",
+      "isPk": false,
+      "isFk": true,
+      "ref": null
+    },
+    {
+      "name": "lot_area_sqm",
+      "type": "NUMERIC(10, 2)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "lot_location_description",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "zoning_classification",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "tct_no",
+      "type": "VARCHAR(128)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "tax_dec_no",
+      "type": "VARCHAR(128)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "lot_owner",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "is_applicant_owner",
+      "type": "BOOLEAN",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "geo_risk",
+      "type": "JSONB",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "lot_details",
+      "type": "JSONB",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "agricultural_details",
+      "type": "JSONB",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "municipal_details",
+      "type": "JSONB",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "created_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    }
+  ],
+  "application_payments": [
+    {
+      "name": "id",
+      "type": "VARCHAR(64)",
+      "isPk": true,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "application_id",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": true,
+      "ref": "citizen_applications.id"
+    },
+    {
+      "name": "payment_status",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "order_of_payment_no",
+      "type": "VARCHAR(128)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "amount_due",
+      "type": "NUMERIC(15, 2)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "or_number",
+      "type": "VARCHAR(128)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "amount_paid",
+      "type": "NUMERIC(15, 2)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "payment_date",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "cashier",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "created_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "updated_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    }
+  ],
+  "engineering_reviews": [
+    {
+      "name": "id",
+      "type": "VARCHAR(64)",
+      "isPk": true,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "application_id",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": true,
+      "ref": "citizen_applications.id"
+    },
+    {
+      "name": "engineer_approved",
+      "type": "BOOLEAN",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "engineer_approved_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "engineer_approved_by",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "is_pinned",
+      "type": "BOOLEAN",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "held_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "held_by",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "hold_reason",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "occupancy_ready",
+      "type": "BOOLEAN",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "occupancy_permit_no",
+      "type": "VARCHAR(128)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "created_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "updated_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    }
+  ],
+  "application_documents": [
+    {
+      "name": "id",
+      "type": "VARCHAR(64)",
+      "isPk": true,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "application_id",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": true,
+      "ref": "citizen_applications.id"
+    },
+    {
+      "name": "document_type",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "original_filename",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "file_url",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "file_size_bytes",
+      "type": "BIGINT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "mime_type",
+      "type": "VARCHAR(128)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "tag",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "is_quarantined",
+      "type": "BOOLEAN",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "uploaded_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    }
+  ],
+  "application_remarks": [
+    {
+      "name": "id",
+      "type": "VARCHAR(64)",
+      "isPk": true,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "application_id",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": true,
+      "ref": "citizen_applications.id"
+    },
+    {
+      "name": "tracking_number",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "from_office",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "author",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "message",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "requires_action",
+      "type": "BOOLEAN",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "attached_file",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "created_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    }
+  ],
+  "site_inspection_photos": [
+    {
+      "name": "id",
+      "type": "VARCHAR(64)",
+      "isPk": true,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "application_id",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": true,
+      "ref": "citizen_applications.id"
+    },
+    {
+      "name": "tracking_number",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "photo_url",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "photo_type",
+      "type": "VARCHAR(50)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "stage",
+      "type": "VARCHAR(50)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "progress",
+      "type": "INT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "remarks",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "inspector",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "created_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "updated_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    }
+  ],
+  "municipal_projects": [
+    {
+      "name": "id",
+      "type": "VARCHAR(64)",
+      "isPk": true,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "name",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "model_type",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "type",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "department",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "status",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "progress",
+      "type": "INT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "lifecycle_phase",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "latitude",
+      "type": "DOUBLE PRECISION",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "longitude",
+      "type": "DOUBLE PRECISION",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "rotation_yaw",
+      "type": "DOUBLE PRECISION",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "rotation_pitch",
+      "type": "DOUBLE PRECISION",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "rotation_roll",
+      "type": "DOUBLE PRECISION",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "model_scale_x",
+      "type": "DOUBLE PRECISION",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "model_scale_y",
+      "type": "DOUBLE PRECISION",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "model_scale_z",
+      "type": "DOUBLE PRECISION",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "model_height",
+      "type": "DOUBLE PRECISION",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "model_locked",
+      "type": "BOOLEAN",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "hide_badge",
+      "type": "BOOLEAN",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "site_marker_only",
+      "type": "BOOLEAN",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "marker_color",
+      "type": "VARCHAR(32)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "custom_model_url",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "map_shape",
+      "type": "JSONB",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "map_sketch",
+      "type": "JSONB",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "description",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "start_date",
+      "type": "DATE",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "target_end_date",
+      "type": "DATE",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "barangay",
+      "type": "VARCHAR(128)",
+      "isPk": false,
+      "isFk": true,
+      "ref": null
+    },
+    {
+      "name": "funding_source",
+      "type": "VARCHAR(128)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "contractor",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "budget_total",
+      "type": "NUMERIC(15, 2)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "budget_spent",
+      "type": "NUMERIC(15, 2)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "official_url",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "is_lgu_project",
+      "type": "BOOLEAN",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "engineer_approved",
+      "type": "BOOLEAN",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "engineer_approved_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "engineer_approved_by",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "is_pinned",
+      "type": "BOOLEAN",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "notice_of_award_url",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "notice_of_award_name",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "program_of_works_url",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "program_of_works_name",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "encoded_by",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "engineer_notes",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "bidding_results",
+      "type": "JSONB",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "is_private_application",
+      "type": "BOOLEAN",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "tracking_number",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "applicant_name",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "application_id",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": true,
+      "ref": "citizen_applications.id"
+    },
+    {
+      "name": "archived_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "created_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "updated_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    }
+  ],
+  "project_milestones": [
+    {
+      "name": "id",
+      "type": "VARCHAR(64)",
+      "isPk": true,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "project_id",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": true,
+      "ref": "municipal_projects.id"
+    },
+    {
+      "name": "title",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "target_date",
+      "type": "DATE",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "completed_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "status",
+      "type": "VARCHAR(32)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "created_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    }
+  ],
+  "project_issues": [
+    {
+      "name": "id",
+      "type": "VARCHAR(64)",
+      "isPk": true,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "project_id",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": true,
+      "ref": "municipal_projects.id"
+    },
+    {
+      "name": "kind",
+      "type": "VARCHAR(32)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "title",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "description",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "is_open",
+      "type": "BOOLEAN",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "reported_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "resolved_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    }
+  ],
+  "project_photos": [
+    {
+      "name": "id",
+      "type": "VARCHAR(64)",
+      "isPk": true,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "project_id",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": true,
+      "ref": "municipal_projects.id"
+    },
+    {
+      "name": "photo_url",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "caption",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "kind",
+      "type": "VARCHAR(32)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "milestone_id",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": true,
+      "ref": "project_milestones.id"
+    },
+    {
+      "name": "latitude",
+      "type": "DOUBLE PRECISION",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "longitude",
+      "type": "DOUBLE PRECISION",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "inspector",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "uploaded_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    }
+  ],
+  "project_activity_logs": [
+    {
+      "name": "id",
+      "type": "UUID",
+      "isPk": true,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "project_id",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": true,
+      "ref": "municipal_projects.id"
+    },
+    {
+      "name": "message",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "created_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    }
+  ],
+  "planning_proposals": [
+    {
+      "name": "id",
+      "type": "VARCHAR(64)",
+      "isPk": true,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "title",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "summary",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "department",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "barangay",
+      "type": "VARCHAR(128)",
+      "isPk": false,
+      "isFk": true,
+      "ref": null
+    },
+    {
+      "name": "priority",
+      "type": "INT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "status",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "request_kind",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "linked_project_id",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": true,
+      "ref": "municipal_projects.id"
+    },
+    {
+      "name": "citizen_application_id",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": true,
+      "ref": "citizen_applications.id"
+    },
+    {
+      "name": "citizen_tracking_number",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "latitude",
+      "type": "DOUBLE PRECISION",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "longitude",
+      "type": "DOUBLE PRECISION",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "submitter_username",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": true,
+      "ref": null
+    },
+    {
+      "name": "submitter_role",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "assignees",
+      "type": "JSONB",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "committee_id",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": true,
+      "ref": null
+    },
+    {
+      "name": "needs_assessment",
+      "type": "JSONB",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "recommendation_score",
+      "type": "DOUBLE PRECISION",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "recommendation_reasons",
+      "type": "JSONB",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "attachments",
+      "type": "JSONB",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "created_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "updated_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    }
+  ],
+  "proposal_comments": [
+    {
+      "name": "id",
+      "type": "VARCHAR(64)",
+      "isPk": true,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "proposal_id",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": true,
+      "ref": "planning_proposals.id"
+    },
+    {
+      "name": "author_username",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": true,
+      "ref": null
+    },
+    {
+      "name": "author_role",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "body",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "anchor_kind",
+      "type": "VARCHAR(32)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "anchor_label",
+      "type": "VARCHAR(128)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "created_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    }
+  ],
+  "proposal_approvals": [
+    {
+      "name": "id",
+      "type": "VARCHAR(64)",
+      "isPk": true,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "proposal_id",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": true,
+      "ref": "planning_proposals.id"
+    },
+    {
+      "name": "username",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": true,
+      "ref": null
+    },
+    {
+      "name": "role",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "decision",
+      "type": "VARCHAR(32)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "note",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "decided_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    }
+  ],
+  "proposal_votes": [
+    {
+      "name": "id",
+      "type": "VARCHAR(64)",
+      "isPk": true,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "proposal_id",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": true,
+      "ref": "planning_proposals.id"
+    },
+    {
+      "name": "username",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": true,
+      "ref": null
+    },
+    {
+      "name": "role",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "choice",
+      "type": "VARCHAR(32)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "note",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "voted_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    }
+  ],
+  "planning_events": [
+    {
+      "name": "id",
+      "type": "VARCHAR(64)",
+      "isPk": true,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "title",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "type",
+      "type": "VARCHAR(32)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "starts_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "ends_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "attendees",
+      "type": "JSONB",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "proposal_ids",
+      "type": "JSONB",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "notes",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "created_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "updated_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    }
+  ],
+  "planning_meetings": [
+    {
+      "name": "id",
+      "type": "VARCHAR(64)",
+      "isPk": true,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "title",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "held_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "attendees",
+      "type": "JSONB",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "agenda",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "minutes",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "decisions",
+      "type": "JSONB",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "proposal_ids",
+      "type": "JSONB",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "attachments",
+      "type": "JSONB",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "created_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "updated_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    }
+  ],
+  "municipal_documents": [
+    {
+      "name": "id",
+      "type": "VARCHAR(64)",
+      "isPk": true,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "title",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "category",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "description",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "year",
+      "type": "INT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "barangay",
+      "type": "VARCHAR(128)",
+      "isPk": false,
+      "isFk": true,
+      "ref": null
+    },
+    {
+      "name": "tags",
+      "type": "JSONB",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "file_url",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "file_name",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "mime_type",
+      "type": "VARCHAR(128)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "version",
+      "type": "INT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "uploaded_by",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "created_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "updated_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    }
+  ],
+  "document_versions": [
+    {
+      "name": "id",
+      "type": "VARCHAR(64)",
+      "isPk": true,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "document_id",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": true,
+      "ref": "municipal_documents.id"
+    },
+    {
+      "name": "version_number",
+      "type": "INT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "file_url",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "file_name",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "mime_type",
+      "type": "VARCHAR(128)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "uploaded_by",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "uploaded_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    }
+  ],
+  "citizen_engagements": [
+    {
+      "name": "id",
+      "type": "VARCHAR(64)",
+      "isPk": true,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "kind",
+      "type": "VARCHAR(32)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "status",
+      "type": "VARCHAR(32)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "title",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "body",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "category",
+      "type": "VARCHAR(128)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "project_id",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": true,
+      "ref": "municipal_projects.id"
+    },
+    {
+      "name": "longitude",
+      "type": "DOUBLE PRECISION",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "latitude",
+      "type": "DOUBLE PRECISION",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "barangay",
+      "type": "VARCHAR(128)",
+      "isPk": false,
+      "isFk": true,
+      "ref": null
+    },
+    {
+      "name": "contact_name",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "contact_email",
+      "type": "VARCHAR(128)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "contact_phone",
+      "type": "VARCHAR(128)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "staff_note",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "created_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "updated_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    }
+  ],
+  "disaster_hazard_alerts": [
+    {
+      "name": "id",
+      "type": "VARCHAR(64)",
+      "isPk": true,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "alert_type",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "severity",
+      "type": "VARCHAR(32)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "zone_id",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": true,
+      "ref": null
+    },
+    {
+      "name": "title",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "message",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "recommended_action",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "triggered_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "resolved_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "is_active",
+      "type": "BOOLEAN",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    }
+  ],
+  "disaster_backups": [
+    {
+      "name": "id",
+      "type": "VARCHAR(64)",
+      "isPk": true,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "system_name",
+      "type": "VARCHAR(128)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "lgu_name",
+      "type": "VARCHAR(128)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "exported_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "exported_by",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "summary",
+      "type": "JSONB",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "created_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    }
+  ],
+  "meo_inspection_schedules": [
+    {
+      "name": "id",
+      "type": "VARCHAR(64)",
+      "isPk": true,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "project_code",
+      "type": "VARCHAR(128)",
+      "isPk": false,
+      "isFk": true,
+      "ref": null
+    },
+    {
+      "name": "project_name",
+      "type": "VARCHAR(512)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "barangay",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": true,
+      "ref": null
+    },
+    {
+      "name": "inspection_date",
+      "type": "DATE",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "inspection_time",
+      "type": "VARCHAR(32)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "assigned_inspector",
+      "type": "VARCHAR(255)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "status",
+      "type": "VARCHAR(64)",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "notes",
+      "type": "TEXT",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "created_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    },
+    {
+      "name": "updated_at",
+      "type": "TIMESTAMPTZ",
+      "isPk": false,
+      "isFk": false,
+      "ref": null
+    }
+  ]
+}

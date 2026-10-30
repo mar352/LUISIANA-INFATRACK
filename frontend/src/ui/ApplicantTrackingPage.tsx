@@ -4,9 +4,17 @@ import { backendUrl, reuploadCitizenDocument, submitCitizenReceipt } from "../li
 import { PdfCanvasViewer } from "./InSystemDocViewer";
 import { ThemeToggle } from "./ThemeToggle";
 import { useTranslation, LanguageToggle } from "./LanguageToggle";
+import { ApplicantLotInspectionPage } from "./ApplicantLotInspectionPage";
 import "./ApplicantTrackingPage.css";
 
 /* ── Vector SVG Icons ── */
+const IconMapPin = ({ size = 16, color = "currentColor" }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+    <circle cx="12" cy="10" r="3" />
+  </svg>
+);
+
 const IconBack = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
     <line x1="19" y1="12" x2="5" y2="12" />
@@ -154,7 +162,7 @@ export function getTrackingStages(isEn: boolean): TrackingStage[] {
       id: "engineering_inspection",
       label: isEn ? "3. Engineering Site Inspection" : "3. Engineering Site Inspection",
       office: isEn ? "Municipal Engineering Office" : "Tanggapan ng Inhinyero ng Munisipyo",
-      officer: isEn ? "Engr. Mario S. Baldovino · Building Clearance & Pinning" : "Engr. Mario S. Baldovino · Building Clearance & Pinning",
+      officer: isEn ? "Municipal Engineering Office · Building Clearance & Pinning" : "Tanggapan ng Inhinyero · Building Clearance & Pinning",
       theme: {
         activeBg: "#ea580c",
         activeBorder: "#f97316",
@@ -272,6 +280,9 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
   // Loaded Application Data
   const [app, setApp] = useState<TrackedApplication | null>(null);
 
+  // Apple-Style Pinned Lot Street View & Inspection Dedicated Page State
+  const [showLotMapPage, setShowLotMapPage] = useState(false);
+
   // Fetch application by tracking reference
   const fetchApplication = async (trackingNo: string) => {
     const query = trackingNo.trim().toUpperCase();
@@ -289,6 +300,7 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
           // Strictly use real remarks from database without mock injection
           loadedApp.remarks = Array.isArray(loadedApp.remarks) ? loadedApp.remarks : [];
           setApp(loadedApp);
+          setShowLotMapPage(false);
           setSearchInput(loadedApp.trackingNumber);
           if (typeof window !== "undefined") {
             const currentUrl = new URL(window.location.href);
@@ -666,6 +678,30 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
 
 
 
+  // Check if application has officially been pinned / approved by the Municipal Engineer
+  const isPinnedByEngineer = Boolean(
+    app &&
+    (
+      (app as any).isPinned === true ||
+      (app as any).engineerApproved === true ||
+      app.status === "approved_for_construction" ||
+      (app.remarks && app.remarks.some((r: any) => r.actionType === "ENGINEER_APPROVED_PINNED" || (r.fromOffice === "Engineering" && (r.message || "").toLowerCase().includes("nai-pin"))))
+    ) &&
+    app.status !== "returned" &&
+    app.status !== "rejected" &&
+    (app as any).engineerApproved !== false
+  );
+
+  if (showLotMapPage && app && isPinnedByEngineer) {
+    return (
+      <ApplicantLotInspectionPage
+        application={app}
+        onBack={() => setShowLotMapPage(false)}
+        isEn={isEn}
+      />
+    );
+  }
+
   return (
     <div className="at-page">
       {/* Top Navigation */}
@@ -854,6 +890,18 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
                     {copied ? (isEn ? "Copied!" : "Nai-kopya!") : (isEn ? "Copy" : "Kopyahin")}
                   </button>
                 </div>
+                {isPinnedByEngineer && (
+                  <button
+                    type="button"
+                    className="at-apple-map-btn"
+                    onClick={() => setShowLotMapPage(true)}
+                    title={isEn ? "Open 360° Street View, Site Panorama & GIS Lot Map" : "Buksan ang 360° Street View, Site Panorama & Mapa ng Lote"}
+                  >
+                    <IconMapPin size={15} />
+                    <span>{isEn ? "360° Street View & Lot Map" : "Buksan ang 360° Street View & Mapa ng Lote"}</span>
+                    <span className="at-apple-map-btn-badge">{isEn ? "360° Pano & GIS" : "360° Pano & GIS"}</span>
+                  </button>
+                )}
                 <div className="at-hero-date">
                   {isEn
                     ? `Date Submitted: ${new Date(app.createdAt).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}`
@@ -1519,19 +1567,32 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
                       <IconCamera size={20} color="var(--apple-accent, #38bdf8)" />
                       <span>{isEn ? "Actual Site Status (Engineering Inspection)" : "Aktwal na Katayuan sa Site (Engineering Inspection)"}</span>
                     </div>
-                    <span
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 700,
-                        padding: "4px 12px",
-                        borderRadius: 999,
-                        background: `${badgeColor}22`,
-                        color: badgeColor,
-                        border: `1px solid ${badgeColor}66`,
-                      }}
-                    >
-                      {badgeTitle}
-                    </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                      {isPinnedByEngineer && (
+                        <button
+                          type="button"
+                          className="at-site-progress-map-btn"
+                          onClick={() => setShowLotMapPage(true)}
+                          title={isEn ? "Open 360° Street View & Pinned Lot Inspection Page" : "Buksan ang 360° Street View at Mapa ng Lote"}
+                        >
+                          <IconMapPin size={13} />
+                          <span>{isEn ? "360° Street View & Map" : "360° Street View & Mapa"}</span>
+                        </button>
+                      )}
+                      <span
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 700,
+                          padding: "4px 12px",
+                          borderRadius: 999,
+                          background: `${badgeColor}22`,
+                          color: badgeColor,
+                          border: `1px solid ${badgeColor}66`,
+                        }}
+                      >
+                        {badgeTitle}
+                      </span>
+                    </div>
                   </div>
 
                   <div className="at-site-progress-grid">
@@ -1864,6 +1925,8 @@ export default function ApplicantTrackingPage({ initialTrackingNo, onBack }: Pro
           </div>
         </div>
       )}
+
+
     </div>
   );
 }

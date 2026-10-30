@@ -262,7 +262,7 @@ export function getPrivateInfraProjects() {
         name,
         modelType: "office",
         type: "Private Building",
-        department: "Engineering",
+        department: "OBO",
         status: numericProgress >= 100 ? "Completed" : numericProgress >= 50 ? "Ongoing" : "Planned",
         progress: numericProgress,
         inspectionStage: stage,
@@ -1003,6 +1003,10 @@ export function updateProject(id, patch) {
   if (patch.isPinned !== undefined) {
     project.isPinned = Boolean(patch.isPinned);
   }
+  if (patch.nextScheduledInspection !== undefined) {
+    project.nextScheduledInspection = patch.nextScheduledInspection;
+    logActivity(project, "Scheduled ocular field inspection updated.");
+  }
 
   if (
     patch.location !== undefined ||
@@ -1051,7 +1055,7 @@ export function updateProjectInspection(idOrTracking, { stage, progress, photoUr
     timestamp: now,
     inspectedAt: now,
     remarks: remarks || "",
-    inspector: inspector || "Engr. Mario S. Baldovino (Municipal Engineering Office)",
+    inspector: inspector || "Municipal Engineering Office",
   };
 
   if (proj) {
@@ -1360,6 +1364,7 @@ export function toPublicProject(p) {
     isPinned: p.isPinned !== undefined ? Boolean(p.isPinned) : true,
     engineerApproved: p.engineerApproved !== undefined ? Boolean(p.engineerApproved) : true,
     latestInspection: p.latestInspection || null,
+    nextScheduledInspection: p.nextScheduledInspection || null,
     inspectionPhotos: Array.isArray(p.inspectionPhotos) ? p.inspectionPhotos : [],
     milestones,
     issues,
@@ -1377,16 +1382,25 @@ export function listPublicProjects() {
         !p.isPrivateApplication &&
         p.type !== "Private Building" &&
         !p.trackingNumber &&
-        (p.isLguProject ||
+        !p.applicationId &&
+        !(typeof p.id === "string" && (p.id.startsWith("app-") || p.id.startsWith("infra-app-"))) &&
+        (p.isLguProject === true ||
           p.type === "Municipal Project" ||
-          (typeof p.id === "string" && (p.id.startsWith("lgu-proj-") || p.id.startsWith("P"))))
+          (typeof p.id === "string" && (p.id.startsWith("lgu-proj-") || p.id.startsWith("municipal-") || p.id.startsWith("muni-"))))
     )
     .map(toPublicProject);
 }
 
 export function getPublicProject(id) {
   const p = findProject(id);
-  if (!p || p.isPrivateApplication || p.type === "Private Building" || p.trackingNumber) {
+  if (
+    !p ||
+    p.isPrivateApplication ||
+    p.type === "Private Building" ||
+    p.trackingNumber ||
+    p.applicationId ||
+    (typeof p.id === "string" && (p.id.startsWith("app-") || p.id.startsWith("infra-app-")))
+  ) {
     return null;
   }
   return toPublicProject(p);

@@ -3,11 +3,35 @@ import * as THREE from "three";
 import "./PanoramaViewer.css";
 
 interface PanoramaViewerProps {
-  imageUrl: string;
+  imageUrl?: string | null;
   onLoaded?: () => void;
   onHeadingChange?: (headingDeg: number) => void;
   initialFov?: number;
   autoRotateDefault?: boolean;
+}
+
+// Generate natural 360 ambient sky-and-ground sphere texture so the view never renders black
+function createAmbientTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = 1024;
+  canvas.height = 512;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    const grad = ctx.createLinearGradient(0, 0, 0, 512);
+    grad.addColorStop(0, "#38bdf8");   // Sky blue
+    grad.addColorStop(0.42, "#bae6fd"); // Soft haze horizon
+    grad.addColorStop(0.55, "#64748b"); // Natural ground
+    grad.addColorStop(1, "#334155");   // Deep ground
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 1024, 512);
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.minFilter = THREE.LinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  return tex;
 }
 
 const PanoramaViewerComponent: React.FC<PanoramaViewerProps> = ({
@@ -19,7 +43,7 @@ const PanoramaViewerComponent: React.FC<PanoramaViewerProps> = ({
 }) => {
   // Dedicated mount ref for Three.js canvas (MUST NOT contain any React children!)
   const canvasMountRef = useRef<HTMLDivElement>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(Boolean(imageUrl));
   const [autoRotate, setAutoRotate] = useState(autoRotateDefault);
   const [isGrabbing, setIsGrabbing] = useState(false);
 
@@ -101,7 +125,9 @@ const PanoramaViewerComponent: React.FC<PanoramaViewerProps> = ({
     const geometry = new THREE.SphereGeometry(500, 64, 40);
     geometry.scale(-1, 1, 1);
 
-    const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const ambientTex = createAmbientTexture();
+    const material = new THREE.MeshBasicMaterial({ color: 0xffffff, map: ambientTex });
+    stateRef.current.texture = ambientTex;
     const mesh = new THREE.Mesh(geometry, material);
     scene.add(mesh);
 
@@ -238,107 +264,156 @@ const PanoramaViewerComponent: React.FC<PanoramaViewerProps> = ({
 
   // 2. Load and pre-process texture smoothly so the ends connect seamlessly with ZERO black gap!
   useEffect(() => {
-    if (!imageUrl) return;
-    if (stateRef.current.currentImageUrl === imageUrl && stateRef.current.texture) return;
+    if (!imageUrl) {
+      setLoading(false);
+      stateRef.current.currentImageUrl = "";
+      if (stateRef.current.material && !stateRef.current.texture) {
+        const ambientTex = createAmbientTexture();
+        stateRef.current.material.color.setHex(0xffffff);
+        stateRef.current.material.map = ambientTex;
+        stateRef.current.material.needsUpdate = true;
+        stateRef.current.texture = ambientTex;
+      }
+      return;
+    }
+
+    if (stateRef.current.currentImageUrl === imageUrl && stateRef.current.texture) {
+      setLoading(false);
+      return;
+    }
 
     stateRef.current.currentImageUrl = imageUrl;
     setLoading(true);
 
-    const img = new Image();
-    img.crossOrigin = "anonymous";
+    let active = true;
+    let triedWithoutCors = false;
+    let timeoutTimer: any = null;
 
-    img.onload = () => {
-      const w = img.naturalWidth || img.width;
-      const h = img.naturalHeight || img.height;
-
-      // Create an offscreen canvas to seamlessly blend ends and fill transparent edges
-      const canvas = document.createElement("canvas");
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext("2d", { willReadFrequently: true });
-
-      if (!ctx) {
+    // Safety timeout: stop spinner after 8 seconds if network is slow/stalled
+    timeoutTimer = setTimeout(() => {
+      if (active) {
+        console.warn("Panorama image loading timed out after 8s:", imageUrl);
         setLoading(false);
-        return;
+      }
+    }, 8000);
+
+    const loadImage = (withCors: boolean) => {
+      const img = new Image();
+      if (withCors) {
+        img.crossOrigin = "anonymous";
       }
 
-      // 1. Fill background with natural ambient sky-to-ground gradient
-      // Ensures that any curved bow-tie / transparent borders from phone cameras never show black!
-      const bgGrad = ctx.createLinearGradient(0, 0, 0, h);
-      bgGrad.addColorStop(0, "#75a7db");    // Natural sky blue
-      bgGrad.addColorStop(0.38, "#a2c5e8"); // Soft horizon haze
-      bgGrad.addColorStop(0.55, "#8695a6"); // Ground / vegetation
-      bgGrad.addColorStop(1, "#4f5a6a");    // Asphalt / road bottom
-      ctx.fillStyle = bgGrad;
-      ctx.fillRect(0, 0, w, h);
+      img.onload = () => {
+        if (!active) return;
+        if (timeoutTimer) clearTimeout(timeoutTimer);
 
-      // 2. Draw the photo on top
-      ctx.drawImage(img, 0, 0, w, h);
+        const w = img.naturalWidth || img.width;
+        const h = img.naturalHeight || img.height;
 
-      // 3. Seamless Edge-Blending:
-      // Smoothly cross-fade the right edge into the left edge across blendWidth
-      // so the connection between the two ends is 100% continuous with ZERO black gap!
-      try {
-        const blendWidth = Math.max(24, Math.min(100, Math.round(w * 0.045))); // ~4.5% of width
-        const imgData = ctx.getImageData(0, 0, w, h);
-        const data = imgData.data;
+        // Create an offscreen canvas to seamlessly blend ends and fill transparent edges
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
 
-        for (let y = 0; y < h; y++) {
-          const rowOffset = y * w;
-          for (let i = 0; i < blendWidth; i++) {
-            const leftIdx = (rowOffset + i) * 4;
-            const rightX = w - blendWidth + i;
-            const rightIdx = (rowOffset + rightX) * 4;
-
-            // t goes from 0 (at start of blend) to 1 (at extreme edge x = w - 1)
-            const t = (i + 1) / blendWidth;
-
-            // Interpolate right edge pixels towards left edge pixels
-            data[rightIdx] = Math.round(data[rightIdx] * (1 - t) + data[leftIdx] * t);
-            data[rightIdx + 1] = Math.round(data[rightIdx + 1] * (1 - t) + data[leftIdx + 1] * t);
-            data[rightIdx + 2] = Math.round(data[rightIdx + 2] * (1 - t) + data[leftIdx + 2] * t);
-            data[rightIdx + 3] = 255; // Fully opaque
-
-            // Ensure left edge strip is also fully opaque
-            if (data[leftIdx + 3] < 255) {
-              data[leftIdx + 3] = 255;
-            }
-          }
+        if (!ctx) {
+          setLoading(false);
+          return;
         }
 
-        ctx.putImageData(imgData, 0, 0);
-      } catch (e) {
-        // Fallback if canvas security restricts getImageData (cross-origin without CORS)
-        console.warn("Canvas getImageData edge-blend fallback:", e);
-      }
+        // 1. Fill background with natural ambient sky-to-ground gradient
+        // Ensures that any curved bow-tie / transparent borders from phone cameras never show black!
+        const bgGrad = ctx.createLinearGradient(0, 0, 0, h);
+        bgGrad.addColorStop(0, "#75a7db");    // Natural sky blue
+        bgGrad.addColorStop(0.38, "#a2c5e8"); // Soft horizon haze
+        bgGrad.addColorStop(0.55, "#8695a6"); // Ground / vegetation
+        bgGrad.addColorStop(1, "#4f5a6a");    // Asphalt / road bottom
+        ctx.fillStyle = bgGrad;
+        ctx.fillRect(0, 0, w, h);
 
-      // Create Three.js Texture with RepeatWrapping for seamless connection
-      const newTexture = new THREE.CanvasTexture(canvas);
-      newTexture.colorSpace = THREE.SRGBColorSpace;
-      newTexture.wrapS = THREE.RepeatWrapping;
-      newTexture.wrapT = THREE.ClampToEdgeWrapping;
-      newTexture.minFilter = THREE.LinearFilter;
-      newTexture.magFilter = THREE.LinearFilter;
-      newTexture.generateMipmaps = false;
+        // 2. Draw the photo on top
+        ctx.drawImage(img, 0, 0, w, h);
 
-      if (stateRef.current.material) {
-        const oldTexture = stateRef.current.texture;
-        stateRef.current.material.color.setHex(0xffffff);
-        stateRef.current.material.map = newTexture;
-        stateRef.current.material.needsUpdate = true;
-        oldTexture?.dispose();
-      }
-      stateRef.current.texture = newTexture;
-      setLoading(false);
-      onLoadedRef.current?.();
+        // 3. Seamless Edge-Blending:
+        // Smoothly cross-fade the right edge into the left edge across blendWidth
+        // so the connection between the two ends is 100% continuous with ZERO black gap!
+        try {
+          const blendWidth = Math.max(24, Math.min(100, Math.round(w * 0.045))); // ~4.5% of width
+          const imgData = ctx.getImageData(0, 0, w, h);
+          const data = imgData.data;
+
+          for (let y = 0; y < h; y++) {
+            const rowOffset = y * w;
+            for (let i = 0; i < blendWidth; i++) {
+              const leftIdx = (rowOffset + i) * 4;
+              const rightX = w - blendWidth + i;
+              const rightIdx = (rowOffset + rightX) * 4;
+
+              // t goes from 0 (at start of blend) to 1 (at extreme edge x = w - 1)
+              const t = (i + 1) / blendWidth;
+
+              // Interpolate right edge pixels towards left edge pixels
+              data[rightIdx] = Math.round(data[rightIdx] * (1 - t) + data[leftIdx] * t);
+              data[rightIdx + 1] = Math.round(data[rightIdx + 1] * (1 - t) + data[leftIdx + 1] * t);
+              data[rightIdx + 2] = Math.round(data[rightIdx + 2] * (1 - t) + data[leftIdx + 2] * t);
+              data[rightIdx + 3] = 255; // Fully opaque
+
+              // Ensure left edge strip is also fully opaque
+              if (data[leftIdx + 3] < 255) {
+                data[leftIdx + 3] = 255;
+              }
+            }
+          }
+
+          ctx.putImageData(imgData, 0, 0);
+        } catch (e) {
+          // Fallback if canvas security restricts getImageData (cross-origin without CORS)
+          console.warn("Canvas getImageData edge-blend fallback:", e);
+        }
+
+        // Create Three.js Texture with RepeatWrapping for seamless connection
+        const newTexture = new THREE.CanvasTexture(canvas);
+        newTexture.colorSpace = THREE.SRGBColorSpace;
+        newTexture.wrapS = THREE.RepeatWrapping;
+        newTexture.wrapT = THREE.ClampToEdgeWrapping;
+        newTexture.minFilter = THREE.LinearFilter;
+        newTexture.magFilter = THREE.LinearFilter;
+        newTexture.generateMipmaps = false;
+
+        if (stateRef.current.material) {
+          const oldTexture = stateRef.current.texture;
+          stateRef.current.material.color.setHex(0xffffff);
+          stateRef.current.material.map = newTexture;
+          stateRef.current.material.needsUpdate = true;
+          oldTexture?.dispose();
+        }
+        stateRef.current.texture = newTexture;
+        setLoading(false);
+        onLoadedRef.current?.();
+      };
+
+      img.onerror = (err) => {
+        if (!active) return;
+        if (withCors && !triedWithoutCors) {
+          triedWithoutCors = true;
+          // Retry without crossOrigin attribute in case server lacks CORS headers
+          loadImage(false);
+          return;
+        }
+        if (timeoutTimer) clearTimeout(timeoutTimer);
+        console.warn("Failed to load panorama image:", err);
+        setLoading(false);
+      };
+
+      img.src = imageUrl;
     };
 
-    img.onerror = (err) => {
-      console.warn("Failed to load panorama image:", err);
-      setLoading(false);
-    };
+    loadImage(true);
 
-    img.src = imageUrl;
+    return () => {
+      active = false;
+      if (timeoutTimer) clearTimeout(timeoutTimer);
+    };
   }, [imageUrl]);
 
   return (
